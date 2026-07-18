@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import io
 from pydantic import BaseModel
-from pdf_engine import PremiumPDFEngine
 
 app = FastAPI(title="CarbonTally API", version="2.0.0")
 
