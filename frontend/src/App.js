@@ -124,7 +124,7 @@ function App() {
     setData([]);
   };
 
-    const handleUpload = async () => {
+  const handleUpload = async () => {
     if (!file) return setError('Please select a file first');
     setLoading(true); 
     setError('');
@@ -474,39 +474,68 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          const currentFields = fields[dataType] || fields.fuel;
                           {flaggedData.map((row) => {
                             const dataIndex = data.indexOf(row);
                             const isUtility = result?.data_type === 'utility';
-                            const fuelField = isUtility ? 'Standardized Utility' : 'Standardized Fuel';
-                            const volumeField = isUtility ? 'Consumption (kWh)' : 'Volume (L)';
-                            const dateField = isUtility ? 'Billing Period Start' : 'Transaction Date';
-                            const siteField = isUtility ? 'Site Name' : 'Vehicle Registration';
-                            const dataType = result?.data_type || 'fuel';
+                            const isScope3 = result?.data_type === 'scope3';
+                            
+                            // Define fields safely INSIDE the map, BEFORE the return statement
                             const fields = {
-                              fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration' },
-                              utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name' },
-                              scope3:  { type: 'Standardized Scope3',  volume: 'Quantity',           factor: 'DEFRA Factor',             site: 'Description' }
+                              fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration', date: 'Transaction Date' },
+                              utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name',              date: 'Billing Period Start' },
+                              scope3:  { type: 'Standardized Scope3',  volume: 'Quantity',           factor: 'DEFRA Factor',             site: 'Description',            date: 'Date' }
                             };
-
+                            const currentFields = fields[result?.data_type || 'fuel'] || fields.fuel;
 
                             return (
                               <tr key={dataIndex} className="flagged-row">
-                                <td>{row[dateField] || 'N/A'}</td>
-                                                          <td>
+                                {/* Column 1: Date */}
+                                <td>{row[currentFields.date] || 'N/A'}</td>
+                                
+                                {/* Column 2: Site / Facility / Description */}
+                                <td>
                                   <select 
-                                    value={row[fields.type]} 
-                                    onChange={(e) => handleInputChange(dataIndex, fields.type, e.target.value)}
+                                    value={row[currentFields.site] === 'UNKNOWN_SITE' || row[currentFields.site] === 'UNKNOWN' || !row[currentFields.site] ? '' : row[currentFields.site]} 
+                                    onChange={(e) => handleInputChange(dataIndex, currentFields.site, e.target.value)}
+                                    onBlur={() => validateRow(dataIndex)}
+                                    className="edit-input"
+                                    style={{ marginBottom: '0.5rem', width: '100%' }}
+                                  >
+                                    <option value="">
+                                      {isUtility ? 'Select Facility...' : isScope3 ? 'Select/Type Description...' : 'Select Vehicle...'}
+                                    </option>
+                                    {(isUtility ? facilities : assets).map(item => (
+                                      <option key={item.id} value={item.name}>{item.name}</option>
+                                    ))}
+                                  </select>
+                                  <input 
+                                    type="text" 
+                                    value={row[currentFields.site] === 'UNKNOWN_SITE' || row[currentFields.site] === 'UNKNOWN' || !row[currentFields.site] ? '' : row[currentFields.site]}
+                                    onChange={(e) => handleInputChange(dataIndex, currentFields.site, e.target.value)}
+                                    onBlur={() => validateRow(dataIndex)}
+                                    className="edit-input"
+                                    placeholder="Or type name manually..."
+                                  />
+                                </td>
+                                
+                                {/* Column 3: Issue */}
+                                <td><span className="badge">{row['review_reason']}</span></td>
+                                
+                                {/* Column 4: Type Dropdown */}
+                                <td>
+                                  <select 
+                                    value={row[currentFields.type]} 
+                                    onChange={(e) => handleInputChange(dataIndex, currentFields.type, e.target.value)}
                                     onBlur={() => validateRow(dataIndex)}
                                     className="edit-input"
                                   >
-                                    <option value="Unknown">Select Category...</option>
-                                    {result?.data_type === 'utility' ? (
+                                    <option value="Unknown">Select Type...</option>
+                                    {isUtility ? (
                                       <>
                                         <option value="Electricity">Electricity</option>
                                         <option value="Natural Gas">Natural Gas</option>
                                       </>
-                                    ) : result?.data_type === 'scope3' ? (
+                                    ) : isScope3 ? (
                                       <>
                                         <option value="Flight (Short Haul)">Flight (Short Haul)</option>
                                         <option value="Flight (Long Haul)">Flight (Long Haul)</option>
@@ -524,22 +553,27 @@ function App() {
                                     )}
                                   </select>
                                 </td>
+                                
+                                {/* Column 5: Volume Input */}
                                 <td>
                                   <input 
                                     type="number" 
                                     step="0.01"
-                                    value={row[fields.volume] === null ? '' : row[fields.volume]} 
-                                    onChange={(e) => handleInputChange(dataIndex, fields.volume, e.target.value === '' ? null : parseFloat(e.target.value))}
+                                    value={row[currentFields.volume] === null || row[currentFields.volume] === undefined ? '' : row[currentFields.volume]} 
+                                    onChange={(e) => handleInputChange(dataIndex, currentFields.volume, e.target.value === '' ? null : parseFloat(e.target.value))}
                                     onBlur={() => validateRow(dataIndex)}
                                     className="edit-input"
-                                    placeholder={result?.data_type === 'utility' ? "e.g., 4500" : result?.data_type === 'scope3' ? "e.g., 1500" : "e.g., 45.2"}
+                                    placeholder={isUtility ? "e.g., 4500" : isScope3 ? "e.g., 1500" : "e.g., 45.2"}
                                   />
                                 </td>
+                                
+                                {/* Column 6: Emissions */}
                                 <td>{row['Total kgCO2e'] || 0}</td>
                               </tr>
                             );
                           })}
                         </tbody>
+                        
                       </table>                  
                   </div>
                 )}
