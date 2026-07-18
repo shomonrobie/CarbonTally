@@ -7,6 +7,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import './App.css';
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
+import LandingPage from './LandingPage';
+
 const DEFRA_FACTORS = { 
   // Scope 1
   'Diesel': 2.54, 'Petrol': 2.16, 'AdBlue': 0.0, 'Unknown Fuel': 0.0,
@@ -46,6 +48,8 @@ function App() {
   const [assets, setAssets] = useState([]);
   const [uploadType, setUploadType] = useState('fuel'); // 'fuel' or 'utility'
   const [facilities, setFacilities] = useState([]);
+  const [showLogin, setShowLogin] = useState(false);
+    const [subscriptionTier, setSubscriptionTier] = useState('free');
   // --- AUTH & ORG FETCHING ---
   useEffect(() => {
     const getOrgAndAssets = async (userId) => {
@@ -357,41 +361,57 @@ function App() {
     XLSX.writeFile(wb, `CarbonTally_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // --- RENDER ---
-  if (!session) return <Login />;
 
+    // 1. If no session AND we haven't clicked "Log In" yet, show the Landing Page
+  if (!session && !showLogin) {
+    return <LandingPage onGetStarted={() => setShowLogin(true)} />;
+  }
+
+  // 2. If no session BUT they clicked "Log In", show the Login component
+  if (!session && showLogin) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <button 
+          className="btn-secondary" 
+          onClick={() => setShowLogin(false)} 
+          style={{ marginBottom: '1rem' }}
+        >
+          Back to Home
+        </button>
+        <Login onLoginSuccess={() => setShowLogin(false)} />
+      </div>
+    );
+  }
+
+  // 3. If they ARE logged in, show the main App Dashboard
   return (
     <div className="App">
       <header className="App-header">
         <div className="header-top">
-          <h1>🌱 CarbonTally</h1>
+          <h1>CarbonTally</h1>
           <div className="user-menu">
             <span className="company-name">{organization?.name}</span>
             <button onClick={handleLogout} className="logout-button">Logout</button>
           </div>
         </div>
         
-      {/* --- PERSISTENT NAVIGATION MENU --- */}
         <nav className="main-nav">
-          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
-          <button className={`nav-btn ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>️ Upload Data</button>
-          <button 
-            className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} 
-            onClick={() => { 
-              setActiveTab('history'); 
-              if (organization) fetchHistory(); 
-            }}
-          >
-            📈 History & Trends
-          </button>
-          {userRole === 'admin' && (
-            <button className={`nav-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
-              👥 Team Management
-            </button>
+          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+          <button className={`nav-btn ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>Upload Data</button>
+          <button className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); if (organization) fetchHistory(); }}>History</button>
+          
+          {subscriptionTier === 'free' ? (
+            <button className="nav-btn upgrade-btn" onClick={() => setActiveTab('billing')}>Upgrade to Pro</button>
+          ) : (
+            <button className={`nav-btn ${activeTab === 'upload_scope3' ? 'active' : ''}`} onClick={() => setActiveTab('upload_scope3')}>Scope 3</button>
           )}
-          <button className={`nav-btn ${activeTab === 'assets' ? 'active' : ''}`} onClick={() => { setActiveTab('assets'); }}>🏢 Assets</button>
+
+          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>}
+          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'assets' ? 'active' : ''}`} onClick={() => setActiveTab('assets')}>Assets</button>}
+          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>Billing</button>}
         </nav>
       </header>
+
 
       <div className="container">
         {/* DASHBOARD VIEW */}
