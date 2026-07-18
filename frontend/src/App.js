@@ -8,6 +8,7 @@ import './App.css';
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import LandingPage from './LandingPage';
+import toast from 'react-hot-toast';
 
 const DEFRA_FACTORS = { 
   // Scope 1
@@ -285,7 +286,7 @@ function App() {
 
       if (error) throw error;
 
-      alert(`✅ Successfully saved ${cleanData.length} records!`);
+      toast.success(`✅ Successfully saved ${cleanData.length} records!`);
       
       // Refresh data and clean up
       await fetchHistory(); 
