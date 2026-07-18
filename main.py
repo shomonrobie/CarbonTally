@@ -8,7 +8,7 @@ app = FastAPI(title="CarbonTally API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://your-vercel-domain.vercel.app"], # Add your future Vercel URL here
+    allow_origins=["http://localhost:3000", "https://carbontally"], # Add your future Vercel URL here
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
