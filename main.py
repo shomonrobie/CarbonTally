@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import numpy as np
 import io
+from pydantic import BaseModel
+from pdf_engine import PremiumPDFEngine
 
 app = FastAPI(title="CarbonTally API", version="2.0.0")
 
@@ -149,10 +151,11 @@ def process_scope3_data(df: pd.DataFrame) -> tuple:
     
     clean_columns = ['Date', 'Description', 'Standardized Scope3', 'Quantity', 'Cost (£)', 'DEFRA Factor', 'Total kgCO2e', 'needs_review', 'review_reason']
     return df[clean_columns].to_dict(orient='records'), int(df['needs_review'].sum())
+
 @app.post("/upload-csv")
 async def upload_csv(
     file: UploadFile = File(...),
-    data_type: str = Form('fuel') # 'fuel' or 'utility'
+    data_type: str = Form('fuel')
 ):
     if not file.filename.endswith(('.csv', '.xlsx')):
         raise HTTPException(status_code=400, detail="Only CSV or Excel files are allowed.")
@@ -160,7 +163,10 @@ async def upload_csv(
     try:
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
+        
+        # CRITICAL: Strip invisible spaces from CSV headers
         df.columns = df.columns.str.strip()
+        
         if data_type == 'utility':
             clean_data, flagged_rows = process_utility_data(df)
             scope = "Scope 2"
@@ -171,7 +177,7 @@ async def upload_csv(
             clean_data, flagged_rows = process_fuel_data(df)
             scope = "Scope 1"
             
-        total_emissions = sum(row['Total kgCO2e'] or 0 for row in clean_data)
+        total_emissions = sum(row.get('Total kgCO2e', 0) or 0 for row in clean_data)
         
         return {
             "status": "success",
@@ -184,7 +190,11 @@ async def upload_csv(
             "data": clean_data
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        import traceback
+        # Print to Render's basic console so we have a backup
+        print(f"--- BACKEND CRASH ---\n{traceback.format_exc()}\n-------------------")
+        # Send the exact error back to the browser!
+        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
 
 @app.get("/")
 def read_root():
