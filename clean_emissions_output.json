@@ -1,0 +1,443 @@
+[
+    {
+        "Transaction Date": "2023-10-01",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 53.8,
+        "Total Cost (\u00a3)": 85.21,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 136.65
+    },
+    {
+        "Transaction Date": "2023-10-02",
+        "Vehicle Registration": "BV67 HHH",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 43.12,
+        "Total Cost (\u00a3)": 68.27,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-03",
+        "Vehicle Registration": "BV67 III",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 20.96,
+        "Total Cost (\u00a3)": 32.87,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 53.24
+    },
+    {
+        "Transaction Date": "2023-10-04",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 33.85,
+        "Total Cost (\u00a3)": 50.94,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-05",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 34.46,
+        "Total Cost (\u00a3)": 53.84,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-07",
+        "Vehicle Registration": "BV67 JJJ",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 56.6,
+        "Total Cost (\u00a3)": 93.07,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 143.76
+    },
+    {
+        "Transaction Date": "2023-10-08",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 69.99,
+        "Total Cost (\u00a3)": 113.37,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 177.77
+    },
+    {
+        "Transaction Date": "2023-10-09",
+        "Vehicle Registration": "BV67 GGG",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 30.4,
+        "Total Cost (\u00a3)": 48.47,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 77.22
+    },
+    {
+        "Transaction Date": "2023-10-10",
+        "Vehicle Registration": "BV67 BBB",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 43.46,
+        "Total Cost (\u00a3)": 65.07,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-11",
+        "Vehicle Registration": "BV67 CCC",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 30.93,
+        "Total Cost (\u00a3)": 46.43,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 78.56
+    },
+    {
+        "Transaction Date": "2023-10-12",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 65.32,
+        "Total Cost (\u00a3)": 95.24,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 165.91
+    },
+    {
+        "Transaction Date": "2023-10-13",
+        "Vehicle Registration": "BV67 EEE",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 45.51,
+        "Total Cost (\u00a3)": 72.46,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-14",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 32.48,
+        "Total Cost (\u00a3)": 47.82,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-15",
+        "Vehicle Registration": "BV67 HHH",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 54.06,
+        "Total Cost (\u00a3)": 83.14,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 137.31
+    },
+    {
+        "Transaction Date": "2023-10-16",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 21.88,
+        "Total Cost (\u00a3)": 32.61,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 55.58
+    },
+    {
+        "Transaction Date": "2023-10-17",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 70.54,
+        "Total Cost (\u00a3)": 114.92,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-18",
+        "Vehicle Registration": "BV67 BBB",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 46.99,
+        "Total Cost (\u00a3)": 72.6,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-19",
+        "Vehicle Registration": "BV67 BBB",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 43.71,
+        "Total Cost (\u00a3)": 68.3,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 111.02
+    },
+    {
+        "Transaction Date": "2023-10-20",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 75.6,
+        "Total Cost (\u00a3)": 120.14,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 192.02
+    },
+    {
+        "Transaction Date": "2023-10-21",
+        "Vehicle Registration": "BV67 GGG",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 63.64,
+        "Total Cost (\u00a3)": 94.05,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-22",
+        "Vehicle Registration": "BV67 EEE",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 39.59,
+        "Total Cost (\u00a3)": 62.19,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 100.56
+    },
+    {
+        "Transaction Date": "2023-10-23",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 54.23,
+        "Total Cost (\u00a3)": 84.49,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 137.74
+    },
+    {
+        "Transaction Date": "2023-10-24",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 51.25,
+        "Total Cost (\u00a3)": 76.39,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 130.18
+    },
+    {
+        "Transaction Date": "2023-10-25",
+        "Vehicle Registration": "BV67 CCC",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 77.67,
+        "Total Cost (\u00a3)": 127.27,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-26",
+        "Vehicle Registration": "UNKNOWN",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 70.67,
+        "Total Cost (\u00a3)": 110.94,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-10-27",
+        "Vehicle Registration": "BV67 EEE",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 64.84,
+        "Total Cost (\u00a3)": 103.03,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 164.69
+    },
+    {
+        "Transaction Date": "2023-10-28",
+        "Vehicle Registration": "BV67 JJJ",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 52.38,
+        "Total Cost (\u00a3)": 85.17,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 133.05
+    },
+    {
+        "Transaction Date": "2023-10-29",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 55.21,
+        "Total Cost (\u00a3)": 86.95,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 140.23
+    },
+    {
+        "Transaction Date": "2023-10-30",
+        "Vehicle Registration": "BV67 GGG",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 77.92,
+        "Total Cost (\u00a3)": 117.59,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 197.92
+    },
+    {
+        "Transaction Date": "2023-10-31",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 56.42,
+        "Total Cost (\u00a3)": 83.0,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 143.31
+    },
+    {
+        "Transaction Date": "2023-11-01",
+        "Vehicle Registration": "BV67 GGG",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 36.56,
+        "Total Cost (\u00a3)": 56.35,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 92.86
+    },
+    {
+        "Transaction Date": "2023-11-02",
+        "Vehicle Registration": "BV67 HHH",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 37.78,
+        "Total Cost (\u00a3)": 56.43,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 95.96
+    },
+    {
+        "Transaction Date": "2023-11-03",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 29.92,
+        "Total Cost (\u00a3)": 45.88,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 76.0
+    },
+    {
+        "Transaction Date": "2023-11-04",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 20.94,
+        "Total Cost (\u00a3)": 34.06,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-11-05",
+        "Vehicle Registration": "BV67 HHH",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 45.4,
+        "Total Cost (\u00a3)": 68.78,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-11-06",
+        "Vehicle Registration": "BV67 EEE",
+        "Standardized Fuel": "Unknown",
+        "Volume (L)": 43.69,
+        "Total Cost (\u00a3)": 64.42,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-11-07",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 37.61,
+        "Total Cost (\u00a3)": 57.21,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 95.53
+    },
+    {
+        "Transaction Date": "2023-11-08",
+        "Vehicle Registration": "BV67 BBB",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 20.84,
+        "Total Cost (\u00a3)": 34.0,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 52.93
+    },
+    {
+        "Transaction Date": "2023-11-09",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 31.93,
+        "Total Cost (\u00a3)": 48.04,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 81.1
+    },
+    {
+        "Transaction Date": "2023-11-10",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 62.68,
+        "Total Cost (\u00a3)": 99.01,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 159.21
+    },
+    {
+        "Transaction Date": "2023-11-11",
+        "Vehicle Registration": "BV67 AAA",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 67.41,
+        "Total Cost (\u00a3)": 97.75,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 171.22
+    },
+    {
+        "Transaction Date": "2023-11-12",
+        "Vehicle Registration": "BV67 III",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 56.36,
+        "Total Cost (\u00a3)": 85.7,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-11-13",
+        "Vehicle Registration": "BV67 FFF",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 75.58,
+        "Total Cost (\u00a3)": 114.2,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 191.97
+    },
+    {
+        "Transaction Date": "2023-11-14",
+        "Vehicle Registration": "BV67 CCC",
+        "Standardized Fuel": "AdBlue",
+        "Volume (L)": 59.06,
+        "Total Cost (\u00a3)": 87.58,
+        "DEFRA Factor (kgCO2e/L)": 0.0,
+        "Total kgCO2e": 0.0
+    },
+    {
+        "Transaction Date": "2023-11-15",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 74.9,
+        "Total Cost (\u00a3)": 116.61,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 190.25
+    },
+    {
+        "Transaction Date": "2023-11-16",
+        "Vehicle Registration": "BV67 DDD",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 71.0,
+        "Total Cost (\u00a3)": 109.83,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 180.34
+    },
+    {
+        "Transaction Date": "2023-11-17",
+        "Vehicle Registration": "BV67 CCC",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 46.97,
+        "Total Cost (\u00a3)": 74.61,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 119.3
+    },
+    {
+        "Transaction Date": "2023-11-18",
+        "Vehicle Registration": "BV67 JJJ",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 25.72,
+        "Total Cost (\u00a3)": 38.68,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 65.33
+    },
+    {
+        "Transaction Date": "2023-11-19",
+        "Vehicle Registration": "BV67 CCC",
+        "Standardized Fuel": "Diesel",
+        "Volume (L)": 42.25,
+        "Total Cost (\u00a3)": 63.33,
+        "DEFRA Factor (kgCO2e/L)": 2.54,
+        "Total kgCO2e": 107.32
+    }
+]
