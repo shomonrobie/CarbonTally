@@ -271,7 +271,7 @@ function App() {
 
       if (error) throw error;
 
-      alert(`✅ Successfully saved ${cleanData.length} records!`);
+      toast.success(`✅ Successfully saved ${cleanData.length} records!`);
       
       // Refresh data and clean up
       await fetchHistory(); 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Login from './Login';
 import axios from 'axios';
@@ -7,15 +8,18 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import './App.css';
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
+import CookieBanner from './CookieBanner';
+import PrivacyPolicy from './PrivacyPolicy';
+import CookiePolicy from './CookiePolicy';
+import TermsPage from './TermsPage';
 import LandingPage from './LandingPage';
-import toast from 'react-hot-toast';
+import CarbonReductionPlan from './CarbonReductionPlan';
+import AboutUs from './AboutUs';
+import BulkUpload from './BulkUpload';
 
 const DEFRA_FACTORS = { 
-  // Scope 1
   'Diesel': 2.54, 'Petrol': 2.16, 'AdBlue': 0.0, 'Unknown Fuel': 0.0,
-  // Scope 2
   'Electricity': 0.20712, 'Natural Gas': 0.18316, 'Unknown Utility': 0.0,
-  // Scope 3 (Business Travel & Waste)
   'Flight (Short Haul)': 0.155, 
   'Flight (Long Haul)': 0.195, 
   'Rail (National)': 0.035, 
@@ -24,33 +28,65 @@ const DEFRA_FACTORS = {
   'Recycled Waste': -0.050, 
   'Unknown Scope 3': 0.0 
 };
-// stripe.api_key = "sk_test_YOUR_SECRET_KEY_HERE" 
-// FRONTEND_URL = "http://localhost:3000"
 
-function App() {
+// Protected Route Component
+function ProtectedRoute({ children }) {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+
+  if (!session) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+// Main Dashboard Component
+function Dashboard() {
+  const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [organization, setOrganization] = useState(null);
   
-  // Navigation State
+  // --- ALL YOUR EXISTING STATE VARIABLES ---
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Upload & Review State
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [data, setData] = useState([]);
   const [error, setError] = useState('');
-
-  // Dashboard & History State
   const [dashboardStats, setDashboardStats] = useState({ totalEmissions: 0, totalTransactions: 0 });
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [assets, setAssets] = useState([]);
-  const [uploadType, setUploadType] = useState('fuel'); // 'fuel' or 'utility'
+  const [uploadType, setUploadType] = useState('fuel');
   const [facilities, setFacilities] = useState([]);
+  
+  // --- NEW STATE VARIABLES YOU ASKED ABOUT ---
   const [showLogin, setShowLogin] = useState(false);
-    const [subscriptionTier, setSubscriptionTier] = useState('free');
+  const [subscriptionTier, setSubscriptionTier] = useState('free');
+  const [showPDFPortal, setShowPDFPortal] = useState(false);
+  const [pdfFile, setPdfFile] = useState(null);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  
   // --- AUTH & ORG FETCHING ---
   useEffect(() => {
     const getOrgAndAssets = async (userId) => {
@@ -60,7 +96,7 @@ function App() {
         .eq('user_id', userId).single();
 
       if (error) {
-        console.error("Error fetching organization:", error); // <-- This uses the 'error' variable!
+        console.error("Error fetching organization:", error);
       }
 
       if (data && data.organizations) {
@@ -71,17 +107,17 @@ function App() {
         const { data: assetData } = await supabase.from('assets').select('id, name');
         if (assetData) setAssets(assetData);
       }
-              // --- ADD THIS TO FETCH FACILITIES ---
+      
       const { data: facData, error: facError } = await supabase
           .from('facilities')
           .select('id, name');
         
-        if (facError) {
-          console.error("❌ Error fetching facilities:", facError);
-        } else {
-          console.log("✅ Facilities fetched:", facData); // Check F12 console to prove it's there!
-          setFacilities(facData || []); // Ensures it's always an array, never null
-        }
+      if (facError) {
+        console.error("❌ Error fetching facilities:", facError);
+      } else {
+        console.log("✅ Facilities fetched:", facData);
+        setFacilities(facData || []);
+      }
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -97,7 +133,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- DASHBOARD STATS (Fetches from DB so it survives reload) ---
+  // --- DASHBOARD STATS ---
   const fetchDashboardStats = async (orgId) => {
     const { data, error } = await supabase
       .from('emissions_logs')
@@ -119,6 +155,7 @@ function App() {
     setOrganization(null);
     setResult(null);
     setData([]);
+    navigate('/');
   };
 
   // --- UPLOAD & REVIEW LOGIC ---
@@ -131,21 +168,16 @@ function App() {
 
   const handleUpload = async () => {
     if (!file) return setError('Please select a file first');
-    setLoading(true); 
+    setLoading(true);
     setError('');
-    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('data_type', uploadType);
 
     try {
-      // Dynamically use the live API URL or fallback to localhost for local testing
-      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-      
-      const response = await axios.post(`${API_URL}/upload-csv`, formData, { 
+      const response = await axios.post('http://localhost:8000/upload-csv', formData, { 
         headers: { 'Content-Type': 'multipart/form-data' } 
       });
-      
       setResult(response.data);
       setData(response.data.data);
     } catch (err) {
@@ -154,9 +186,8 @@ function App() {
       setLoading(false); 
     }
   };
-  
-    // 1. Runs on every keystroke (Updates math, but DOES NOT clear the error flag)
-    // 1. Runs on every keystroke (Updates math, but DOES NOT clear the error flag)
+
+  // --- YOUR EXISTING HANDLERS ---
   const handleInputChange = (index, field, value) => {
     const newData = [...data];
     const row = { ...newData[index] };
@@ -164,7 +195,6 @@ function App() {
 
     const dataType = result?.data_type || 'fuel';
     
-    // Dynamically map field names based on upload type
     const fields = {
       fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration' },
       utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name' },
@@ -172,12 +202,10 @@ function App() {
     };
     const currentFields = fields[dataType] || fields.fuel;
 
-    // Update factor if they changed the type
     if (field === currentFields.type) {
       row[currentFields.factor] = DEFRA_FACTORS[value] || 0;
     }
 
-    // Live math calculation
     const volume = parseFloat(row[currentFields.volume]);
     const factor = parseFloat(row[currentFields.factor]);
     
@@ -191,7 +219,6 @@ function App() {
     setData(newData);
   };
 
-  // 2. Runs ONLY when the user clicks away (onBlur). This is what clears the error flag.
   const validateRow = (index) => {
     const newData = [...data];
     const row = { ...newData[index] };
@@ -209,11 +236,8 @@ function App() {
     const factor = parseFloat(row[currentFields.factor]);
     const site = row[currentFields.site];
 
-    // Strict validation rules
     const hasValidVolume = !isNaN(volume) && volume > 0;
     const hasValidType = row[currentFields.type] && !row[currentFields.type].toLowerCase().includes('unknown');
-    
-    // For Scope 3, 'N/A' is acceptable for description, but we still want to ensure it's not completely blank
     const hasValidSite = site && site !== '' && site !== 'UNKNOWN' && site !== 'UNKNOWN_SITE';
 
     if (hasValidVolume && hasValidType && hasValidSite) {
@@ -230,7 +254,7 @@ function App() {
     newData[index] = row;
     setData(newData);
   };
-  //const currentTotalEmissions = useMemo(() => data.reduce((sum, row) => sum + (parseFloat(row['Total kgCO2e']) || 0), 0).toFixed(2), [data]);
+
   const flaggedData = data.filter(row => row.needs_review);
   const cleanData = data.filter(row => !row.needs_review);
 
@@ -246,7 +270,6 @@ function App() {
     try {
       const dataType = result?.data_type || 'fuel';
       
-      // Unified field mapping for ALL 3 scopes
       const fields = {
         fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration', date: 'Transaction Date' },
         utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name',              date: 'Billing Period Start' },
@@ -286,9 +309,8 @@ function App() {
 
       if (error) throw error;
 
-      toast.success(`✅ Successfully saved ${cleanData.length} records!`);
+      alert(`✅ Successfully saved ${cleanData.length} records!`);
       
-      // Refresh data and clean up
       await fetchHistory(); 
       fetchDashboardStats(organization.id);
       setResult(null); 
@@ -304,17 +326,16 @@ function App() {
     }
   };
 
-  // --- HISTORY & TRENDS LOGIC ---
+  // --- HISTORY & TRENDS ---
   const fetchHistory = async () => {
     if (!organization) {
-      console.log("⏳ Waiting for organization data to load before fetching history...");
+      console.log("⏳ Waiting for organization data...");
       return; 
     }
 
     console.log("🚀 Fetching history for org:", organization.id);
     setLoadingHistory(true);
     
-    // Explicitly join the assets table. RLS ensures we only get assets for THIS organization.
     const { data, error } = await supabase
       .from('emissions_logs')
       .select(`
@@ -350,7 +371,6 @@ function App() {
   }, [historyData]);
 
   const exportSECRReport = () => {
-    // (Keep your existing export logic here, it works perfectly!)
     const wb = XLSX.utils.book_new();
     const summaryData = [
       ["CarbonTally SECR REPORT", ""],
@@ -362,57 +382,39 @@ function App() {
     XLSX.writeFile(wb, `CarbonTally_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-
-    // 1. If no session AND we haven't clicked "Log In" yet, show the Landing Page
-  if (!session && !showLogin) {
-    return <LandingPage onGetStarted={() => setShowLogin(true)} />;
-  }
-
-  // 2. If no session BUT they clicked "Log In", show the Login component
-  if (!session && showLogin) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <button 
-          className="btn-secondary" 
-          onClick={() => setShowLogin(false)} 
-          style={{ marginBottom: '1rem' }}
-        >
-          Back to Home
-        </button>
-        <Login onLoginSuccess={() => setShowLogin(false)} />
-      </div>
-    );
-  }
-
-  // 3. If they ARE logged in, show the main App Dashboard
+  // --- RENDER ---
   return (
     <div className="App">
       <header className="App-header">
         <div className="header-top">
-          <h1>CarbonTally</h1>
+          <h1>🌱 CarbonTally</h1>
           <div className="user-menu">
             <span className="company-name">{organization?.name}</span>
+            <span className="subscription-badge">{subscriptionTier}</span>
             <button onClick={handleLogout} className="logout-button">Logout</button>
           </div>
         </div>
         
         <nav className="main-nav">
-          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
-          <button className={`nav-btn ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>Upload Data</button>
-          <button className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); if (organization) fetchHistory(); }}>History</button>
-          
-          {subscriptionTier === 'free' ? (
-            <button className="nav-btn upgrade-btn" onClick={() => setActiveTab('billing')}>Upgrade to Pro</button>
-          ) : (
-            <button className={`nav-btn ${activeTab === 'upload_scope3' ? 'active' : ''}`} onClick={() => setActiveTab('upload_scope3')}>Scope 3</button>
+          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
+          <button className={`nav-btn ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>📤 Upload Data</button>
+          <button 
+            className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} 
+            onClick={() => { 
+              setActiveTab('history'); 
+              if (organization) fetchHistory(); 
+            }}
+          >
+            📈 History & Trends
+          </button>
+          {userRole === 'admin' && (
+            <button className={`nav-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
+              👥 Team Management
+            </button>
           )}
-
-          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>}
-          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'assets' ? 'active' : ''}`} onClick={() => setActiveTab('assets')}>Assets</button>}
-          {userRole === 'admin' && <button className={`nav-btn ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>Billing</button>}
+          <button className={`nav-btn ${activeTab === 'assets' ? 'active' : ''}`} onClick={() => setActiveTab('assets')}>🏢 Assets</button>
         </nav>
       </header>
-
 
       <div className="container">
         {/* DASHBOARD VIEW */}
@@ -434,9 +436,6 @@ function App() {
                 <div className="subtext">Across all uploaded batches</div>
               </div>
             </div>
-            <div className="empty-state-chart">
-              <p> Tip: Go to <strong>Upload Data</strong> to process a new fuel card statement, or check <strong>History & Trends</strong> to see your month-over-month progress.</p>
-            </div>
           </div>
         )}
 
@@ -446,7 +445,6 @@ function App() {
             <div className="upload-section">
               <h2>Upload Data Statement</h2>
               
-              {/* NEW: DATA TYPE SELECTOR */}
               <div className="upload-type-selector">
                 <label className={`type-option ${uploadType === 'fuel' ? 'active' : ''}`}>
                   <input type="radio" name="uploadType" value="fuel" checked={uploadType === 'fuel'} onChange={() => setUploadType('fuel')} />
@@ -454,7 +452,7 @@ function App() {
                 </label>
                 <label className={`type-option ${uploadType === 'utility' ? 'active' : ''}`}>
                   <input type="radio" name="uploadType" value="utility" checked={uploadType === 'utility'} onChange={() => setUploadType('utility')} />
-                   Scope 2: Utility Bill (kWh)
+                  ⚡ Scope 2: Utility Bill (kWh)
                 </label>
                 <label className={`type-option ${uploadType === 'scope3' ? 'active' : ''}`}>
                   <input type="radio" name="uploadType" value="scope3" checked={uploadType === 'scope3'} onChange={() => setUploadType('scope3')} />
@@ -483,125 +481,97 @@ function App() {
                 {flaggedData.length > 0 && (
                   <div className="review-section">
                     <h2>⚠️ Data Review Required</h2>
-                      <table className="review-table">
-                        <thead>
-                          <tr>
-                            <th>{result?.data_type === 'utility' ? 'Billing Period' : 'Date'}</th>
-                            <th>{result?.data_type === 'utility' ? 'Site / Facility' : 'Vehicle'}</th>
-                            <th>Issue</th>
-                            <th>{result?.data_type === 'utility' ? 'Utility Type' : 'Fuel Type'}</th>
-                            <th>{result?.data_type === 'utility' ? 'Consumption (kWh)' : 'Volume (L)'}</th>
-                            <th>kgCO2e</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {flaggedData.map((row) => {
-                            const dataIndex = data.indexOf(row);
-                            const isUtility = result?.data_type === 'utility';
-                            const isScope3 = result?.data_type === 'scope3';
-                            
-                            // Define fields safely INSIDE the map, BEFORE the return statement
-                            const fields = {
-                              fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration', date: 'Transaction Date' },
-                              utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name',              date: 'Billing Period Start' },
-                              scope3:  { type: 'Standardized Scope3',  volume: 'Quantity',           factor: 'DEFRA Factor',             site: 'Description',            date: 'Date' }
-                            };
-                            const currentFields = fields[result?.data_type || 'fuel'] || fields.fuel;
+                    <table className="review-table">
+                      <thead>
+                        <tr>
+                          <th>{result?.data_type === 'utility' ? 'Billing Period' : 'Date'}</th>
+                          <th>{result?.data_type === 'utility' ? 'Site / Facility' : 'Vehicle'}</th>
+                          <th>Issue</th>
+                          <th>{result?.data_type === 'utility' ? 'Utility Type' : 'Fuel Type'}</th>
+                          <th>{result?.data_type === 'utility' ? 'Consumption (kWh)' : 'Volume (L)'}</th>
+                          <th>kgCO2e</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {flaggedData.map((row, index) => {
+                          const dataIndex = data.indexOf(row);
+                          const dataType = result?.data_type || 'fuel';
+                          const fields = {
+                            fuel:    { type: 'Standardized Fuel',    volume: 'Volume (L)',         factor: 'DEFRA Factor (kgCO2e/L)',  site: 'Vehicle Registration' },
+                            utility: { type: 'Standardized Utility', volume: 'Consumption (kWh)',  factor: 'DEFRA Factor (kgCO2e/kWh)',site: 'Site Name' },
+                            scope3:  { type: 'Standardized Scope3',  volume: 'Quantity',           factor: 'DEFRA Factor',             site: 'Description' }
+                          };
+                          const currentFields = fields[dataType] || fields.fuel;
+                          const dateField = dataType === 'utility' ? 'Billing Period Start' : (dataType === 'scope3' ? 'Date' : 'Transaction Date');
 
-                            return (
-                              <tr key={dataIndex} className="flagged-row">
-                                {/* Column 1: Date */}
-                                <td>{row[currentFields.date] || 'N/A'}</td>
-                                
-                                {/* Column 2: Site / Facility / Description */}
-                                <td>
-                                  <select 
-                                    value={row[currentFields.site] === 'UNKNOWN_SITE' || row[currentFields.site] === 'UNKNOWN' || !row[currentFields.site] ? '' : row[currentFields.site]} 
-                                    onChange={(e) => handleInputChange(dataIndex, currentFields.site, e.target.value)}
-                                    onBlur={() => validateRow(dataIndex)}
-                                    className="edit-input"
-                                    style={{ marginBottom: '0.5rem', width: '100%' }}
-                                  >
-                                    <option value="">
-                                      {isUtility ? 'Select Facility...' : isScope3 ? 'Select/Type Description...' : 'Select Vehicle...'}
-                                    </option>
-                                    {(isUtility ? facilities : assets).map(item => (
-                                      <option key={item.id} value={item.name}>{item.name}</option>
-                                    ))}
-                                  </select>
-                                  <input 
-                                    type="text" 
-                                    value={row[currentFields.site] === 'UNKNOWN_SITE' || row[currentFields.site] === 'UNKNOWN' || !row[currentFields.site] ? '' : row[currentFields.site]}
-                                    onChange={(e) => handleInputChange(dataIndex, currentFields.site, e.target.value)}
-                                    onBlur={() => validateRow(dataIndex)}
-                                    className="edit-input"
-                                    placeholder="Or type name manually..."
-                                  />
-                                </td>
-                                
-                                {/* Column 3: Issue */}
-                                <td><span className="badge">{row['review_reason']}</span></td>
-                                
-                                {/* Column 4: Type Dropdown */}
-                                <td>
-                                  <select 
-                                    value={row[currentFields.type]} 
-                                    onChange={(e) => handleInputChange(dataIndex, currentFields.type, e.target.value)}
-                                    onBlur={() => validateRow(dataIndex)}
-                                    className="edit-input"
-                                  >
-                                    <option value="Unknown">Select Type...</option>
-                                    {isUtility ? (
-                                      <>
-                                        <option value="Electricity">Electricity</option>
-                                        <option value="Natural Gas">Natural Gas</option>
-                                      </>
-                                    ) : isScope3 ? (
-                                      <>
-                                        <option value="Flight (Short Haul)">Flight (Short Haul)</option>
-                                        <option value="Flight (Long Haul)">Flight (Long Haul)</option>
-                                        <option value="Rail (National)">Rail (National)</option>
-                                        <option value="Hotel Stay">Hotel Stay</option>
-                                        <option value="Mixed Waste">Mixed Waste</option>
-                                        <option value="Recycled Waste">Recycled Waste</option>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <option value="Diesel">Diesel</option>
-                                        <option value="Petrol">Petrol</option>
-                                        <option value="AdBlue">AdBlue</option>
-                                      </>
-                                    )}
-                                  </select>
-                                </td>
-                                
-                                {/* Column 5: Volume Input */}
-                                <td>
-                                  <input 
-                                    type="number" 
-                                    step="0.01"
-                                    value={row[currentFields.volume] === null || row[currentFields.volume] === undefined ? '' : row[currentFields.volume]} 
-                                    onChange={(e) => handleInputChange(dataIndex, currentFields.volume, e.target.value === '' ? null : parseFloat(e.target.value))}
-                                    onBlur={() => validateRow(dataIndex)}
-                                    className="edit-input"
-                                    placeholder={isUtility ? "e.g., 4500" : isScope3 ? "e.g., 1500" : "e.g., 45.2"}
-                                  />
-                                </td>
-                                
-                                {/* Column 6: Emissions */}
-                                <td>{row['Total kgCO2e'] || 0}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        
-                      </table>                  
+                          return (
+                            <tr key={dataIndex} className="flagged-row">
+                              <td>{row[dateField] || 'N/A'}</td>
+                              <td>
+                                <input 
+                                  type="text"
+                                  value={row[currentFields.site] || ''} 
+                                  onChange={(e) => handleInputChange(dataIndex, currentFields.site, e.target.value)}
+                                  onBlur={() => validateRow(dataIndex)}
+                                  className="edit-input"
+                                  placeholder="Enter site/vehicle name"
+                                />
+                              </td>
+                              <td className="error-cell">{row.review_reason}</td>
+                              <td>
+                                <select 
+                                  value={row[currentFields.type] || ''} 
+                                  onChange={(e) => handleInputChange(dataIndex, currentFields.type, e.target.value)}
+                                  onBlur={() => validateRow(dataIndex)}
+                                  className="edit-input"
+                                >
+                                  <option value="Unknown">Select Category...</option>
+                                  {dataType === 'utility' ? (
+                                    <>
+                                      <option value="Electricity">Electricity</option>
+                                      <option value="Natural Gas">Natural Gas</option>
+                                    </>
+                                  ) : dataType === 'scope3' ? (
+                                    <>
+                                      <option value="Flight (Short Haul)">Flight (Short Haul)</option>
+                                      <option value="Flight (Long Haul)">Flight (Long Haul)</option>
+                                      <option value="Rail (National)">Rail (National)</option>
+                                      <option value="Hotel Stay">Hotel Stay</option>
+                                      <option value="Mixed Waste">Mixed Waste</option>
+                                      <option value="Recycled Waste">Recycled Waste</option>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <option value="Diesel">Diesel</option>
+                                      <option value="Petrol">Petrol</option>
+                                      <option value="AdBlue">AdBlue</option>
+                                    </>
+                                  )}
+                                </select>
+                              </td>
+                              <td>
+                                <input 
+                                  type="number" 
+                                  step="0.01"
+                                  value={row[currentFields.volume] === null ? '' : row[currentFields.volume]} 
+                                  onChange={(e) => handleInputChange(dataIndex, currentFields.volume, e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  onBlur={() => validateRow(dataIndex)}
+                                  className="edit-input"
+                                  placeholder={dataType === 'utility' ? "e.g., 4500" : dataType === 'scope3' ? "e.g., 1500" : "e.g., 45.2"}
+                                />
+                              </td>
+                              <td>{row['Total kgCO2e'] || 0}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
 
                 <div className="action-buttons">
                   <button onClick={handleSaveToDatabase} disabled={loading || cleanData.length === 0} className="save-button">
-                     Save {cleanData.length} Verified Records to Database
+                    💾 Save {cleanData.length} Verified Records to Database
                   </button>
                 </div>
               </>
@@ -636,10 +606,7 @@ function App() {
                     </thead>
                     <tbody>
                       {[...historyData].reverse().slice(0, 15).map((row, index) => {
-                        // 1. Determine the Asset/Facility name safely
                         const assetName = row.assets?.name || row.metadata?.asset_name || row.metadata?.vehicle_registration || 'N/A';
-                        
-                        // 2. Determine the Energy Source (Fuel Type)
                         const fuelType = row.metadata?.fuel_type || 'N/A';
                         let unit = 'L';
                         if (fuelType === 'Electricity' || fuelType === 'Natural Gas') unit = 'kWh';
@@ -647,22 +614,12 @@ function App() {
                         if (fuelType?.includes('Waste')) unit = 'kg';
                         if (fuelType === 'Hotel Stay') unit = 'nights';
                         
-                       
                         return (
                           <tr key={index}>
-                            {/* Column 1: Date */}
                             <td>{row.start_date}</td>
-                            
-                            {/* Column 2: Asset / Facility */}
                             <td>{assetName}</td>
-                            
-                            {/* Column 3: Energy Source (Diesel, Electricity, etc.) */}
                             <td>{fuelType}</td>
-                            
-                            {/* Column 4: Consumption */}
                             <td>{row.raw_quantity} {unit}</td>
-                            
-                            {/* Column 5: Emissions */}
                             <td className="emission-cell">{parseFloat(row.calculated_kg_co2e).toFixed(2)}</td>
                           </tr>
                         );
@@ -674,10 +631,13 @@ function App() {
             )}
           </div>
         )}
+
         {/* TEAM MANAGEMENT VIEW */}
         {activeTab === 'team' && (
           <TeamManagement organization={organization} userRole={userRole} />
         )}
+        
+        {/* ASSETS VIEW */}
         {activeTab === 'assets' && (
           <AssetManager organization={organization} />
         )}
@@ -686,4 +646,54 @@ function App() {
   );
 }
 
-export default App;
+// Main App Component with Routing
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/cookies" element={<CookiePolicy />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/about" element={<AboutUs />} />
+        <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
+        
+        {/* Protected Routes - Only accessible when logged in */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        
+        {/* Redirect any unknown routes */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      
+      {/* Cookie Banner - visible on all pages */}
+      <CookieBanner />
+    </BrowserRouter>
+  );
+}
