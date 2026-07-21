@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-dotenv
+pandas
+numpy
+openpyxl
+fpdf
+resend
+python-multipart
+supabase-python
+pillow
+pypdf2
+pdf2image
