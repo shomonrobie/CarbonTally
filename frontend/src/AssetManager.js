@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import './AssetManager.css';
+import toast from 'react-hot-toast';
 
 function AssetManager({ organization }) {
   const [activeTab, setActiveTab] = useState('facilities');
@@ -45,7 +46,7 @@ function AssetManager({ organization }) {
 
   const handleAddAsset = async (e) => {
     e.preventDefault();
-    if (!selectedFacilityId) return alert('Please select a facility first.');
+    if (!selectedFacilityId) return toast.error('Please select a facility first.');
     
     const { error } = await supabase.from('assets').insert({
       facility_id: selectedFacilityId,
@@ -58,7 +59,20 @@ function AssetManager({ organization }) {
     }
   };
 
-  if (loading) return <div className="loading-state">Loading assets...</div>;
+  if (loading) {
+    return (
+      <div className="view-section">
+        {/* Skeleton for the Section Title */}
+        <div className="skeleton skeleton-text title" style={{ width: '30%', marginBottom: '1.5rem' }}></div>
+        
+        {/* Skeleton for the List Items / Cards */}
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+      </div>
+    );
+  }
 
   return (
     <div className="asset-manager-container">

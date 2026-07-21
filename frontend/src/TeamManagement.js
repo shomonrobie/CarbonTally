@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import './TeamManagement.css';
 
+
 function TeamManagement({ organization, userRole }) {
   const [members, setMembers] = useState([]);
   const [invites, setInvites] = useState([]);
@@ -91,10 +92,28 @@ function TeamManagement({ organization, userRole }) {
         </p>
       </div>
 
-      {/* CURRENT MEMBERS */}
       <div className="members-section">
         <h3>Current Team Members ({members.length})</h3>
-        {loading ? <p>Loading...</p> : (
+        
+        {loading ? (
+          <div className="skeleton-table-container" style={{ marginTop: '1rem' }}>
+            {/* Skeleton for Table Headers */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', paddingLeft: '0.5rem' }}>
+              <div className="skeleton skeleton-text" style={{ width: '40%', height: '20px' }}></div>
+              <div className="skeleton skeleton-text" style={{ width: '20%', height: '20px' }}></div>
+              <div className="skeleton skeleton-text" style={{ width: '20%', height: '20px' }}></div>
+            </div>
+            
+            {/* Skeleton for Table Rows */}
+            {[1, 2, 3].map((i) => (
+              <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', alignItems: 'center', paddingLeft: '0.5rem' }}>
+                <div className="skeleton skeleton-text" style={{ width: '40%', height: '24px' }}></div>
+                <div className="skeleton skeleton-text" style={{ width: '20%', height: '24px', borderRadius: '999px' }}></div>
+                <div className="skeleton skeleton-text" style={{ width: '20%', height: '32px', borderRadius: '6px' }}></div>
+              </div>
+            ))}
+          </div>
+        ) : (
           <table className="team-table">
             <thead>
               <tr><th>Email</th><th>Role</th><th>Actions</th></tr>

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
+import { useNavigate } from 'react-router-dom';
 import './Login.css';
 
 function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -20,43 +22,54 @@ function Login() {
     try {
       if (isSignup) {
         // SIGN UP
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               company_name: companyName,
             },
+            emailRedirectTo: window.location.origin + '/login', // Redirect back to login after confirmation
           },
         });
 
         if (error) throw error;
         
-        setMessage('✅ Check your email for the confirmation link!');
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setError('This email is already registered. Please sign in instead.');
+        } else {
+          setMessage('✅ Check your email for the confirmation link! You must confirm your email before signing in.');
+        }
         setEmail('');
         setPassword('');
         setCompanyName('');
       } else {
         // SIGN IN
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
-        // The App component will detect the login and redirect
+        
+        // Success - navigate to dashboard
+        navigate('/dashboard');
       }
     } catch (err) {
-      console.error("FULL ERROR OBJECT:", err); // Open F12 in browser to see this
+      console.error("FULL ERROR OBJECT:", err);
       
-      // Supabase sometimes nests the real message inside err.error.message
-      const realMessage = err.message || (err.error && err.error.message) || JSON.stringify(err);
+      // Better error messages
+      let errorMessage = err.message;
       
-      if (realMessage === '{}') {
-        setError('Signup failed silently. Check browser console (F12) for the real error.');
-      } else {
-        setError(realMessage);
+      if (err.message === 'Invalid login credentials') {
+        errorMessage = '❌ Invalid email or password. Please try again.';
+      } else if (err.message.includes('Email not confirmed')) {
+        errorMessage = '❌ Please confirm your email address before signing in. Check your inbox for the confirmation link.';
+      } else if (err.message.includes('User not found')) {
+        errorMessage = '❌ No account found with this email. Please sign up first.';
       }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -65,8 +78,8 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1> CarbonTally</h1>
-        <p className="tagline">Automated Carbon Accounting for UK Logistics</p>
+        <h1>🌱CarbonTally</h1>
+        <p className="tagline">Automated Carbon Accounting for UK Businesses</p>
         
         <form onSubmit={handleAuth} className="auth-form">
           <div className="form-group">
@@ -88,6 +101,7 @@ function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
+              minLength={6}
             />
           </div>
 
@@ -116,14 +130,14 @@ function Login() {
           {isSignup ? (
             <p>
               Already have an account?{' '}
-              <button onClick={() => setIsSignup(false)} className="link-button">
+              <button onClick={() => { setIsSignup(false); setError(''); setMessage(''); }} className="link-button">
                 Sign In
               </button>
             </p>
           ) : (
             <p>
               New to CarbonTally?{' '}
-              <button onClick={() => setIsSignup(true)} className="link-button">
+              <button onClick={() => { setIsSignup(true); setError(''); setMessage(''); }} className="link-button">
                 Create Account
               </button>
             </p>
