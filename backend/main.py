@@ -30,22 +30,28 @@ app = FastAPI(title="CarbonTally API", version="3.0.0")
 pdf_extractor = PDFExtractor()
 resend.api_key = os.getenv("RESEND_API_KEY", "re_XRjsEbwv_2TDUBguF5TWzbn7wcTVn8JtN")
 FOUNDER_EMAIL = "shomonrobie@gmail.com"
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
+        # Local development
+        "http://localhost:3000",      # Main app
         "http://localhost:3001",      # Admin dashboard
-        "https://carbontally.co.uk", 
-        "https://www.carbontally.co.uk",
-        "https://carbontally.co.uk/admin"
 
+        # Production - Main domain
+        "https://carbontally.co.uk",
+        "https://www.carbontally.co.uk",
+
+        # Production - If admin is on a separate subdomain
+        "https://admin.carbontally.co.uk",
+
+        # Production - If using separate Vercel deployments
+        "https://carbontally-frontend.vercel.app",
+        "https://carbontally-admin.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # OFFICIAL UK DEFRA CONVERSION FACTORS
 DEFRA_FACTORS = {
     # Scope 1: Transport Fuel (kgCO2e per Litre)
