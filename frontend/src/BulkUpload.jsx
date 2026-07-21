@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+
 export default function BulkUpload({ organizationId, onBack }) {
   const [files, setFiles] = useState([]);
   const [batchName, setBatchName] = useState('');
   const [dataType, setDataType] = useState('mixed');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-
+  const [specialInstructions, setSpecialInstructions] = useState('');  
   const handleFileDrop = (e) => {
     e.preventDefault();
     const droppedFiles = Array.from(e.dataTransfer.files);
@@ -41,7 +42,8 @@ export default function BulkUpload({ organizationId, onBack }) {
     formData.append('batch_name', batchName);
     formData.append('data_type', dataType);
     formData.append('organization_id', organizationId);
-    
+    formData.append('special_instructions', specialInstructions); // 👈 ADD THIS
+
     files.forEach((file) => {
       formData.append('files', file);
     });
@@ -82,25 +84,27 @@ export default function BulkUpload({ organizationId, onBack }) {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <button 
-        onClick={onBack}
-        style={{
-          marginBottom: '1rem',
-          background: 'none',
-          border: 'none',
-          color: '#64748b',
-          cursor: 'pointer',
-          fontSize: '0.9rem'
-        }}
-      >
-        ← Back to Upload
-      </button>
-
-      <h2 style={{ marginBottom: '0.5rem' }}>📦 Bulk Document Upload</h2>
-      <p style={{ color: '#64748b', marginBottom: '2rem' }}>
-        Upload multiple bills, invoices, and receipts at once. Our team will process them within 24 hours.
-      </p>
+    <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem' }}>
+        <button 
+            onClick={onBack}
+            style={{
+            marginBottom: '0.75rem',
+            background: '#f1f5f9',
+            border: '1px solid #cbd5e1',
+            color: '#475569',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            padding: '0.4rem 0.8rem',
+            borderRadius: '6px',
+            fontWeight: '500',
+            }}
+        >
+            ← Back to Single Upload
+        </button>
+        <h2 style={{ margin: '0 0 0.5rem 0' }}>📦 Bulk Document Upload</h2>
+        <p style={{ color: '#64748b', margin: 0 }}>
+            Upload multiple bills, invoices, and receipts at once. Our team will process them within 24 hours.
+        </p>
       
       {/* Batch Name Input */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -121,7 +125,27 @@ export default function BulkUpload({ organizationId, onBack }) {
           }}
         />
       </div>
-
+    {/* Special Instructions Input */}
+    <div style={{ marginBottom: '1.5rem' }}>
+    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+        Special Instructions for Our Team (Optional)
+    </label>
+    <textarea
+        value={specialInstructions}
+        onChange={(e) => setSpecialInstructions(e.target.value)}
+        placeholder="e.g., 'Please log these under our 2024 fiscal year', or 'This is for the London office only'"
+        rows={3}
+        style={{
+        width: '100%',
+        padding: '0.75rem',
+        border: '1px solid #ddd',
+        borderRadius: '6px',
+        fontSize: '0.95rem',
+        fontFamily: 'inherit',
+        resize: 'vertical'
+        }}
+    />
+    </div>    
       {/* Data Type Selector */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>

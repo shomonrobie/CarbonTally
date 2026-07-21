@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from './components/AppHeader';
 import AppFooter from './components/AppFooter';
+import carbonTallyGif from './images/carbon_tally_upload.gif'; // Adjust the path based on your folder structure
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -35,21 +36,19 @@ export default function LandingPage() {
             <p className="hero-subtext">No credit card required. 14-day free trial.</p>
           </div>
           <div className="hero-image">
-            <div className="mock-dashboard">
-              <div className="mock-header">
-                <div className="mock-dot red"></div>
-                <div className="mock-dot yellow"></div>
-                <div className="mock-dot green"></div>
-              </div>
-              <div className="mock-body">
-                <div className="mock-chart"></div>
-                <div className="mock-table">
-                  <div className="mock-row"></div>
-                  <div className="mock-row"></div>
-                  <div className="mock-row"></div>
-                </div>
-              </div>
-            </div>
+            {/* Replace the mock-dashboard with your GIF */}
+            <img 
+              src={carbonTallyGif} 
+              alt="CarbonTally Dashboard Preview" 
+              className="hero-gif"
+              style={{
+                width: '100%',
+                maxWidth: '600px',
+                borderRadius: '12px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}
+            />
           </div>
         </div>
       </section>

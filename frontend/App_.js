@@ -101,7 +101,7 @@ function DashboardLayout({ children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {children}
-      <footer className=".footer-bottom-dashboard">
+      <footer className="footer-bottom-dashboard">
         <div className="footer-bottom-content">
           <p>© {new Date().getFullYear()} CarbonTally (UK) Ltd. All rights reserved.</p>
           <div className="footer-legal-links">
@@ -154,13 +154,11 @@ function Dashboard() {
   });
   const [historyData, setHistoryData] = useState([]);
   const [assets, setAssets] = useState([]);
-  // eslint-disable-next-line no-unused-vars
   const [facilities, setFacilities] = useState([]);
-
-    // Year selector state
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
-    // Computed Data
+  // Year selector state
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
   // Computed Data
   const trendData = useMemo(() => {
     if (!historyData.length) return [];
@@ -174,6 +172,36 @@ function Dashboard() {
       tonnes: parseFloat((grouped[month] / 1000).toFixed(2)) 
     }));
   }, [historyData]);
+
+  // Get available years from history data
+  const availableYears = useMemo(() => {
+    if (!historyData || historyData.length === 0) {
+      // If no history data, check if we have dashboard stats
+      if (dashboardStats.totalTransactions > 0) {
+        // If we have transactions but no history data, use current year
+        return [new Date().getFullYear()];
+      }
+      return [];
+    }
+    const years = new Set();
+    historyData.forEach(row => {
+      if (row.start_date) {
+        const year = parseInt(row.start_date.substring(0, 4));
+        if (!isNaN(year)) {
+          years.add(year);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [historyData]);
+
+
+  // Update selected year when available years change
+  useEffect(() => {
+    if (availableYears.length > 0) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears]);
 
   // Update clean/flagged data when data changes
   useEffect(() => {
@@ -239,13 +267,11 @@ function Dashboard() {
   // Check if onboarding is needed
   useEffect(() => {
     const checkOnboarding = async () => {
-      // Wait until we have the organization data
       if (!organization) {
         setOnboardingChecked(true);
         return;
       }
 
-      // Check if this organization has any facilities yet
       const { data: facilities, error } = await supabase
         .from('facilities')
         .select('id')
@@ -256,7 +282,6 @@ function Dashboard() {
         console.error('Error checking facilities:', error);
       }
 
-      // If no facilities exist, trigger the onboarding wizard
       if (!facilities || facilities.length === 0) {
         setShowOnboarding(true);
       }
@@ -269,110 +294,21 @@ function Dashboard() {
 
   // --- Data Fetching Functions ---
   const fetchDashboardStats = async (orgId) => {
-    // First, get the total count
-    const { count, error: countError } = await supabase
+    const { data, error } = await supabase
       .from('emissions_logs')
-      .select('*', { count: 'exact', head: true })
+      .select('calculated_kg_co2e')
       .eq('organization_id', orgId);
-    
-    if (countError) {
-      console.error("❌ Count error:", countError);
-      return;
+
+    if (data && !error) {
+      const total = data.reduce((sum, row) => sum + (parseFloat(row.calculated_kg_co2e) || 0), 0);
+      setDashboardStats({
+        totalEmissions: total,
+        totalTransactions: data.length
+      });
     }
-    
-    console.log(`📊 Total records in database: ${count}`);
-    
-    // Now get all emissions data for the total
-    let allData = [];
-    let hasMore = true;
-    let page = 0;
-    const pageSize = 1000;
-    
-    while (hasMore) {
-      const start = page * pageSize;
-      const end = (page + 1) * pageSize - 1;
-      
-      const { data, error } = await supabase
-        .from('emissions_logs')
-        .select('calculated_kg_co2e')
-        .eq('organization_id', orgId)
-        .range(start, end);
-      
-      if (error) {
-        console.error("❌ Fetch error:", error);
-        break;
-      }
-      
-      if (data && data.length > 0) {
-        allData = [...allData, ...data];
-        page++;
-      }
-      
-      if (!data || data.length < pageSize) {
-        hasMore = false;
-      }
-    }
-    
-    const total = allData.reduce((sum, row) => sum + (parseFloat(row.calculated_kg_co2e) || 0), 0);
-    setDashboardStats({
-      totalEmissions: total,
-      totalTransactions: allData.length // Use the actual count from fetched data
-    });
-    
-    console.log(`📊 Dashboard stats: ${allData.length} transactions, ${total} kgCO2e`);
   };
 
-  useEffect(() => {
-    if (organization) {
-      console.log("📊 Organization loaded, fetching history...");
-      fetchHistory();
-    }
-  }, [organization]); // Runs when organization is set
 
-  const availableYears = useMemo(() => {
-    console.log("🔄 Computing available years from historyData:", historyData?.length || 0, "records");
-    
-    if (!historyData || historyData.length === 0) {
-      console.log("⚠️ No history data available");
-      return [];
-    }
-    
-    const years = new Set();
-    historyData.forEach(row => {
-      if (row.start_date) {
-        // Handle both string and date objects
-        let yearStr;
-        if (typeof row.start_date === 'string') {
-          yearStr = row.start_date.substring(0, 4);
-        } else if (row.start_date instanceof Date) {
-          yearStr = row.start_date.getFullYear().toString();
-        }
-        
-        if (yearStr) {
-          const year = parseInt(yearStr);
-          if (!isNaN(year) && year > 2000) {
-            years.add(year);
-          }
-        }
-      }
-    });
-    
-    const sortedYears = Array.from(years).sort((a, b) => b - a);
-    console.log("📊 Available years from history:", sortedYears);
-    return sortedYears;
-  }, [historyData]);
-
-
-
-  // Also update the selectedYear useEffect
-  useEffect(() => {
-    if (availableYears.length > 0) {
-      // If current selected year is not in available years, use the first one
-      if (!availableYears.includes(selectedYear)) {
-        setSelectedYear(availableYears[0]);
-      }
-    }
-  }, [availableYears]);
   const fetchHistory = async () => {
     if (!organization) {
       console.log("⏳ Waiting for organization data to load before fetching history...");
@@ -382,107 +318,58 @@ function Dashboard() {
     console.log("🚀 Fetching history for org:", organization.id);
     setLoadingHistory(true);
     
-    try {
-      let allData = [];
-      let hasMore = true;
-      let page = 0;
-      const pageSize = 1000;
-      
-      while (hasMore) {
-        const start = page * pageSize;
-        const end = (page + 1) * pageSize - 1;
-        
-        console.log(`📄 Fetching page ${page + 1} (rows ${start} to ${end})...`);
-        
-        const { data, error, count } = await supabase
-          .from('emissions_logs')
-          .select(`
-            start_date, 
-            raw_quantity, 
-            calculated_kg_co2e, 
-            metadata,
-            asset_id,
-            defra_factor_id,
-            assets (
-              id,
-              name
-            ),
-            defra_conversion_factors (
-              id,
-              activity_type,
-              co2e_multiplier,
-              reporting_year
-            )
-          `, { count: 'exact' })
-          .eq('organization_id', organization.id)
-          .order('start_date', { ascending: true })
-          .range(start, end);
-        
-        if (error) {
-          console.error("❌ History fetch error:", error);
-          break;
-        }
-        
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          console.log(`✅ Page ${page + 1}: ${data.length} records (total so far: ${allData.length})`);
-          page++;
-        }
-        
-        // If we got less than pageSize, we've reached the end
-        if (!data || data.length < pageSize) {
-          hasMore = false;
-        }
-      }
-      
-      console.log("✅ History fetched successfully:", allData?.length, "records total");
-      
-      if (allData && allData.length > 0) {
-        // Log all distinct years found
-        const years = new Set();
-        const yearCounts = {};
-        
-        allData.forEach(row => {
-          if (row.start_date) {
-            const year = typeof row.start_date === 'string' 
-              ? row.start_date.substring(0, 4) 
-              : row.start_date.getFullYear().toString();
-            years.add(year);
-            yearCounts[year] = (yearCounts[year] || 0) + 1;
-          }
-        });
-        
-        console.log("📊 Years found in data:", Array.from(years).sort());
-        console.log("📊 Records by year:", yearCounts);
-      }
-      
-      setHistoryData(allData || []);
-      setLoadingHistory(false);
-      
-    } catch (err) {
-      console.error("❌ Error fetching history:", err);
+    const { data, error } = await supabase
+      .from('emissions_logs')
+      .select(`
+        start_date, 
+        raw_quantity, 
+        calculated_kg_co2e, 
+        metadata,
+        asset_id,
+        defra_factor_id,
+        assets (
+          id,
+          name
+        ),
+        defra_conversion_factors (
+          id,
+          activity_type,
+          co2e_multiplier,
+          reporting_year
+        )
+      `)
+      .eq('organization_id', organization.id)
+      .order('start_date', { ascending: true });
+    
+    if (error) {
+      console.error("❌ History fetch error:", error);
+      setLoadingHistory(false); 
+    } else {
+      console.log("✅ History fetched successfully:", data?.length, "records");
+      const withAssets = data?.filter(row => row.assets).length || 0;
+      const withDefra = data?.filter(row => row.defra_conversion_factors).length || 0;
+      console.log(`📊 Records with assets: ${withAssets}, with DEFRA factors: ${withDefra}`);
+      setHistoryData(data || []);
       setLoadingHistory(false);
     }
   };
+
   // --- File Upload Functions ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Detect if it's a PDF or Image
     const isPDF = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
     const isImage = selectedFile.type.startsWith('image/');
 
     if (isPDF || isImage) {
-      // 🚀 Route to PDF/Image Portal
       setPdfFile(selectedFile);
       setShowPDFPortal(true);
-      setFile(null); // Clear CSV file state
+      setFile(null);
       setError('');
     } else {
-      // 📊 Route to CSV/Excel Parser
       setFile(selectedFile);
-      setPdfFile(null); // Clear PDF file state
+      setPdfFile(null);
       setShowPDFPortal(false);
       setError('');
     }
@@ -537,12 +424,10 @@ function Dashboard() {
 
     row[field] = value;
 
-    // Auto-populate factor when type changes
     if (field === fieldConfig.type) {
       row[fieldConfig.factor] = DEFRA_FACTORS[value] || 0;
     }
 
-    // Recalculate emissions
     row['Total kgCO2e'] = calculateEmissions(row, fieldConfig);
 
     newData[index] = row;
@@ -556,8 +441,6 @@ function Dashboard() {
     const fieldConfig = getFieldConfig(dataType);
 
     const volume = parseFloat(row[fieldConfig.volume]);
-    // eslint-disable-next-line no-unused-vars
-    const factor = parseFloat(row[fieldConfig.factor]);
     const site = row[fieldConfig.site];
 
     const hasValidVolume = !isNaN(volume) && volume > 0;
@@ -592,14 +475,37 @@ function Dashboard() {
       const dataType = result?.data_type || 'fuel';
       const fieldConfig = getFieldConfig(dataType);
 
+      const currentYear = new Date().getFullYear();
+      const { data: defraFactors, error: defraError } = await supabase
+        .from('defra_conversion_factors')
+        .select('id, activity_type, co2e_multiplier')
+        .eq('reporting_year', currentYear);
+
+      if (defraError) {
+        console.error('Error fetching DEFRA factors:', defraError);
+      }
+
+      const defraMap = {};
+      if (defraFactors) {
+        defraFactors.forEach(f => {
+          defraMap[f.activity_type] = f.id;
+        });
+      }
+
       const recordsToSave = cleanData.map(row => {
         const rawName = row[fieldConfig.site];
-        const matchedAsset = assets.find(a => a.name.toUpperCase() === rawName?.toUpperCase());
+        const fuelType = row[fieldConfig.type];
         
+        const matchedAsset = assets.find(a => 
+          a.name.toUpperCase() === rawName?.toUpperCase()
+        );
+        
+        const defraFactorId = defraMap[fuelType] || null;
+
         return {
           organization_id: organization.id,
           asset_id: matchedAsset ? matchedAsset.id : null,
-          defra_factor_id: null, 
+          defra_factor_id: defraFactorId,
           start_date: row[fieldConfig.date], 
           end_date: row[fieldConfig.date],
           raw_quantity: parseFloat(row[fieldConfig.volume]) || 0,
@@ -608,7 +514,7 @@ function Dashboard() {
           metadata: {
             scope: dataType === 'scope3' ? 'Scope 3' : (dataType === 'utility' ? 'Scope 2' : 'Scope 1'),
             asset_name: rawName,
-            fuel_type: row[fieldConfig.type],
+            fuel_type: fuelType,
             defra_factor_used: row[fieldConfig.factor],
             original_filename: result.filename,
             auto_mapped: !!matchedAsset
@@ -627,7 +533,6 @@ function Dashboard() {
       await fetchHistory();
       await fetchDashboardStats(organization.id);
       
-      // Reset upload state
       setResult(null);
       setData([]);
       setCleanData([]);
@@ -644,7 +549,6 @@ function Dashboard() {
   };
 
   // --- Export Functions ---
-  // eslint-disable-next-line no-unused-vars
   const exportSECRReport = () => {
     const wb = XLSX.utils.book_new();
     const summaryData = [
@@ -688,7 +592,6 @@ function Dashboard() {
         </button>
       </div>
       
-      {/* DATA TYPE SELECTOR */}
       <div className="upload-type-selector">
         <label className={`type-option ${uploadType === 'fuel' ? 'active' : ''}`}>
           <input type="radio" name="uploadType" value="fuel" checked={uploadType === 'fuel'} onChange={() => setUploadType('fuel')} />
@@ -704,7 +607,6 @@ function Dashboard() {
         </label>
       </div>
 
-      {/* UNIFIED DRAG & DROP ZONE */}
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -738,7 +640,6 @@ function Dashboard() {
           Supports CSV, XLSX, PDF, JPG, PNG
         </p>
         
-        {/* Hidden file input */}
         <input
           id="singleFileInput"
           type="file"
@@ -748,7 +649,6 @@ function Dashboard() {
         />
       </div>
 
-      {/* CLEAR FILE BUTTON */}
       {file && (
         <button 
           onClick={() => {
@@ -874,152 +774,149 @@ function Dashboard() {
     );
   };
 
-const renderDashboard = () => (
-  <div className="view-section">
-    <div className="dashboard-header">
-      <h2>Executive Overview</h2>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        {/* Year Selector - Show even if no data to help debug */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label htmlFor="reportYear" style={{ fontWeight: '600', color: '#475569' }}>
-            Report Year:
-          </label>
-          <select
-            id="reportYear"
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+  const renderDashboard = () => (
+    <div className="view-section">
+      <div className="dashboard-header">
+        <h2>Executive Overview</h2>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* Year Selector - Only show if years are available */}
+          {availableYears.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <label htmlFor="reportYear" style={{ fontWeight: '600', color: '#475569' }}>
+                Report Year:
+              </label>
+              <select
+                id="reportYear"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: 'white',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <button 
+            onClick={async () => {
+              if (availableYears.length === 0) {
+                toast.error('No data available to generate a report. Please upload data first.');
+                return;
+              }
+              
+              try {
+                setLoading(true);
+                const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-secr-report`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    organization_id: organization.id,
+                    reporting_year: selectedYear
+                  })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                  const binaryString = window.atob(result.pdf_base64);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  
+                  const blob = new Blob([bytes], { type: 'application/pdf' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = result.filename || `SECR_Report_${selectedYear}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  document.body.removeChild(a);
+                  
+                  toast.success(`Report for ${selectedYear} downloaded successfully!`);
+                } else {
+                  toast.error('Failed to generate report');
+                }
+              } catch (error) {
+                console.error('Report generation error:', error);
+                toast.error('Failed to generate report');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading || availableYears.length === 0}
+            className="export-button"
             style={{
-              padding: '0.5rem 1rem',
+              padding: '0.75rem 1.5rem',
+              backgroundColor: availableYears.length === 0 ? '#94a3b8' : '#16a34a',
+              color: 'white',
+              border: 'none',
               borderRadius: '6px',
-              border: '1px solid #cbd5e1',
-              backgroundColor: 'white',
-              fontWeight: '500',
-              cursor: 'pointer',
-              minWidth: '100px'
+              fontWeight: '600',
+              cursor: (loading || availableYears.length === 0) ? 'not-allowed' : 'pointer',
+              fontSize: '0.95rem',
+              whiteSpace: 'nowrap'
             }}
           >
-            {availableYears.length > 0 ? (
-              availableYears.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))
-            ) : (
-              <option value={new Date().getFullYear()}>No data</option>
-            )}
-          </select>
+            {loading ? '⏳ Generating...' : '📥 Export SECR Report'}
+          </button>
         </div>
-        
-        <button 
-          onClick={async () => {
-            if (availableYears.length === 0) {
-              toast.error('No data available to generate a report. Please upload data first.');
-              return;
-            }
-            
-            try {
-              setLoading(true);
-              const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-secr-report`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  organization_id: organization.id,
-                  reporting_year: selectedYear
-                })
-              });
-              
-              const result = await response.json();
-              
-              if (result.status === 'success') {
-                const binaryString = window.atob(result.pdf_base64);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
-                
-                const blob = new Blob([bytes], { type: 'application/pdf' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = result.filename || `SECR_Report_${selectedYear}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                toast.success(`Report for ${selectedYear} downloaded successfully!`);
-              } else {
-                toast.error('Failed to generate report');
-              }
-            } catch (error) {
-              console.error('Report generation error:', error);
-              toast.error('Failed to generate report');
-            } finally {
-              setLoading(false);
-            }
-          }}
-          disabled={loading || availableYears.length === 0}
-          className="export-button"
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: availableYears.length === 0 ? '#94a3b8' : '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: '600',
-            cursor: (loading || availableYears.length === 0) ? 'not-allowed' : 'pointer',
-            fontSize: '0.95rem',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {loading ? '⏳ Generating...' : '📥 Export SECR Report'}
-        </button>
+      </div>
+      <div className="summary-cards">
+        <div className="card highlight">
+          <h3>Total Lifetime Emissions</h3>
+          <div className="metric">{dashboardStats.totalEmissions.toLocaleString()} kgCO2e</div>
+          <div className="subtext">{(dashboardStats.totalEmissions / 1000).toFixed(2)} tonnes CO2e</div>
+        </div>
+        <div className="card">
+          <h3>Total Transactions Logged</h3>
+          <div className="metric">{dashboardStats.totalTransactions}</div>
+          <div className="subtext">Across all uploaded batches</div>
+        </div>
+      </div>
+      
+      {/* Show available years or a message */}
+      {availableYears.length > 0 ? (
+        <div style={{ 
+          marginTop: '1rem', 
+          padding: '0.75rem 1rem', 
+          backgroundColor: '#f8fafc', 
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
+            📊 Available data for years: {availableYears.join(', ')}
+          </p>
+        </div>
+      ) : (
+        <div style={{ 
+          marginTop: '1rem', 
+          padding: '0.75rem 1rem', 
+          backgroundColor: '#fef3c7', 
+          borderRadius: '8px',
+          border: '1px solid #f59e0b'
+        }}>
+          <p style={{ margin: 0, color: '#92400e', fontSize: '0.9rem' }}>
+            ⚠️ No emissions data found. Upload data to generate SECR reports.
+          </p>
+        </div>
+      )}
+      
+      <div className="empty-state-chart">
+        <p>💡 Tip: Go to <strong>Upload Data</strong> to process a new fuel card statement, or check <strong>History & Trends</strong> to see your month-over-month progress.</p>
       </div>
     </div>
-    <div className="summary-cards">
-      <div className="card highlight">
-        <h3>Total Lifetime Emissions</h3>
-        <div className="metric">{dashboardStats.totalEmissions.toLocaleString()} kgCO2e</div>
-        <div className="subtext">{(dashboardStats.totalEmissions / 1000).toFixed(2)} tonnes CO2e</div>
-      </div>
-      <div className="card">
-        <h3>Total Transactions Logged</h3>
-        <div className="metric">{dashboardStats.totalTransactions}</div>
-        <div className="subtext">Across all uploaded batches</div>
-      </div>
-    </div>
-    
-    {/* Show available years or a message */}
-    {availableYears.length > 0 ? (
-      <div style={{ 
-        marginTop: '1rem', 
-        padding: '0.75rem 1rem', 
-        backgroundColor: '#f0fdf4', 
-        borderRadius: '8px',
-        border: '1px solid #bbf7d0'
-      }}>
-        <p style={{ margin: 0, color: '#166534', fontSize: '0.9rem' }}>
-          📊 Available data for years: {availableYears.join(', ')}
-        </p>
-      </div>
-    ) : (
-      <div style={{ 
-        marginTop: '1rem', 
-        padding: '0.75rem 1rem', 
-        backgroundColor: '#fef3c7', 
-        borderRadius: '8px',
-        border: '1px solid #f59e0b'
-      }}>
-        <p style={{ margin: 0, color: '#92400e', fontSize: '0.9rem' }}>
-          ⚠️ No emissions data found for 2023, 2024, or 2025. 
-          {dashboardStats.totalTransactions > 0 ? ' Data exists but years not detected.' : ' Please upload data to generate SECR reports.'}
-        </p>
-      </div>
-    )}
-    
-    <div className="empty-state-chart">
-      <p>💡 Tip: Go to <strong>Upload Data</strong> to process a new fuel card statement, or check <strong>History & Trends</strong> to see your month-over-month progress.</p>
-    </div>
-  </div>
-);
+  );
+
   const renderHistory = () => (
     <div className="view-section">
       <h2>📈 Emissions Trends & History</h2>
@@ -1054,12 +951,14 @@ const renderDashboard = () => (
                   <th>Energy Source</th>
                   <th>Consumption</th>
                   <th>Emissions (kgCO2e)</th>
+                  <th>DEFRA Factor</th>
                 </tr>
               </thead>
               <tbody>
                 {[...historyData].reverse().slice(0, 15).map((row, index) => {
                   const assetName = row.assets?.name || row.metadata?.asset_name || row.metadata?.vehicle_registration || 'N/A';
-                  const fuelType = row.metadata?.fuel_type || 'N/A';
+                  const fuelType = row.metadata?.fuel_type || row.defra_conversion_factors?.activity_type || 'N/A';
+                  const defraFactor = row.defra_conversion_factors?.co2e_multiplier || row.metadata?.defra_factor_used || 'N/A';
                   
                   let unit = 'L';
                   if (fuelType === 'Electricity' || fuelType === 'Natural Gas') unit = 'kWh';
@@ -1074,6 +973,7 @@ const renderDashboard = () => (
                       <td>{fuelType}</td>
                       <td>{row.raw_quantity} {unit}</td>
                       <td className="emission-cell">{parseFloat(row.calculated_kg_co2e).toFixed(2)}</td>
+                      <td>{typeof defraFactor === 'number' ? defraFactor.toFixed(4) : defraFactor}</td>
                     </tr>
                   );
                 })}
@@ -1114,7 +1014,8 @@ const renderDashboard = () => (
             className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} 
             onClick={() => { 
               setActiveTab('history'); 
-              if (organization) fetchHistory(); 
+              if (organization) 
+                fetchHistory(); 
             }}
           >
             📈 History & Trends
@@ -1138,7 +1039,7 @@ const renderDashboard = () => (
 
       <div className="container">
         {activeTab === 'dashboard' && renderDashboard()}
-        {/* PDF/IMAGE INGESTION PORTAL */}
+        
         {showPDFPortal && pdfFile && (
           <PDFIngestionPortal
             file={pdfFile}
@@ -1165,6 +1066,7 @@ const renderDashboard = () => (
             }}
           />
         )}
+        
         {activeTab === 'upload' && !showPDFPortal && (
           <div className="view-section">
             {!showBulkUpload ? (
@@ -1193,7 +1095,6 @@ const renderDashboard = () => (
         )}
       </div>
       
-      {/* Onboarding Wizard - Full Screen Overlay */}
       {showOnboarding && onboardingChecked && (
         <OnboardingWizard
           userId={session?.user?.id}
@@ -1230,7 +1131,6 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -1239,7 +1139,6 @@ export default function App() {
         <Route path="/about" element={<AboutUs />} />
         <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
         
-        {/* Protected Routes */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <DashboardLayout>

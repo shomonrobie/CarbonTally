@@ -1,6 +1,7 @@
 {
-  "name": "frontend",
+  "name": "carbontally-frontend",
   "version": "0.1.0",
+  "homepage": "/",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

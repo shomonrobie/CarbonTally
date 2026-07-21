@@ -680,6 +680,78 @@ tr:hover {
   font-size: 0.875rem;
 }
 
+.footer-bottom-dashboard {
+  background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+  animation: gradientShift 8s ease infinite;
+  background-size: 300% 300%;
+}
+@keyframes gradientShift {
+  0% { 
+    background-position: 0% 50%;
+    opacity: 1;
+  }
+  50% { 
+    background-position: 100% 50%;
+    opacity: 0.95;
+  }
+  100% { 
+    background-position: 0% 50%;
+    opacity: 1;
+  }
+}
+
+/* Add a subtle glow effect */
+.footer-bottom-dashboard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.footer-bottom-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footer-bottom-content p {
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.footer-legal-links {
+  display: flex;
+  gap: 2rem;
+}
+
+.footer-legal-links a {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.3s ease;
+}
+
+.footer-legal-links a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
   .hero { flex-direction: column; text-align: center; padding: 2rem 1rem; }
@@ -2267,4 +2339,32 @@ html {
   background: #1b4332;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(45, 106, 79, 0.3);
+}
+
+.hero-gif {
+  width: 100%;
+  max-width: 600px;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hero-gif:hover {
+  transform: scale(1.02);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.2);
+}
+
+/* Optional: Add a subtle floating animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.hero-gif-container {
+  animation: float 6s ease-in-out infinite;
 }
