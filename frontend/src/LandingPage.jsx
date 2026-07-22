@@ -4,7 +4,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from './components/AppHeader';
 import AppFooter from './components/AppFooter';
-import carbonTallyGif from './images/carbon_tally_upload.gif'; // Adjust the path based on your folder structure
+import carbonTallyGif from './images/carbon_tally_ui_upload.png'; // Adjust the path based on your folder structure
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -47,48 +47,49 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* --- FEATURES SECTION --- */}
+            {/* --- FEATURES SECTION --- */}
       <section className="features" id="features">
         <div className="container">
-          <h2>Everything you need for compliant, stress-free reporting</h2>
-          <p className="section-subtitle" style={{ textAlign: 'center', color: '#64748b', marginBottom: '3rem', fontSize: '1.1rem' }}>
-            From messy invoices to audit-ready SECR reports. We handle the heavy lifting.
+          <h2 className="fade-in-up">Everything you need for compliant, stress-free reporting</h2>
+          <p className="section-subtitle fade-in-up delay-1">
+            From messy invoices to audit-ready global reports. We handle the heavy lifting.
           </p>
           
           <div className="feature-grid">
-            <div className="feature-card">
+            <div className="feature-card fade-in-up delay-2">
               <div className="icon">🤖</div>
               <h3>AI-Powered Document Extraction</h3>
-              <p>Upload messy PDFs, images, or CSVs. Our AI auto-extracts consumption data, vehicles, and dates, applying the correct DEFRA factors instantly.</p>
+              <p>Upload messy PDFs, images, or CSVs. Our AI auto-extracts consumption data, assets, and dates, applying the correct DEFRA factors instantly.</p>
             </div>
             
-            <div className="feature-card">
+            <div className="feature-card fade-in-up delay-3">
               <div className="icon">📦</div>
               <h3>Enterprise Bulk Upload</h3>
-              <p>Drop up to 50 utility bills or fuel invoices at once. Our system queues them, and our expert team manually verifies any complex documents within 24 hours.</p>
+              <p>Drop up to 50 utility bills or fuel invoices at once. Complex documents are intelligently queued for expert manual verification within 24 hours.</p>
             </div>
             
-            <div className="feature-card">
+            <div className="feature-card fade-in-up delay-4">
               <div className="icon">🌍</div>
               <h3>Comprehensive Scope 1, 2 & 3</h3>
-              <p>Track emissions across all facilities and assets. From company vehicles (Scope 1) and electricity (Scope 2) to business travel and waste (Scope 3).</p>
+              <p>Track emissions across all facilities and assets. From company vehicles and natural gas to business travel, flights, and waste management.</p>
             </div>
             
-            <div className="feature-card">
-              <div className="icon">📄</div>
-              <h3>One-Click SECR PDF Reports</h3>
-              <p>Generate beautiful, branded, audit-ready PDF reports instantly. Includes executive summaries, scope breakdowns, and official DEFRA compliance statements.</p>
-            </div>
-            <div className="feature-card">
+            <div className="feature-card fade-in-up delay-5">
               <div className="icon">🇬🇧</div>
               <h3>UK SECR Automation</h3>
-              <p>Generate audit-ready, branded SECR PDF reports with a single click. Includes executive summaries, scope breakdowns, and official compliance statements.</p>
+              <p>Generate beautiful, branded, audit-ready PDF reports with a single click. Includes executive summaries, scope breakdowns, and official compliance statements.</p>
             </div>
             
-            <div className="feature-card">
-              <div className="icon">🇪🇺</div>
-              <h3>CSRD & ISSB Ready</h3>
-              <p>Export your GHG inventory in the exact granular format required by ESRS E1 and IFRS S2 auditors. No more manual spreadsheet mapping.</p>
+            <div className="feature-card fade-in-up delay-6">
+              <div className="icon">EU</div>
+              <h3>EU CSRD & ESRS E1</h3>
+              <p>Full compliance with European Sustainability Reporting Standards. Double materiality assessments and granular GHG Protocol mapping included.</p>
+            </div>
+            
+            <div className="feature-card fade-in-up delay-7">
+              <div className="icon">📊</div>
+              <h3>Big 4 Auditor Excel Exports</h3>
+              <p>Export your granular GHG inventory in the exact multi-tab format required by auditors. Features automatic GHG Protocol Scope 3 category mapping.</p>
             </div>
           </div>
         </div>
