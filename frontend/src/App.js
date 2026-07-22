@@ -22,6 +22,7 @@ import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
 import MobileMenu from './components/MobileMenu';
 import CompanyNamePrompt from './CompanyNamePrompt'; // We'll create this
+import AuthCallback from './AuthCallback';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -81,10 +82,18 @@ function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    const getSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+      } catch (error) {
+        console.error('❌ Error getting session:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -94,10 +103,22 @@ function ProtectedRoute({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return <div className="loading-screen">Loading...</div>;
-  if (!session) return <Navigate to="/" replace />;
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="loader">Authenticating...</div>
+      </div>
+    );
+  }
+  
+  if (!session) {
+    // Redirect to login but preserve the intended URL
+    return <Navigate to="/login" replace />;
+  }
+  
   return children;
 }
+
 
 function DashboardLayout({ children }) {
   return (
@@ -131,7 +152,8 @@ function Dashboard() {
   const [session, setSession] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [userRole, setUserRole] = useState(null);
-    const [showCompanyPrompt, setShowCompanyPrompt] = useState(false);
+  const [showCompanyPrompt, setShowCompanyPrompt] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false); // ✅ ADD THIS LINE
 
   // UI State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -170,9 +192,47 @@ function Dashboard() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
 
-    const fetchOrgAndAssets = async (userId) => {
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      try {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          console.log('👤 Checking user status:', user.email);
+          
+          // Check if this is a new user
+          const isNew = user.created_at === user.last_sign_at;
+          setIsNewUser(isNew);
+          
+          // Check if user has company_name
+          const hasCompany = user.user_metadata?.company_name;
+          
+          if (!hasCompany) {
+            // New user or user without company
+            console.log('📝 User needs company setup');
+            setShowCompanyPrompt(true);
+          } else {
+            // Existing user with company
+            console.log('✅ User has company setup');
+            setShowCompanyPrompt(false);
+            await fetchOrgAndAssets(user.id);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error checking user status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkUserStatus();
+  }, []);
+
+
+  const fetchOrgAndAssets = async (userId) => {
     try {
-      console.log("🔍 Fetching organization and assets for user:", userId);
+      console.log('🔍 Fetching organization and assets for user:', userId);
       
       // Fetch organization membership
       const { data: orgData, error: orgError } = await supabase
@@ -184,25 +244,27 @@ function Dashboard() {
             id, 
             name, 
             company_number,
-            created_at
+            created_at,
+            settings
           )
         `)
         .eq('user_id', userId)
         .single();
 
       if (orgError) {
-        // If no organization found, check user metadata
         if (orgError.code === 'PGRST116') {
+          // No organization found, check user metadata
           const { data: { user } } = await supabase.auth.getUser();
           if (user?.user_metadata?.company_name) {
-            // User has company_name in metadata but not in org table
-            console.log("📝 User has company_name in metadata, creating organization...");
+            console.log('📝 User has company_name in metadata, creating organization...');
             await createOrganizationFromMetadata(user);
             return;
           }
+          // No organization at all, show company prompt
+          setShowCompanyPrompt(true);
+          return;
         }
-        console.error("❌ Error fetching organization:", orgError);
-        return;
+        throw orgError;
       }
 
       if (orgData?.organizations) {
@@ -213,17 +275,8 @@ function Dashboard() {
         await fetchDashboardStats(orgData.organizations.id);
         
         // Fetch assets
-        const { data: assetData, error: assetError } = await supabase
-          .from('assets')
-          .select('id, name, type, facility_id')
-          .eq('organization_id', orgData.organizations.id);
-          
-        if (assetError) {
-          console.error("❌ Error fetching assets:", assetError);
-        } else {
-          setAssets(assetData || []);
-        }
-
+        await fetchAssets(orgData.organizations.id);
+        
         // Fetch facilities
         const { data: facData, error: facError } = await supabase
           .from('facilities')
@@ -231,66 +284,291 @@ function Dashboard() {
           .eq('organization_id', orgData.organizations.id);
         
         if (facError) {
-          console.error("❌ Error fetching facilities:", facError);
+          console.error('❌ Error fetching facilities:', facError);
         } else {
           setFacilities(facData || []);
         }
       }
     } catch (error) {
-      console.error("❌ Error in fetchOrgAndAssets:", error);
+      console.error('❌ Error in fetchOrgAndAssets:', error);
     }
   };
+const createOrganizationFromMetadata = async (user) => {
+  try {
+    const companyName = user.user_metadata.company_name;
+    
+    console.log('🏢 Creating organization from metadata:', companyName);
+    
+    // Create organization
+    const { data: org, error: orgError } = await supabase
+      .from('organizations')
+      .insert({
+        name: companyName,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        settings: {
+          currency: 'GBP',
+          country: 'UK'
+        }
+      })
+      .select()
+      .single();
 
-  // ✅ Helper function to create organization from metadata
-  const createOrganizationFromMetadata = async (user) => {
-    try {
-      const companyName = user.user_metadata.company_name;
+    if (orgError) throw orgError;
+
+    // Add user as admin member
+    const { error: memberError } = await supabase
+      .from('organization_members')
+      .insert({
+        organization_id: org.id,
+        user_id: user.id,
+        role: 'admin',
+        joined_at: new Date().toISOString()
+      });
+
+    if (memberError) throw memberError;
+
+    // Update user metadata with organization_id
+    await supabase.auth.updateUser({
+      data: { 
+        organization_id: org.id,
+        organization_name: org.name
+      }
+    });
+
+    setOrganization(org);
+    setUserRole('admin');
+    setShowCompanyPrompt(false);
+    
+    console.log('✅ Organization created from metadata:', org.name);
+    
+    // Fetch assets for the new organization
+    await fetchAssets(org.id);
+    
+    toast.success(`✅ Welcome ${org.name}!`);
+    
+  } catch (error) {
+    console.error('❌ Error creating organization from metadata:', error);
+    toast.error('Failed to create organization');
+  }
+};
+
+  useEffect(() => {
+    const handleNewUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // Create organization
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert({
-          name: companyName,
-          created_by: user.id,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      if (user) {
+        // Check if this is a new Google user
+        const isNewUser = user.created_at === user.last_sign_in_at;
+        const provider = user.app_metadata?.provider || user.identities?.[0]?.provider;
+        
+        if (isNewUser && provider === 'google') {
+          // This is a new user who signed up with Google
+          console.log('🆕 New Google user registered:', user.email);
+          
+          // Check if they have company_name
+          if (!user.user_metadata?.company_name) {
+            setShowCompanyPrompt(true);
+          }
+        }
+      }
+    };
+    
+    handleNewUser();
+  }, []);
 
-      if (orgError) {
-        console.error("❌ Error creating organization:", orgError);
+  // Check if onboarding is needed
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      // Wait until we have the organization data
+      if (!organization) {
+        setOnboardingChecked(true);
         return;
       }
 
-      // Add user as admin member
+      console.log('🏢 Checking onboarding for organization:', organization.id);
+
+      // Check if this organization has any facilities yet
+      const { data: facilities, error } = await supabase
+        .from('facilities')
+        .select('id')
+        .eq('organization_id', organization.id)
+        .limit(1);
+
+      if (error) {
+        console.error('Error checking facilities:', error);
+        setOnboardingChecked(true);
+        return;
+      }
+
+      // If no facilities exist, trigger the onboarding wizard
+      if (!facilities || facilities.length === 0) {
+        console.log('🚀 No facilities found - showing onboarding');
+        setShowOnboarding(true);
+      } else {
+        console.log('✅ Facilities found - skipping onboarding');
+        setShowOnboarding(false);
+      }
+
+      setOnboardingChecked(true);
+    };
+
+    checkOnboarding();
+  }, [organization]); // This will trigger when organization is set
+
+  
+  const handleSaveCompanyName = async (orgData) => {
+    try {
+      console.log('💾 Saving company for new user:', orgData.name);
+      setLoading(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // 1. Update user metadata with company name
+      const { data: updatedUser, error: updateError } = await supabase.auth.updateUser({
+        data: { 
+          company_name: orgData.name,
+          organization_name: orgData.name,
+          is_onboarded: false,
+          onboarded_at: null
+        }
+      });
+      
+      if (updateError) throw updateError;
+      
+      // 2. Create organization
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert({
+          name: orgData.name,
+          created_by: user.id,
+          created_at: new Date().toISOString(),
+          settings: {
+            currency: 'GBP',
+            country: 'UK',
+            reporting_start_date: new Date().toISOString()
+          }
+        })
+        .select()
+        .single();
+        
+      if (orgError) {
+        if (orgError.code === '23505') {
+          // Organization already exists, try to fetch it
+          const { data: existingOrg } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('name', orgData.name)
+            .single();
+            
+          if (existingOrg) {
+            setOrganization(existingOrg);
+            setShowCompanyPrompt(false);
+            toast.success('✅ Organization found!');
+            setLoading(false);
+            return;
+          }
+        }
+        throw orgError;
+      }
+      
+      // 3. Add user as admin member
       const { error: memberError } = await supabase
         .from('organization_members')
         .insert({
           organization_id: org.id,
           user_id: user.id,
-          role: 'admin'
+          role: 'admin',
+          joined_at: new Date().toISOString()
         });
-
-      if (memberError) {
-        console.error("❌ Error adding member:", memberError);
-        return;
-      }
-
-      setOrganization(org);
-      setUserRole('admin');
       
-      // Update user metadata to include organization_id
+      if (memberError) throw memberError;
+      
+      // 4. Update user metadata with organization_id
       await supabase.auth.updateUser({
         data: { 
           organization_id: org.id,
-          organization_name: org.name
         }
       });
-
-      console.log("✅ Organization created from metadata:", org.name);
+      
+      // 5. Set state
+      setOrganization(org);
+      setUserRole('admin');
+      setShowCompanyPrompt(false);
+      setIsNewUser(false);
+      
+      console.log('✅ Company setup complete for:', orgData.name);
+      toast.success(`🎉 Welcome ${orgData.name}! Let's set up your first facility.`);
+      
+      // 6. Fetch initial data
+      await fetchDashboardStats(org.id);
+      await fetchAssets(org.id);
+      
+      // 7. Check if onboarding is needed (will trigger via useEffect)
       
     } catch (error) {
-      console.error("❌ Error in createOrganizationFromMetadata:", error);
+      console.error('❌ Error saving company:', error);
+      toast.error('❌ Failed to save company. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOnboardingComplete = async () => {
+    try {
+      // Update user metadata to mark onboarding as complete
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.auth.updateUser({
+        data: { 
+          is_onboarded: true,
+          onboarded_at: new Date().toISOString()
+        }
+      });
+      
+      setShowOnboarding(false);
+      toast.success('🎉 Onboarding complete! You\'re ready to go.');
+      
+      // Refresh dashboard data
+      if (organization) {
+        await fetchDashboardStats(organization.id);
+        await fetchAssets(organization.id);
+        await fetchHistory();
+      }
+    } catch (error) {
+      console.error('Error completing onboarding:', error);
+      toast.error('Failed to complete onboarding');
+    }
+  };
+  const fetchAssets = async (orgId) => {
+    try {
+      console.log('📦 Fetching assets for organization:', orgId);
+      
+      const { data, error } = await supabase
+        .from('assets')
+        .select(`
+          id,
+          name,
+          type,
+          description,
+          facility_id,
+          facilities (
+            id,
+            name
+          )
+        `)
+        .eq('organization_id', orgId)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      
+      setAssets(data || []);
+      console.log(`✅ Found ${data?.length || 0} assets`);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Error fetching assets:', error);
+      setAssets([]);
+      return [];
     }
   };
 
@@ -318,56 +596,6 @@ function Dashboard() {
     checkUserOrganization();
   }, []);
   
-  const handleSaveCompanyName = async (orgData) => {
-    try {
-      // Update user metadata
-      const { data, error } = await supabase.auth.updateUser({
-        data: { 
-          company_name: orgData.name,
-          organization_name: orgData.name,
-          // Store that this came from Google if needed
-          auth_provider: 'google'
-        }
-      });
-      
-      if (error) throw error;
-      
-      // If you have an organizations table, create organization
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert({
-          name: orgData.name,
-          created_by: data.user.id,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-        
-      if (orgError && orgError.code !== '23505') { // Ignore duplicate errors
-        console.error('Error creating organization:', orgError);
-      }
-      
-      // Add user as member
-      if (org) {
-        await supabase
-          .from('organization_members')
-          .insert({
-            organization_id: org.id,
-            user_id: data.user.id,
-            role: 'admin'
-          });
-        
-        setOrganization(org);
-      }
-      
-      setShowCompanyPrompt(false);
-      toast.success('✅ Organization saved successfully!');
-      
-    } catch (error) {
-      console.error('Error saving organization:', error);
-      toast.error('❌ Failed to save organization');
-    }
-  };
 
   // Computed Data
   const trendData = useMemo(() => {
@@ -465,36 +693,7 @@ function Dashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check if onboarding is needed
-  useEffect(() => {
-    const checkOnboarding = async () => {
-      // Wait until we have the organization data
-      if (!organization) {
-        setOnboardingChecked(true);
-        return;
-      }
-
-      // Check if this organization has any facilities yet
-      const { data: facilities, error } = await supabase
-        .from('facilities')
-        .select('id')
-        .eq('organization_id', organization.id)
-        .limit(1);
-
-      if (error) {
-        console.error('Error checking facilities:', error);
-      }
-
-      // If no facilities exist, trigger the onboarding wizard
-      if (!facilities || facilities.length === 0) {
-        setShowOnboarding(true);
-      }
-
-      setOnboardingChecked(true);
-    };
-
-    checkOnboarding();
-  }, [organization]);
+  
 
   // --- Data Fetching Functions ---
   const fetchDashboardStats = async (orgId) => {
@@ -1113,176 +1312,309 @@ function Dashboard() {
 
 const renderDashboard = () => (
   <div className="view-section">
-    
-      <div className="dashboard-header">
-        <h2>Executive Overview</h2>
+    {/* Welcome Banner for New Users */}
+    {isNewUser && !showCompanyPrompt && !showOnboarding && (
+      <div style={{
+        background: 'linear-gradient(135deg, #10b981, #059669)',
+        borderRadius: '12px',
+        padding: '1.5rem 2rem',
+        marginBottom: '2rem',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div>
+          <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.25rem' }}>
+            👋 Welcome to CarbonTally, {organization?.name || 'New User'}!
+          </h3>
+          <p style={{ margin: 0, opacity: 0.9, fontSize: '0.95rem' }}>
+            Start tracking your carbon emissions by uploading your first data file.
+          </p>
+        </div>
+        <button
+          onClick={() => setActiveTab('upload')}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: 'white',
+            color: '#059669',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            transition: 'transform 0.2s'
+          }}
+          onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+        >
+          ⬆️ Upload Your First File
+        </button>
+      </div>
+    )}
+
+    {/* Onboarding Progress Card (shown during onboarding) */}
+    {showOnboarding && (
+      <div style={{
+        backgroundColor: '#fef3c7',
+        border: '1px solid #f59e0b',
+        borderRadius: '12px',
+        padding: '1rem 1.5rem',
+        marginBottom: '1.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem',
+        flexWrap: 'wrap'
+      }}>
+        <span style={{ fontSize: '1.5rem' }}>🚀</span>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, fontWeight: '600', color: '#92400e' }}>
+            Complete your setup to get started!
+          </p>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: '#78350f' }}>
+            Add your first facility and asset to begin tracking emissions.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowOnboarding(true)}
+          style={{
+            padding: '0.5rem 1.25rem',
+            backgroundColor: '#f59e0b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: '600',
+            cursor: 'pointer'
+          }}
+        >
+          Continue Setup →
+        </button>
+      </div>
+    )}
+
+    {/* Dashboard Header */}
+    <div className="dashboard-header">
+      <div>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          Executive Overview
+          {organization && (
+            <span style={{
+              fontSize: '0.8rem',
+              backgroundColor: '#dbeafe',
+              color: '#1e40af',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '12px',
+              fontWeight: '500'
+            }}>
+              {organization.name}
+            </span>
+          )}
+        </h2>
+        {historyData.length > 0 && (
+          <p style={{ margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+            {historyData.length} total records • Last updated: {new Date().toLocaleDateString()}
+          </p>
+        )}
+      </div>
+      
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* 1. SMART YEAR SELECTOR */}
+        {availableYears.length > 0 ? (
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            style={{
+              padding: '0.75rem 1rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '0.95rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              backgroundColor: 'white',
+              color: '#0f172a'
+            }}
+          >
+            {availableYears.map((year) => (
+              <option key={year} value={year}>
+                {year} {year === availableYears[0] ? '(Latest)' : ''}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div style={{ padding: '0.75rem 1rem', color: '#64748b', fontSize: '0.95rem' }}>
+            No data available yet
+          </div>
+        )}
         
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {/* 1. SMART YEAR SELECTOR */}
-          {availableYears.length > 0 ? (
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              style={{
-                padding: '0.75rem 1rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                fontSize: '0.95rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                backgroundColor: 'white',
-                color: '#0f172a'
-              }}
-            >
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year} {year === availableYears[0] ? '(Latest)' : ''}
-                </option>
+        {/* 2. REPORT GENERATION DROPDOWN */}
+        <div style={{ position: 'relative' }}>
+          <button 
+            onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
+            disabled={loading || availableYears.length === 0}
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: availableYears.length > 0 ? '#16a34a' : '#94a3b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: loading || availableYears.length === 0 ? 'not-allowed' : 'pointer',
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            {loading ? '⏳ Generating...' : '📥 Generate Reports'}
+            <span style={{ fontSize: '0.8rem' }}>▼</span>
+          </button>
+
+          {/* Dropdown Menu */}
+          {reportDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: '0.5rem',
+              backgroundColor: 'white',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+              zIndex: 100,
+              minWidth: '280px',
+              overflow: 'hidden'
+            }}>
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase' }}>
+                  Generate Report for {selectedYear}
+                </span>
+              </div>
+              
+              {[
+                { type: 'SECR', label: '🇬🇧 SECR Compliance Report (PDF)', desc: 'UK Streamlined Energy & Carbon Reporting' },
+                { type: 'CSRD', label: '🇪🇺 CSRD / ESRS Report (PDF)', desc: 'EU Corporate Sustainability Reporting' },
+                { type: 'ISSB', label: '🌍 ISSB / IFRS S2 Report (PDF)', desc: 'International Climate Disclosures' },
+                { type: 'AUDITOR_EXCEL', label: '📊 Auditor Data Export (Excel)', desc: 'Granular GHG Protocol mapping for Big 4' }
+              ].map((report) => (
+                <button
+                  key={report.type}
+                  onClick={async () => {
+                    setReportDropdownOpen(false);
+                    setLoading(true);
+                    try {
+                      const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-sustainability-report`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          organization_id: organization.id,
+                          reporting_year: selectedYear,
+                          report_type: report.type
+                        })
+                      });
+                      
+                      const result = await response.json();
+                      
+                      if (result.status === 'success') {
+                        const isExcel = report.type === 'AUDITOR_EXCEL';
+                        const mimeType = isExcel 
+                          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                          : 'application/pdf';
+                        
+                        const binaryString = window.atob(isExcel ? result.file_base64 : result.pdf_base64);
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                          bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        
+                        const blob = new Blob([bytes], { type: mimeType });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = result.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        toast.success(`${report.type} Report for ${selectedYear} downloaded!`);
+                      } else {
+                        toast.error(result.detail || 'Failed to generate report');
+                      }
+                    } catch (error) {
+                      console.error('Report generation error:', error);
+                      toast.error('Failed to generate report');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.85rem 1rem',
+                    backgroundColor: 'white',
+                    border: 'none',
+                    borderBottom: '1px solid #f1f5f9',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                >
+                  <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
+                    {report.label}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    {report.desc}
+                  </div>
+                </button>
               ))}
-            </select>
-          ) : (
-            <div style={{ padding: '0.75rem 1rem', color: '#64748b', fontSize: '0.95rem' }}>
-              No data available yet
             </div>
           )}
-          
-          {/* 2. REPORT GENERATION DROPDOWN */}
-          <div style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
-              disabled={loading || availableYears.length === 0}
-              style={{
-                padding: '0.75rem 1.5rem',
-                backgroundColor: availableYears.length > 0 ? '#16a34a' : '#94a3b8',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                cursor: loading || availableYears.length === 0 ? 'not-allowed' : 'pointer',
-                fontSize: '0.95rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-            >
-              {loading ? '⏳ Generating...' : '📥 Generate Reports'}
-              <span style={{ fontSize: '0.8rem' }}>▼</span>
-            </button>
-
-            {/* Dropdown Menu */}
-            {reportDropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: '0.5rem',
-                backgroundColor: 'white',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-                zIndex: 100,
-                minWidth: '280px',
-                overflow: 'hidden'
-              }}>
-                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase' }}>
-                    Generate Report for {selectedYear}
-                  </span>
-                </div>
-                
-                {[
-                  { type: 'SECR', label: '🇬🇧 SECR Compliance Report (PDF)', desc: 'UK Streamlined Energy & Carbon Reporting' },
-                  { type: 'CSRD', label: '🇪🇺 CSRD / ESRS Report (PDF)', desc: 'EU Corporate Sustainability Reporting' },
-                  { type: 'ISSB', label: '🌍 ISSB / IFRS S2 Report (PDF)', desc: 'International Climate Disclosures' },
-                  { type: 'AUDITOR_EXCEL', label: '📊 Auditor Data Export (Excel)', desc: 'Granular GHG Protocol mapping for Big 4' }
-                ].map((report) => (
-                  <button
-                    key={report.type}
-                    onClick={async () => {
-                      setReportDropdownOpen(false);
-                      setLoading(true);
-                      try {
-                        const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-sustainability-report`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            organization_id: organization.id,
-                            reporting_year: selectedYear, // 👈 Passes the exact year selected
-                            report_type: report.type
-                          })
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (result.status === 'success') {
-                          const isExcel = report.type === 'AUDITOR_EXCEL';
-                          const mimeType = isExcel 
-                            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                            : 'application/pdf';
-                          
-                          const binaryString = window.atob(isExcel ? result.file_base64 : result.pdf_base64);
-                          const bytes = new Uint8Array(binaryString.length);
-                          for (let i = 0; i < binaryString.length; i++) {
-                            bytes[i] = binaryString.charCodeAt(i);
-                          }
-                          
-                          const blob = new Blob([bytes], { type: mimeType });
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = result.filename;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          document.body.removeChild(a);
-                          
-                          toast.success(`${report.type} Report for ${selectedYear} downloaded!`);
-                        } else {
-                          toast.error(result.detail || 'Failed to generate report');
-                        }
-                      } catch (error) {
-                        console.error('Report generation error:', error);
-                        toast.error('Failed to generate report');
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.85rem 1rem',
-                      backgroundColor: 'white',
-                      border: 'none',
-                      borderBottom: '1px solid #f1f5f9',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                  >
-                    <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
-                      {report.label}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {report.desc}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
+    </div>
+
+    {/* Summary Cards */}
     <div className="summary-cards">
       <div className="card highlight">
         <h3>Total Lifetime Emissions</h3>
         <div className="metric">{dashboardStats.totalEmissions.toLocaleString()} kgCO2e</div>
         <div className="subtext">{(dashboardStats.totalEmissions / 1000).toFixed(2)} tonnes CO2e</div>
+        {historyData.length === 0 && (
+          <div style={{ 
+            marginTop: '0.5rem',
+            fontSize: '0.8rem',
+            color: '#94a3b8'
+          }}>
+            No data uploaded yet
+          </div>
+        )}
       </div>
       <div className="card">
         <h3>Total Transactions Logged</h3>
         <div className="metric">{dashboardStats.totalTransactions}</div>
         <div className="subtext">Across all uploaded batches</div>
+        {dashboardStats.totalTransactions === 0 && (
+          <button
+            onClick={() => setActiveTab('upload')}
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.5rem 1rem',
+              backgroundColor: '#16a34a',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '500'
+            }}
+          >
+            Upload your first file
+          </button>
+        )}
       </div>
     </div>
     
@@ -1308,18 +1640,89 @@ const renderDashboard = () => (
         border: '1px solid #f59e0b'
       }}>
         <p style={{ margin: 0, color: '#92400e', fontSize: '0.9rem' }}>
-          ⚠️ No emissions data found for 2023, 2024, or 2025. 
+          ⚠️ No emissions data found. 
           {dashboardStats.totalTransactions > 0 ? ' Data exists but years not detected.' : ' Please upload data to generate SECR reports.'}
         </p>
       </div>
     )}
     
+    {/* Quick Action Cards for New Users */}
+    {historyData.length === 0 && !showOnboarding && (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '1rem',
+        marginTop: '1.5rem'
+      }}>
+        <div style={{
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '1.5rem',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        onClick={() => setActiveTab('upload')}
+        >
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
+          <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a' }}>Upload Data</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            Upload your first fuel or utility statement
+          </p>
+        </div>
+
+        <div style={{
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '1.5rem',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        onClick={() => setActiveTab('assets')}
+        >
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏢</div>
+          <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a' }}>Manage Assets</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            Add vehicles, meters, and equipment
+          </p>
+        </div>
+
+        <div style={{
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '1.5rem',
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        onClick={() => setActiveTab('team')}
+        >
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>👥</div>
+          <h4 style={{ margin: '0 0 0.25rem 0', color: '#0f172a' }}>Invite Team</h4>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            Collaborate with your colleagues
+          </p>
+        </div>
+      </div>
+    )}
+
+    {/* Tip Section */}
     <div className="empty-state-chart">
       <p>💡 Tip: Go to <strong>Upload Data</strong> to process a new fuel card statement, or check <strong>History & Trends</strong> to see your month-over-month progress.</p>
     </div>
   </div>
 );
-  const renderHistory = () => (
+const renderHistory = () => (
     <div className="view-section">
       <h2>📈 Emissions Trends & History</h2>
       {loadingHistory ? (
@@ -1532,48 +1935,79 @@ const renderDashboard = () => (
   );
 }
 
-// Main App Component with Routing
 export default function App() {
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(null);
 
-  useEffect(() => {
-    // Handle initial session
-    supabase.auth.getSession().then(() => {
-      setLoading(false);
-    });
-
-    // Handle OAuth callback (for Google sign-in)
-    const handleOAuthCallback = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (data?.session && !error) {
-        // Check if user has organization
-        const user = data.session.user;
-        if (!user.user_metadata?.company_name) {
-          // Will be handled by Dashboard component
-          console.log('New Google user - needs organization setup');
-        }
+useEffect(() => {
+  const initializeAuth = async () => {
+    try {
+      console.log('🚀 Initializing auth...');
+      
+      // Get initial session
+      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('❌ Error getting session:', error);
       }
-    };
-    handleOAuthCallback();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      
+      console.log('📊 Initial session:', initialSession ? 'Exists' : 'None');
+      
+      if (initialSession) {
+        console.log('👤 Session found for:', initialSession.user.email);
+        setSession(initialSession);
+      } else {
+        console.log('👤 No session found');
+      }
+    } catch (error) {
+      console.error('❌ Auth initialization error:', error);
+    } finally {
       setLoading(false);
+      console.log('✅ Auth initialization complete');
+    }
+  };
+
+  initializeAuth();
+
+  // Listen for auth state changes
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      console.log('🔐 App auth event:', event);
+      console.log('📊 App session:', session ? 'Exists' : 'None');
+      
       if (event === 'SIGNED_IN') {
-        console.log('User signed in via:', session?.user?.app_metadata?.provider || 'email');
+        console.log('✅ User signed in:', session?.user?.email);
+        setSession(session);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out');
+        setSession(null);
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('🔄 Token refreshed');
+      } else if (event === 'USER_UPDATED') {
+        console.log('👤 User updated');
       }
-    });
+      
+      setLoading(false);
+    }
+  );
 
-    return () => subscription.unsubscribe();
-  }, []);
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
+
 
   if (loading) {
-    return <div className="loading-screen">Loading...</div>;
+    return (
+      <div className="loading-screen">
+        <div className="loader">Loading...</div>
+      </div>
+    );
   }
   
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -1581,9 +2015,10 @@ export default function App() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/about" element={<AboutUs />} />
         <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
-        
-        {/* Protected Routes */}
-        <Route path="/dashboard" element={
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+
+        <Route path="/dashboard/*" element={
           <ProtectedRoute>
             <DashboardLayout>
               <Dashboard />

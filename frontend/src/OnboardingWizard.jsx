@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import toast from 'react-hot-toast';
 
-export default function OnboardingWizard({ userId, onComplete, onSkip }) {
+export default function OnboardingWizard({ 
+  userId, 
+  organizationId: initialOrgId, 
+  organizationName: initialOrgName,
+  onComplete, 
+  onSkip 
+}) {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   
-  // Step 1: Company Info
-  const [companyName, setCompanyName] = useState('');
+  // Step 1: Company Info (only shown if no organization exists)
+  const [companyName, setCompanyName] = useState(initialOrgName || '');
   const [companyNumber, setCompanyNumber] = useState('');
-  const [organizationId, setOrganizationId] = useState(null);
+  const [organizationId, setOrganizationId] = useState(initialOrgId || null);
   
   // Step 2: First Facility
   const [facilityName, setFacilityName] = useState('');
@@ -21,9 +27,17 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
   const [assetType, setAssetType] = useState('vehicle');
   const [assetDescription, setAssetDescription] = useState('');
 
-  const totalSteps = 4;
+  const totalSteps = initialOrgId ? 3 : 4; // Skip company step if organization exists
 
-  // Step 1: Create Organization
+  // If organization already exists, skip to facility step
+  useEffect(() => {
+    if (initialOrgId) {
+      setOrganizationId(initialOrgId);
+      setCurrentStep(2); // Skip company creation
+    }
+  }, [initialOrgId]);
+
+  // Step 1: Create Organization (or use existing)
   const handleCreateCompany = async () => {
     if (!companyName.trim()) {
       toast.error('Please enter your company name');
@@ -32,31 +46,52 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
 
     setLoading(true);
     try {
-      // Create organization
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .insert({
-          name: companyName.trim(),
-          company_number: companyNumber.trim() || null
-        })
-        .select()
-        .single();
+      let orgId = initialOrgId;
 
-      if (orgError) throw orgError;
+      // Only create organization if it doesn't exist
+      if (!initialOrgId) {
+        // Create organization
+        const { data: orgData, error: orgError } = await supabase
+          .from('organizations')
+          .insert({
+            name: companyName.trim(),
+            company_number: companyNumber.trim() || null,
+            created_by: userId,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
 
-      // Link user to organization as admin
-      const { error: memberError } = await supabase
-        .from('organization_members')
-        .insert({
-          organization_id: orgData.id,
-          user_id: userId,
-          role: 'admin'
+        if (orgError) throw orgError;
+        orgId = orgData.id;
+
+        // Link user to organization as admin
+        const { error: memberError } = await supabase
+          .from('organization_members')
+          .insert({
+            organization_id: orgData.id,
+            user_id: userId,
+            role: 'admin',
+            joined_at: new Date().toISOString()
+          });
+
+        if (memberError) throw memberError;
+
+        // Update user metadata
+        await supabase.auth.updateUser({
+          data: { 
+            organization_id: orgData.id,
+            organization_name: companyName.trim(),
+            company_name: companyName.trim()
+          }
         });
 
-      if (memberError) throw memberError;
+        toast.success('✅ Company created successfully!');
+      } else {
+        toast.success('✅ Using existing company');
+      }
 
-      setOrganizationId(orgData.id);
-      toast.success('Company created successfully!');
+      setOrganizationId(orgId);
       setCurrentStep(2);
     } catch (error) {
       console.error('Error creating company:', error);
@@ -80,7 +115,9 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
         .insert({
           organization_id: organizationId,
           name: facilityName.trim(),
-          postcode: facilityPostcode.trim().toUpperCase() || null
+          postcode: facilityPostcode.trim().toUpperCase() || null,
+          created_by: userId,
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
@@ -88,7 +125,7 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
       if (error) throw error;
 
       setFacilityId(facilityData.id);
-      toast.success('Facility added successfully!');
+      toast.success('✅ Facility added successfully!');
       setCurrentStep(3);
     } catch (error) {
       console.error('Error creating facility:', error);
@@ -108,12 +145,15 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
           .insert({
             facility_id: facilityId,
             name: assetName.trim(),
-            description: assetDescription.trim() || null
+            type: assetType,
+            description: assetDescription.trim() || null,
+            created_by: userId,
+            created_at: new Date().toISOString()
           });
 
         if (error) throw error;
 
-        toast.success('Asset added successfully!');
+        toast.success('✅ Asset added successfully!');
       } catch (error) {
         console.error('Error creating asset:', error);
         toast.error('Failed to add asset, but continuing...');
@@ -126,10 +166,26 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
   };
 
   // Step 4: Complete Onboarding
-  const handleComplete = () => {
-    toast.success('Welcome to CarbonTally! 🎉');
-    onComplete();
+  const handleComplete = async () => {
+    try {
+      // Mark user as fully onboarded
+      await supabase.auth.updateUser({
+        data: { 
+          is_onboarded: true,
+          onboarded_at: new Date().toISOString()
+        }
+      });
+      
+      toast.success('🎉 Welcome to CarbonTally!');
+      onComplete();
+    } catch (error) {
+      console.error('Error completing onboarding:', error);
+      toast.error('Failed to complete onboarding');
+    }
   };
+
+  // Calculate if we should show the company step
+  const showCompanyStep = !initialOrgId;
 
   return (
     <div style={{
@@ -139,6 +195,7 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
       right: 0,
       bottom: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      backdropFilter: 'blur(4px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -166,13 +223,31 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
             marginBottom: '1.5rem'
           }}>
             <div style={{
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: '#0f172a'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
             }}>
-              🌱 CarbonTally Setup
+              <span style={{
+                fontSize: '1.5rem',
+                fontWeight: '700',
+                color: '#0f172a'
+              }}>
+                🌱 CarbonTally Setup
+              </span>
+              {initialOrgId && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  backgroundColor: '#dbeafe',
+                  color: '#1e40af',
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '12px',
+                  fontWeight: '500'
+                }}>
+                  {initialOrgName || 'Existing Company'}
+                </span>
+              )}
             </div>
-            {currentStep < 4 && (
+            {currentStep < (showCompanyStep ? 4 : 3) && (
               <button
                 onClick={onSkip}
                 style={{
@@ -195,32 +270,49 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
             gap: '0.5rem',
             marginBottom: '0.5rem'
           }}>
-            {[1, 2, 3, 4].map((step) => (
-              <div
-                key={step}
-                style={{
-                  flex: 1,
-                  height: '6px',
-                  borderRadius: '3px',
-                  backgroundColor: step <= currentStep ? '#16a34a' : '#e2e8f0',
-                  transition: 'background-color 0.3s'
-                }}
-              />
-            ))}
+            {showCompanyStep ? (
+              // Show 4 steps when company needs to be created
+              [1, 2, 3, 4].map((step) => (
+                <div
+                  key={step}
+                  style={{
+                    flex: 1,
+                    height: '6px',
+                    borderRadius: '3px',
+                    backgroundColor: step <= currentStep ? '#16a34a' : '#e2e8f0',
+                    transition: 'background-color 0.3s'
+                  }}
+                />
+              ))
+            ) : (
+              // Show 3 steps when company already exists
+              [1, 2, 3].map((step) => (
+                <div
+                  key={step}
+                  style={{
+                    flex: 1,
+                    height: '6px',
+                    borderRadius: '3px',
+                    backgroundColor: step + 1 <= currentStep ? '#16a34a' : '#e2e8f0',
+                    transition: 'background-color 0.3s'
+                  }}
+                />
+              ))
+            )}
           </div>
           <div style={{
             fontSize: '0.85rem',
             color: '#64748b',
             textAlign: 'center'
           }}>
-            Step {currentStep} of {totalSteps}
+            Step {currentStep} of {showCompanyStep ? 4 : 3}
           </div>
         </div>
 
         {/* Content */}
         <div style={{ padding: '2rem' }}>
-          {/* Step 1: Company Info */}
-          {currentStep === 1 && (
+          {/* Step 1: Company Info - Only if no organization exists */}
+          {currentStep === 1 && showCompanyStep && (
             <>
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏢</div>
@@ -299,7 +391,7 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
             </>
           )}
 
-          {/* Step 2: First Facility */}
+          {/* Step 2: First Facility (or Step 1 if no company step) */}
           {currentStep === 2 && (
             <>
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
@@ -357,26 +449,28 @@ export default function OnboardingWizard({ userId, onComplete, onSkip }) {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
-                <button
-                  onClick={() => setCurrentStep(1)}
-                  style={{
-                    flex: 1,
-                    padding: '1rem',
-                    backgroundColor: '#f1f5f9',
-                    color: '#475569',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ← Back
-                </button>
+                {showCompanyStep && (
+                  <button
+                    onClick={() => setCurrentStep(1)}
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      backgroundColor: '#f1f5f9',
+                      color: '#475569',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                )}
                 <button
                   onClick={handleCreateFacility}
                   disabled={loading || !facilityName.trim()}
                   style={{
-                    flex: 2,
+                    flex: showCompanyStep ? 2 : 1,
                     padding: '1rem',
                     backgroundColor: facilityName.trim() ? '#16a34a' : '#94a3b8',
                     color: 'white',
