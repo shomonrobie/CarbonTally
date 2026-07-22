@@ -1,3 +1,5 @@
+// src/LandingPage.js - Fixed version
+
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from './components/AppHeader';
@@ -19,7 +21,7 @@ export default function LandingPage() {
       <section className="hero-section">
         <div className="hero-container">
           <div className="hero-content">
-            <div className="badge">Built for UK SECR Compliance</div>
+            <div className="landing-badge">Built for UK SECR Compliance</div>
             <h1 className="headline-animated">Carbon Accounting, <span className="highlight">Simplified.</span></h1>
             <p className="hero-description">
               Stop using messy spreadsheets. Automate your Scope 1, 2, and 3 emissions 
@@ -36,18 +38,10 @@ export default function LandingPage() {
             <p className="hero-subtext">No credit card required. 14-day free trial.</p>
           </div>
           <div className="hero-image">
-            {/* Replace the mock-dashboard with your GIF */}
             <img 
               src={carbonTallyGif} 
               alt="CarbonTally Dashboard Preview" 
               className="hero-gif"
-              style={{
-                width: '100%',
-                maxWidth: '600px',
-                borderRadius: '12px',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-                border: '1px solid rgba(255,255,255,0.1)'
-              }}
             />
           </div>
         </div>
@@ -56,27 +50,45 @@ export default function LandingPage() {
       {/* --- FEATURES SECTION --- */}
       <section className="features" id="features">
         <div className="container">
-          <h2>Everything you need for compliant reporting</h2>
+          <h2>Everything you need for compliant, stress-free reporting</h2>
+          <p className="section-subtitle" style={{ textAlign: 'center', color: '#64748b', marginBottom: '3rem', fontSize: '1.1rem' }}>
+            From messy invoices to audit-ready SECR reports. We handle the heavy lifting.
+          </p>
+          
           <div className="feature-grid">
             <div className="feature-card">
-              <div className="icon">⛽</div>
-              <h3>Scope 1: Fuel & Transport</h3>
-              <p>Upload messy fuel card CSVs. We auto-map vehicles, calculate litres, and apply the correct DEFRA factors.</p>
+              <div className="icon">🤖</div>
+              <h3>AI-Powered Document Extraction</h3>
+              <p>Upload messy PDFs, images, or CSVs. Our AI auto-extracts consumption data, vehicles, and dates, applying the correct DEFRA factors instantly.</p>
+            </div>
+            
+            <div className="feature-card">
+              <div className="icon">📦</div>
+              <h3>Enterprise Bulk Upload</h3>
+              <p>Drop up to 50 utility bills or fuel invoices at once. Our system queues them, and our expert team manually verifies any complex documents within 24 hours.</p>
+            </div>
+            
+            <div className="feature-card">
+              <div className="icon">🌍</div>
+              <h3>Comprehensive Scope 1, 2 & 3</h3>
+              <p>Track emissions across all facilities and assets. From company vehicles (Scope 1) and electricity (Scope 2) to business travel and waste (Scope 3).</p>
+            </div>
+            
+            <div className="feature-card">
+              <div className="icon">📄</div>
+              <h3>One-Click SECR PDF Reports</h3>
+              <p>Generate beautiful, branded, audit-ready PDF reports instantly. Includes executive summaries, scope breakdowns, and official DEFRA compliance statements.</p>
             </div>
             <div className="feature-card">
-              <div className="icon">⚡</div>
-              <h3>Scope 2: Utilities</h3>
-              <p>Track electricity and natural gas consumption across all your facilities in kWh, with live emissions math.</p>
+              <div className="icon">🇬🇧</div>
+              <h3>UK SECR Automation</h3>
+              <p>Generate audit-ready, branded SECR PDF reports with a single click. Includes executive summaries, scope breakdowns, and official compliance statements.</p>
             </div>
+            
             <div className="feature-card">
-              <div className="icon">🌱</div>
-              <h3>Scope 3: Travel & Waste</h3>
-              <p>Log business flights, rail travel, hotel stays, and waste manifests. (Available on Pro tier).</p>
-            </div>
-            <div className="feature-card">
-              <div className="icon">📊</div>
-              <h3>SECR-Ready Exports</h3>
-              <p>Generate audit-ready Excel reports formatted specifically for UK Streamlined Energy and Carbon Reporting.</p>
+              <div className="icon">🇪🇺</div>
+              <h3>CSRD & ISSB Ready</h3>
+              <p>Export your GHG inventory in the exact granular format required by ESRS E1 and IFRS S2 auditors. No more manual spreadsheet mapping.</p>
             </div>
           </div>
         </div>

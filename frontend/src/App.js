@@ -20,6 +20,7 @@ import RecentProcessedData from './RecentProcessedData';
 import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
+import MobileMenu from './components/MobileMenu';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -118,7 +119,18 @@ function DashboardLayout({ children }) {
 // Main Dashboard Component
 function Dashboard() {
   const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);  
   
+  
+
+  // Toggle menu function with debug
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  
+
+
   // Auth & Organization State
   const [session, setSession] = useState(null);
   const [organization, setOrganization] = useState(null);
@@ -160,7 +172,7 @@ function Dashboard() {
     // Year selector state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
-    // Computed Data
+    
   // Computed Data
   const trendData = useMemo(() => {
     if (!historyData.length) return [];
@@ -1086,7 +1098,7 @@ const renderDashboard = () => (
   );
 
   // --- Main Render ---
-  return (
+      return (
     <div className="App">
       <header className="App-header">
         <div className="header-top">
@@ -1097,16 +1109,22 @@ const renderDashboard = () => (
           </div>
         </div>
         
-        <nav className="main-nav">
+        <nav className={`main-nav ${isMenuOpen ? 'menu-open' : ''}`}>
           <button 
             className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => {
+              setActiveTab('dashboard');
+              setIsMenuOpen(false);
+            }}
           >
             📊 Dashboard
           </button>
           <button 
             className={`nav-btn ${activeTab === 'upload' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('upload')}
+            onClick={() => {
+              setActiveTab('upload');
+              setIsMenuOpen(false);
+            }}
           >
             ⬆️ Upload Data
           </button>
@@ -1114,7 +1132,8 @@ const renderDashboard = () => (
             className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} 
             onClick={() => { 
               setActiveTab('history'); 
-              if (organization) fetchHistory(); 
+              if (organization) fetchHistory();
+              setIsMenuOpen(false);
             }}
           >
             📈 History & Trends
@@ -1122,19 +1141,38 @@ const renderDashboard = () => (
           {userRole === 'admin' && (
             <button 
               className={`nav-btn ${activeTab === 'team' ? 'active' : ''}`} 
-              onClick={() => setActiveTab('team')}
+              onClick={() => {
+                setActiveTab('team');
+                setIsMenuOpen(false);
+              }}
             >
               👥 Team Management
             </button>
           )}
           <button 
             className={`nav-btn ${activeTab === 'assets' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('assets')}
+            onClick={() => {
+              setActiveTab('assets');
+              setIsMenuOpen(false);
+            }}
           >
             🏢 Assets
           </button>
+          
+          {/* Hamburger Toggle Button */}
+          <button 
+            className="hamburger-toggle"
+            onClick={toggleMenu}
+            aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+          >
+            {isMenuOpen ? '✕' : '☰'}
+          </button>
         </nav>
       </header>
+
+
+
+
 
       <div className="container">
         {activeTab === 'dashboard' && renderDashboard()}
