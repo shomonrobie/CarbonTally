@@ -101,10 +101,10 @@ function DashboardLayout({ children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {children}
-      <footer className=".footer-bottom-dashboard">
-        <div className="footer-bottom-content">
+      <footer className="footer-bottom-dashboard">
+        <div className="footer-bottom-dashboard-content">
           <p>© {new Date().getFullYear()} CarbonTally (UK) Ltd. All rights reserved.</p>
-          <div className="footer-legal-links">
+          <div className="footer-legal-dashboard-links">
             <Link to="/privacy">Privacy Policy</Link>
             <Link to="/cookies">Cookie Policy</Link>
             <Link to="/terms">Terms</Link>

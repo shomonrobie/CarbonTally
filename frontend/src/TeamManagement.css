@@ -1,14 +1,43 @@
+/* ============================================
+   TEAM MANAGEMENT - RESPONSIVE STYLES
+   Mobile-First Design
+   ============================================ */
+
 .team-container {
   background: white;
   padding: 2rem;
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-  max-width: 800px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
-.team-container h2 { margin-top: 0; color: #1e293b; }
-.team-container h3 { color: #475569; margin-bottom: 1rem; font-size: 1.1rem; }
+.team-container h2 {
+  margin-top: 0;
+  color: #1e293b;
+  font-size: 1.8rem;
+  margin-bottom: 1.5rem;
+}
 
+.team-container h3 {
+  color: #334155;
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+/* ===== ACCESS DENIED ===== */
+.access-denied {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  font-weight: 600;
+  max-width: 600px;
+  margin: 2rem auto;
+}
+
+/* ===== INVITE SECTION ===== */
 .invite-section {
   background: #f8fafc;
   padding: 1.5rem;
@@ -17,57 +46,145 @@
   border: 1px solid #e2e8f0;
 }
 
+.invite-section h3 {
+  margin-top: 0;
+}
+
 .invite-form {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
 }
 
-.invite-form input, .invite-form select {
+.invite-form input,
+.invite-form select {
+  flex: 1;
+  min-width: 200px;
   padding: 0.75rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.95rem;
+  background: white;
+  transition: border-color 0.2s;
+  min-height: 44px;
 }
 
-.invite-form input { flex: 1; }
+.invite-form input:focus,
+.invite-form select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
 
 .invite-btn {
   background: #2563eb;
   color: white;
   border: none;
-  padding: 0.75rem 1.5rem;
+  padding: 0.75rem 2rem;
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.invite-btn:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.invite-btn:active {
+  transform: translateY(0);
 }
 
 .invite-hint {
-  font-size: 0.85rem;
-  color: #64748b;
-  margin: 0;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 1rem;
+  border-radius: 6px;
+  margin: 1rem 0 0 0;
+  border-left: 4px solid #2563eb;
 }
 
+/* ===== SUCCESS & ERROR MESSAGES ===== */
+.success-msg {
+  background: #dcfce7;
+  color: #166534;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  font-weight: 500;
+  border: 1px solid #86efac;
+}
+
+.error-msg {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  font-weight: 500;
+  border: 1px solid #fca5a5;
+}
+
+/* ===== MEMBERS & INVITES SECTIONS ===== */
+.members-section,
+.invites-section {
+  margin-top: 2rem;
+}
+
+.members-section h3,
+.invites-section h3 {
+  margin-top: 0;
+}
+
+/* ===== TABLE STYLES ===== */
 .team-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 2rem;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.team-table th, .team-table td {
-  padding: 1rem;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+.team-table thead {
+  background: #f1f5f9;
 }
 
 .team-table th {
-  background: #f1f5f9;
+  padding: 0.75rem 1rem;
+  text-align: left;
   font-weight: 600;
   color: #475569;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e2e8f0;
 }
 
+.team-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.team-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.team-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ===== ROLE BADGES ===== */
 .role-badge {
+  display: inline-block;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   font-size: 0.8rem;
@@ -75,22 +192,362 @@
   text-transform: capitalize;
 }
 
-.role-badge.admin { background: #fee2e2; color: #991b1b; }
-.role-badge.editor { background: #fef3c7; color: #92400e; }
-.role-badge.viewer { background: #dbeafe; color: #1e40af; }
-
-.remove-btn, .cancel-btn {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 0.4rem 0.8rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85rem;
+.role-badge.admin {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
-.cancel-btn { background: #f59e0b; }
+.role-badge.editor {
+  background: #d1fae5;
+  color: #065f46;
+}
 
-.success-msg { background: #dcfce7; color: #166534; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
-.error-msg { background: #fee2e2; color: #991b1b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
-.access-denied { text-align: center; padding: 2rem; color: #ef4444; font-weight: 600; }
+.role-badge.viewer {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.remove-btn,
+.cancel-btn {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 36px;
+}
+
+.remove-btn {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.remove-btn:hover {
+  background: #fecaca;
+  transform: scale(1.05);
+}
+
+.remove-btn:active {
+  transform: scale(0.95);
+}
+
+.cancel-btn {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.cancel-btn:hover {
+  background: #e2e8f0;
+  transform: scale(1.05);
+}
+
+.cancel-btn:active {
+  transform: scale(0.95);
+}
+
+/* ===== SKELETON LOADING ===== */
+.skeleton {
+  background: #f1f5f9;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.4) 20%,
+    rgba(255, 255, 255, 0.7) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+.skeleton-table-container {
+  padding: 0.5rem;
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINTS
+   ============================================ */
+
+/* Tablet */
+@media (max-width: 768px) {
+  .team-container {
+    padding: 1.5rem;
+  }
+
+  .team-container h2 {
+    font-size: 1.5rem;
+  }
+
+  .invite-section {
+    padding: 1.25rem;
+  }
+
+  .invite-form {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .invite-form input,
+  .invite-form select {
+    min-width: 100%;
+    width: 100%;
+    padding: 0.7rem;
+  }
+
+  .invite-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Table becomes horizontally scrollable */
+  .members-section,
+  .invites-section {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .team-table {
+    min-width: 500px;
+  }
+
+  .team-table th,
+  .team-table td {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .role-badge {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+  }
+
+  .remove-btn,
+  .cancel-btn {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+  .team-container {
+    padding: 1rem;
+    border-radius: 8px;
+  }
+
+  .team-container h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .team-container h3 {
+    font-size: 1rem;
+  }
+
+  .invite-section {
+    padding: 1rem;
+  }
+
+  .invite-form input,
+  .invite-form select {
+    padding: 0.6rem;
+    font-size: 0.9rem;
+  }
+
+  .invite-btn {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .invite-hint {
+    font-size: 0.8rem;
+    padding: 0.75rem;
+  }
+
+  .team-table {
+    min-width: 400px;
+  }
+
+  .team-table th,
+  .team-table td {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .role-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+  }
+
+  .remove-btn,
+  .cancel-btn {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    min-height: 32px;
+  }
+
+  .success-msg,
+  .error-msg {
+    font-size: 0.85rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .access-denied {
+    padding: 1.5rem;
+    font-size: 0.95rem;
+    margin: 1rem;
+  }
+}
+
+/* Touch-friendly improvements */
+@media (pointer: coarse) {
+  .invite-btn,
+  .remove-btn,
+  .cancel-btn {
+    min-height: 44px !important;
+  }
+
+  .invite-form input,
+  .invite-form select {
+    min-height: 44px !important;
+    font-size: 16px !important; /* Prevents iOS zoom */
+  }
+}
+
+/* ===== DARK MODE SUPPORT (Optional) ===== */
+@media (prefers-color-scheme: dark) {
+  .team-container {
+    background: #1e293b;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .team-container h2,
+  .team-container h3 {
+    color: #f1f5f9;
+  }
+
+  .invite-section {
+    background: #334155;
+    border-color: #475569;
+  }
+
+  .invite-form input,
+  .invite-form select {
+    background: #1e293b;
+    color: #f1f5f9;
+    border-color: #475569;
+  }
+
+  .invite-form input:focus,
+  .invite-form select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  }
+
+  .invite-hint {
+    background: #1e293b;
+    color: #cbd5e1;
+  }
+
+  .team-table {
+    background: #1e293b;
+  }
+
+  .team-table thead {
+    background: #334155;
+  }
+
+  .team-table th {
+    color: #94a3b8;
+    border-bottom-color: #475569;
+  }
+
+  .team-table td {
+    color: #e2e8f0;
+    border-bottom-color: #334155;
+  }
+
+  .team-table tbody tr:hover {
+    background: #334155;
+  }
+
+  .role-badge.admin {
+    background: #1e40af;
+    color: #93c5fd;
+  }
+
+  .role-badge.editor {
+    background: #065f46;
+    color: #6ee7b7;
+  }
+
+  .role-badge.viewer {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .remove-btn {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .remove-btn:hover {
+    background: #991b1b;
+  }
+
+  .cancel-btn {
+    background: #374151;
+    color: #9ca3af;
+  }
+
+  .cancel-btn:hover {
+    background: #4b5563;
+  }
+
+  .success-msg {
+    background: #065f46;
+    color: #6ee7b7;
+    border-color: #059669;
+  }
+
+  .error-msg {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border-color: #ef4444;
+  }
+
+  .access-denied {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+}
