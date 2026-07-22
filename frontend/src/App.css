@@ -106,7 +106,7 @@ body {
   color: var(--gray-600);
   font-size: 0.9rem;
 }
-
+/* 
 /* Main Navigation (Dashboard) */
 .main-nav {
   display: flex;
@@ -114,8 +114,8 @@ body {
   margin-top: 1.5rem;
   border-bottom: 2px solid var(--gray-200);
   padding-bottom: 0;
-}
-
+} */
+/* 
 .nav-btn {
   background: none;
   border: none;
@@ -136,7 +136,7 @@ body {
 .nav-btn.active {
   color: var(--blue);
   border-bottom: 3px solid var(--blue);
-}
+} */
 
 /* ===== CONTAINER ===== */
 .container {
@@ -2315,6 +2315,30 @@ tr:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: var(--primary-light);
 }
+.report-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.report-selector select {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: white;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 150px;
+  min-height: 44px;
+  transition: border-color 0.2s;
+}
+
+.report-selector select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 
 /* ============================================
    MOBILE RESPONSIVE - CONSOLIDATED
@@ -2348,10 +2372,109 @@ tr:hover {
     margin: 0 auto 2rem;
   }
 }
+/* Debug: Show tablet state */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .main-nav {
+    gap: 0.3rem;
+  }
+  
+  .nav-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+  }
+  
+  /* Hide hamburger on tablets */
+  .hamburger-toggle {
+    display: none !important;
+  }
+  
+  /* Show all nav buttons normally on tablets */
+  .main-nav .nav-btn {
+    display: block !important;
+    width: auto;
+    flex: 0 1 auto;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+  }
+  
+  .main-nav .nav-btn:first-of-type {
+    flex: 0 1 auto;
+  }
+  
+  .main-nav .nav-btn.active {
+    border-bottom: 3px solid var(--blue);
+  }
+  
+  .main-nav.menu-open .nav-btn {
+    display: block !important;
+  }
+
+}
 
 /* Mobile */
 @media (max-width: 768px) {
   /* ===== HEADER ===== */
+  /* Show hamburger on mobile */
+  .hamburger-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+
+  .hero-gif {
+    max-width: 100%;
+  }
+
+  /* Hide all nav buttons except first one by default */
+  .main-nav .nav-btn {
+    display: none;
+    width: 100%;
+    text-align: center;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    border-bottom: none;
+    margin-bottom: 0;
+    order: 1;
+    white-space: normal;
+  }
+
+  /* Always show the first button (Dashboard) */
+    .main-nav .nav-btn:first-of-type {
+    display: block;
+    flex: 1;
+    order: 0;
+    text-align: left;
+  }
+
+
+  /* Show all buttons when menu is open */
+  .main-nav.menu-open .nav-btn {
+    display: block;
+  }
+
+  /* Active state for mobile */
+  .main-nav.menu-open .nav-btn.active {
+    background: #eff6ff;
+    color: var(--blue);
+    border-bottom: none;
+    border-left: 3px solid var(--blue);
+  }
+
+  .main-nav.menu-open .nav-btn:hover {
+    background: var(--gray-100);
+  }
+
+  /* Hamburger stays visible */
+  .main-nav.menu-open .hamburger-toggle {
+    display: flex;
+    width: auto;
+    order: 999;
+    margin-left: auto;
+  }
+
+  
   .App-header {
     padding: 1rem;
   }
@@ -2381,52 +2504,63 @@ tr:hover {
     width: 100%;
   }
   
-  /* ===== NAVIGATION (Dashboard) ===== */
+  
   .main-nav {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding: 0.5rem 0;
-    position: relative;
-  }
-  
-  .main-nav .nav-btn {
-    display: none;
-    width: 100%;
-    text-align: center;
-    padding: 0.75rem;
-    font-size: 0.9rem;
-    border-radius: 6px;
-  }
-  
-  .main-nav .nav-btn:first-child {
-    display: block;
-    flex: 1;
-  }
-  
-  .main-nav::before {
-    content: '☰';
-    font-size: 1.5rem;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    background: var(--gray-100);
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: auto;
-    min-height: var(--touch-target);
-    min-width: var(--touch-target);
-  }
-  
-  .main-nav.menu-open .nav-btn {
-    display: block;
-  }
-  
-  .main-nav.menu-open::before {
-    content: '✕';
-    background: var(--gray-200);
-  }
-  
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  border-bottom: 2px solid var(--gray-200);
+  padding-bottom: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  position: relative;
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.nav-btn:hover {
+  color: var(--blue);
+}
+
+.nav-btn.active {
+  color: var(--blue);
+  border-bottom: 3px solid var(--blue);
+}
+.hamburger-toggle {
+  /* This will help us see if the button is rendering */
+  background: var(--gray-100);
+  border: none;
+  font-size: 1.5rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  transition: var(--transition);
+  margin-left: auto;
+  order: 999;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+
+
+.hamburger-toggle:hover {
+  background: var(--gray-200);
+}
+
   /* ===== LANDING NAVIGATION ===== */
   .main-header {
     padding: 0 1rem;
@@ -2493,7 +2627,14 @@ tr:hover {
     width: 100%;
     gap: 0.5rem;
   }
+  .report-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
   
+  .report-selector select {
+    width: 100%;
+  }
   .dashboard-header select {
     width: 100%;
     padding: 0.75rem;
@@ -2920,7 +3061,10 @@ tr:hover {
     font-size: 0.85rem;
     padding: 0.6rem;
   }
-  
+  .hamburger-toggle {
+    font-size: 1.25rem;
+    padding: 0.4rem 0.75rem;
+  }
   .main-nav::before {
     font-size: 1.25rem;
     padding: 0.4rem 0.75rem;
@@ -3003,6 +3147,10 @@ tr:hover {
 @media (pointer: coarse) {
   button,
   .nav-btn,
+  .hamburger-toggle {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
   .tab-btn,
   .type-option,
   select,

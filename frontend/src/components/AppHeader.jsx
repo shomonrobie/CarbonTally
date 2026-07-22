@@ -1,3 +1,5 @@
+// src/components/AppHeader.js - Add mobile menu toggle
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -6,6 +8,7 @@ export default function AppHeader({ showAuthButtons = true }) {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -43,37 +46,57 @@ export default function AppHeader({ showAuthButtons = true }) {
     await supabase.auth.signOut();
     setSession(null);
     setOrganization(null);
+    setIsMobileMenuOpen(false);
     navigate('/');
   };
 
   const handleLogin = () => {
+    setIsMobileMenuOpen(false);
     navigate('/login');
   };
 
   const handleGetStarted = () => {
+    setIsMobileMenuOpen(false);
     navigate('/login');
   };
 
   const handleDashboard = () => {
+    setIsMobileMenuOpen(false);
     navigate('/dashboard');
+  };
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
   return (
     <header className="main-header">
       <div className="header-container">
         <div className="header-left">
-          <Link to="/" className="logo">
+          <Link to="/" className="logo" onClick={() => setIsMobileMenuOpen(false)}>
             <span className="logo-icon logo-icon-animated">🌱</span>
             <span className="logo-text logo-text-animated">CarbonTally</span>
           </Link>
         </div>
         
-        <nav className="main-nav">
+        {/* Mobile Menu Toggle */}
+        <button 
+          className="mobile-menu-toggle"
+          onClick={toggleMobileMenu}
+          aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+        >
+          <span className="hamburger-line"></span>
+          <span className="hamburger-line"></span>
+          <span className="hamburger-line"></span>
+        </button>
+
+        {/* Navigation */}
+        <nav className={`landing-nav ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
           <ul className="nav-links">
-            <li><a href="/#features">Features</a></li>
-            <li><a href="/#pricing">Pricing</a></li>
-            <li><Link to="/about">About</Link></li>
-            <li><Link to="/carbon-reduction-plan">Carbon Plan</Link></li>
+            <li><a href="/#features" onClick={() => setIsMobileMenuOpen(false)}>Features</a></li>
+            <li><a href="/#pricing" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a></li>
+            <li><Link to="/about" onClick={() => setIsMobileMenuOpen(false)}>About</Link></li>
+            <li><Link to="/carbon-reduction-plan" onClick={() => setIsMobileMenuOpen(false)}>Carbon Plan</Link></li>
           </ul>
         </nav>
         
