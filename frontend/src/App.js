@@ -171,8 +171,10 @@ function Dashboard() {
 
     // Year selector state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
+
+
   
-    
   // Computed Data
   const trendData = useMemo(() => {
     if (!historyData.length) return [];
@@ -194,6 +196,16 @@ function Dashboard() {
     setFlaggedData(flagged);
     setCleanData(clean);
   }, [data]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (reportDropdownOpen && !event.target.closest('.dashboard-header')) {
+        setReportDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [reportDropdownOpen]);
 
   // Fetch organization and assets on mount
   useEffect(() => {
@@ -385,6 +397,14 @@ function Dashboard() {
       }
     }
   }, [availableYears]);
+    // 👇 AUTO-SELECT MOST RECENT YEAR
+  useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears, selectedYear]);
+
+
   const fetchHistory = async () => {
     if (!organization) {
       console.log("⏳ Waiting for organization data to load before fetching history...");
@@ -888,104 +908,166 @@ function Dashboard() {
 
 const renderDashboard = () => (
   <div className="view-section">
-    <div className="dashboard-header">
-      <h2>Executive Overview</h2>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        {/* Year Selector - Show even if no data to help debug */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label htmlFor="reportYear" style={{ fontWeight: '600', color: '#475569' }}>
-            Report Year:
-          </label>
-          <select
-            id="reportYear"
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '6px',
-              border: '1px solid #cbd5e1',
-              backgroundColor: 'white',
-              fontWeight: '500',
-              cursor: 'pointer',
-              minWidth: '100px'
-            }}
-          >
-            {availableYears.length > 0 ? (
-              availableYears.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))
-            ) : (
-              <option value={new Date().getFullYear()}>No data</option>
-            )}
-          </select>
-        </div>
+    
+      <div className="dashboard-header">
+        <h2>Executive Overview</h2>
         
-        <button 
-          onClick={async () => {
-            if (availableYears.length === 0) {
-              toast.error('No data available to generate a report. Please upload data first.');
-              return;
-            }
-            
-            try {
-              setLoading(true);
-              const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-secr-report`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  organization_id: organization.id,
-                  reporting_year: selectedYear
-                })
-              });
-              
-              const result = await response.json();
-              
-              if (result.status === 'success') {
-                const binaryString = window.atob(result.pdf_base64);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* 1. SMART YEAR SELECTOR */}
+          {availableYears.length > 0 ? (
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              style={{
+                padding: '0.75rem 1rem',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                backgroundColor: 'white',
+                color: '#0f172a'
+              }}
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year} {year === availableYears[0] ? '(Latest)' : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ padding: '0.75rem 1rem', color: '#64748b', fontSize: '0.95rem' }}>
+              No data available yet
+            </div>
+          )}
+          
+          {/* 2. REPORT GENERATION DROPDOWN */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
+              disabled={loading || availableYears.length === 0}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: availableYears.length > 0 ? '#16a34a' : '#94a3b8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                cursor: loading || availableYears.length === 0 ? 'not-allowed' : 'pointer',
+                fontSize: '0.95rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              {loading ? '⏳ Generating...' : '📥 Generate Reports'}
+              <span style={{ fontSize: '0.8rem' }}>▼</span>
+            </button>
+
+            {/* Dropdown Menu */}
+            {reportDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '0.5rem',
+                backgroundColor: 'white',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                zIndex: 100,
+                minWidth: '280px',
+                overflow: 'hidden'
+              }}>
+                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase' }}>
+                    Generate Report for {selectedYear}
+                  </span>
+                </div>
                 
-                const blob = new Blob([bytes], { type: 'application/pdf' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = result.filename || `SECR_Report_${selectedYear}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                toast.success(`Report for ${selectedYear} downloaded successfully!`);
-              } else {
-                toast.error('Failed to generate report');
-              }
-            } catch (error) {
-              console.error('Report generation error:', error);
-              toast.error('Failed to generate report');
-            } finally {
-              setLoading(false);
-            }
-          }}
-          disabled={loading || availableYears.length === 0}
-          className="export-button"
-          style={{
-            padding: '0.75rem 1.5rem',
-            backgroundColor: availableYears.length === 0 ? '#94a3b8' : '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: '600',
-            cursor: (loading || availableYears.length === 0) ? 'not-allowed' : 'pointer',
-            fontSize: '0.95rem',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {loading ? '⏳ Generating...' : '📥 Export SECR Report'}
-        </button>
+                {[
+                  { type: 'SECR', label: '🇬🇧 SECR Compliance Report (PDF)', desc: 'UK Streamlined Energy & Carbon Reporting' },
+                  { type: 'CSRD', label: '🇪🇺 CSRD / ESRS Report (PDF)', desc: 'EU Corporate Sustainability Reporting' },
+                  { type: 'ISSB', label: '🌍 ISSB / IFRS S2 Report (PDF)', desc: 'International Climate Disclosures' },
+                  { type: 'AUDITOR_EXCEL', label: '📊 Auditor Data Export (Excel)', desc: 'Granular GHG Protocol mapping for Big 4' }
+                ].map((report) => (
+                  <button
+                    key={report.type}
+                    onClick={async () => {
+                      setReportDropdownOpen(false);
+                      setLoading(true);
+                      try {
+                        const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-sustainability-report`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            organization_id: organization.id,
+                            reporting_year: selectedYear, // 👈 Passes the exact year selected
+                            report_type: report.type
+                          })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.status === 'success') {
+                          const isExcel = report.type === 'AUDITOR_EXCEL';
+                          const mimeType = isExcel 
+                            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                            : 'application/pdf';
+                          
+                          const binaryString = window.atob(isExcel ? result.file_base64 : result.pdf_base64);
+                          const bytes = new Uint8Array(binaryString.length);
+                          for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                          }
+                          
+                          const blob = new Blob([bytes], { type: mimeType });
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = result.filename;
+                          document.body.appendChild(a);
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          document.body.removeChild(a);
+                          
+                          toast.success(`${report.type} Report for ${selectedYear} downloaded!`);
+                        } else {
+                          toast.error(result.detail || 'Failed to generate report');
+                        }
+                      } catch (error) {
+                        console.error('Report generation error:', error);
+                        toast.error('Failed to generate report');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.85rem 1rem',
+                      backgroundColor: 'white',
+                      border: 'none',
+                      borderBottom: '1px solid #f1f5f9',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                  >
+                    <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
+                      {report.label}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {report.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
     <div className="summary-cards">
       <div className="card highlight">
         <h3>Total Lifetime Emissions</h3>
