@@ -12,7 +12,7 @@ export default function AboutUs() {
         <div className="policy-page-header">
           <div className="about-hero">
             <div className="about-logo-container">
-              <span className="logo-icon" style={{ fontSize: '3rem' }}>🌿</span>
+              <span className="logo-icon" style={{ fontSize: '3rem' }}>🌱</span>
               <span className="logo-text" style={{ fontSize: '2.5rem', fontWeight: 700 }}>
                 CarbonTally
               </span>

@@ -21,6 +21,7 @@ import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
 import MobileMenu from './components/MobileMenu';
+import CompanyNamePrompt from './CompanyNamePrompt'; // We'll create this
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -120,22 +121,18 @@ function DashboardLayout({ children }) {
 function Dashboard() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);  
-  
-  
 
   // Toggle menu function with debug
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
 
-  
-
-
   // Auth & Organization State
   const [session, setSession] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  
+    const [showCompanyPrompt, setShowCompanyPrompt] = useState(false);
+
   // UI State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showBulkUpload, setShowBulkUpload] = useState(false);
@@ -173,8 +170,205 @@ function Dashboard() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
 
+    const fetchOrgAndAssets = async (userId) => {
+    try {
+      console.log("🔍 Fetching organization and assets for user:", userId);
+      
+      // Fetch organization membership
+      const { data: orgData, error: orgError } = await supabase
+        .from('organization_members')
+        .select(`
+          role, 
+          organization_id, 
+          organizations (
+            id, 
+            name, 
+            company_number,
+            created_at
+          )
+        `)
+        .eq('user_id', userId)
+        .single();
 
+      if (orgError) {
+        // If no organization found, check user metadata
+        if (orgError.code === 'PGRST116') {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.user_metadata?.company_name) {
+            // User has company_name in metadata but not in org table
+            console.log("📝 User has company_name in metadata, creating organization...");
+            await createOrganizationFromMetadata(user);
+            return;
+          }
+        }
+        console.error("❌ Error fetching organization:", orgError);
+        return;
+      }
+
+      if (orgData?.organizations) {
+        setOrganization(orgData.organizations);
+        setUserRole(orgData.role);
+        
+        // Fetch dashboard stats
+        await fetchDashboardStats(orgData.organizations.id);
+        
+        // Fetch assets
+        const { data: assetData, error: assetError } = await supabase
+          .from('assets')
+          .select('id, name, type, facility_id')
+          .eq('organization_id', orgData.organizations.id);
+          
+        if (assetError) {
+          console.error("❌ Error fetching assets:", assetError);
+        } else {
+          setAssets(assetData || []);
+        }
+
+        // Fetch facilities
+        const { data: facData, error: facError } = await supabase
+          .from('facilities')
+          .select('id, name, address, facility_type')
+          .eq('organization_id', orgData.organizations.id);
+        
+        if (facError) {
+          console.error("❌ Error fetching facilities:", facError);
+        } else {
+          setFacilities(facData || []);
+        }
+      }
+    } catch (error) {
+      console.error("❌ Error in fetchOrgAndAssets:", error);
+    }
+  };
+
+  // ✅ Helper function to create organization from metadata
+  const createOrganizationFromMetadata = async (user) => {
+    try {
+      const companyName = user.user_metadata.company_name;
+      
+      // Create organization
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert({
+          name: companyName,
+          created_by: user.id,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (orgError) {
+        console.error("❌ Error creating organization:", orgError);
+        return;
+      }
+
+      // Add user as admin member
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert({
+          organization_id: org.id,
+          user_id: user.id,
+          role: 'admin'
+        });
+
+      if (memberError) {
+        console.error("❌ Error adding member:", memberError);
+        return;
+      }
+
+      setOrganization(org);
+      setUserRole('admin');
+      
+      // Update user metadata to include organization_id
+      await supabase.auth.updateUser({
+        data: { 
+          organization_id: org.id,
+          organization_name: org.name
+        }
+      });
+
+      console.log("✅ Organization created from metadata:", org.name);
+      
+    } catch (error) {
+      console.error("❌ Error in createOrganizationFromMetadata:", error);
+    }
+  };
+
+  useEffect(() => {
+    const checkUserOrganization = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Check if user has company_name in metadata
+        const hasCompanyName = user.user_metadata?.company_name;
+        
+        // Check if user has organization in organizations table
+        if (!hasCompanyName) {
+          // Show company name prompt for new Google users
+          setShowCompanyPrompt(true);
+        } else {
+          // User already has organization
+          setShowCompanyPrompt(false);
+          // Fetch organization details
+          await fetchOrgAndAssets(user.id);
+        }
+      }
+    };
+    
+    checkUserOrganization();
+  }, []);
   
+  const handleSaveCompanyName = async (orgData) => {
+    try {
+      // Update user metadata
+      const { data, error } = await supabase.auth.updateUser({
+        data: { 
+          company_name: orgData.name,
+          organization_name: orgData.name,
+          // Store that this came from Google if needed
+          auth_provider: 'google'
+        }
+      });
+      
+      if (error) throw error;
+      
+      // If you have an organizations table, create organization
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert({
+          name: orgData.name,
+          created_by: data.user.id,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+        
+      if (orgError && orgError.code !== '23505') { // Ignore duplicate errors
+        console.error('Error creating organization:', orgError);
+      }
+      
+      // Add user as member
+      if (org) {
+        await supabase
+          .from('organization_members')
+          .insert({
+            organization_id: org.id,
+            user_id: data.user.id,
+            role: 'admin'
+          });
+        
+        setOrganization(org);
+      }
+      
+      setShowCompanyPrompt(false);
+      toast.success('✅ Organization saved successfully!');
+      
+    } catch (error) {
+      console.error('Error saving organization:', error);
+      toast.error('❌ Failed to save organization');
+    }
+  };
+
   // Computed Data
   const trendData = useMemo(() => {
     if (!historyData.length) return [];
@@ -196,6 +390,17 @@ function Dashboard() {
     setFlaggedData(flagged);
     setCleanData(clean);
   }, [data]);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && !user.user_metadata.company_name) {
+        // Prompt user to add company name
+        setShowCompanyPrompt(true);
+      }
+    };
+    getUser();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1332,12 +1537,30 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Handle initial session
     supabase.auth.getSession().then(() => {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    // Handle OAuth callback (for Google sign-in)
+    const handleOAuthCallback = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (data?.session && !error) {
+        // Check if user has organization
+        const user = data.session.user;
+        if (!user.user_metadata?.company_name) {
+          // Will be handled by Dashboard component
+          console.log('New Google user - needs organization setup');
+        }
+      }
+    };
+    handleOAuthCallback();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setLoading(false);
+      if (event === 'SIGNED_IN') {
+        console.log('User signed in via:', session?.user?.app_metadata?.provider || 'email');
+      }
     });
 
     return () => subscription.unsubscribe();

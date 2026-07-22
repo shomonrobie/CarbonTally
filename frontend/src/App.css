@@ -51,6 +51,63 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+/* Google Sign-In Button */
+.google-button {
+  width: 100%;
+  padding: 12px;
+  background: #ffffff;
+  color: #333;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  margin-bottom: 20px;
+}
+
+.google-button:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #ccc;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.google-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.divider span {
+  padding: 0 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+
 
 /* ===== APP CONTAINER ===== */
 .App {
@@ -107,36 +164,8 @@ body {
   font-size: 0.9rem;
 }
 /* 
-/* Main Navigation (Dashboard) */
-.main-nav {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  border-bottom: 2px solid var(--gray-200);
-  padding-bottom: 0;
-} */
-/* 
-.nav-btn {
-  background: none;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--gray-500);
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: var(--transition);
-}
 
-.nav-btn:hover {
-  color: var(--blue);
-}
 
-.nav-btn.active {
-  color: var(--blue);
-  border-bottom: 3px solid var(--blue);
-} */
 
 /* ===== CONTAINER ===== */
 .container {
@@ -876,11 +905,11 @@ tr:hover {
 
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(3, 1fr); /* Force exactly 3 columns */
   gap: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  margin-top: 2rem;
 }
+
 
 .feature-card {
   background: white;
@@ -2372,6 +2401,64 @@ tr:hover {
     margin: 0 auto 2rem;
   }
 }
+
+.main-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  border-bottom: 2px solid var(--gray-200);
+  padding-bottom: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  position: relative;
+}
+.nav-btn {
+  background: none;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--transition);
+  white-space: nowrap;
+  min-height: 44px;
+}
+
+.nav-btn:hover {
+  color: var(--blue);
+}
+
+.nav-btn.active {
+  color: var(--blue);
+  border-bottom: 3px solid var(--blue);
+}
+
+/* Hamburger - Hidden by default on ALL screen sizes */
+.hamburger-toggle {
+  display: none !important;
+  background: var(--gray-100);
+  border: none;
+  font-size: 1.5rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  transition: var(--transition);
+  margin-left: auto;
+  order: 999;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.hamburger-toggle:hover {
+  background: var(--gray-200);
+}
+
+
 /* Debug: Show tablet state */
 @media (min-width: 769px) and (max-width: 1024px) {
   .main-nav {
@@ -2416,7 +2503,7 @@ tr:hover {
   /* ===== HEADER ===== */
   /* Show hamburger on mobile */
   .hamburger-toggle {
-    display: flex;
+    display: flex !important;
     align-items: center;
     justify-content: center;
   }
@@ -2537,22 +2624,6 @@ tr:hover {
 .nav-btn.active {
   color: var(--blue);
   border-bottom: 3px solid var(--blue);
-}
-.hamburger-toggle {
-  /* This will help us see if the button is rendering */
-  background: var(--gray-100);
-  border: none;
-  font-size: 1.5rem;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  border-radius: 6px;
-  min-height: 44px;
-  min-width: 44px;
-  transition: var(--transition);
-  margin-left: auto;
-  order: 999;
-  font-weight: 600;
-  color: var(--gray-700);
 }
 
 

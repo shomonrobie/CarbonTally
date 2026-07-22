@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// Login.jsx
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
@@ -12,6 +13,30 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        navigate('/dashboard');
+      }
+    };
+    getUser();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          navigate('/dashboard');
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -29,7 +54,7 @@ function Login() {
             data: {
               company_name: companyName,
             },
-            emailRedirectTo: window.location.origin + '/login', // Redirect back to login after confirmation
+            emailRedirectTo: window.location.origin + '/login',
           },
         });
 
@@ -51,16 +76,12 @@ function Login() {
         });
 
         if (error) throw error;
-        
-        // Success - navigate to dashboard
         navigate('/dashboard');
       }
     } catch (err) {
       console.error("FULL ERROR OBJECT:", err);
       
-      // Better error messages
       let errorMessage = err.message;
-      
       if (err.message === 'Invalid login credentials') {
         errorMessage = '❌ Invalid email or password. Please try again.';
       } else if (err.message.includes('Email not confirmed')) {
@@ -68,9 +89,37 @@ function Login() {
       } else if (err.message.includes('User not found')) {
         errorMessage = '❌ No account found with this email. Please sign up first.';
       }
-      
       setError(errorMessage);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🆕 Google Sign-In Handler with Organization Support
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + '/dashboard',
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          // This passes through to user metadata
+          scopes: 'email profile',
+        },
+      });
+
+      if (error) throw error;
+      
+      console.log('Google sign-in initiated');
+    } catch (err) {
+      console.error('Google sign-in error:', err);
+      setError('❌ Failed to sign in with Google. Please try again.');
       setLoading(false);
     }
   };
@@ -78,9 +127,27 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>🌱CarbonTally</h1>
+        <h1>🌱 CarbonTally</h1>
         <p className="tagline">Automated Carbon Accounting for UK Businesses</p>
         
+        {/* 🆕 Google Sign-In Button */}
+        <button 
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          className="google-button"
+        >
+          <img 
+            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+            alt="Google"
+            className="google-icon"
+          />
+          {loading ? 'Please wait...' : 'Continue with Google'}
+        </button>
+
+        <div className="divider">
+          <span>or</span>
+        </div>
+
         <form onSubmit={handleAuth} className="auth-form">
           <div className="form-group">
             <label>Email</label>
