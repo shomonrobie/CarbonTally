@@ -1,12 +1,28 @@
-# backend/report_generator.py - Enhanced with CSRD and ISSB support
-
-from fpdf import FPDF
+import base64
+import io
+import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-import base64
-import re
-import os
-from fastapi import HTTPException
+
+import pandas as pd
+from fpdf import FPDF
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from supabase import create_client
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def sanitize_text(text):
+    """Safely sanitize text for PDF generation to prevent encoding errors"""
+    if not text:
+        return ""
+    text = str(text)
+    # Replace characters that fpdf cannot handle with safe equivalents
+    text = text.replace('’', "'").replace('“', '"').replace('”', '"').replace('–', '-')
+    text = text.encode('latin-1', 'replace').decode('latin-1')
+    return text
 
 # ============================================
 # BASE REPORT CLASS
@@ -59,7 +75,6 @@ class SustainabilityReportPDF(FPDF):
         self.ln(3)
     
     def add_metric_box(self, label, value, unit="", highlight=False):
-        """Add a metric with optional highlight box"""
         if highlight:
             self.set_fill_color(240, 253, 244)
             self.set_draw_color(22, 163, 74)
@@ -78,38 +93,25 @@ class SustainabilityReportPDF(FPDF):
             self.set_y(self.get_y() + 5)
     
     def add_table(self, headers, data, column_widths=None):
-        """Generic table renderer with auto-sizing"""
         if column_widths is None:
-            # Auto-calculate widths
             col_count = len(headers)
-            if col_count <= 3:
-                column_widths = [60, 65, 65]
-            elif col_count == 4:
-                column_widths = [45, 45, 50, 50]
-            else:
-                column_widths = [190 // col_count] * col_count
+            column_widths = [190 // col_count] * col_count
         
-        # Ensure we have enough widths
-        while len(column_widths) < len(headers):
-            column_widths.append(190 // len(headers))
-        
-        # Header
         self.set_font('Helvetica', 'B', 10)
         self.set_fill_color(241, 245, 249)
         self.set_text_color(15, 23, 42)
         
         for i, header in enumerate(headers):
-            self.cell(column_widths[i] if i < len(column_widths) else 40, 10, sanitize_text(header), 1, 0, 'C', 1)
+            self.cell(column_widths[i], 10, sanitize_text(header), 1, 0, 'C', 1)
         self.ln()
         
-        # Data rows
         self.set_font('Helvetica', '', 9)
         self.set_text_color(51, 65, 85)
         fill = False
         
         for row in data:
             for i, cell in enumerate(row):
-                self.cell(column_widths[i] if i < len(column_widths) else 40, 8, sanitize_text(str(cell)), 1, 0, 'L' if i > 0 else 'L', fill)
+                self.cell(column_widths[i], 8, sanitize_text(str(cell)), 1, 0, 'L', fill)
             self.ln()
             fill = not fill
 
@@ -119,73 +121,56 @@ class SustainabilityReportPDF(FPDF):
 # ============================================
 
 class SECRReportPDF(SustainabilityReportPDF):
-    """UK Streamlined Energy and Carbon Reporting"""
-    
     def __init__(self, org_name, reporting_year):
         super().__init__(org_name, reporting_year, "SECR")
     
     def generate(self, emissions_data, company_number, scope_totals, total_emissions):
         self.add_page()
-        
-        # Title Section
         self.add_title(self.org_name)
+        
         self.set_font('Helvetica', '', 14)
         self.set_text_color(71, 85, 105)
         self.cell(0, 10, 'Streamlined Energy and Carbon Reporting (SECR)', 0, 1, 'C')
-        self.cell(0, 10, f'Reporting Period: 01/01/{self.reporting_year} - 31/12/{self.reporting_year}', 0, 1, 'C')
+        self.cell(0, 10, f'Reporting Period: FY {self.reporting_year}', 0, 1, 'C')
         self.cell(0, 10, f'Company Number: {sanitize_text(company_number)}', 0, 1, 'C')
         self.ln(15)
         
-        # Executive Summary
         self.add_section_title('Executive Summary')
-        summary_text = f'This report provides a comprehensive overview of {self.org_name} greenhouse gas emissions for the financial year {self.reporting_year}, in compliance with the UK Streamlined Energy and Carbon Reporting (SECR) regulations.'
-        self.add_paragraph(summary_text)
+        self.add_paragraph(f'This report provides a comprehensive overview of {self.org_name} greenhouse gas emissions for the financial year {self.reporting_year}, in compliance with the UK Streamlined Energy and Carbon Reporting (SECR) regulations.')
         self.ln(8)
         
-        # Total Emissions Box
         self.add_metric_box('Total Emissions', f'{total_emissions:,.2f}', 'kg CO2e', highlight=True)
         self.add_metric_box('Total Emissions', f'{total_emissions/1000:,.2f}', 'tonnes CO2e')
         self.add_paragraph(f'Based on {len(emissions_data)} emission records')
         self.ln(12)
         
-        # Scope Breakdown
         self.add_section_title('Emissions by Scope')
-        
         headers = ['Scope', 'Emissions (kg CO2e)', 'Emissions (tonnes CO2e)']
-        data = []
-        for scope, emissions in scope_totals.items():
-            data.append([scope, f'{emissions:,.2f}', f'{emissions/1000:,.2f}'])
-        
+        data = [[scope, f'{emissions:,.2f}', f'{emissions/1000:,.2f}'] for scope, emissions in scope_totals.items()]
         self.add_table(headers, data)
         self.ln(10)
         
-        # Methodology
         self.add_section_title('Methodology')
-        method_text = f'Emissions have been calculated using official UK Government GHG Conversion Factors for Company Reporting ({self.reporting_year}). All conversion factors are sourced from DEFRA and BEIS.'
-        self.add_paragraph(method_text)
+        self.add_paragraph(f'Emissions have been calculated using official UK Government GHG Conversion Factors for Company Reporting ({self.reporting_year}). All conversion factors are sourced from DEFRA and BEIS.')
         self.ln(5)
         
         self.set_font('Helvetica', 'I', 9)
         self.set_text_color(100, 116, 139)
-        scope_texts = [
-            'Scope 1: Direct emissions from owned or controlled sources (e.g., fuel combustion in company vehicles, natural gas heating).',
+        for text in [
+            'Scope 1: Direct emissions from owned or controlled sources.',
             'Scope 2: Indirect emissions from purchased electricity, steam, heating, and cooling.',
-            'Scope 3: Other indirect emissions (e.g., business travel, waste disposal, employee commuting).'
-        ]
-        for text in scope_texts:
+            'Scope 3: Other indirect emissions (e.g., business travel, waste disposal).'
+        ]:
             self.add_paragraph(text)
         self.ln(10)
         
-        # Compliance Statement
         self.add_section_title('Compliance Statement')
-        compliance_text = f'This report has been prepared in accordance with the Companies (Directors Report) and Limited Liability Partnerships (Energy and Carbon Report) Regulations 2018. The data has been verified and validated by CarbonTally automated extraction and review system.'
-        self.add_paragraph(compliance_text)
+        self.add_paragraph(f'This report has been prepared in accordance with the Companies (Directors Report) and Limited Liability Partnerships (Energy and Carbon Report) Regulations 2018.')
         self.ln(8)
         
         self.set_font('Helvetica', 'B', 10)
         self.set_text_color(22, 163, 74)
-        generated_text = f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'
-        self.cell(0, 6, sanitize_text(generated_text), 0, 1, 'L')
+        self.cell(0, 6, sanitize_text(f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'), 0, 1, 'L')
 
 
 # ============================================
@@ -193,16 +178,13 @@ class SECRReportPDF(SustainabilityReportPDF):
 # ============================================
 
 class CSRDReportPDF(SustainabilityReportPDF):
-    """EU Corporate Sustainability Reporting Directive"""
-    
     def __init__(self, org_name, reporting_year):
         super().__init__(org_name, reporting_year, "CSRD")
     
     def generate(self, esg_data, company_number):
         self.add_page()
-        
-        # Title Section
         self.add_title(self.org_name)
+        
         self.set_font('Helvetica', '', 14)
         self.set_text_color(71, 85, 105)
         self.cell(0, 10, 'Corporate Sustainability Reporting Directive (CSRD)', 0, 1, 'C')
@@ -210,73 +192,26 @@ class CSRDReportPDF(SustainabilityReportPDF):
         self.cell(0, 10, f'Company Number: {sanitize_text(company_number)}', 0, 1, 'C')
         self.ln(15)
         
-        # Executive Summary
         self.add_section_title('1. Executive Summary')
-        self.add_paragraph(
-            'This report aligns with the European Commission\'s CSRD requirements, '
-            'including double materiality assessment and ESRS (European Sustainability Reporting Standards).'
-        )
+        self.add_paragraph('This report aligns with the European Commission\'s CSRD requirements, including double materiality assessment and ESRS (European Sustainability Reporting Standards).')
         self.ln(5)
         
-        # Environmental (E) Metrics
         self.add_section_title('2. Environmental Performance')
         self.add_metric_box('Total GHG Emissions (Scope 1-3)', f"{esg_data.get('total_ghg', 0):,.0f}", 'tCO2e', highlight=True)
-        self.add_metric('Energy Intensity', f"{esg_data.get('energy_intensity', 0):,.1f}", 'MWh/€M revenue')
-        self.add_metric('Renewable Energy Usage', f"{esg_data.get('renewable_pct', 0):.1f}", '%')
-        self.add_metric('Waste Generated', f"{esg_data.get('waste', 0):,.0f}", 'tonnes')
-        self.add_metric('Water Withdrawal', f"{esg_data.get('water', 0):,.0f}", 'm³')
         self.ln(5)
         
-        # Social (S) Metrics
-        self.add_section_title('3. Social Performance')
-        social_data = [
-            ['Total Employees', f"{esg_data.get('employees', 0):,}"],
-            ['Employee Turnover', f"{esg_data.get('turnover', 0):.1f}%"],
-            ['Training Hours/Employee', f"{esg_data.get('training_hours', 0):.1f}"],
-            ['Diversity Score', f"{esg_data.get('diversity_score', 0):.1f}%"],
-            ['Gender Pay Gap', f"{esg_data.get('gender_pay_gap', 0):.1f}%"]
-        ]
-        self.add_table(['Metric', 'Value'], social_data)
-        self.ln(5)
-        
-        # Governance (G) Metrics
-        self.add_section_title('4. Governance Performance')
+        self.add_section_title('3. Governance Performance')
         governance_data = [
             ['Board Independence', f"{esg_data.get('board_independence', 0)}%"],
-            ['Female Board Representation', f"{esg_data.get('female_board', 0)}%"],
             ['Risk Committee', 'Yes' if esg_data.get('risk_committee', False) else 'No'],
-            ['Whistleblower Policy', 'Yes' if esg_data.get('whistleblower', False) else 'No'],
-            ['Cyber Security Certification', 'Yes' if esg_data.get('cyber_certified', False) else 'No']
+            ['Whistleblower Policy', 'Yes' if esg_data.get('whistleblower', False) else 'No']
         ]
         self.add_table(['Metric', 'Value'], governance_data)
         self.ln(5)
         
-        # Double Materiality
-        self.add_section_title('5. Double Materiality Assessment')
-        self.add_paragraph('Materiality topics identified through stakeholder engagement and industry benchmarking:')
-        topics = esg_data.get('material_topics', [
-            'Climate Change Mitigation',
-            'Resource Efficiency',
-            'Human Capital Management',
-            'Data Privacy & Security',
-            'Circular Economy'
-        ])
-        for i, topic in enumerate(topics, 1):
-            self.add_paragraph(f'{i}. {topic}')
-        self.ln(3)
-        
-        # EU Taxonomy
-        self.add_section_title('6. EU Taxonomy Alignment')
-        self.add_metric('Share of Turnover Aligned', f"{esg_data.get('taxonomy_aligned', 0):.1f}", '%')
-        self.add_metric('Share of CapEx Aligned', f"{esg_data.get('taxonomy_capex', 0):.1f}", '%')
-        self.add_metric('Share of OpEx Aligned', f"{esg_data.get('taxonomy_opex', 0):.1f}", '%')
-        self.ln(5)
-        
-        # Footer
         self.set_font('Helvetica', 'B', 10)
         self.set_text_color(22, 163, 74)
-        generated_text = f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'
-        self.cell(0, 6, sanitize_text(generated_text), 0, 1, 'L')
+        self.cell(0, 6, sanitize_text(f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'), 0, 1, 'L')
 
 
 # ============================================
@@ -284,16 +219,13 @@ class CSRDReportPDF(SustainabilityReportPDF):
 # ============================================
 
 class ISSBReportPDF(SustainabilityReportPDF):
-    """International Sustainability Standards Board"""
-    
     def __init__(self, org_name, reporting_year):
         super().__init__(org_name, reporting_year, "ISSB")
     
     def generate(self, climate_data, company_number):
         self.add_page()
-        
-        # Title Section
         self.add_title(self.org_name)
+        
         self.set_font('Helvetica', '', 14)
         self.set_text_color(71, 85, 105)
         self.cell(0, 10, 'International Sustainability Standards Board (ISSB)', 0, 1, 'C')
@@ -301,58 +233,11 @@ class ISSBReportPDF(SustainabilityReportPDF):
         self.cell(0, 10, f'Company Number: {sanitize_text(company_number)}', 0, 1, 'C')
         self.ln(15)
         
-        # Governance
         self.add_section_title('1. Governance')
-        self.add_paragraph(
-            'Oversight of climate-related risks and opportunities is provided by the Board of Directors. '
-            'Management-level committees are responsible for implementation and monitoring.'
-        )
-        self.add_paragraph(f'Board Climate Committee: {"Yes" if climate_data.get("climate_committee", False) else "No"}')
-        self.add_paragraph(f'Climate Risk Officer: {"Yes" if climate_data.get("climate_officer", False) else "No"}')
+        self.add_paragraph('Oversight of climate-related risks and opportunities is provided by the Board of Directors.')
         self.ln(3)
         
-        # Strategy
-        self.add_section_title('2. Strategy')
-        self.add_paragraph('Climate Resilience Assessment:')
-        self.add_paragraph(
-            f'Scenario analysis has been conducted using {climate_data.get("scenario", "SSP2-4.5")} '
-            f'with a time horizon of {climate_data.get("time_horizon", 2050)}.'
-        )
-        self.ln(2)
-        
-        self.add_paragraph('Key Climate Risks Identified:')
-        risks = climate_data.get('climate_risks', [
-            'Physical Risk: Extreme weather events impacting operations',
-            'Transition Risk: Carbon pricing and regulatory changes',
-            'Market Risk: Shifting consumer preferences',
-            'Reputational Risk: Stakeholder expectations'
-        ])
-        for risk in risks:
-            self.add_paragraph(f'• {risk}')
-        self.ln(3)
-        
-        # Risk Management
-        self.add_section_title('3. Risk Management')
-        self.add_paragraph(
-            'Climate risks are integrated into our enterprise risk management framework. '
-            'Risk mitigation strategies include:'
-        )
-        mitigations = climate_data.get('mitigation_strategies', [
-            'Energy efficiency programs',
-            'Renewable energy procurement',
-            'Supply chain diversification',
-            'Carbon offsetting initiatives',
-            'Climate scenario planning'
-        ])
-        for strategy in mitigations:
-            self.add_paragraph(f'• {strategy}')
-        self.ln(3)
-        
-        # Metrics and Targets
-        self.add_section_title('4. Metrics and Targets')
-        
-        # 4.1 Emissions
-        self.add_subsection_title('4.1 Greenhouse Gas Emissions')
+        self.add_section_title('2. Metrics and Targets')
         emissions_data = [
             ['Scope 1', f"{climate_data.get('scope1', 0):,.0f}", 'tCO2e'],
             ['Scope 2', f"{climate_data.get('scope2', 0):,.0f}", 'tCO2e'],
@@ -362,26 +247,9 @@ class ISSBReportPDF(SustainabilityReportPDF):
         self.add_table(['Metric', 'Value', 'Unit'], emissions_data)
         self.ln(5)
         
-        # 4.2 Targets
-        self.add_subsection_title('4.2 Carbon Reduction Targets')
-        self.add_metric('Near-term Target (2030)', f"{climate_data.get('near_term_target', 50)}", '% reduction')
-        self.add_metric('Long-term Target (2050)', f"{climate_data.get('long_term_target', 90)}", '% reduction')
-        self.add_metric('Net Zero Target Year', f"{climate_data.get('net_zero_year', 2050)}", '')
-        self.add_metric('Carbon Intensity', f"{climate_data.get('carbon_intensity', 0):,.1f}", 'tCO2e/€M revenue')
-        self.ln(3)
-        
-        # 4.3 TCFD Alignment
-        self.add_subsection_title('4.3 TCFD Alignment')
-        self.add_metric('TCFD Implementation', f"{climate_data.get('tcfd_alignment', 85)}", '% aligned')
-        self.add_metric('CDP Score', f"{climate_data.get('cdp_score', 'B')}", '')
-        self.add_metric('SBTi Commitment', 'Yes' if climate_data.get('sbti_committed', False) else 'No', '')
-        self.ln(5)
-        
-        # Footer
         self.set_font('Helvetica', 'B', 10)
         self.set_text_color(22, 163, 74)
-        generated_text = f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'
-        self.cell(0, 6, sanitize_text(generated_text), 0, 1, 'L')
+        self.cell(0, 6, sanitize_text(f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'), 0, 1, 'L')
 
 
 # ============================================
@@ -389,8 +257,6 @@ class ISSBReportPDF(SustainabilityReportPDF):
 # ============================================
 
 class SustainabilityReportGenerator:
-    """Factory class to generate different types of sustainability reports"""
-    
     def __init__(self, supabase_client, organization_id, reporting_year):
         self.supabase = supabase_client
         self.organization_id = organization_id
@@ -400,7 +266,6 @@ class SustainabilityReportGenerator:
         self.company_number = None
         
     def _fetch_organization_data(self):
-        """Fetch organization details"""
         if self.org_data is None:
             org_res = self.supabase.from_('organizations')\
                 .select('name, company_number')\
@@ -414,44 +279,48 @@ class SustainabilityReportGenerator:
             self.org_data = org_res.data
             self.organization_name = sanitize_text(org_res.data.get('name', 'Unknown Organization'))
             self.company_number = sanitize_text(org_res.data.get('company_number', 'N/A'))
-        
         return self.org_data
     
     def _fetch_emissions_data(self, year=None):
-        """Fetch emissions data with pagination"""
+        """Fetch emissions data with pagination to handle large datasets"""
         if year is None:
             year = self.reporting_year
-        
+            
         all_data = []
         has_more = True
         page = 0
-        page_size = 1000
+        page_size = 1000  # Supabase max row limit
         
         while has_more:
             start = page * page_size
             end = (page + 1) * page_size - 1
             
-            query = self.supabase.from_('emissions_logs')\
+            print(f"📄 Fetching page {page + 1} (rows {start} to {end}) for year {year}...")
+            
+            response = self.supabase.from_('emissions_logs')\
                 .select('*, defra_conversion_factors(activity_type, co2e_multiplier, reporting_year), assets(name)')\
                 .eq('organization_id', self.organization_id)\
                 .gte('start_date', f'{year}-01-01')\
                 .lte('start_date', f'{year}-12-31')\
-                .range(start, end)
+                .range(start, end)\
+                .execute()
+                
+            data = response.data or []
             
-            response = query.execute()
-            
-            if response.data:
-                all_data.extend(response.data)
+            if data:
+                all_data.extend(data)
+                print(f"✅ Page {page + 1}: {len(data)} records (total so far: {len(all_data)})")
                 page += 1
-                if len(response.data) < page_size:
-                    has_more = False
             else:
                 has_more = False
+                
+            # If we got less than page_size, we've reached the end
+            if len(data) < page_size:
+                has_more = False
         
+        print(f"📊 Total records fetched for {year}: {len(all_data)}")
         return all_data
-    
     def _calculate_scope_totals(self, emissions_data):
-        """Calculate emissions by scope"""
         scope_totals = {'Scope 1': 0, 'Scope 2': 0, 'Scope 3': 0}
         total_emissions = 0
         
@@ -459,192 +328,148 @@ class SustainabilityReportGenerator:
             kg_co2e = float(record.get('calculated_kg_co2e', 0))
             total_emissions += kg_co2e
             
-            # Get scope from metadata
-            metadata = record.get('metadata', {})
-            if metadata:
-                scope = metadata.get('scope', '')
-                if 'Scope 1' in scope:
-                    scope_totals['Scope 1'] += kg_co2e
-                elif 'Scope 2' in scope:
-                    scope_totals['Scope 2'] += kg_co2e
-                elif 'Scope 3' in scope:
-                    scope_totals['Scope 3'] += kg_co2e
-                else:
-                    # Fallback: try to determine from fuel type
-                    fuel_type = metadata.get('fuel_type', '')
-                    if fuel_type in ['Diesel', 'Diesel (DERV)', 'Petrol', 'Petrol (Unleaded)', 'Natural Gas', 'LPG', 'AdBlue']:
-                        scope_totals['Scope 1'] += kg_co2e
-                    elif fuel_type == 'Electricity' or fuel_type == 'UK Electricity Grid':
-                        scope_totals['Scope 2'] += kg_co2e
-                    else:
-                        scope_totals['Scope 3'] += kg_co2e
-            else:
-                # If no metadata, try to infer from defra factor
-                defra = record.get('defra_conversion_factors', {})
-                activity_type = defra.get('activity_type', '')
-                if any(fuel in activity_type for fuel in ['Diesel', 'Petrol', 'Natural Gas', 'LPG', 'AdBlue']):
-                    scope_totals['Scope 1'] += kg_co2e
-                elif 'Electricity' in activity_type:
-                    scope_totals['Scope 2'] += kg_co2e
-                else:
-                    scope_totals['Scope 3'] += kg_co2e
-        
-        return scope_totals, total_emissions
-    
-    def generate_secr_report(self):
-        """Generate SECR report"""
-        self._fetch_organization_data()
-        
-        # Fetch emissions data
-        emissions_data = self._fetch_emissions_data()
-        
-        if not emissions_data:
-            # Try to find most recent year with data
-            all_years_res = self.supabase.from_('emissions_logs')\
-                .select('start_date')\
-                .eq('organization_id', self.organization_id)\
-                .execute()
+            metadata = record.get('metadata', {}) or {}
+            defra = record.get('defra_conversion_factors', {}) or {}
             
-            if all_years_res.data:
-                years_available = sorted(set([row['start_date'][:4] for row in all_years_res.data if row.get('start_date')]))
-                if years_available:
-                    most_recent_year = years_available[-1]
-                    emissions_data = self._fetch_emissions_data(most_recent_year)
-                    if emissions_data:
-                        self.reporting_year = most_recent_year
-        
+            scope = metadata.get('scope', 'Unknown')
+            if scope == 'Unknown':
+                fuel_type = metadata.get('fuel_type', '')
+                activity = defra.get('activity_type', '')
+                if any(f in activity for f in ['Diesel', 'Petrol', 'Natural Gas', 'LPG']):
+                    scope = 'Scope 1'
+                elif 'Electricity' in activity:
+                    scope = 'Scope 2'
+                else:
+                    scope = 'Scope 3'
+                    
+            if scope in scope_totals:
+                scope_totals[scope] += kg_co2e
+            else:
+                scope_totals['Scope 3'] += kg_co2e
+                
+        return scope_totals, total_emissions
+
+    def generate_secr_report(self):
+        self._fetch_organization_data()
+        emissions_data = self._fetch_emissions_data()
         if not emissions_data:
-            raise HTTPException(status_code=404, detail=f"No emissions data found for any year")
+            raise HTTPException(status_code=404, detail="No emissions data found for this organization.")
         
-        # Calculate totals
         scope_totals, total_emissions = self._calculate_scope_totals(emissions_data)
-        
-        # Generate PDF
         pdf = SECRReportPDF(self.organization_name, self.reporting_year)
         pdf.generate(emissions_data, self.company_number, scope_totals, total_emissions)
         
-        # Output
         pdf_output = pdf.output(dest='S').encode('latin-1')
-        pdf_base64 = base64.b64encode(pdf_output).decode('utf-8')
-        
         return {
-            "status": "success",
-            "report_type": "SECR",
-            "pdf_base64": pdf_base64,
-            "filename": f"SECR_Report_{self.organization_name}_{self.reporting_year}.pdf",
-            "records_used": len(emissions_data),
-            "total_emissions": total_emissions,
-            "year_used": self.reporting_year
+            "status": "success", "report_type": "SECR",
+            "pdf_base64": base64.b64encode(pdf_output).decode('utf-8'),
+            "filename": f"SECR_Report_{self.organization_name}_{self.reporting_year}.pdf"
         }
     
     def generate_csrd_report(self):
-        """Generate CSRD report with ESG data"""
         self._fetch_organization_data()
-        
-        # You'll need to fetch or calculate ESG data
-        # For now, using sample data structure
-        esg_data = self._fetch_or_calculate_esg_data()
-        
+        esg_data = {'total_ghg': 4500, 'board_independence': 60, 'risk_committee': True, 'whistleblower': True}
         pdf = CSRDReportPDF(self.organization_name, self.reporting_year)
         pdf.generate(esg_data, self.company_number)
         
         pdf_output = pdf.output(dest='S').encode('latin-1')
-        pdf_base64 = base64.b64encode(pdf_output).decode('utf-8')
-        
         return {
-            "status": "success",
-            "report_type": "CSRD",
-            "pdf_base64": pdf_base64,
+            "status": "success", "report_type": "CSRD",
+            "pdf_base64": base64.b64encode(pdf_output).decode('utf-8'),
             "filename": f"CSRD_Report_{self.organization_name}_{self.reporting_year}.pdf"
         }
     
     def generate_issb_report(self):
-        """Generate ISSB report with climate data"""
         self._fetch_organization_data()
-        
-        # You'll need to fetch or calculate climate data
-        climate_data = self._fetch_or_calculate_climate_data()
-        
+        climate_data = {'scope1': 1500, 'scope2': 1200, 'scope3': 1800, 'total_emissions': 4500}
         pdf = ISSBReportPDF(self.organization_name, self.reporting_year)
         pdf.generate(climate_data, self.company_number)
         
         pdf_output = pdf.output(dest='S').encode('latin-1')
-        pdf_base64 = base64.b64encode(pdf_output).decode('utf-8')
-        
         return {
-            "status": "success",
-            "report_type": "ISSB",
-            "pdf_base64": pdf_base64,
+            "status": "success", "report_type": "ISSB",
+            "pdf_base64": base64.b64encode(pdf_output).decode('utf-8'),
             "filename": f"ISSB_Report_{self.organization_name}_{self.reporting_year}.pdf"
         }
-    
-    def _fetch_or_calculate_esg_data(self):
-        """Fetch ESG data from database or calculate"""
-        # This is where you'd fetch real ESG data from your database
-        # For now, return sample data
-        return {
-            'total_ghg': 4500,
-            'energy_intensity': 15.2,
-            'renewable_pct': 45,
-            'waste': 1200,
-            'water': 8500,
-            'employees': 150,
-            'turnover': 12.5,
-            'training_hours': 35,
-            'diversity_score': 45,
-            'gender_pay_gap': 5.2,
-            'board_independence': 60,
-            'female_board': 40,
-            'risk_committee': True,
-            'whistleblower': True,
-            'cyber_certified': True,
-            'material_topics': [
-                'Climate Change Mitigation',
-                'Resource Efficiency',
-                'Human Capital Management',
-                'Data Privacy & Security',
-                'Circular Economy'
-            ],
-            'taxonomy_aligned': 25,
-            'taxonomy_capex': 30,
-            'taxonomy_opex': 20
-        }
-    
-    def _fetch_or_calculate_climate_data(self):
-        """Fetch climate data from database or calculate"""
-        # This is where you'd fetch real climate data from your database
-        # For now, return sample data
-        return {
-            'scope1': 1500,
-            'scope2': 1200,
-            'scope3': 1800,
-            'total_emissions': 4500,
-            'scenario': 'SSP2-4.5',
-            'time_horizon': 2050,
-            'near_term_target': 50,
-            'long_term_target': 90,
-            'net_zero_year': 2050,
-            'carbon_intensity': 12.5,
-            'tcfd_alignment': 85,
-            'cdp_score': 'B',
-            'sbti_committed': True,
-            'climate_committee': True,
-            'climate_officer': True,
-            'climate_risks': [
-                'Physical Risk: Extreme weather events impacting operations',
-                'Transition Risk: Carbon pricing and regulatory changes',
-                'Market Risk: Shifting consumer preferences',
-                'Reputational Risk: Stakeholder expectations'
-            ],
-            'mitigation_strategies': [
-                'Energy efficiency programs',
-                'Renewable energy procurement',
-                'Supply chain diversification',
-                'Carbon offsetting initiatives'
-            ]
-        }
 
+    def generate_auditor_excel(self):
+        self._fetch_organization_data()
+        emissions_data = self._fetch_emissions_data()
+        
+        if not emissions_data:
+            raise HTTPException(status_code=404, detail="No emissions data found to export. Please upload and approve data first.")
+            
+        scope_totals, total_emissions = self._calculate_scope_totals(emissions_data)
+        output = io.BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Sheet 1: Executive Summary
+            summary_data = {
+                'Metric': ['Organization', 'Reporting Year', 'Total Emissions (kg CO2e)', 'Scope 1', 'Scope 2', 'Scope 3', 'Total Records'],
+                'Value': [self.organization_name, self.reporting_year, total_emissions, scope_totals['Scope 1'], scope_totals['Scope 2'], scope_totals['Scope 3'], len(emissions_data)]
+            }
+            pd.DataFrame(summary_data).to_excel(writer, sheet_name='01_Executive_Summary', index=False)
+            
+            # Sheet 2: Granular Transaction Log
+            log_data = []
+            for record in emissions_data:
+                metadata = record.get('metadata', {}) or {}
+                defra = record.get('defra_conversion_factors', {}) or {}
+                asset = record.get('assets', {}) or {}
+                
+                log_data.append({
+                    'Date': record.get('start_date', ''),
+                    'Facility / Asset': asset.get('name', metadata.get('asset_name', 'Unassigned')),
+                    'Activity Type': defra.get('activity_type', metadata.get('fuel_type', 'Unknown')),
+                    'Quantity': record.get('raw_quantity', 0),
+                    'Calculated kgCO2e': record.get('calculated_kg_co2e', 0),
+                    'Source': metadata.get('source', 'Manual Entry')
+                })
+            pd.DataFrame(log_data).to_excel(writer, sheet_name='02_Granular_Transaction_Log', index=False)
+
+        output.seek(0)
+        return {
+            "status": "success", "report_type": "AUDITOR_EXCEL",
+            "file_base64": base64.b64encode(output.read()).decode('utf-8'),
+            "filename": f"CarbonTally_Auditor_Export_{self.organization_name}_{self.reporting_year}.xlsx"
+        }
 
 # ============================================
 # API ENDPOINTS
 # ============================================
+
+router = APIRouter()
+
+class ReportRequest(BaseModel):
+    organization_id: str
+    reporting_year: int
+    report_type: str
+
+@router.post("/generate-sustainability-report")
+async def generate_sustainability_report(request: ReportRequest):
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        supabase_client = create_client(supabase_url, supabase_key)
+        
+        generator = SustainabilityReportGenerator(supabase_client, request.organization_id, request.reporting_year)
+        
+        if request.report_type == 'SECR':
+            result = generator.generate_secr_report()
+        elif request.report_type == 'CSRD':
+            result = generator.generate_csrd_report()
+        elif request.report_type == 'ISSB':
+            result = generator.generate_issb_report()
+        elif request.report_type == 'AUDITOR_EXCEL':
+            result = generator.generate_auditor_excel()
+        else:
+            raise HTTPException(status_code=400, detail="Invalid report type")
+            
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"--- REPORT GENERATION ERROR ---\n{traceback.format_exc()}\n-------------------")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")

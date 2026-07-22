@@ -22,17 +22,20 @@ from datetime import datetime
 import traceback
 from fpdf import FPDF
 import re
-from report_generator import (
-    SustainabilityReportGenerator,
-    sanitize_text,
-    SECRReportPDF,
-    CSRDReportPDF,
-    ISSBReportPDF
-)
+# from report_generator import (
+#     SustainabilityReportGenerator,
+#     sanitize_text,
+#     SECRReportPDF,
+#     CSRDReportPDF,
+#     ISSBReportPDF,
+#     generate_sustainability_report,
+#     generate_auditor_excel_endpoint
+# )
 
+from report_generator import router as report_router
 
 app = FastAPI(title="CarbonTally API", version="3.0.0")
-
+app.include_router(report_router)
 # Initialize PDF Extractor
 pdf_extractor = PDFExtractor()
 resend.api_key = os.getenv("RESEND_API_KEY", "re_XRjsEbwv_2TDUBguF5TWzbn7wcTVn8JtN")
@@ -1626,3 +1629,127 @@ async def generate_all_reports(report_data: dict):
     except Exception as e:
         print(f"--- ALL REPORTS ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+def map_to_ghg_protocol(activity_type: str) -> tuple[str, str]:
+    """
+    Maps our internal activity types to official GHG Protocol Scopes and Categories 
+    required for CSRD (ESRS E1) and ISSB (IFRS S2) compliance.
+    """
+    activity_lower = activity_type.lower()
+    
+    if any(fuel in activity_lower for fuel in ['diesel', 'petrol', 'lpg', 'natural gas']):
+        if 'natural gas' in activity_lower:
+            return "Scope 1", "Scope 1: Stationary Combustion"
+        return "Scope 1", "Scope 1: Mobile Combustion (Company Vehicles)"
+        
+    elif 'electricity' in activity_lower:
+        return "Scope 2", "Scope 2: Purchased Electricity (Location-based)"
+        
+    elif any(travel in activity_lower for travel in ['flight', 'rail', 'hotel', 'taxi', 'uber']):
+        return "Scope 3", "Scope 3, Category 6: Business Travel"
+        
+    elif 'waste' in activity_lower:
+        return "Scope 3", "Scope 3, Category 5: Waste Generated in Operations"
+        
+    elif 'commute' in activity_lower or 'employee' in activity_lower:
+        return "Scope 3", "Scope 3, Category 7: Employee Commuting"
+        
+    else:
+        return "Scope 3", "Scope 3: Other Indirect Emissions"
+
+@app.post("/export-ghg-inventory")
+async def export_ghg_inventory(report_data: dict):
+    """
+    Generates a granular, auditor-ready Excel file mapped to GHG Protocol / CSRD categories.
+    """
+    try:
+        from supabase import create_client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        supabase_client = create_client(supabase_url, supabase_key)
+        
+        organization_id = report_data.get("organization_id")
+        reporting_year = report_data.get("reporting_year", 2024)
+        
+        # 1. Fetch detailed emissions data with joins
+        emissions_res = supabase_client.from_('emissions_logs')\
+            .select('''
+                id,
+                start_date,
+                raw_quantity,
+                calculated_kg_co2e,
+                metadata,
+                assets(name),
+                defra_conversion_factors(activity_type, co2e_multiplier)
+            ''')\
+            .eq('organization_id', organization_id)\
+            .gte('start_date', f'{reporting_year}-01-01')\
+            .lte('start_date', f'{reporting_year}-12-31')\
+            .execute()
+            
+        records = emissions_res.data or []
+        
+        if not records:
+            return {"status": "error", "message": "No emissions data found for this year."}
+            
+        # 2. Transform data for Pandas
+        flat_data = []
+        for row in records:
+            activity_type = row.get('defra_conversion_factors', {}).get('activity_type', 'Unknown')
+            multiplier = row.get('defra_conversion_factors', {}).get('co2e_multiplier', 0)
+            asset_name = row.get('assets', {}).get('name', 'Unassigned Asset')
+            metadata = row.get('metadata', {})
+            
+            scope, category = map_to_ghg_protocol(activity_type)
+            
+            flat_data.append({
+                'Reporting Year': reporting_year,
+                'Scope': scope,
+                'GHG Protocol Category': category,
+                'Date': row.get('start_date', ''),
+                'Facility / Asset': asset_name,
+                'Activity Type': activity_type,
+                'Consumption Quantity': float(row.get('raw_quantity', 0)),
+                'Unit': metadata.get('fuel_type', 'Units'), # Fallback
+                'DEFRA Multiplier': float(multiplier),
+                'Emissions (kg CO2e)': float(row.get('calculated_kg_co2e', 0)),
+                'Emissions (tonnes CO2e)': round(float(row.get('calculated_kg_co2e', 0)) / 1000, 4),
+                'Data Source': metadata.get('source', 'Manual Entry')
+            })
+            
+        # 3. Create Pandas DataFrame
+        df = pd.DataFrame(flat_data)
+        
+        # 4. Create Summary DataFrame (Pivot Table for Auditors)
+        summary_df = df.groupby(['Scope', 'GHG Protocol Category'])['Emissions (tonnes CO2e)'].sum().reset_index()
+        summary_df = summary_df.rename(columns={'Emissions (tonnes CO2e)': 'Total Emissions (tonnes CO2e)'})
+        
+        # 5. Generate Excel File in Memory
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Sheet 1: Detailed Inventory
+            df.to_excel(writer, sheet_name='Detailed Inventory', index=False)
+            
+            # Sheet 2: Summary by Scope (Auditors love this)
+            summary_df.to_excel(writer, sheet_name='Summary by Scope', index=False)
+            
+            # Auto-adjust column widths for professionalism
+            for sheet_name in writer.sheets:
+                worksheet = writer.sheets[sheet_name]
+                for i, col in enumerate(worksheet.columns):
+                    max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
+                    worksheet.column_dimensions[chr(65 + i)].width = max(min(max_length + 2, 30), 15)
+
+        output.seek(0)
+        
+        # 6. Return as FileResponse (Triggers browser download)
+        filename = f"CarbonTally_GHG_Inventory_{reporting_year}.xlsx"
+        return Response(
+            content=output.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        import traceback
+        print(f"--- EXCEL EXPORT ERROR ---\n{traceback.format_exc()}\n-------------------")
+        raise HTTPException(status_code=500, detail=f"Excel export failed: {str(e)}")
