@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -16,10 +17,13 @@ import DefraFactors from './pages/admin/DefraFactors';
 import Customers from './pages/admin/Customers';
 import ManualReviewQueue from './pages/admin/ManualReviewQueue';
 import ExtractionErrorReview from './pages/admin/ExtractionErrorReview';
+import BetaManagement from './pages/admin/BetaManagement';
+import ReviewAssignment from './pages/admin/ReviewAssignment';
 
+// Staff Pages
+import StaffDashboard from './pages/staff/StaffDashboard';
 
-
-// Protected Route Component
+// Protected Route Component - Staff Only
 const ProtectedRoute = ({ children }) => {
   const { user, loading, isStaff } = useAuth();
 
@@ -40,7 +44,7 @@ const ProtectedRoute = ({ children }) => {
 
   return children;
 };
-
+// src/App.js
 const AppRoutes = () => {
   const { user, isStaff } = useAuth();
 
@@ -56,6 +60,7 @@ const AppRoutes = () => {
   return (
     <Layout>
       <Routes>
+        {/* Admin Routes */}
         <Route path="/admin" element={<Dashboard />} />
         <Route path="/admin/reviews" element={<Reviews />} />
         <Route path="/admin/users" element={<Users />} />
@@ -63,23 +68,28 @@ const AppRoutes = () => {
         <Route path="/admin/batches" element={<Batches />} />
         <Route path="/admin/analytics" element={<Analytics />} />
         <Route path="/admin/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
         <Route path="/admin/defra" element={<DefraFactors />} />
         <Route path="/admin/customers" element={<Customers />} />
         <Route path="/admin/reviews" element={<ManualReviewQueue />} />
         <Route path="/admin/errors" element={<ExtractionErrorReview />} />
-
+        <Route path="/admin/beta" element={<BetaManagement />} />
+        <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
+        
+        {/* Staff Routes */}
+        <Route path="/staff/dashboard" element={<StaffDashboard />} />
+        
+        {/* ✅ Fix: Default redirect for staff goes to staff dashboard */}
+        <Route path="*" element={<Navigate to="/staff/dashboard" replace />} />
       </Routes>
     </Layout>
   );
 };
 function App() {
-  console.log('🚀 App is rendering!');
+  console.log('🚀 Admin App rendering!');
   
-  // Add a simple test render
   const [testLoaded, setTestLoaded] = React.useState(false);
   React.useEffect(() => {
-    console.log('✅ App mounted successfully!');
+    console.log('✅ Admin App mounted successfully!');
     setTestLoaded(true);
   }, []);
   
@@ -95,7 +105,5 @@ function App() {
     </AuthProvider>
   );
 }
-
-
 
 export default App;
