@@ -23,6 +23,7 @@ import OnboardingWizard from './OnboardingWizard';
 import MobileMenu from './components/MobileMenu';
 import CompanyNamePrompt from './CompanyNamePrompt'; // We'll create this
 import AuthCallback from './AuthCallback';
+import BetaSignup from './BetaSignup';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -1414,7 +1415,7 @@ const renderDashboard = () => (
           )}
         </h2>
         {historyData.length > 0 && (
-          <p style={{ margin: '0.25rem 0 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+          <p style={{ margin: '0.25rem 0 0 0', color: '#d4deec', fontSize: '0.9rem' }}>
             {historyData.length} total records • Last updated: {new Date().toLocaleDateString()}
           </p>
         )}
@@ -1722,6 +1723,7 @@ const renderDashboard = () => (
     </div>
   </div>
 );
+
 const renderHistory = () => (
     <div className="view-section">
       <h2>📈 Emissions Trends & History</h2>
@@ -2016,6 +2018,7 @@ useEffect(() => {
         <Route path="/about" element={<AboutUs />} />
         <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/signup" element={<BetaSignup />} />
 
 
         <Route path="/dashboard/*" element={

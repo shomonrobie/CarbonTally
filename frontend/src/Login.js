@@ -1,11 +1,12 @@
-// Login.jsx
+// Login.js
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -14,21 +15,75 @@ function Login() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  // Check if user is already logged in
+  // Check for existing session and OAuth callback
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        navigate('/dashboard');
+    const checkSession = async () => {
+      try {
+        console.log('🔍 Checking session...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        console.log('📊 Session data:', session ? 'Session exists' : 'No session');
+        
+        if (sessionError) {
+          console.error('❌ Session error:', sessionError);
+          return;
+        }
+        
+        if (session) {
+          console.log('✅ User already logged in:', session.user.email);
+          navigate('/dashboard', { replace: true });
+          return;
+        }
+
+        // Check if this is an OAuth callback (after Google redirect)
+        const params = new URLSearchParams(location.search);
+        const code = params.get('code');
+        const errorParam = params.get('error');
+        const errorDescription = params.get('error_description');
+        
+        console.log('🔍 URL params:', { code: !!code, error: errorParam });
+
+        if (errorParam) {
+          console.error('OAuth Error:', errorDescription);
+          setError(`Authentication failed: ${errorDescription || errorParam}`);
+          // Remove error params from URL
+          window.history.replaceState({}, document.title, '/login');
+          return;
+        }
+
+        if (code) {
+          console.log('🔄 OAuth callback detected with code');
+          // Supabase should automatically exchange the code for a session
+          // Wait a moment for the session to be set
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Check if session is now available
+          const { data: { session: newSession } } = await supabase.auth.getSession();
+          
+          if (newSession) {
+            console.log('✅ OAuth callback successful! User:', newSession.user.email);
+            navigate('/dashboard', { replace: true });
+          } else {
+            console.log('⏳ Session not ready yet, waiting for auth state change...');
+          }
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
       }
     };
-    getUser();
+
+    checkSession();
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('🔐 Login auth event:', event);
+        
         if (event === 'SIGNED_IN' && session) {
-          navigate('/dashboard');
+          console.log('✅ User signed in:', session.user.email);
+          navigate('/dashboard', { replace: true });
+        } else if (event === 'SIGNED_OUT') {
+          console.log('👋 User signed out');
         }
       }
     );
@@ -36,8 +91,11 @@ function Login() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate]);
+    // ✅ Fixed: Removed 'location' from dependencies and used proper dependency array
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]); // Only navigate is needed
 
+  // Handle email/password authentication
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -94,35 +152,46 @@ function Login() {
       setLoading(false);
     }
   };
-
-  // 🆕 Google Sign-In Handler with Organization Support
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    setError('');
+const handleGoogleSignIn = async () => {
+  console.log('🔄 Starting Google sign-in...');
+  setLoading(true);
+  setError('');
+  
+  try {
+    // Use exact production URL
+    const redirectUrl = 'https://carbontally.co.uk/dashboard';
     
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin + '/dashboard',
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          // This passes through to user metadata
-          scopes: 'email profile',
+    console.log('📍 Using Client ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID || 'Not set');
+    console.log('📍 Redirect URL:', redirectUrl);
+    console.log('📍 Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
         },
-      });
+        // Force fresh OAuth flow
+        skipBrowserRedirect: false,
+      },
+    });
 
-      if (error) throw error;
-      
-      console.log('Google sign-in initiated');
-    } catch (err) {
-      console.error('Google sign-in error:', err);
-      setError('❌ Failed to sign in with Google. Please try again.');
-      setLoading(false);
+    if (error) {
+      console.error('❌ OAuth error details:', error);
+      throw error;
     }
-  };
+    
+    console.log('✅ OAuth initiated successfully');
+    
+  } catch (err) {
+    console.error('❌ Google sign-in error:', err);
+    setError(`Failed to sign in: ${err.message || 'Unknown error'}`);
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="login-container">
@@ -130,7 +199,7 @@ function Login() {
         <h1>🌱 CarbonTally</h1>
         <p className="tagline">Automated Carbon Accounting for UK Businesses</p>
         
-        {/* 🆕 Google Sign-In Button */}
+        {/* Google Sign-In Button */}
         <button 
           onClick={handleGoogleSignIn}
           disabled={loading}
