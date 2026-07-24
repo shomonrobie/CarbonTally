@@ -13,7 +13,8 @@ import {
   FaFilter,
   FaDownload,
   FaEye,
-  FaEyeSlash
+  FaEyeSlash,
+  FaMagic
 } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
@@ -56,7 +57,7 @@ const BetaManagement = () => {
       const { data, error } = await supabase
         .from('email_logs')
         .select('*')
-        .eq('type', 'beta_confirmation')
+        .eq('type', 'beta_invite')  // ✅ Changed to 'beta_invite'
         .order('created_at', { ascending: false })
         .limit(100);
       
@@ -65,7 +66,7 @@ const BetaManagement = () => {
     },
   });
 
-  // ✅ FIX: Send beta invite mutation
+  // ✅ Send beta invite mutation (sends magic link email)
   const sendInviteMutation = useMutation({
     mutationFn: async ({ email, betaCode }) => {
       const response = await fetch(`${API_URL}/api/waitlist/invite`, {
@@ -81,7 +82,7 @@ const BetaManagement = () => {
       return response.json();
     },
     onSuccess: () => {
-      toast.success('Beta invite sent successfully!');
+      toast.success('✨ Magic link invite sent successfully!');
       queryClient.invalidateQueries(['betaWaitlist']);
       queryClient.invalidateQueries(['emailLogs']);
     },
@@ -90,23 +91,42 @@ const BetaManagement = () => {
     },
   });
 
-  // ✅ FIX: Resend confirmation mutation (was missing)
-  const resendConfirmationMutation = useMutation({
+  // ✅ Resend magic link mutation (replaces resendConfirmation)
+  const resendMagicLinkMutation = useMutation({
     mutationFn: async (email) => {
-      const response = await fetch(`${API_URL}/api/send-beta-confirmation`, {
+      // ✅ First, check if user has a beta code
+      const { data: codeData, error: codeError } = await supabase
+        .from('beta_access_codes')
+        .select('code')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (codeError) throw codeError;
+
+      let betaCode;
+      if (codeData) {
+        betaCode = codeData.code;
+      } else {
+        // If no code exists, generate a new one
+        betaCode = `BETA-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      }
+
+      // ✅ Send the invite (which generates a new magic link)
+      const response = await fetch(`${API_URL}/api/waitlist/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, beta_code: betaCode })
       });
       
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to resend');
+        throw new Error(error.detail || 'Failed to resend magic link');
       }
       return response.json();
     },
     onSuccess: () => {
-      toast.success('Confirmation email resent!');
+      toast.success('✨ New magic link sent successfully!');
+      queryClient.invalidateQueries(['betaWaitlist']);
       queryClient.invalidateQueries(['emailLogs']);
     },
     onError: (error) => {
@@ -114,7 +134,7 @@ const BetaManagement = () => {
     },
   });
 
-  // ✅ FIX: Unsubscribe mutation
+  // Unsubscribe mutation
   const unsubscribeMutation = useMutation({
     mutationFn: async (email) => {
       const response = await fetch(`${API_URL}/api/waitlist/unsubscribe`, {
@@ -138,7 +158,7 @@ const BetaManagement = () => {
     },
   });
 
-  // ✅ FIX: Resubscribe mutation
+  // Resubscribe mutation
   const resubscribeMutation = useMutation({
     mutationFn: async (email) => {
       const response = await fetch(`${API_URL}/api/waitlist/resubscribe`, {
@@ -172,8 +192,9 @@ const BetaManagement = () => {
     sendInviteMutation.mutate({ email, betaCode });
   };
 
-  const handleResendConfirmation = (email) => {
-    resendConfirmationMutation.mutate(email);
+  // ✅ Updated: Resend magic link (not confirmation)
+  const handleResendMagicLink = (email) => {
+    resendMagicLinkMutation.mutate(email);
   };
 
   const getEmailStatus = (email) => {
@@ -257,6 +278,7 @@ const BetaManagement = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        {/* ... stats cards (same as before) ... */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -322,13 +344,13 @@ const BetaManagement = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">📧 Emails Sent</span>
+            <span className="text-sm text-gray-600">📧 Magic Links Sent</span>
             <span className="text-lg font-bold text-green-600">{stats.emailsSent}</span>
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">❌ Emails Failed</span>
+            <span className="text-sm text-gray-600">❌ Failed</span>
             <span className="text-lg font-bold text-red-600">{stats.emailsFailed}</span>
           </div>
         </div>
@@ -455,13 +477,15 @@ const BetaManagement = () => {
                             {sendInviteMutation.isPending ? '⏳' : '📨 Invite'}
                           </button>
                         )}
+                        {/* ✅ Updated: Resend sends a new magic link */}
                         {(entry.status === 'invited' || entry.status === 'pending') && (
                           <button
-                            onClick={() => handleResendConfirmation(entry.email)}
-                            disabled={resendConfirmationMutation.isPending}
-                            className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            onClick={() => handleResendMagicLink(entry.email)}
+                            disabled={resendMagicLinkMutation.isPending}
+                            className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1"
                           >
-                            🔄 Resend
+                            <FaMagic className="text-xs" />
+                            {resendMagicLinkMutation.isPending ? '⏳' : 'Resend Magic Link'}
                           </button>
                         )}
                         {entry.status !== 'unsubscribed' && entry.status !== 'active' && (
