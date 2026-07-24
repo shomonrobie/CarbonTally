@@ -1,6 +1,6 @@
 // CompanyNamePrompt.jsx
 import React, { useState } from 'react';
-import './CompanyNamePrompt.css';
+import './css/CompanyNamePrompt.css';
 
 function CompanyNamePrompt({ onSave, onSkip, email, user }) {
   const [orgName, setOrgName] = useState('');

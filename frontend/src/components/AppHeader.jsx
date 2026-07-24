@@ -1,4 +1,4 @@
-// src/components/AppHeader.js - Updated with responsive improvements
+// src/components/AppHeader.js - Beta Mode (No Login) - With Beta Modal Disabled
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -10,13 +10,97 @@ export default function AppHeader({ showAuthButtons = true, isBetaMode = true })
   const [organization, setOrganization] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [showWaitlistModal, setShowWaitlistModal] = useState(false);
+  // ✅ Removed showWaitlistModal state - we're using the one on the landing page
 
-  // ... rest of your existing AppHeader code ...
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        fetchOrganization(session.user.id);
+        setUserProfile(session.user);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchOrganization(session.user.id);
+        setUserProfile(session.user);
+      } else {
+        setOrganization(null);
+        setUserProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchOrganization = async (userId) => {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select(`organizations (id, name)`)
+      .eq('user_id', userId)
+      .single();
+
+    if (!error && data) {
+      setOrganization(data.organizations);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setOrganization(null);
+    setUserProfile(null);
+    setIsMobileMenuOpen(false);
+    navigate('/');
+  };
+
+  const handleLogin = () => {
+    setIsMobileMenuOpen(false);
+    navigate('/login');
+  };
+
+  const handleGetStarted = () => {
+    setIsMobileMenuOpen(false);
+    // ✅ Scroll to the waitlist modal on the landing page instead
+    const waitlistSection = document.querySelector('.beta-banner');
+    if (waitlistSection) {
+      waitlistSection.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      // Fallback: navigate to landing page
+      navigate('/');
+    }
+  };
+
+  const handleDashboard = () => {
+    setIsMobileMenuOpen(false);
+    navigate('/dashboard');
+  };
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
+
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (!userProfile) return 'User';
+    
+    const metadata = userProfile.user_metadata || {};
+    const fullName = metadata.full_name || 
+                    metadata.name || 
+                    metadata.display_name ||
+                    userProfile.email?.split('@')[0] || 
+                    'User';
+    
+    return {
+      fullName,
+      firstName: fullName.split(' ')[0],
+      email: userProfile.email
+    };
+  };
+
+  const userDisplay = getUserDisplayName();
 
   return (
     <>
@@ -24,14 +108,14 @@ export default function AppHeader({ showAuthButtons = true, isBetaMode = true })
         <div className="header-container">
           <div className="header-left">
             <Link to="/" className="logo" onClick={() => setIsMobileMenuOpen(false)}>
-              <span className="logo-icon">🌱</span>
-              <span className="logo-text">CarbonTally</span>
+              <span className="logo-icon logo-icon-animated">🌱</span>
+              <span className="logo-text logo-text-animated">CarbonTally</span>
             </Link>
           </div>
           
           {/* Mobile Menu Toggle */}
           <button 
-            className={`mobile-menu-toggle ${isMobileMenuOpen ? 'active' : ''}`}
+            className="mobile-menu-toggle"
             onClick={toggleMobileMenu}
             aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
           >
@@ -40,7 +124,7 @@ export default function AppHeader({ showAuthButtons = true, isBetaMode = true })
             <span className="hamburger-line"></span>
           </button>
 
-          {/* Desktop Navigation */}
+          {/* Navigation */}
           <nav className={`landing-nav ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
             <ul className="nav-links">
               <li><a href="/#features" onClick={() => setIsMobileMenuOpen(false)}>Features</a></li>
@@ -51,65 +135,49 @@ export default function AppHeader({ showAuthButtons = true, isBetaMode = true })
           </nav>
           
           <div className="header-right">
-            {isBetaMode && (
-              <span className="beta-badge-header">🧪 Beta</span>
+            {session && organization ? (
+              // Logged in user view
+              <>
+                <div className="user-info-group">
+                  <div className="user-avatar-wrapper" title={`${userDisplay.fullName} (${userDisplay.email})`}>
+                    <div className="user-avatar">
+                      {userDisplay.fullName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="user-details">
+                      <span className="user-name">{userDisplay.fullName}</span>
+                      <span className="company-name-badge">{organization.name}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="action-buttons">
+                  <button onClick={handleDashboard} className="header-dashboard-btn">
+                    Dashboard
+                  </button>
+                  <button onClick={handleLogout} className="header-logout">
+                    Logout
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Beta Mode: Show "Request Beta Access" button
+              <>
+                {/* Beta Badge */}
+                {isBetaMode && (
+                  <span className="beta-badge-header">🧪 Beta</span>
+                )}
+                
+                {/* ✅ Beta Access Button - Scrolls to landing page beta section */}
+                <button onClick={handleGetStarted} className="header-cta btn-gradient">
+                  {isBetaMode ? 'Request Beta Access' : 'Start Free Trial'}
+                </button>
+              </>
             )}
-            <button onClick={() => setShowWaitlistModal(true)} className="header-cta btn-gradient">
-              Request Beta Access
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Mobile Menu Overlay - Add this for better mobile experience */}
-      {isMobileMenuOpen && (
-        <div className="mobile-menu-overlay" onClick={toggleMobileMenu}>
-          <div className="mobile-menu-content" onClick={(e) => e.stopPropagation()}>
-            <button className="mobile-menu-close" onClick={toggleMobileMenu}>✕</button>
-            <nav className="mobile-nav">
-              <a href="/#features" onClick={toggleMobileMenu}>Features</a>
-              <a href="/#pricing" onClick={toggleMobileMenu}>Pricing</a>
-              <Link to="/about" onClick={toggleMobileMenu}>About</Link>
-              <Link to="/carbon-reduction-plan" onClick={toggleMobileMenu}>Carbon Plan</Link>
-              <button className="mobile-cta btn-gradient" onClick={() => {
-                toggleMobileMenu();
-                setShowWaitlistModal(true);
-              }}>
-                Request Beta Access
-              </button>
-            </nav>
-          </div>
-        </div>
-      )}
-
-      {/* Waitlist Modal */}
-      {showWaitlistModal && (
-        <div className="modal-overlay" onClick={() => setShowWaitlistModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowWaitlistModal(false)}>✕</button>
-            <div className="modal-header">
-              <span className="modal-icon">🧪</span>
-              <h2>Request Beta Access</h2>
-              <p>All features are ready. Be among the first to try CarbonTally.</p>
-            </div>
-            <form className="modal-form" onSubmit={(e) => e.preventDefault()}>
-              <div className="form-group">
-                <label htmlFor="header-email">Email Address</label>
-                <input
-                  id="header-email"
-                  type="email"
-                  placeholder="you@company.com"
-                  required
-                />
-              </div>
-              <button type="submit" className="modal-submit btn-gradient">
-                Request Beta Access →
-              </button>
-              <p className="modal-subtext">✅ No spam. Unsubscribe anytime.</p>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ✅ REMOVED: Waitlist Modal - Now using the one on the landing page */}
     </>
   );
 }

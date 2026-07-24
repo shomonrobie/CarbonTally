@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import './AssetManager.css';
+import './css/AssetManager.css';
 import toast from 'react-hot-toast';
 
 function AssetManager({ organization }) {
