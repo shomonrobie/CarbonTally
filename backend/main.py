@@ -2184,7 +2184,7 @@ async def resend_beta_confirmation(request: dict):
             raise HTTPException(status_code=404, detail="Email not found in waitlist")
 
         # Send confirmation email
-        email_sent = await send_confirmation_email(
+        email_sent =  send_confirmation_email_sync(
             email=email_lower,
             full_name=existing.data.get("full_name")
         )
