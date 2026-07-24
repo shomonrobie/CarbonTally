@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import './BetaSignup.css';
+import './css/BetaSignup.css';
 
 export default function BetaSignup() {
   const [searchParams] = useSearchParams();
@@ -71,12 +71,27 @@ export default function BetaSignup() {
     validateCode();
   }, [betaCode]);
 
+  
   const handleSignup = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
+    // ✅ Check if user already exists
+      const { data: existingUser, error: checkError } = await supabase
+        .from('beta_users')
+        .select('email')
+        .eq('email', email)
+        .single();
+
+        if (existingUser) {
+            setError('This email is already registered for beta access. Please sign in.');
+            setLoading(false);
+            return;
+        }
+        
+    
       // 1. Create user account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email,
@@ -91,7 +106,17 @@ export default function BetaSignup() {
         }
       });
 
-      if (authError) throw authError;
+        if (authError) {
+        // ✅ Handle existing auth user
+        if (authError.message.includes('User already registered')) {
+            setError('This email is already registered. Please sign in instead.');
+            setLoading(false);
+            return;
+        }
+        throw authError;
+        }
+
+
 
       // 2. Mark beta code as used
       await supabase

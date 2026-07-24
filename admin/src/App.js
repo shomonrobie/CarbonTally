@@ -19,6 +19,7 @@ import ManualReviewQueue from './pages/admin/ManualReviewQueue';
 import ExtractionErrorReview from './pages/admin/ExtractionErrorReview';
 import BetaManagement from './pages/admin/BetaManagement';
 import ReviewAssignment from './pages/admin/ReviewAssignment';
+import GlossaryManagement from './pages/admin/GlossaryManagement';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -74,6 +75,7 @@ const AppRoutes = () => {
         <Route path="/admin/errors" element={<ExtractionErrorReview />} />
         <Route path="/admin/beta" element={<BetaManagement />} />
         <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
+        <Route path="/admin/review-assignment" element={<GlossaryManagement />} />
         
         {/* Staff Routes */}
         <Route path="/staff/dashboard" element={<StaffDashboard />} />

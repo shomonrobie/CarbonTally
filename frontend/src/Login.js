@@ -1,8 +1,8 @@
-// Login.js
+//frontend/src/Login.js
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
-import './Login.css';
+import './css/Login.css';
 
 function Login() {
   const navigate = useNavigate();

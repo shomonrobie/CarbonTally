@@ -1,3 +1,4 @@
+// D:\carbon_ledger\admin\src\pages\admin\DefraFactors.js
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -10,7 +11,9 @@ import {
   FaFilter,
   FaFileImport,
   FaFileExport,
-  FaHistory
+  FaHistory,
+  FaBook,
+  FaTag
 } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
@@ -24,11 +27,12 @@ const DefraFactors = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('factors'); // 'factors' or 'categories'
   const pageSize = 20;
   const queryClient = useQueryClient();
 
   // Fetch DEFRA factors
-  const { data: factorsData, isLoading, refetch } = useQuery({
+  const { data: factorsData, isLoading: isLoadingFactors, refetch } = useQuery({
     queryKey: ['defraFactors', yearFilter, searchTerm, currentPage],
     queryFn: async () => {
       let query = supabase
@@ -55,6 +59,20 @@ const DefraFactors = () => {
     },
   });
 
+  // Fetch activity categories
+  const { data: categoriesData, isLoading: isLoadingCategories, refetch: refetchCategories } = useQuery({
+    queryKey: ['activityCategories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_categories')
+        .select('*')
+        .order('activity_type', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Get available years
   const { data: yearsData } = useQuery({
     queryKey: ['defraYears'],
@@ -70,8 +88,8 @@ const DefraFactors = () => {
     },
   });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
+  // Delete factor mutation
+  const deleteFactorMutation = useMutation({
     mutationFn: async (id) => {
       const { error } = await supabase
         .from('defra_conversion_factors')
@@ -88,9 +106,51 @@ const DefraFactors = () => {
     },
   });
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this factor? This action cannot be undone.')) {
-      await deleteMutation.mutateAsync(id);
+  // Delete category mutation
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase
+        .from('activity_categories')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['activityCategories']);
+      toast.success('Category deleted successfully!');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete: ' + error.message);
+    },
+  });
+
+  // Edit category mutation
+  const editCategoryMutation = useMutation({
+    mutationFn: async ({ id, ...data }) => {
+      const { error } = await supabase
+        .from('activity_categories')
+        .update(data)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['activityCategories']);
+      toast.success('Category updated successfully!');
+    },
+    onError: (error) => {
+      toast.error('Failed to update: ' + error.message);
+    },
+  });
+
+  const handleDeleteFactor = async (id) => {
+    if (window.confirm('Are you sure you want to delete this factor?')) {
+      await deleteFactorMutation.mutateAsync(id);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (window.confirm('Are you sure you want to delete this category?')) {
+      await deleteCategoryMutation.mutateAsync(id);
     }
   };
 
@@ -105,14 +165,12 @@ const DefraFactors = () => {
   };
 
   const handleExport = () => {
-    // Export current view data
     const exportData = factorsData?.data || [];
     if (exportData.length === 0) {
       toast.error('No data to export');
       return;
     }
 
-    // Create CSV
     const headers = ['Activity Type', 'Reporting Year', 'CO2e Multiplier', 'Created At'];
     const csvRows = [headers.join(',')];
     
@@ -146,9 +204,9 @@ const DefraFactors = () => {
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">📊 DEFRA Conversion Factors</h1>
+            <h1 className="text-2xl font-bold text-gray-900">📊 Emission Factors & Categories</h1>
             <p className="text-gray-600">
-              Manage UK Government GHG conversion factors for emissions calculations
+              Manage UK DEFRA conversion factors and activity categories for CSRD/ISSB reporting
             </p>
           </div>
           <div className="flex gap-3">
@@ -174,160 +232,313 @@ const DefraFactors = () => {
         </div>
       </div>
 
-      {/* Compliance Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="text-blue-600 text-xl">ℹ️</div>
-          <div>
-            <h4 className="font-medium text-blue-900">UK GDPR Compliance Note</h4>
-            <p className="text-sm text-blue-700">
-              All emission calculations must use the correct DEFRA factors for the reporting year. 
-              Factors should be updated annually when UK Government releases new conversion factors.
-              All changes are logged for audit purposes.
-            </p>
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex gap-6">
+          <button
+            onClick={() => setActiveTab('factors')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'factors'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaBook className="inline mr-2" />
+            Factors ({factorsData?.count || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'categories'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FaTag className="inline mr-2" />
+            Categories ({categoriesData?.length || 0})
+          </button>
+        </nav>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search activity types..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-              />
+      {/* DEFRA Factors Tab */}
+      {activeTab === 'factors' && (
+        <>
+          {/* Compliance Notice */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <div className="text-blue-600 text-xl">ℹ️</div>
+              <div>
+                <h4 className="font-medium text-blue-900">UK GDPR & CSRD Compliance</h4>
+                <p className="text-sm text-blue-700">
+                  All emission calculations must use the correct DEFRA factors for the reporting year.
+                  Factors should be updated annually when UK Government releases new conversion factors.
+                </p>
+              </div>
             </div>
           </div>
 
-          <select
-            value={yearFilter}
-            onChange={(e) => setYearFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-          >
-            <option value="all">All Years</option>
-            {yearsData?.map(year => (
-              <option key={year} value={year}>{year}</option>
-            ))}
-          </select>
+          {/* Filters */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search activity types..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                  />
+                </div>
+              </div>
 
-          <div className="text-sm text-gray-500 flex items-center">
-            Showing {factorsData?.data?.length || 0} of {factorsData?.count || 0} factors
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              >
+                <option value="all">All Years</option>
+                {yearsData?.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+
+              <div className="text-sm text-gray-500 flex items-center">
+                Showing {factorsData?.data?.length || 0} of {factorsData?.count || 0} factors
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Table */}
-      <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Activity Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Reporting Year
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  CO2e Multiplier
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {isLoading ? (
+          {/* Table */}
+          <div className="card">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Activity Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Reporting Year
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      CO2e Multiplier
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {isLoadingFactors ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-8 text-center">
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : factorsData?.data?.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                        No DEFRA factors found. Import or add factors to get started.
+                      </td>
+                    </tr>
+                  ) : (
+                    factorsData?.data?.map((factor) => (
+                      <tr key={factor.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {factor.activity_type}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          <span className="badge badge-info">{factor.reporting_year}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-medium">
+                          {factor.co2e_multiplier}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {factor.created_at ? new Date(factor.created_at).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleEdit(factor)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Edit"
+                            >
+                              <FaEdit />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFactor(factor.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <FaTrash />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, factorsData?.count || 0)} of {factorsData?.count || 0} results
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-3 py-1 bg-primary-50 text-primary-600 rounded-lg">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Categories Tab */}
+      {activeTab === 'categories' && (
+        <div className="card">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center">
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                    </div>
-                  </td>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Activity Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ESRS E1 Category
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ISSB Category
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    GHG Scope
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Scope 3 Category
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ) : factorsData?.data?.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
-                    No DEFRA factors found. Import or add factors to get started.
-                  </td>
-                </tr>
-              ) : (
-                factorsData?.data?.map((factor) => (
-                  <tr key={factor.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {factor.activity_type}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      <span className="badge badge-info">{factor.reporting_year}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono font-medium">
-                      {factor.co2e_multiplier}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {factor.created_at ? new Date(factor.created_at).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleEdit(factor)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <FaEdit />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(factor.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <FaTrash />
-                        </button>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {isLoadingCategories ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-8 text-center">
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, factorsData?.count || 0)} of {factorsData?.count || 0} results
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous
-              </button>
-              <span className="px-3 py-1 bg-primary-50 text-primary-600 rounded-lg">
-                {currentPage} / {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
+                ) : categoriesData?.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                      No categories found. Import the initial categories to get started.
+                    </td>
+                  </tr>
+                ) : (
+                  categoriesData?.map((category) => (
+                    <tr key={category.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {category.activity_type}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <span className="badge badge-blue">{category.esrs_e1_category}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <span className="badge badge-purple">{category.issb_category}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className={`badge ${category.ghg_protocol_scope === 'Scope 1' ? 'badge-red' : category.ghg_protocol_scope === 'Scope 2' ? 'badge-yellow' : 'badge-green'}`}>
+                          {category.ghg_protocol_scope}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {category.ghg_protocol_category || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              // Edit category - simple prompt for now
+                              const updated = prompt('Update activity type:', category.activity_type);
+                              if (updated) {
+                                editCategoryMutation.mutate({
+                                  id: category.id,
+                                  activity_type: updated
+                                });
+                              }
+                            }}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Edit"
+                          >
+                            <FaEdit />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category.id)}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <FaTrash />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+
+          {/* Category Management Actions */}
+          <div className="px-6 py-4 border-t border-gray-100">
+            <button
+              onClick={() => {
+                // Simple add category - prompt for data
+                const activityType = prompt('Enter activity type:');
+                if (activityType) {
+                  const esrsCategory = prompt('Enter ESRS E1 category:');
+                  const issbCategory = prompt('Enter ISSB category:');
+                  const scope = prompt('Enter GHG Protocol Scope (Scope 1, Scope 2, or Scope 3):');
+                  
+                  if (esrsCategory && issbCategory && scope) {
+                    // Here you would save the category
+                    toast.info('Category creation is being implemented...');
+                  }
+                }
+              }}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center gap-2"
+            >
+              <FaPlus /> Add Category
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <DefraFactorModal

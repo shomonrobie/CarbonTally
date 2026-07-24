@@ -9,15 +9,15 @@ load_dotenv(dotenv_path)
 print("🔍 DEBUG: SUPABASE_URL is", os.getenv("SUPABASE_URL"))
 print("🔍 DEBUG: SUPABASE_SERVICE_KEY is", "SET" if os.getenv("SUPABASE_SERVICE_KEY") else "MISSING")
 import base64
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import numpy as np
 import io
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from pdf_engine import PDFExtractor
 import resend
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import traceback
 from fpdf import FPDF
@@ -33,6 +33,7 @@ import re
 # )
 
 from report_generator import router as report_router
+from supabase import create_client, Client
 
 app = FastAPI(title="CarbonTally API", version="3.0.0")
 app.include_router(report_router)
@@ -46,50 +47,322 @@ app.add_middleware(
         # Local development
         "http://localhost:3000",      # Main app
         "http://localhost:3001",      # Admin dashboard
-
         # Production - Main domain
         "https://carbontally.co.uk",
         "https://www.carbontally.co.uk",
-
         # Production - If admin is on a separate subdomain
         "https://admin.carbontally.co.uk",
-
         # Production - If using separate Vercel deployments
         "https://carbontally-frontend.vercel.app",
         "https://carbontally-admin.vercel.app",
+        # Render deployment
+        "https://carbontally-api.onrender.com",
+        
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# OFFICIAL UK DEFRA CONVERSION FACTORS
-DEFRA_FACTORS = {
-    # Scope 1: Transport Fuel (kgCO2e per Litre)
-    'Diesel': 2.54,
-    'Petrol': 2.16,
-    'AdBlue': 0.0,
-    'Unknown Fuel': 0.0,
-    
-    # Scope 2: Utilities (kgCO2e per kWh)
-    'Electricity': 0.20712, 
-    'Natural Gas': 0.18316,
-    'Unknown Utility': 0.0,
+# ============ SUPABASE CLIENT ============
+# ✅ Initialize Supabase as a global variable
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
 
-    # Scope 3: Travel & Waste
-    'Flight (Short Haul)': 0.25496,
-    'Flight (Long Haul)': 0.19534,
-    'Rail (National)': 0.03546,
-    'Hotel Stay': 19.50000,
-    'Mixed Waste': 0.57000,
-    'Recycled Waste': -0.45000,
-    'Unknown Scope 3': 0.0,
-}
+if not supabase_url or not supabase_key:
+    print("❌ ERROR: Missing Supabase credentials!")
+    supabase = None
+else:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+        print("✅ Supabase initialized successfully")
+        # Test the connection
+        test = supabase.table("waitlist").select("count").limit(1).execute()
+        print("✅ Supabase connection test successful")
+    except Exception as e:
+        print(f"❌ Supabase initialization error: {e}")
+        supabase = None
+
+
+# ============ PYDANTIC MODELS ============
+class WaitlistRequest(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = Field(None, max_length=100)
+    company_name: Optional[str] = Field(None, max_length=100)
+    company_size: Optional[str] = Field(None, max_length=50)
+    interested_in: Optional[str] = Field(None, max_length=100)
+    source: Optional[str] = Field("landing_page", max_length=50)
+
+class WaitlistResponse(BaseModel):
+    success: bool
+    message: str
+    error: Optional[str] = None
+    data: Optional[dict] = None
+
+
+# ============ HEALTH CHECK ============
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint
+    """
+    return {
+        "status": "healthy",
+        "service": "CarbonTally API",
+        "version": "3.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "supabase_connected": supabase is not None
+    }
+
+@app.post("/api/waitlist", response_model=WaitlistResponse)
+async def add_to_waitlist(request: WaitlistRequest):
+    """
+    Add email to waitlist - POST endpoint
+    """
+    try:
+        # ✅ Check if supabase is initialized
+        if supabase is None:
+            print("❌ Supabase client is None")
+            raise HTTPException(status_code=500, detail="Database connection not available")
+
+        # Validate and clean email
+        email_lower = request.email.lower().strip()
+        print(f"📝 Adding to waitlist: {email_lower}")
+
+        # ✅ Check if email already exists
+        try:
+            existing = supabase.table("waitlist")\
+                .select("email, status")\
+                .eq("email", email_lower)\
+                .maybe_single()\
+                .execute()
+            
+            if existing.data:
+                print(f"⚠️ Email already on waitlist: {email_lower}")
+                return WaitlistResponse(
+                    success=False,
+                    message="Email already on waitlist",
+                    error="Already on waitlist",
+                    data={"status": existing.data.get("status", "pending")}
+                )
+        except Exception as e:
+            print(f"❌ Error checking existing email: {e}")
+            # Continue anyway - might be a table issue
+        
+        # ✅ Insert into waitlist
+        now = datetime.now().isoformat()
+        result = supabase.table("waitlist").insert({
+            "email": email_lower,
+            "full_name": request.full_name,
+            "company_name": request.company_name,
+            "company_size": request.company_size,
+            "interested_in": request.interested_in,
+            "source": request.source or "landing_page",
+            "status": "pending",
+            "created_at": now,
+            "updated_at": now
+        }).execute()
+        
+        if not result.data or len(result.data) == 0:
+            print("❌ Failed to insert into waitlist - no data returned")
+            raise HTTPException(status_code=500, detail="Failed to add to waitlist")
+        
+        print(f"✅ Added {email_lower} to waitlist")
+
+        # Optional: Send confirmation email
+        try:
+            email_sent = send_confirmation_email_sync(request.email, request.full_name)
+
+            if email_sent:
+                print(f"✅ Confirmation email sent to {request.email}")
+            else:
+                print(f"⚠️ Failed to send confirmation email to {request.email}")
+
+        except Exception as email_error:
+            print(f"Email error: {email_error}")
+            # Don't fail the request if email fails
+        
+        return WaitlistResponse(
+            success=True,
+            message="Added to waitlist successfully!",
+            data=result.data[0]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Waitlist error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/waitlist")
+async def get_waitlist(limit: int = 100, status: Optional[str] = None):
+    """
+    Get waitlist entries - GET endpoint (admin only)
+    """
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        query = supabase.table("waitlist").select("*")
+        
+        if status:
+            query = query.eq("status", status)
+        
+        result = query.order("created_at", desc=True).limit(limit).execute()
+        
+        return {
+            "success": True,
+            "data": result.data,
+            "count": len(result.data) if result.data else 0
+        }
+        
+    except Exception as e:
+        print(f"Get waitlist error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/waitlist/count")
+async def get_waitlist_count():
+    """
+    Get total waitlist count
+    """
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        result = supabase.table("waitlist").select("id", count="exact").execute()
+        
+        return {
+            "success": True,
+            "count": result.count or 0
+        }
+        
+    except Exception as e:
+        print(f"Get waitlist count error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# # OFFICIAL UK DEFRA CONVERSION FACTORS
+# DEFRA_FACTORS = {
+#     # Scope 1: Transport Fuel (kgCO2e per Litre)
+#     'Diesel': 2.54,
+#     'Petrol': 2.16,
+#     'AdBlue': 0.0,
+#     'Unknown Fuel': 0.0,
+    
+#     # Scope 2: Utilities (kgCO2e per kWh)
+#     'Electricity': 0.20712, 
+#     'Natural Gas': 0.18316,
+#     'Unknown Utility': 0.0,
+
+#     # Scope 3: Travel & Waste
+#     'Flight (Short Haul)': 0.25496,
+#     'Flight (Long Haul)': 0.19534,
+#     'Rail (National)': 0.03546,
+#     'Hotel Stay': 19.50000,
+#     'Mixed Waste': 0.57000,
+#     'Recycled Waste': -0.45000,
+#     'Unknown Scope 3': 0.0,
+# }
+
+def get_emission_factor(supabase_client, activity_type: str, reporting_year: int = None):
+    """
+    Fetch emission factor from database with optional year fallback.
+    """
+    try:
+        # If no year provided, use the most recent available
+        if reporting_year is None:
+            # Get the most recent year with data
+            year_result = supabase_client.from_('defra_conversion_factors') \
+                .select('reporting_year') \
+                .eq('activity_type', activity_type) \
+                .order('reporting_year', desc=True) \
+                .limit(1) \
+                .execute()
+            
+            if year_result.data:
+                reporting_year = year_result.data[0]['reporting_year']
+            else:
+                raise ValueError(f"No emission factor found for '{activity_type}'")
+        
+        # Fetch the factor for the specific year
+        factor_result = supabase_client.from_('defra_conversion_factors') \
+            .select('co2e_multiplier, reporting_year') \
+            .eq('activity_type', activity_type) \
+            .eq('reporting_year', reporting_year) \
+            .single() \
+            .execute()
+        
+        if not factor_result.data:
+            # Try to get the most recent factor for this activity
+            fallback_result = supabase_client.from_('defra_conversion_factors') \
+                .select('co2e_multiplier, reporting_year') \
+                .eq('activity_type', activity_type) \
+                .order('reporting_year', desc=True) \
+                .limit(1) \
+                .execute()
+            
+            if fallback_result.data:
+                return {
+                    'multiplier': float(fallback_result.data[0]['co2e_multiplier']),
+                    'reporting_year': fallback_result.data[0]['reporting_year'],
+                    'is_fallback': True
+                }
+            else:
+                raise ValueError(f"No emission factor found for '{activity_type}'")
+        
+        return {
+            'multiplier': float(factor_result.data['co2e_multiplier']),
+            'reporting_year': factor_result.data['reporting_year'],
+            'is_fallback': False
+        }
+        
+    except Exception as e:
+        print(f"❌ Error fetching emission factor: {e}")
+        raise
+
+def get_activity_category(supabase_client, activity_type: str):
+    """
+    Get CSRD/ISSB category mapping for an activity.
+    """
+    try:
+        result = supabase_client.from_('activity_categories') \
+            .select('*') \
+            .eq('activity_type', activity_type) \
+            .single() \
+            .execute()
+        
+        if result.data:
+            return result.data
+        else:
+            # Return default mapping for unknown activities
+            return {
+                'activity_type': activity_type,
+                'esrs_e1_category': 'Other',
+                'issb_category': 'Other',
+                'ghg_protocol_scope': 'Scope 3',
+                'ghg_protocol_category': 'Other'
+            }
+    except Exception as e:
+        print(f"⚠️ Error fetching category for {activity_type}: {e}")
+        return {
+            'activity_type': activity_type,
+            'esrs_e1_category': 'Other',
+            'issb_category': 'Other',
+            'ghg_protocol_scope': 'Scope 3',
+            'ghg_protocol_category': 'Other'
+        }
+
 
 # ==========================================
 # CSV PROCESSING FUNCTIONS
 # ==========================================
-
-def process_fuel_data(df: pd.DataFrame) -> tuple:
+def process_fuel_data(df: pd.DataFrame, supabase_client) -> tuple:
+    """
+    Process fuel data using database-stored emission factors.
+    """
     df = df.copy()
     date_col = next((c for c in df.columns if 'date' in c.lower()), 'Transaction Date')
     vol_col = next((c for c in df.columns if 'vol' in c.lower() or 'litre' in c.lower() or 'liter' in c.lower()), 'Volume (L)')
@@ -106,10 +379,30 @@ def process_fuel_data(df: pd.DataFrame) -> tuple:
         if 'diesel' in fuel_str: return 'Diesel'
         if 'petrol' in fuel_str or 'gas' in fuel_str: return 'Petrol'
         if 'adblue' in fuel_str or 'def' in fuel_str: return 'AdBlue'
+        if 'lpg' in fuel_str: return 'LPG'
+        if 'cng' in fuel_str: return 'CNG'
         return 'Unknown Fuel'
 
     df['Standardized Fuel'] = df['Fuel Type'].apply(normalize_fuel)
-    df['DEFRA Factor (kgCO2e/L)'] = df['Standardized Fuel'].map(DEFRA_FACTORS)
+    
+    # ✅ Get factors from database
+    factors = []
+    for fuel in df['Standardized Fuel'].unique():
+        if fuel == 'Unknown Fuel':
+            factors.append({'fuel': fuel, 'factor': 0, 'year': None})
+        else:
+            try:
+                factor_data = get_emission_factor(supabase_client, fuel)
+                factors.append({
+                    'fuel': fuel, 
+                    'factor': factor_data['multiplier'],
+                    'year': factor_data['reporting_year']
+                })
+            except:
+                factors.append({'fuel': fuel, 'factor': 0, 'year': None})
+    
+    factor_map = {f['fuel']: f['factor'] for f in factors}
+    df['DEFRA Factor (kgCO2e/L)'] = df['Standardized Fuel'].map(factor_map).fillna(0)
     df['Total kgCO2e'] = (df['Volume (L)'] * df['DEFRA Factor (kgCO2e/L)']).round(2).fillna(0)
     
     df['needs_review'] = False
@@ -120,18 +413,21 @@ def process_fuel_data(df: pd.DataFrame) -> tuple:
     df.loc[df['Standardized Fuel'] == 'Unknown Fuel', 'review_reason'] = 'Unrecognized Fuel Type'
     
     df = df.replace({np.nan: None, pd.NaT: None})
-    clean_cols = ['Transaction Date', 'Vehicle Registration', 'Standardized Fuel', 'Volume (L)', 'DEFRA Factor (kgCO2e/L)', 'Total kgCO2e', 'needs_review', 'review_reason']
+    clean_cols = ['Transaction Date', 'Vehicle Registration', 'Standardized Fuel', 'Volume (L)', 
+                  'DEFRA Factor (kgCO2e/L)', 'Total kgCO2e', 'needs_review', 'review_reason']
     return df[[c for c in clean_cols if c in df.columns]].to_dict(orient='records'), int(df['needs_review'].sum())
-
-
-def process_utility_data(df: pd.DataFrame) -> tuple:
+def process_utility_data(df: pd.DataFrame, supabase_client) -> tuple:
+    """
+    Process utility data using database-stored emission factors.
+    """
     df = df.copy()
     date_col = next((c for c in df.columns if 'date' in c.lower() or 'period' in c.lower()), 'Billing Period Start')
     site_col = next((c for c in df.columns if 'site' in c.lower() or 'facility' in c.lower() or 'location' in c.lower()), 'Site Name')
     vol_col = next((c for c in df.columns if 'consumption' in c.lower() or 'kwh' in c.lower() or 'usage' in c.lower()), 'Consumption (kWh)')
     type_col = next((c for c in df.columns if 'type' in c.lower() or 'utility' in c.lower() or 'meter' in c.lower()), 'Utility Type')
     
-    df = df.rename(columns={date_col: 'Billing Period Start', site_col: 'Site Name', vol_col: 'Consumption (kWh)', type_col: 'Utility Type'})
+    df = df.rename(columns={date_col: 'Billing Period Start', site_col: 'Site Name', 
+                           vol_col: 'Consumption (kWh)', type_col: 'Utility Type'})
     df['Billing Period Start'] = pd.to_datetime(df['Billing Period Start'], format='mixed', dayfirst=True, errors='coerce').dt.strftime('%Y-%m-%d')
     df['Consumption (kWh)'] = pd.to_numeric(df['Consumption (kWh)'], errors='coerce')
     
@@ -145,10 +441,26 @@ def process_utility_data(df: pd.DataFrame) -> tuple:
         utype_str = str(utype).strip().lower()
         if 'electric' in utype_str: return 'Electricity'
         if 'gas' in utype_str or 'nat' in utype_str: return 'Natural Gas'
+        if 'steam' in utype_str: return 'Steam'
+        if 'chilled' in utype_str or 'cooling' in utype_str: return 'Chilled Water'
         return 'Unknown Utility'
 
     df['Standardized Utility'] = df['Utility Type'].apply(normalize_utility_type)
-    df['DEFRA Factor (kgCO2e/kWh)'] = df['Standardized Utility'].map(DEFRA_FACTORS)
+    
+    # ✅ Get factors from database
+    factors = []
+    for utility in df['Standardized Utility'].unique():
+        if utility == 'Unknown Utility':
+            factors.append({'utility': utility, 'factor': 0})
+        else:
+            try:
+                factor_data = get_emission_factor(supabase_client, utility)
+                factors.append({'utility': utility, 'factor': factor_data['multiplier']})
+            except:
+                factors.append({'utility': utility, 'factor': 0})
+    
+    factor_map = {f['utility']: f['factor'] for f in factors}
+    df['DEFRA Factor (kgCO2e/kWh)'] = df['Standardized Utility'].map(factor_map).fillna(0)
     df['Total kgCO2e'] = (df['Consumption (kWh)'] * df['DEFRA Factor (kgCO2e/kWh)']).round(2).fillna(0)
     
     df['needs_review'] = False
@@ -161,14 +473,19 @@ def process_utility_data(df: pd.DataFrame) -> tuple:
     df.loc[df['Site Name'].isna() | (df['Site Name'] == ''), 'review_reason'] = 'Missing Site/Facility Name'
     
     df = df.replace({np.nan: None, pd.NaT: None})
-    clean_columns = ['Billing Period Start', 'Site Name', 'Standardized Utility', 'Consumption (kWh)', 'DEFRA Factor (kgCO2e/kWh)', 'Total kgCO2e', 'needs_review', 'review_reason']
+    clean_columns = ['Billing Period Start', 'Site Name', 'Standardized Utility', 
+                     'Consumption (kWh)', 'DEFRA Factor (kgCO2e/kWh)', 'Total kgCO2e', 
+                     'needs_review', 'review_reason']
     if 'Cost (£)' in df.columns:
         clean_columns.insert(4, 'Cost (£)')
         
     return df[[c for c in clean_columns if c in df.columns]].to_dict(orient='records'), int(df['needs_review'].sum())
 
 
-def process_scope3_data(df: pd.DataFrame) -> tuple:
+def process_scope3_data(df: pd.DataFrame, supabase_client) -> tuple:
+    """
+    Process Scope 3 data using database-stored emission factors.
+    """
     df = df.copy()
     date_col = next((c for c in df.columns if 'date' in c.lower()), 'Date')
     desc_col = next((c for c in df.columns if 'desc' in c.lower() or 'detail' in c.lower() or 'purpose' in c.lower()), 'Description')
@@ -188,14 +505,33 @@ def process_scope3_data(df: pd.DataFrame) -> tuple:
     def normalize_scope3(cat):
         if pd.isna(cat): return 'Unknown Scope 3'
         cat_str = str(cat).strip().lower()
-        if 'flight' in cat_str or 'air' in cat_str: return 'Flight (Long Haul)' if 'long' in cat_str else 'Flight (Short Haul)'
+        if 'flight' in cat_str or 'air' in cat_str: 
+            return 'Flight (Long Haul)' if 'long' in cat_str else 'Flight (Short Haul)'
         if 'rail' in cat_str or 'train' in cat_str: return 'Rail (National)'
         if 'hotel' in cat_str or 'stay' in cat_str: return 'Hotel Stay'
-        if 'waste' in cat_str or 'rubbish' in cat_str: return 'Recycled Waste' if 'recycle' in cat_str else 'Mixed Waste'
+        if 'waste' in cat_str or 'rubbish' in cat_str: 
+            return 'Recycled Waste' if 'recycle' in cat_str else 'Mixed Waste'
+        if 'car' in cat_str or 'taxi' in cat_str: return 'Taxi'
+        if 'bus' in cat_str: return 'Bus'
+        if 'freight' in cat_str or 'cargo' in cat_str: return 'Freight'
         return 'Unknown Scope 3'
 
     df['Standardized Scope3'] = df['Category'].apply(normalize_scope3)
-    df['DEFRA Factor'] = df['Standardized Scope3'].map(DEFRA_FACTORS)
+    
+    # ✅ Get factors from database
+    factors = []
+    for scope in df['Standardized Scope3'].unique():
+        if scope == 'Unknown Scope 3':
+            factors.append({'scope': scope, 'factor': 0})
+        else:
+            try:
+                factor_data = get_emission_factor(supabase_client, scope)
+                factors.append({'scope': scope, 'factor': factor_data['multiplier']})
+            except:
+                factors.append({'scope': scope, 'factor': 0})
+    
+    factor_map = {f['scope']: f['factor'] for f in factors}
+    df['DEFRA Factor'] = df['Standardized Scope3'].map(factor_map).fillna(0)
     df['Total kgCO2e'] = (df['Quantity'] * df['DEFRA Factor']).round(2).fillna(0)
     
     df['needs_review'] = False
@@ -206,12 +542,12 @@ def process_scope3_data(df: pd.DataFrame) -> tuple:
     df.loc[df['Standardized Scope3'] == 'Unknown Scope 3', 'review_reason'] = 'Unrecognized Category'
     
     df = df.replace({np.nan: None, pd.NaT: None})
-    clean_columns = ['Date', 'Description', 'Standardized Scope3', 'Quantity', 'DEFRA Factor', 'Total kgCO2e', 'needs_review', 'review_reason']
+    clean_columns = ['Date', 'Description', 'Standardized Scope3', 'Quantity', 
+                     'DEFRA Factor', 'Total kgCO2e', 'needs_review', 'review_reason']
     if 'Cost (£)' in df.columns:
         clean_columns.insert(3, 'Cost (£)')
         
     return df[[c for c in clean_columns if c in df.columns]].to_dict(orient='records'), int(df['needs_review'].sum())
-
 
 # ==========================================
 # PDF/IMAGE EXTRACTION HELPERS
@@ -336,134 +672,6 @@ def has_low_confidence(extraction_result: dict) -> bool:
                 return True
     return False
 
-async def queue_for_manual_review(
-    file_bytes: bytes,
-    filename: str,
-    content_type: str,
-    data_type: str,
-    organization_id: str,
-    auto_result: dict,
-    supabase_client
-) -> tuple:
-    """
-    Queue a failed extraction for manual review and send email notification.
-    Returns (review_id, issues, summary)
-    """
-    try:
-        # Extract real issues from the result
-        issues, summary = extract_issues_from_result(auto_result, data_type)
-        
-        # If no issues were found but we're here, add a generic one
-        if not issues:
-            issues.append({
-                "severity": "warning",
-                "type": "manual_review_required",
-                "field": "document",
-                "message": "Manual review required",
-                "technical_details": "Auto-extraction did not meet quality standards"
-            })
-        
-        # 1. Upload file to Supabase Storage
-        file_path = f"manual_review/{organization_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-        
-        storage_response = supabase_client.storage.from_('documents').upload(
-            file_path,
-            file_bytes,
-            file_options={"content-type": content_type}
-        )
-        
-        file_url = supabase_client.storage.from_('documents').get_public_url(file_path)
-        
-        # 2. Insert into manual_review_queue - using your existing columns
-        queue_response = supabase_client.from_('manual_review_queue').insert({
-            'organization_id': organization_id if organization_id and organization_id != "mock-org-id" else None,
-            'file_url': file_url,
-            'file_name': filename,
-            'file_type': 'PDF' if filename.lower().endswith('.pdf') else 'IMAGE',
-            'data_type': data_type,
-            'status': 'pending',
-            'auto_extraction_result': {
-                'extraction_result': auto_result,
-                'extraction_issues': issues,  # Store issues inside auto_extraction_result
-                'extraction_summary': summary,  # Store summary inside auto_extraction_result
-                'confidence_score': summary.get('confidence_score', 0.0)
-            },
-            'priority': 1 if auto_result.get('status') == 'error' else 0,
-            'customer_notes': f"Auto-extraction failed. File: {filename}",
-            'estimated_completion_hours': 24
-        }).execute()
-        
-        review_id = queue_response.data[0]['id']
-        
-        # 3. Send email notification to founder with detailed issues
-        try:
-            # Build issues HTML
-            issues_html = ""
-            if issues:
-                for issue in issues:
-                    severity_color = "#dc2626" if issue.get("severity") == "critical" else "#f59e0b"
-                    issues_html += f"""
-                    <div style="padding: 10px; margin: 5px 0; border-left: 4px solid {severity_color}; background: #f8fafc;">
-                        <strong>{issue.get('field', 'Unknown')}:</strong> {issue.get('message', '')}
-                        {f"<br><small style='color: #64748b;'>Value: {issue.get('value', 'N/A')}</small>" if issue.get('value') else ""}
-                        <br><small style='color: #94a3b8;'>{issue.get('technical_details', '')}</small>
-                    </div>
-                    """
-            
-            resend.Emails.send({
-                "from": "CarbonTally <notifications@carbontally.co.uk>",
-                "to": [FOUNDER_EMAIL],
-                "subject": f"🚨 Manual Review Required: {filename}",
-                "html": f"""
-                <h2 style="color: #0f172a;">Manual Review Queue Alert</h2>
-                <p style="color: #475569;">A customer's document could not be auto-extracted and requires manual review.</p>
-                
-                <table style="border-collapse: collapse; width: 100%; margin: 15px 0; font-size: 14px;">
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Organization ID:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{organization_id}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">File Name:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{filename}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Data Type:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{data_type}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Confidence Score:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{(summary.get('confidence_score', 0) * 100):.1f}%</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Fields Extracted:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{summary.get('extracted_successfully', 0)}/{summary.get('total_fields', 0)}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Review ID:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{review_id}</td>
-                    </tr>
-                </table>
-                
-                <h3 style="color: #0f172a;">📋 Extraction Issues:</h3>
-                {issues_html if issues_html else '<p style="color: #64748b;">No specific issues identified, but extraction failed.</p>'}
-                
-                <div style="margin: 20px 0;">
-                    <a href="https://carbontally.co.uk/staff-dashboard" style="background: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: 600;">Open Staff Dashboard</a>
-                </div>
-                <p style="color: #64748b; font-size: 12px; margin-top: 20px;">Estimated completion: 24 hours</p>
-                """
-            })
-        except Exception as email_error:
-            print(f"Email notification failed: {email_error}")
-        
-        return review_id, issues, summary
-    
-    except Exception as e:
-        print(f"Failed to queue for manual review: {e}")
-        import traceback
-        traceback.print_exc()
-        raise e
 
 def calculate_emissions_with_defra(supabase_client, activity_type: str, consumption: float, start_date: str, override_year: int = None):
     """
@@ -474,38 +682,40 @@ def calculate_emissions_with_defra(supabase_client, activity_type: str, consumpt
     try:
         detected_year = int(str(start_date).split('-')[0])
     except (ValueError, IndexError):
-        detected_year = 2025 # Fallback if date is malformed
+        detected_year = 2025
         
     # 2. Apply override if provided by the user
     reporting_year = override_year if override_year else detected_year
     
-    # 3. Fetch the specific factor for this year and activity
-    factor_res = supabase_client.from_('defra_conversion_factors') \
-        .select('co2e_multiplier') \
-        .eq('activity_type', activity_type) \
-        .eq('reporting_year', reporting_year) \
-        .single() \
-        .execute()
-        
-    if not factor_res.data:
-        raise ValueError(f"No DEFRA factor found for '{activity_type}' in year {reporting_year}. Please import the latest DEFRA data.")
-        
-    multiplier = float(factor_res.data['co2e_multiplier'])
+    # 3. Get category info for audit trail
+    category_info = get_activity_category(supabase_client, activity_type)
+    
+    # 4. Fetch the specific factor for this year and activity
+    factor_data = get_emission_factor(supabase_client, activity_type, reporting_year)
+    
+    multiplier = factor_data['multiplier']
     calculated_kg_co2e = round(consumption * multiplier, 4)
     
     return {
-        "reporting_year": reporting_year,
+        "reporting_year": factor_data['reporting_year'],
         "multiplier_used": multiplier,
-        "calculated_kg_co2e": calculated_kg_co2e
+        "calculated_kg_co2e": calculated_kg_co2e,
+        "is_fallback": factor_data.get('is_fallback', False),
+        "category_mapping": {
+            "esrs_e1_category": category_info.get('esrs_e1_category'),
+            "issb_category": category_info.get('issb_category'),
+            "ghg_protocol_scope": category_info.get('ghg_protocol_scope'),
+            "ghg_protocol_category": category_info.get('ghg_protocol_category')
+        }
     }
-# ==========================================
+
+# ==================================
 # API ENDPOINTS
 # ==========================================
 
 @app.get("/")
 def read_root():
     return {"message": "CarbonTally API v3.0 is running."}
-
 
 @app.post("/upload-csv")
 async def upload_csv(
@@ -516,18 +726,24 @@ async def upload_csv(
         raise HTTPException(status_code=400, detail="Only CSV or Excel files are allowed.")
     
     try:
+        # Initialize Supabase client for database lookups
+        from supabase import create_client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        supabase_client = create_client(supabase_url, supabase_key) if supabase_url and supabase_key else None
+        
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
         df.columns = df.columns.str.strip()
         
         if data_type == 'utility':
-            clean_data, flagged_rows = process_utility_data(df)
+            clean_data, flagged_rows = process_utility_data(df, supabase_client)
             scope = "Scope 2"
         elif data_type == 'scope3':
-            clean_data, flagged_rows = process_scope3_data(df)
+            clean_data, flagged_rows = process_scope3_data(df, supabase_client)
             scope = "Scope 3"
         else:
-            clean_data, flagged_rows = process_fuel_data(df)
+            clean_data, flagged_rows = process_fuel_data(df, supabase_client)
             scope = "Scope 1"
             
         total_emissions = sum(row.get('Total kgCO2e', 0) or 0 for row in clean_data)
@@ -545,8 +761,7 @@ async def upload_csv(
     except Exception as e:
         print(f"--- BACKEND CRASH ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
-
-
+    
 @app.post("/upload-pdf")
 async def upload_pdf(
     file: UploadFile = File(...),
@@ -676,69 +891,131 @@ async def upload_batch(
     batch_name: str = Form(...),
     data_type: str = Form('mixed'),
     organization_id: str = Form(...),
-    special_instructions: str = Form('')  # 👈 ADD THIS PARAMETER
+    special_instructions: str = Form('')
 ):
     """
     Accept multiple files at once and create a batch for processing.
+    Uses database-driven emission factors and asset mapping.
     """
     try:
         from supabase import create_client
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            raise HTTPException(status_code=500, detail="Server configuration error: Missing Supabase credentials.")
+        
         supabase_client = create_client(supabase_url, supabase_key)
         
+        # ✅ Get organization assets from database
+        assets_response = supabase_client.from_('assets') \
+            .select('id, name, facility_id') \
+            .eq('organization_id', organization_id) \
+            .execute()
+        
+        organization_assets = assets_response.data or []
+        print(f"📦 Found {len(organization_assets)} assets for organization {organization_id}")
+        
+        # ✅ Get facilities for asset mapping
+        facilities_response = supabase_client.from_('facilities') \
+            .select('id, name') \
+            .eq('organization_id', organization_id) \
+            .execute()
+        
+        facilities = facilities_response.data or []
+        print(f"🏢 Found {len(facilities)} facilities for organization {organization_id}")
+        
+        # ✅ Get emission factors for validation (pre-load for speed)
+        factors_response = supabase_client.from_('defra_conversion_factors') \
+            .select('activity_type, reporting_year, co2e_multiplier') \
+            .eq('reporting_year', datetime.now().year) \
+            .execute()
+        
+        available_factors = {f['activity_type']: f['co2e_multiplier'] for f in factors_response.data or []}
+        print(f"📊 Loaded {len(available_factors)} emission factors for {datetime.now().year}")
+        
+        # Create batch record
         batch_response = supabase_client.from_('upload_batches').insert({
             'organization_id': organization_id,
             'batch_name': batch_name,
             'total_files': len(files),
             'processed_files': 0,
             'status': 'processing',
-            'metadata': {'data_type': data_type, 'special_instructions': special_instructions}
+            'metadata': {
+                'data_type': data_type,
+                'special_instructions': special_instructions,
+                'assets_count': len(organization_assets),
+                'facilities_count': len(facilities)
+            }
         }).execute()
         
         batch_id = batch_response.data[0]['id']
+        print(f"📋 Created batch: {batch_id} with {len(files)} files")
         
         processed_count = 0
         failed_files = []
+        processed_files = []
         
         for file in files:
             try:
+                print(f"📄 Processing file: {file.filename}")
                 file_bytes = await file.read()
-                file_path = f"batches/{organization_id}/{batch_id}/{file.filename}"
+                file_size = len(file_bytes)
                 
-                supabase_client.storage.from_('documents').upload(
+                # Generate unique file path
+                file_path = f"batches/{organization_id}/{batch_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+                
+                # Upload to Supabase Storage
+                storage_response = supabase_client.storage.from_('documents').upload(
                     file_path,
                     file_bytes,
                     file_options={"content-type": file.content_type}
                 )
                 
                 file_url = supabase_client.storage.from_('documents').get_public_url(file_path)
+                print(f"✅ File uploaded: {file_url}")
                 
                 file_type = 'PDF' if file.filename.lower().endswith('.pdf') else 'IMAGE'
                 actual_data_type = data_type if data_type != 'mixed' else 'utility'
                 
+                # ✅ Extract data with proper asset mapping
                 if file_type == 'PDF':
                     extraction_result = pdf_extractor.extract_and_parse(
-                        file_bytes, file.filename, actual_data_type, []
+                        file_bytes, 
+                        file.filename, 
+                        actual_data_type, 
+                        organization_assets
                     )
                 else:
                     extraction_result = pdf_extractor.extract_and_parse_image(
-                        file_bytes, file.filename, actual_data_type, []
+                        file_bytes, 
+                        file.filename, 
+                        actual_data_type, 
+                        organization_assets
                     )
                 
+                # ✅ Check if extraction succeeded or needs review
                 if extraction_result.get("status") == "error" or has_low_confidence(extraction_result):
+                    print(f"⚠️ Extraction for {file.filename} needs review")
                     issues, summary = extract_issues_from_result(extraction_result, actual_data_type)
                     
-                    # 👇 BUILD THE CUSTOMER NOTE WITH SPECIAL INSTRUCTIONS
+                    # Build customer note with special instructions
                     base_note = f"Batch upload: {batch_name}. File: {file.filename}"
                     if special_instructions.strip():
                         base_note += f" | 📝 CUSTOMER NOTE: {special_instructions.strip()}"
                     
-                    supabase_client.from_('manual_review_queue').insert({
+                    # ✅ Add asset mapping info to extraction result
+                    if organization_assets:
+                        asset_names = [a['name'] for a in organization_assets[:5]]
+                        extraction_result['available_assets'] = asset_names
+                    
+                    # Insert into manual review queue
+                    review_response = supabase_client.from_('manual_review_queue').insert({
                         'organization_id': organization_id,
                         'batch_id': batch_id,
                         'file_url': file_url,
                         'file_name': file.filename,
+                        'file_size_bytes': file_size,
                         'file_type': file_type,
                         'data_type': actual_data_type,
                         'status': 'pending',
@@ -746,17 +1023,54 @@ async def upload_batch(
                         'extraction_issues': issues,
                         'extraction_summary': summary,
                         'priority': 1 if extraction_result.get('status') == 'error' else 0,
-                        'customer_notes': base_note  # 👈 NOW INCLUDES SPECIAL INSTRUCTIONS
+                        'customer_notes': base_note,
+                        'estimated_completion_hours': 24,
+                        'created_at': datetime.now().isoformat()
                     }).execute()
+                    
+                    review_id = review_response.data[0]['id']
+                    processed_files.append({
+                        'filename': file.filename,
+                        'status': 'manual_review_required',
+                        'review_id': review_id,
+                        'issues_count': len(issues)
+                    })
+                    print(f"📋 Added {file.filename} to manual review queue: {review_id}")
+                else:
+                    # ✅ Extraction successful - data ready for review
+                    data_streams = extraction_result.get('data_streams', [])
+                    extracted_count = 0
+                    for stream in data_streams:
+                        extracted_fields = stream.get('extracted_fields', {})
+                        if extracted_fields:
+                            extracted_count += len(extracted_fields)
+                    
+                    processed_files.append({
+                        'filename': file.filename,
+                        'status': 'extracted',
+                        'data_streams_count': len(data_streams),
+                        'extracted_fields_count': extracted_count
+                    })
+                    print(f"✅ Extraction successful for {file.filename}: {extracted_count} fields extracted")
                 
                 processed_count += 1
                 
             except Exception as file_error:
-                print(f"Error processing file {file.filename}: {file_error}")
-                failed_files.append(file.filename)
+                print(f"❌ Error processing file {file.filename}: {file_error}")
+                failed_files.append({
+                    'filename': file.filename,
+                    'error': str(file_error)
+                })
                 continue
         
+        # ✅ Update batch status
         final_status = 'completed' if len(failed_files) == 0 else 'partial'
+        
+        # Check if any files need manual review
+        needs_review = any(f.get('status') == 'manual_review_required' for f in processed_files)
+        if needs_review and final_status == 'completed':
+            final_status = 'review_needed'
+        
         supabase_client.from_('upload_batches').update({
             'processed_files': processed_count,
             'status': final_status,
@@ -764,21 +1078,90 @@ async def upload_batch(
             'metadata': {
                 'data_type': data_type,
                 'special_instructions': special_instructions,
-                'failed_files': failed_files
+                'failed_files': failed_files,
+                'processed_files': processed_files,
+                'assets_available': len(organization_assets),
+                'facilities_available': len(facilities),
+                'needs_review': needs_review
             }
         }).eq('id', batch_id).execute()
+        
+        # ✅ Send notification if any files need review
+        if needs_review:
+            try:
+                await notify_staff_batch_review_needed(
+                    batch_id=batch_id,
+                    organization_id=organization_id,
+                    batch_name=batch_name,
+                    files_needing_review=[f for f in processed_files if f.get('status') == 'manual_review_required'],
+                    supabase_client=supabase_client
+                )
+            except Exception as notify_error:
+                print(f"⚠️ Notification error: {notify_error}")
         
         return {
             "status": "success",
             "batch_id": batch_id,
             "message": f"Successfully uploaded {processed_count}/{len(files)} files",
             "batch_name": batch_name,
-            "failed_files": failed_files
+            "processed_files": processed_files,
+            "failed_files": failed_files,
+            "needs_review": needs_review,
+            "assets_available": len(organization_assets),
+            "facilities_available": len(facilities)
         }
         
     except Exception as e:
         print(f"--- BATCH UPLOAD ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Batch upload failed: {str(e)}")
+
+async def notify_staff_batch_review_needed(batch_id: str, organization_id: str, batch_name: str, files_needing_review: list, supabase_client):
+    """
+    Send notification to staff when batch files need manual review.
+    """
+    try:
+        # Get staff emails from staff_profiles
+        staff_response = supabase_client.from_('staff_profiles') \
+            .select('email, first_name, last_name') \
+            .eq('is_active', True) \
+            .execute()
+        
+        staff_emails = [s['email'] for s in staff_response.data or [] if s.get('email')]
+        
+        if not staff_emails:
+            print("⚠️ No staff emails found for notification")
+            return
+        
+        # Build email content
+        file_list = "\n".join([f"  - {f['filename']}" for f in files_needing_review])
+        
+        html_content = f"""
+        <h2>📋 Batch Manual Review Required</h2>
+        <p><strong>Batch:</strong> {batch_name}</p>
+        <p><strong>Organization ID:</strong> {organization_id}</p>
+        <p><strong>Batch ID:</strong> {batch_id}</p>
+        <p><strong>Files Needing Review:</strong></p>
+        <pre style="background: #f1f5f9; padding: 1rem; border-radius: 8px;">
+{file_list}
+        </pre>
+        <p><a href="https://carbontally.co.uk/staff-dashboard" style="background: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Open Staff Dashboard</a></p>
+        """
+        
+        # Send to all staff
+        for email in staff_emails:
+            try:
+                send_email(
+                    to=email,
+                    subject=f"📋 Batch Review Required: {batch_name}",
+                    html_content=html_content
+                )
+            except Exception as email_error:
+                print(f"⚠️ Failed to send email to {email}: {email_error}")
+        
+        print(f"✅ Notified {len(staff_emails)} staff members about batch {batch_id}")
+        
+    except Exception as e:
+        print(f"❌ Failed to send staff notification: {e}")
 
 
 @app.post("/approve-pdf-batch")
@@ -797,7 +1180,32 @@ async def approve_pdf_batch(batch_data: dict):
         raise HTTPException(status_code=500, detail=f"Batch approval failed: {str(e)}")
 
 
+def send_email(to: str, subject: str, html_content: str, from_email: str = "CarbonTally <notifications@carbontally.co.uk>"):
+    """
+    Generic email sending function using Resend.
+    Returns: (success: bool, message: str)
+    """
+    try:
+        if not resend.api_key:
+            print("⚠️ RESEND_API_KEY not set, skipping email")
+            return False, "API key not configured"
+        
+        response = resend.Emails.send({
+            "from": from_email,
+            "to": [to],
+            "subject": subject,
+            "html": html_content,
+        })
+        
+        print(f"✅ Email sent to {to}: {subject}")
+        return True, "Email sent successfully"
+        
+    except Exception as e:
+        print(f"❌ Email error: {e}")
+        return False, str(e)
+    
 @app.post("/notify-customer-manual-extraction")
+
 async def notify_customer_manual_extraction(batch_data: dict):
     """
     Send an email to the customer notifying them that their manual extraction is complete
@@ -871,7 +1279,6 @@ async def notify_customer_manual_extraction(batch_data: dict):
         print(f"--- CUSTOMER NOTIFICATION ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Customer notification failed: {str(e)}")
 
-
 @app.post("/notify-batch-completion")
 async def notify_batch_completion(batch_data: dict):
     """
@@ -910,50 +1317,70 @@ async def notify_batch_completion(batch_data: dict):
         
         customer_email = org_members.data[0]['auth.users']['email']
         
-        try:
-            resend.Emails.send({
-                "from": "CarbonTally <notifications@carbontally.co.uk>",
-                "to": [customer_email],
-                "subject": f"✅ Your Bulk Upload is Ready: {batch_name}",
-                "html": f"""
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #334155;">
-                  <div style="background: #16a34a; color: white; padding: 2rem; text-align: center; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0; font-size: 1.5rem;">✅ Processing Complete!</h1>
-                  </div>
-                  <div style="background: #ffffff; padding: 2rem; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-                    <p>Hi there,</p>
-                    <p>Great news! Our team has finished manually reviewing and extracting the data from your bulk upload.</p>
-                    <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 1rem; margin: 1.5rem 0;">
-                      <p style="margin: 0.25rem 0;"><strong>Batch Name:</strong> {batch_name}</p>
-                      <p style="margin: 0.25rem 0;"><strong>Files Processed:</strong> {total_files} documents</p>
-                      <p style="margin: 0.25rem 0;"><strong>Status:</strong> <span style="color: #16a34a; font-weight: bold;">Ready for Review</span></p>
-                    </div>
-                    <p>All extracted emissions data has been mapped to your facilities and assets. You can now review the data and generate your SECR compliance report with a single click.</p>
-                    <div style="text-align: center; margin: 2rem 0;">
-                      <a href="https://carbontally.co.uk" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
-                        Review Data & Generate Report →
-                      </a>
-                    </div>
-                    <p style="color: #64748b; font-size: 0.875rem; margin-top: 2rem;">
-                      If you notice any discrepancies or need adjustments, simply reply to this email and our support team will assist you.
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0;">
-                    <p style="color: #94a3b8; font-size: 0.75rem; text-align: center;">
-                      This is an automated message from CarbonTally.
-                    </p>
-                  </div>
-                </div>
-                """
-            })
-            return {"status": "success", "message": f"Batch completion email sent to {customer_email}"}
+        # Send email using the refactored function
+        success = send_batch_completion_email(
+            customer_email=customer_email,
+            batch_name=batch_name,
+            total_files=total_files
+        )
         
-        except Exception as email_error:
-            print(f"Email notification failed: {email_error}")
+        if success:
+            return {"status": "success", "message": f"Batch completion email sent to {customer_email}"}
+        else:
             return {"status": "warning", "message": "Batch marked complete, but email failed"}
     
     except Exception as e:
         print(f"--- BATCH NOTIFICATION ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Batch notification failed: {str(e)}")
+
+def send_batch_completion_email(customer_email: str, batch_name: str, total_files: int):
+    """
+    Send batch completion notification to customer
+    """
+    try:
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #334155;">
+            <div style="background: #16a34a; color: white; padding: 2rem; text-align: center; border-radius: 8px 8px 0 0;">
+                <h1 style="margin: 0; font-size: 1.5rem;">✅ Processing Complete!</h1>
+            </div>
+            <div style="background: #ffffff; padding: 2rem; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+                <p>Hi there,</p>
+                <p>Great news! Our team has finished manually reviewing and extracting the data from your bulk upload.</p>
+                <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 1rem; margin: 1.5rem 0;">
+                    <p style="margin: 0.25rem 0;"><strong>Batch Name:</strong> {batch_name}</p>
+                    <p style="margin: 0.25rem 0;"><strong>Files Processed:</strong> {total_files} documents</p>
+                    <p style="margin: 0.25rem 0;"><strong>Status:</strong> <span style="color: #16a34a; font-weight: bold;">Ready for Review</span></p>
+                </div>
+                <p>All extracted emissions data has been mapped to your facilities and assets. You can now review the data and generate your SECR compliance report with a single click.</p>
+                <div style="text-align: center; margin: 2rem 0;">
+                    <a href="https://carbontally.co.uk" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
+                        Review Data & Generate Report →
+                    </a>
+                </div>
+                <p style="color: #64748b; font-size: 0.875rem; margin-top: 2rem;">
+                    If you notice any discrepancies or need adjustments, simply reply to this email and our support team will assist you.
+                </p>
+            </div>
+        </div>
+        """
+        
+        success, message = send_email(
+            to=customer_email,
+            subject=f"✅ Your Bulk Upload is Ready: {batch_name}",
+            html_content=html_content
+        )
+        
+        if success:
+            print(f"✅ Batch completion email sent to {customer_email}")
+        else:
+            print(f"⚠️ Failed to send batch completion email: {message}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ send_batch_completion_email error: {e}")
+        return False
+
 @app.post("/admin/import-defra-factors")
 async def import_defra_factors(
     file: UploadFile = File(...),
@@ -1138,347 +1565,6 @@ async def add_manual_review_note(note_data: dict):
         print(f"--- ADD NOTE ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Failed to add note: {str(e)}")
 
-# class SECRReportPDF(FPDF):
-#     def __init__(self, org_name, reporting_year):
-#         super().__init__()
-#         self.org_name = org_name
-#         self.reporting_year = reporting_year
-#         # Add a Unicode font (you'll need to download this)
-#         # For now, we'll use the built-in fonts and avoid special characters
-        
-#     def header(self):
-#         # Add a subtle header line
-#         self.set_draw_color(200, 200, 200)
-#         self.line(10, 10, 200, 10)
-        
-#     def footer(self):
-#         self.set_y(-15)
-#         self.set_font('Helvetica', 'I', 8)
-#         self.set_text_color(128, 128, 128)
-#         self.cell(0, 10, f'Page {self.page_no()} | Generated by CarbonTally', 0, 0, 'C')
-
-# # Helper function to sanitize text (remove emojis and special characters)
-# def sanitize_text(text):
-#     """Remove emojis and non-latin-1 characters from text"""
-#     if not text:
-#         return text
-#     # Remove emoji characters (simple approach)
-#     # This regex removes most emojis and special Unicode symbols
-#     import re
-#     # Remove emoji and other non-latin-1 characters
-#     emoji_pattern = re.compile("["
-#         u"\U0001F600-\U0001F64F"  # emoticons
-#         u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-#         u"\U0001F680-\U0001F6FF"  # transport & map symbols
-#         u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-#         u"\U00002500-\U00002BEF"  # chinese char
-#         u"\U00002702-\U000027B0"
-#         u"\U000024C2-\U0001F251"
-#         u"\U0001f926-\U0001f937"
-#         u"\U00010000-\U0010ffff"
-#         u"\u2640-\u2642" 
-#         u"\u2600-\u2B55"
-#         u"\u200d"
-#         u"\u23cf"
-#         u"\u23e9"
-#         u"\u231a"
-#         u"\ufe0f"  # dingbats
-#         u"\u3030"
-#         "]+", flags=re.UNICODE)
-#     return emoji_pattern.sub('', text)
-# @app.post("/generate-secr-report")
-# async def generate_secr_report(report_data: dict):
-#     """
-#     Generate a branded SECR compliance report PDF for the organization.
-#     """
-#     try:
-#         from supabase import create_client
-#         supabase_url = os.getenv("SUPABASE_URL")
-#         supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-#         supabase_client = create_client(supabase_url, supabase_key)
-        
-#         organization_id = report_data.get("organization_id")
-#         requested_year = report_data.get("reporting_year", datetime.now().year)
-        
-#         print(f"📊 Generating report for organization: {organization_id}, year: {requested_year}")
-        
-#         # 1. Fetch organization details
-#         org_res = supabase_client.from_('organizations')\
-#             .select('name, company_number')\
-#             .eq('id', organization_id)\
-#             .single()\
-#             .execute()
-        
-#         if not org_res.data:
-#             raise HTTPException(status_code=404, detail="Organization not found")
-            
-#         org_name = sanitize_text(org_res.data['name'])
-#         company_number = sanitize_text(org_res.data.get('company_number', 'N/A'))
-        
-#         # 2. Fetch ALL emissions data for the specific year (with pagination)
-#         print(f"🔍 Fetching emissions data for year: {requested_year}")
-        
-#         all_emissions_data = []
-#         has_more = True
-#         page = 0
-#         page_size = 1000
-        
-#         while has_more:
-#             start = page * page_size
-#             end = (page + 1) * page_size - 1
-            
-#             emissions_res = supabase_client.from_('emissions_logs')\
-#                 .select('*, defra_conversion_factors(activity_type, co2e_multiplier, reporting_year), assets(name)')\
-#                 .eq('organization_id', organization_id)\
-#                 .gte('start_date', f'{requested_year}-01-01')\
-#                 .lte('start_date', f'{requested_year}-12-31')\
-#                 .range(start, end)\
-#                 .execute()
-            
-#             if emissions_res.data:
-#                 all_emissions_data.extend(emissions_res.data)
-#                 page += 1
-                
-#                 if len(emissions_res.data) < page_size:
-#                     has_more = False
-#             else:
-#                 has_more = False
-        
-#         emissions_data = all_emissions_data
-#         print(f"📊 Found {len(emissions_data)} records for {requested_year}")
-        
-#         # If no data for the requested year, try to find the most recent year with data
-#         if len(emissions_data) == 0:
-#             print(f"⚠️ No data for {requested_year}, checking for available years...")
-            
-#             # Get all years with data
-#             all_years_res = supabase_client.from_('emissions_logs')\
-#                 .select('start_date')\
-#                 .eq('organization_id', organization_id)\
-#                 .execute()
-            
-#             if all_years_res.data:
-#                 years_available = sorted(set([row['start_date'][:4] for row in all_years_res.data if row.get('start_date')]))
-#                 if years_available:
-#                     most_recent_year = years_available[-1]
-#                     print(f"📊 Using most recent year with data: {most_recent_year}")
-                    
-#                     # Fetch ALL data for the most recent year with pagination
-#                     all_emissions_data = []
-#                     has_more = True
-#                     page = 0
-                    
-#                     while has_more:
-#                         start = page * page_size
-#                         end = (page + 1) * page_size - 1
-                        
-#                         emissions_res = supabase_client.from_('emissions_logs')\
-#                             .select('*, defra_conversion_factors(activity_type, co2e_multiplier, reporting_year), assets(name)')\
-#                             .eq('organization_id', organization_id)\
-#                             .gte('start_date', f'{most_recent_year}-01-01')\
-#                             .lte('start_date', f'{most_recent_year}-12-31')\
-#                             .range(start, end)\
-#                             .execute()
-                        
-#                         if emissions_res.data:
-#                             all_emissions_data.extend(emissions_res.data)
-#                             page += 1
-                            
-#                             if len(emissions_res.data) < page_size:
-#                                 has_more = False
-#                         else:
-#                             has_more = False
-                    
-#                     emissions_data = all_emissions_data
-#                     requested_year = most_recent_year
-#                     print(f"📊 Found {len(emissions_data)} records for {requested_year}")
-        
-#         # 3. Calculate totals by scope
-#         scope_totals = {'Scope 1': 0, 'Scope 2': 0, 'Scope 3': 0}
-#         total_emissions = 0
-        
-#         for record in emissions_data:
-#             kg_co2e = float(record.get('calculated_kg_co2e', 0))
-#             total_emissions += kg_co2e
-            
-#             # Get scope from metadata
-#             metadata = record.get('metadata', {})
-#             if metadata:
-#                 scope = metadata.get('scope', '')
-#                 if 'Scope 1' in scope:
-#                     scope_totals['Scope 1'] += kg_co2e
-#                 elif 'Scope 2' in scope:
-#                     scope_totals['Scope 2'] += kg_co2e
-#                 elif 'Scope 3' in scope:
-#                     scope_totals['Scope 3'] += kg_co2e
-#                 else:
-#                     # Fallback: try to determine from fuel type
-#                     fuel_type = metadata.get('fuel_type', '')
-#                     if fuel_type in ['Diesel', 'Diesel (DERV)', 'Petrol', 'Petrol (Unleaded)', 'Natural Gas', 'LPG', 'AdBlue']:
-#                         scope_totals['Scope 1'] += kg_co2e
-#                     elif fuel_type == 'Electricity' or fuel_type == 'UK Electricity Grid':
-#                         scope_totals['Scope 2'] += kg_co2e
-#                     else:
-#                         scope_totals['Scope 3'] += kg_co2e
-#             else:
-#                 # If no metadata, try to infer from defra factor
-#                 defra = record.get('defra_conversion_factors', {})
-#                 activity_type = defra.get('activity_type', '')
-#                 if any(fuel in activity_type for fuel in ['Diesel', 'Petrol', 'Natural Gas', 'LPG', 'AdBlue']):
-#                     scope_totals['Scope 1'] += kg_co2e
-#                 elif 'Electricity' in activity_type:
-#                     scope_totals['Scope 2'] += kg_co2e
-#                 else:
-#                     scope_totals['Scope 3'] += kg_co2e
-        
-#         print(f"📊 Scope totals: {scope_totals}")
-#         print(f"📊 Total emissions: {total_emissions}")
-#         print(f"📊 Records used: {len(emissions_data)}")
-        
-#         # 4. Generate PDF (your existing PDF generation code continues here...)
-#         # ... rest of your PDF generation code ...
-        
-#         pdf = SECRReportPDF(org_name, requested_year)
-#         pdf.alias_nb_pages()
-#         pdf.add_page()
-        
-#         # Title Section
-#         pdf.set_font('Helvetica', 'B', 24)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(0, 20, org_name, 0, 1, 'C')
-        
-#         pdf.set_font('Helvetica', '', 14)
-#         pdf.set_text_color(71, 85, 105)
-#         pdf.cell(0, 10, 'Streamlined Energy and Carbon Reporting (SECR)', 0, 1, 'C')
-#         pdf.cell(0, 10, f'Reporting Period: 01/01/{requested_year} - 31/12/{requested_year}', 0, 1, 'C')
-#         pdf.cell(0, 10, f'Company Number: {company_number}', 0, 1, 'C')
-#         pdf.ln(15)
-        
-#         # Executive Summary
-#         pdf.set_font('Helvetica', 'B', 16)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(0, 10, 'Executive Summary', 0, 1, 'L')
-#         pdf.set_draw_color(22, 163, 74)
-#         pdf.line(10, pdf.get_y(), 50, pdf.get_y())
-#         pdf.ln(5)
-        
-#         pdf.set_font('Helvetica', '', 11)
-#         pdf.set_text_color(51, 65, 85)
-#         summary_text = f'This report provides a comprehensive overview of {org_name} greenhouse gas emissions for the financial year {requested_year}, in compliance with the UK Streamlined Energy and Carbon Reporting (SECR) regulations.'
-#         pdf.multi_cell(0, 6, sanitize_text(summary_text))
-#         pdf.ln(8)
-        
-#         # Total Emissions Box
-#         pdf.set_fill_color(240, 253, 244)
-#         pdf.set_draw_color(22, 163, 74)
-#         pdf.rect(10, pdf.get_y(), 190, 30, 'DF')
-        
-#         pdf.set_y(pdf.get_y() + 5)
-#         pdf.set_font('Helvetica', 'B', 14)
-#         pdf.set_text_color(22, 101, 52)
-#         total_text = f'Total Emissions: {total_emissions:,.2f} kg CO2e ({total_emissions/1000:,.2f} tonnes CO2e)'
-#         pdf.cell(0, 10, sanitize_text(total_text), 0, 1, 'C')
-        
-#         pdf.set_font('Helvetica', '', 10)
-#         pdf.set_text_color(71, 85, 105)
-#         record_text = f'Based on {len(emissions_data)} emission records'
-#         pdf.cell(0, 8, sanitize_text(record_text), 0, 1, 'C')
-#         pdf.ln(12)
-        
-#         # Scope Breakdown
-#         pdf.set_font('Helvetica', 'B', 16)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(0, 10, 'Emissions by Scope', 0, 1, 'L')
-#         pdf.set_draw_color(22, 163, 74)
-#         pdf.line(10, pdf.get_y(), 50, pdf.get_y())
-#         pdf.ln(5)
-        
-#         # Table Header
-#         pdf.set_fill_color(241, 245, 249)
-#         pdf.set_font('Helvetica', 'B', 11)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(60, 10, 'Scope', 1, 0, 'L', True)
-#         pdf.cell(65, 10, 'Emissions (kg CO2e)', 1, 0, 'R', True)
-#         pdf.cell(65, 10, 'Emissions (tonnes CO2e)', 1, 1, 'R', True)
-        
-#         # Table Rows
-#         pdf.set_font('Helvetica', '', 10)
-#         pdf.set_text_color(51, 65, 85)
-        
-#         for scope, emissions in scope_totals.items():
-#             pdf.cell(60, 10, sanitize_text(scope), 1, 0, 'L')
-#             pdf.cell(65, 10, f'{emissions:,.2f}', 1, 0, 'R')
-#             pdf.cell(65, 10, f'{emissions/1000:,.2f}', 1, 1, 'R')
-        
-#         pdf.ln(10)
-        
-#         # Methodology
-#         pdf.set_font('Helvetica', 'B', 16)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(0, 10, 'Methodology', 0, 1, 'L')
-#         pdf.set_draw_color(22, 163, 74)
-#         pdf.line(10, pdf.get_y(), 50, pdf.get_y())
-#         pdf.ln(5)
-        
-#         pdf.set_font('Helvetica', '', 10)
-#         pdf.set_text_color(51, 65, 85)
-#         method_text = f'Emissions have been calculated using official UK Government GHG Conversion Factors for Company Reporting ({requested_year}). All conversion factors are sourced from DEFRA and BEIS.'
-#         pdf.multi_cell(0, 5, sanitize_text(method_text))
-#         pdf.ln(5)
-        
-#         pdf.set_font('Helvetica', 'I', 9)
-#         pdf.set_text_color(100, 116, 139)
-#         scope_texts = [
-#             'Scope 1: Direct emissions from owned or controlled sources (e.g., fuel combustion in company vehicles, natural gas heating).',
-#             'Scope 2: Indirect emissions from purchased electricity, steam, heating, and cooling.',
-#             'Scope 3: Other indirect emissions (e.g., business travel, waste disposal, employee commuting).'
-#         ]
-#         for text in scope_texts:
-#             pdf.multi_cell(0, 5, sanitize_text(text))
-#         pdf.ln(10)
-        
-#         # Compliance Statement
-#         pdf.set_font('Helvetica', 'B', 16)
-#         pdf.set_text_color(15, 23, 42)
-#         pdf.cell(0, 10, 'Compliance Statement', 0, 1, 'L')
-#         pdf.set_draw_color(22, 163, 74)
-#         pdf.line(10, pdf.get_y(), 50, pdf.get_y())
-#         pdf.ln(5)
-        
-#         pdf.set_font('Helvetica', '', 10)
-#         pdf.set_text_color(51, 65, 85)
-#         compliance_text = f'This report has been prepared in accordance with the Companies (Directors Report) and Limited Liability Partnerships (Energy and Carbon Report) Regulations 2018. The data has been verified and validated by CarbonTally automated extraction and review system.'
-#         pdf.multi_cell(0, 5, sanitize_text(compliance_text))
-#         pdf.ln(8)
-        
-#         pdf.set_font('Helvetica', 'B', 10)
-#         pdf.set_text_color(22, 163, 74)
-#         generated_text = f'Report generated on: {datetime.now().strftime("%d %B %Y at %H:%M")}'
-#         pdf.cell(0, 6, sanitize_text(generated_text), 0, 1, 'L')
-        
-#         # Add a footer note
-#         pdf.set_y(-20)
-#         pdf.set_font('Helvetica', 'I', 8)
-#         pdf.set_text_color(128, 128, 128)
-#         pdf.cell(0, 5, 'This report is automatically generated by CarbonTally', 0, 0, 'C')
-        
-#         # Output PDF
-#         pdf_output = pdf.output(dest='S').encode('latin-1')
-#         pdf_base64 = base64.b64encode(pdf_output).decode('utf-8')
-        
-#         return {
-#             "status": "success",
-#             "pdf_base64": pdf_base64,
-#             "filename": f"SECR_Report_{org_name}_{requested_year}.pdf",
-#             "records_used": len(emissions_data),
-#             "total_emissions": total_emissions,
-#             "year_used": requested_year
-#         }
-        
-#     except Exception as e:
-#         import traceback
-#         print(f"--- SECR REPORT ERROR ---\n{traceback.format_exc()}\n-------------------")
-#         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
 @app.post("/generate-secr-report")
 async def generate_secr_report(report_data: dict):
@@ -1753,3 +1839,716 @@ async def export_ghg_inventory(report_data: dict):
         import traceback
         print(f"--- EXCEL EXPORT ERROR ---\n{traceback.format_exc()}\n-------------------")
         raise HTTPException(status_code=500, detail=f"Excel export failed: {str(e)}")
+
+
+def send_review_queue_email(organization_id: str, filename: str, review_id: str, issues: list, summary: dict):
+    """
+    Send manual review queue notification to founder
+    """
+    try:
+        # Build issues HTML
+        issues_html = ""
+        if issues:
+            for issue in issues:
+                severity_color = "#dc2626" if issue.get("severity") == "critical" else "#f59e0b"
+                issues_html += f"""
+                <div style="padding: 10px; margin: 5px 0; border-left: 4px solid {severity_color}; background: #f8fafc;">
+                    <strong>{issue.get('field', 'Unknown')}:</strong> {issue.get('message', '')}
+                    {f"<br><small style='color: #64748b;'>Value: {issue.get('value', 'N/A')}</small>" if issue.get('value') else ""}
+                    <br><small style='color: #94a3b8;'>{issue.get('technical_details', '')}</small>
+                </div>
+                """
+        
+        html_content = f"""
+        <h2 style="color: #0f172a;">🚨 Manual Review Queue Alert</h2>
+        <p style="color: #475569;">A customer's document could not be auto-extracted and requires manual review.</p>
+        
+        <table style="border-collapse: collapse; width: 100%; margin: 15px 0; font-size: 14px;">
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Organization ID:</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{organization_id}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">File Name:</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{filename}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Confidence Score:</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{(summary.get('confidence_score', 0) * 100):.1f}%</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Fields Extracted:</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{summary.get('extracted_successfully', 0)}/{summary.get('total_fields', 0)}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background: #f8fafc;">Review ID:</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">{review_id}</td>
+            </tr>
+        </table>
+        
+        <h3 style="color: #0f172a;">📋 Extraction Issues:</h3>
+        {issues_html if issues_html else '<p style="color: #64748b;">No specific issues identified, but extraction failed.</p>'}
+        
+        <div style="margin: 20px 0;">
+            <a href="https://carbontally.co.uk/staff-dashboard" style="background: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: 600;">Open Staff Dashboard</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px; margin-top: 20px;">Estimated completion: 24 hours</p>
+        """
+        
+        success, message = send_email(
+            to=FOUNDER_EMAIL,
+            subject=f"🚨 Manual Review Required: {filename}",
+            html_content=html_content
+        )
+        
+        if success:
+            print(f"✅ Review queue email sent to {FOUNDER_EMAIL}")
+        else:
+            print(f"⚠️ Failed to send review queue email: {message}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ send_review_queue_email error: {e}")
+        return False
+    
+async def queue_for_manual_review(
+    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    data_type: str,
+    organization_id: str,
+    auto_result: dict,
+    supabase_client
+) -> tuple:
+    """
+    Queue a failed extraction for manual review and send email notification.
+    Returns (review_id, issues, summary)
+    """
+    try:
+        # Extract real issues from the result
+        issues, summary = extract_issues_from_result(auto_result, data_type)
+        
+        # If no issues were found but we're here, add a generic one
+        if not issues:
+            issues.append({
+                "severity": "warning",
+                "type": "manual_review_required",
+                "field": "document",
+                "message": "Manual review required",
+                "technical_details": "Auto-extraction did not meet quality standards"
+            })
+        
+        # 1. Upload file to Supabase Storage
+        file_path = f"manual_review/{organization_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
+        
+        storage_response = supabase_client.storage.from_('documents').upload(
+            file_path,
+            file_bytes,
+            file_options={"content-type": content_type}
+        )
+        
+        file_url = supabase_client.storage.from_('documents').get_public_url(file_path)
+        
+        # 2. Insert into manual_review_queue
+        queue_response = supabase_client.from_('manual_review_queue').insert({
+            'organization_id': organization_id if organization_id and organization_id != "mock-org-id" else None,
+            'file_url': file_url,
+            'file_name': filename,
+            'file_type': 'PDF' if filename.lower().endswith('.pdf') else 'IMAGE',
+            'data_type': data_type,
+            'status': 'pending',
+            'auto_extraction_result': {
+                'extraction_result': auto_result,
+                'extraction_issues': issues,
+                'extraction_summary': summary,
+                'confidence_score': summary.get('confidence_score', 0.0)
+            },
+            'priority': 1 if auto_result.get('status') == 'error' else 0,
+            'customer_notes': f"Auto-extraction failed. File: {filename}",
+            'estimated_completion_hours': 24
+        }).execute()
+        
+        review_id = queue_response.data[0]['id']
+        
+        # 3. Send email notification to founder using the refactored function
+        send_review_queue_email(
+            organization_id=organization_id,
+            filename=filename,
+            review_id=review_id,
+            issues=issues,
+            summary=summary
+        )
+        
+        return review_id, issues, summary
+    
+    except Exception as e:
+        print(f"Failed to queue for manual review: {e}")
+        import traceback
+        traceback.print_exc()
+        raise e
+
+
+def send_confirmation_email_sync(email: str, full_name: Optional[str] = None):
+    """Send confirmation email using Resend (synchronous)"""
+    try:
+        import requests
+        
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if not resend_api_key:
+            print("⚠️ RESEND_API_KEY not set, skipping email")
+            return False
+
+        name = full_name or email.split('@')[0]
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Welcome to CarbonTally Beta</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8fafc; padding: 30px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
+                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🌱 CarbonTally</h1>
+                <p style="opacity: 0.8;">Beta Access Request Received</p>
+            </div>
+            <div class="content">
+                <h2>Hi {name}! 👋</h2>
+                <p>Thank you for requesting early access to CarbonTally's beta program.</p>
+                <p><strong>Here's what happens next:</strong></p>
+                <ul>
+                    <li>✅ We'll review your request within 24 hours</li>
+                    <li>✅ You'll receive a beta invite with your unique access code</li>
+                    <li>✅ Start tracking your carbon emissions immediately</li>
+                </ul>
+                <p style="text-align: center;">
+                    <a href="https://carbontally.co.uk" style="display: inline-block; padding: 12px 24px; background: #10b981; color: white; text-decoration: none; border-radius: 8px;">Visit CarbonTally</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>© 2024 CarbonTally. All rights reserved.</p>
+                <p style="font-size: 12px;">This email was sent to {email}</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": "CarbonTally <notifications@carbontally.co.uk>",
+                "to": [email],
+                "subject": "🎉 You're on the CarbonTally Beta Waitlist!",
+                "html": html_content
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Confirmation email sent to {email}")
+            return True
+        else:
+            print(f"⚠️ Email send failed: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Email error: {e}")
+        return False
+
+
+# backend/main.py - Add these endpoints
+
+# ============ BETA MANAGEMENT ENDPOINTS ============
+
+class BetaInviteRequest(BaseModel):
+    email: EmailStr
+    beta_code: str
+
+class BetaInviteResponse(BaseModel):
+    success: bool
+    message: str
+    error: Optional[str] = None
+    data: Optional[dict] = None
+
+@app.post("/api/waitlist/invite", response_model=BetaInviteResponse)
+async def send_beta_invite(request: BetaInviteRequest):
+    """
+    Send beta invite email to user with their access code
+    """
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+
+        # 1. Check if email exists in waitlist
+        email_lower = request.email.lower().strip()
+        
+        existing = supabase.table("waitlist")\
+            .select("email, status, full_name")\
+            .eq("email", email_lower)\
+            .maybe_single()\
+            .execute()
+        
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Email not found in waitlist")
+
+        # 2. Check if beta code already exists for this email
+        existing_code = supabase.table("beta_access_codes")\
+            .select("code, status")\
+            .eq("email", email_lower)\
+            .maybe_single()\
+            .execute()
+        
+        if existing_code.data and existing_code.data.get("status") == "unused":
+            # Reuse existing code if available
+            beta_code = existing_code.data.get("code")
+        else:
+            # Generate new beta code
+            beta_code = request.beta_code or generate_beta_code()
+            
+            # Save beta code to database
+            supabase.table("beta_access_codes").insert({
+                "code": beta_code,
+                "email": email_lower,
+                "status": "unused",
+                "expires_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat()
+            }).execute()
+
+        # 3. Update waitlist status to 'invited'
+        supabase.table("waitlist")\
+            .update({
+                "status": "invited",
+                "invited_at": datetime.now().isoformat()
+            })\
+            .eq("email", email_lower)\
+            .execute()
+
+        # 4. Send beta invite email
+        try:
+            await send_beta_invite_email(
+                email=email_lower,
+                beta_code=beta_code,
+                full_name=existing.data.get("full_name")
+            )
+        except Exception as email_error:
+            print(f"Email error: {email_error}")
+            # Don't fail the request if email fails
+
+        return BetaInviteResponse(
+            success=True,
+            message=f"Beta invite sent to {email_lower}",
+            data={"beta_code": beta_code}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Beta invite error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/send-beta-confirmation")
+async def resend_beta_confirmation(request: dict):
+    """
+    Resend beta confirmation email to user
+    """
+    try:
+        email = request.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+
+        email_lower = email.lower().strip()
+
+        # Check if email exists in waitlist
+        existing = supabase.table("waitlist")\
+            .select("email, status, full_name")\
+            .eq("email", email_lower)\
+            .maybe_single()\
+            .execute()
+        
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Email not found in waitlist")
+
+        # Send confirmation email
+        email_sent = await send_confirmation_email(
+            email=email_lower,
+            full_name=existing.data.get("full_name")
+        )
+
+        return {
+            "success": True,
+            "message": "Confirmation email resent",
+            "email_sent": email_sent
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Resend confirmation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ UNSUBSCRIBE / RESUBSCRIBE ============
+
+@app.post("/api/waitlist/unsubscribe")
+async def unsubscribe_from_waitlist(request: dict):
+    """
+    Unsubscribe a user from the waitlist
+    """
+    try:
+        email = request.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+
+        email_lower = email.lower().strip()
+
+        # Update waitlist status to 'unsubscribed'
+        result = supabase.table("waitlist")\
+            .update({
+                "status": "unsubscribed",
+                "updated_at": datetime.now().isoformat()
+            })\
+            .eq("email", email_lower)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Email not found in waitlist")
+
+        return {
+            "success": True,
+            "message": "Successfully unsubscribed from the waitlist"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Unsubscribe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/waitlist/resubscribe")
+async def resubscribe_to_waitlist(request: dict):
+    """
+    Resubscribe a user to the waitlist
+    """
+    try:
+        email = request.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+
+        email_lower = email.lower().strip()
+
+        # Update waitlist status to 'pending'
+        result = supabase.table("waitlist")\
+            .update({
+                "status": "pending",
+                "updated_at": datetime.now().isoformat()
+            })\
+            .eq("email", email_lower)\
+            .execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Email not found in waitlist")
+
+        return {
+            "success": True,
+            "message": "Successfully resubscribed to the waitlist"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Resubscribe error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ HELPER FUNCTIONS ============
+
+def generate_beta_code() -> str:
+    """Generate a unique beta access code"""
+    import secrets
+    import string
+    return f"BETA-{secrets.token_hex(4).upper()}-{secrets.token_hex(3).upper()}"
+
+
+async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None):
+    """Send beta invite email with access code"""
+    try:
+        import httpx
+        
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if not resend_api_key:
+            print("⚠️ RESEND_API_KEY not set, skipping email")
+            return
+
+        name = full_name or email.split('@')[0]
+        signup_url = f"https://carbontally.co.uk/signup?code={beta_code}"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Your Beta Access is Ready!</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8fafc; padding: 30px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
+                .code-box {{ background: white; padding: 20px; border-radius: 8px; border: 2px dashed #10b981; text-align: center; margin: 20px 0; }}
+                .code {{ font-size: 28px; font-weight: 700; color: #059669; letter-spacing: 2px; font-family: monospace; }}
+                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
+                .button {{ display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 10px 0; }}
+                .unsubscribe {{ color: #94a3b8; font-size: 12px; margin-top: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🌱 CarbonTally</h1>
+                <p style="opacity: 0.8;">You're Invited!</p>
+            </div>
+            <div class="content">
+                <h2>Hi {name}! 🎉</h2>
+                <p>Great news! You've been selected for CarbonTally's beta program.</p>
+                <p><strong>Your beta access code:</strong></p>
+                <div class="code-box">
+                    <div class="code">{beta_code}</div>
+                    <p style="margin: 10px 0 0; color: #64748b; font-size: 14px;">Use this code to activate your account</p>
+                </div>
+                <p style="text-align: center;">
+                    <a href="{signup_url}" class="button">Claim Your Beta Access →</a>
+                </p>
+                <p style="font-size: 14px; color: #64748b; text-align: center;">This code expires in 30 days</p>
+                <p class="unsubscribe">
+                    <a href="https://carbontally.co.uk/api/waitlist/unsubscribe?email={email}" style="color: #94a3b8;">Unsubscribe from waitlist</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>© 2024 CarbonTally. All rights reserved.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": "CarbonTally <notifications@carbontally.co.uk>",
+                    "to": [email],
+                    "subject": "🎉 You've been invited to CarbonTally Beta!",
+                    "html": html_content
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ Beta invite email sent to {email}")
+                return True
+            else:
+                print(f"⚠️ Email send failed: {response.status_code} - {response.text}")
+                return False
+                
+    except Exception as e:
+        print(f"❌ Beta invite email error: {e}")
+        return False
+
+class GlossaryTerm(BaseModel):
+    term: str
+    definition: str
+    category: Optional[str] = None
+    related_terms: Optional[List[str]] = None
+    example: Optional[str] = None
+
+@app.get("/api/glossary")
+async def get_glossary(category: Optional[str] = None, search: Optional[str] = None):
+    """Get all glossary terms with optional filtering"""
+    try:
+        if supabase is None:
+            print("❌ Supabase client is None")
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        print("🔍 Fetching glossary terms...")
+        
+        # Start query - select all active terms
+        query = supabase.table("glossary").select("*").eq("is_active", True)
+        
+        # Apply category filter if provided
+        if category and category != "all":
+            query = query.eq("category", category)
+        
+        # Apply search filter if provided
+        if search:
+            query = query.or_(f"term.ilike.%{search}%,definition.ilike.%{search}%")
+        
+        # ✅ No ordering - just execute
+        result = query.execute()
+        
+        # Log results
+        data = result.data or []
+        print(f"📚 Found {len(data)} glossary terms")
+        
+        # Sort in Python instead
+        data.sort(key=lambda x: x.get("term", "").lower())
+        
+        return {
+            "success": True,
+            "data": data,
+            "count": len(data)
+        }
+        
+    except Exception as e:
+        print(f"❌ Glossary error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch glossary: {str(e)}")
+
+
+@app.get("/api/glossary/{term_id}")
+async def get_glossary_term(term_id: str):
+    """Get a single glossary term by ID"""
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        result = supabase.table("glossary")\
+            .select("*")\
+            .eq("id", term_id)\
+            .eq("is_active", True)\
+            .single()\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Term not found")
+        
+        return {
+            "success": True,
+            "data": result.data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Glossary term error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/glossary")
+async def create_glossary_term(term: GlossaryTerm):
+    """Create a new glossary term (admin only)"""
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        # Check if term already exists
+        existing = supabase.table("glossary")\
+            .select("term")\
+            .eq("term", term.term)\
+            .maybe_single()\
+            .execute()
+        
+        if existing.data:
+            raise HTTPException(status_code=409, detail="Term already exists")
+        
+        result = supabase.table("glossary").insert({
+            "term": term.term,
+            "definition": term.definition,
+            "category": term.category,
+            "related_terms": term.related_terms,
+            "example": term.example,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }).execute()
+        
+        return {
+            "success": True,
+            "message": "Term created successfully",
+            "data": result.data[0] if result.data else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Create glossary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/glossary/{term_id}")
+async def update_glossary_term(term_id: str, term: GlossaryTerm):
+    """Update a glossary term (admin only)"""
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        result = supabase.table("glossary")\
+            .update({
+                "term": term.term,
+                "definition": term.definition,
+                "category": term.category,
+                "related_terms": term.related_terms,
+                "example": term.example,
+                "updated_at": datetime.now().isoformat()
+            })\
+            .eq("id", term_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Term not found")
+        
+        return {
+            "success": True,
+            "message": "Term updated successfully",
+            "data": result.data[0] if result.data else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Update glossary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/glossary/{term_id}")
+async def delete_glossary_term(term_id: str):
+    """Soft delete a glossary term (admin only)"""
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        result = supabase.table("glossary")\
+            .update({
+                "is_active": False,
+                "updated_at": datetime.now().isoformat()
+            })\
+            .eq("id", term_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Term not found")
+        
+        return {
+            "success": True,
+            "message": "Term deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Delete glossary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

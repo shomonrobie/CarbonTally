@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from './components/AppHeader';
 import AppFooter from './components/AppFooter';
-import './css/LandingPage.css';
+import './LandingPage.css';
 
 // Import your dashboard images
 import carbonTallyUpload from './images/carbon_tally_upload_main.png';
@@ -21,7 +21,6 @@ export default function LandingPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
-  const [fullName, setFullName] = useState('');
 
   // Slides data
   const slides = [
@@ -80,99 +79,8 @@ export default function LandingPage() {
     e.preventDefault();
     setShowWaitlistModal(true);
   };
-// src/LandingPage.jsx - Add debugging to handleSubmitEmail
 
 const handleSubmitEmail = async (e) => {
-  e.preventDefault();
-  
-  console.log('🔍 DEBUG: Starting handleSubmitEmail');
-  console.log('📧 Email:', email);
-  console.log('👤 Full Name:', fullName);
-  
-  if (!email || !email.includes('@')) {
-    console.log('❌ DEBUG: Invalid email validation failed');
-    setError('Please enter a valid email address');
-    return;
-  }
-
-  setIsSubmitting(true);
-  setError('');
-
-  try {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-    const endpoint = `${apiUrl}/api/waitlist`;
-    
-    console.log('🌐 DEBUG: API URL:', endpoint);
-    console.log('📦 DEBUG: Request body:', { 
-      email: email.trim(), 
-      full_name: fullName.trim(), 
-      source: 'landing_page' 
-    });
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        email: email.trim(),
-        full_name: fullName.trim(),
-        source: 'landing_page'
-      }),
-    });
-
-    console.log('📡 DEBUG: Response status:', response.status);
-    console.log('📡 DEBUG: Response OK:', response.ok);
-
-    // Try to get response text first for debugging
-    const responseText = await response.text();
-    console.log('📄 DEBUG: Raw response:', responseText);
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-      console.log('✅ DEBUG: Parsed data:', data);
-    } catch (parseError) {
-      console.error('❌ DEBUG: Failed to parse JSON:', parseError);
-      console.log('📄 DEBUG: Raw response was:', responseText);
-      setError('Server error. Please try again later.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (response.ok && data.success) {
-      console.log('✅ DEBUG: Success!');
-      // Analytics tracking
-      if (window.gtag) {
-        window.gtag('event', 'beta_signup', {
-          'email': email.trim()
-        });
-      }
-      setIsSubmitted(true);
-      setEmail('');
-      setFullName('');
-      setTimeout(() => {
-        setShowWaitlistModal(false);
-        setIsSubmitted(false);
-      }, 2000);
-    } else {
-      console.log('❌ DEBUG: API returned error:', data);
-      if (data.error === 'Already on waitlist') {
-        setError('This email is already on our waitlist!');
-      } else {
-        setError(data.error || data.message || 'Failed to join waitlist. Please try again.');
-      }
-    }
-  } catch (error) {
-    console.error('❌ DEBUG: Network/Fetch error:', error);
-    setError('Failed to connect to server. Please check your internet connection and try again.');
-  } finally {
-    console.log('🏁 DEBUG: Finished handleSubmitEmail');
-    setIsSubmitting(false);
-  }
-};
-
-const handleSubmitEmail2 = async (e) => {
   e.preventDefault();
   
   if (!email || !email.includes('@')) {
@@ -191,7 +99,7 @@ const handleSubmitEmail2 = async (e) => {
       },
       body: JSON.stringify({ 
         email: email.trim(),
-        full_name: fullName.trim(),
+        full_name: '',
         source: 'landing_page'
       }),
     });
@@ -199,11 +107,6 @@ const handleSubmitEmail2 = async (e) => {
     const data = await response.json();
 
     if (data.success) {
-      if (window.gtag) {
-        window.gtag('event', 'beta_signup', {
-          'email': email.trim()
-        });
-      }
       setIsSubmitted(true);
       setEmail('');
       setTimeout(() => {
@@ -247,116 +150,103 @@ const handleSubmitEmail2 = async (e) => {
         </div>
       </div>
       <section className="hero-section">
-        
-          <div className="hero-content">
-            <div className="landing-badge animate-on-scroll">
-              🧪 Limited Beta — All Features Available
-            </div>
-            <h1 className="headline-animated animate-on-scroll">
-              Carbon Accounting, <br />
-              <span className="gradient-text">Simplified.</span>
-            </h1>
-            <p className="hero-description animate-on-scroll">
-              Stop using messy spreadsheets. Automate your Scope 1, 2, and 3 emissions
-              tracking with official UK DEFRA factors. Audit-ready reports in one click.
-            </p>
-            
-            <div className="trust-indicators animate-on-scroll">
-              <span>✓ All Features Ready</span>
-              <span>✓ UK SECR & EU CSRD</span>
-              <span>✓ AI-Powered</span>
-            </div>
-          </div>
-        
-               
-      </section>
-      <section className="hero-section">
          <CarbonTallyDemo />
                
       </section>
-    
-     {/* --- FEATURES SECTION --- */}
+      {/* --- HERO SECTION WITH SLIDESHOW (NO OVERLAY TEXT) --- */}
+      <section className="hero-with-image">
+        <div className="hero-image-wrapper animate-on-scroll">
+          <div className="hero-image-container">
+            
+            {/* Slideshow Container */}
+            <div className="hero-image-slideshow-container">
+              
+              {/* Slides */}
+              {slides.map((slide, index) => (
+                <div 
+                  key={index}
+                  className={`mySlides fade ${index === currentSlide ? 'active' : ''}`}
+                  style={{ display: index === currentSlide ? 'block' : 'none' }}
+                >
+                  <img 
+                    src={slide.image} 
+                    alt={slide.alt} 
+                    className="hero-main-image"
+                  />
+                </div>
+              ))}
+
+              {/* Navigation Buttons */}
+              <a className="prev" onClick={() => plusSlides(-1)}>&#10094;</a>
+              <a className="next" onClick={() => plusSlides(1)}>&#10095;</a>
+            </div>
+
+            {/* Dots/Indicators */}
+            <div className="dots-container">
+              {slides.map((_, index) => (
+                <span 
+                  key={index}
+                  className={`dot ${index === currentSlide ? 'active' : ''}`} 
+                  onClick={() => goToSlide(index)}
+                ></span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- FEATURES SECTION --- */}
       <section className="coming-soon-features" id="features">
         <div className="container">
           <div className="coming-soon-header animate-on-scroll">
             <span className="section-badge">✅ All Features Ready</span>
             <h2>Everything you need for stress-free compliance</h2>
             <p className="section-subtitle">
-              From automated data mapping to auditor-ready reports — we handle the entire carbon accounting workflow.
+              All features are fully functional and ready for beta testing. 
               <br />Request your beta access today.
             </p>
           </div>
           
           <div className="feature-grid">
-            {/* 1. Automated CSV Data Stream Mapping */}
+            <div className="feature-card animate-on-scroll">
+              <div className="icon">🤖</div>
+              <h3>AI-Powered Document Extraction</h3>
+              <p>Upload messy PDFs, images, or CSVs. Our AI auto-extracts consumption data, assets, and dates, applying the correct DEFRA factors instantly.</p>
+              <span className="feature-status status-ready">✅ Ready</span>
+            </div>
+
+            <div className="feature-card animate-on-scroll">
+              <div className="icon">📦</div>
+              <h3>Enterprise Bulk Upload</h3>
+              <p>Drop up to 50 utility bills or fuel invoices at once. Complex documents are intelligently queued for expert manual verification within 24 hours.</p>
+              <span className="feature-status status-ready">✅ Ready</span>
+            </div>
+
+            <div className="feature-card animate-on-scroll">
+              <div className="icon">🌍</div>
+              <h3>Comprehensive Scope 1, 2 & 3</h3>
+              <p>Track emissions across all facilities and assets. From company vehicles and natural gas to business travel, flights, and waste management.</p>
+              <span className="feature-status status-ready">✅ Ready</span>
+            </div>
+
+            <div className="feature-card animate-on-scroll">
+              <div className="icon">🇬🇧</div>
+              <h3>UK SECR Automation</h3>
+              <p>Generate beautiful, branded, audit-ready PDF reports with a single click. Includes executive summaries, scope breakdowns, and official compliance statements.</p>
+              <span className="feature-status status-ready">✅ Ready</span>
+            </div>
+
             <div className="feature-card animate-on-scroll">
               <div className="icon">📊</div>
-              <h3>Automated CSV Data Stream Mapping</h3>
-              <p>Drop your fleet transit logs or fuel card outputs straight into our engine. CarbonTally automatically isolates transactions, standardizes column logic, and converts metrics into certified Scope 1, 2, and 3 disclosures with zero manual intervention.</p>
+              <h3>Big 4 Auditor Excel Exports</h3>
+              <p>Export your granular GHG inventory in the exact multi-tab format required by auditors. Features automatic GHG Protocol Scope 3 category mapping.</p>
               <span className="feature-status status-ready">✅ Ready</span>
             </div>
 
-            {/* 2. Systemic "Dirty Data" Isolation & Fixes */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">🔧</div>
-              <h3>Systemic "Dirty Data" Isolation & Fixes</h3>
-              <p>If your input file is messy, incomplete, or contains structural errors, CarbonTally doesn't crash. The platform isolates unmapped variables in an interactive interface, allowing rapid inline correction without starting over.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 3. Deterministic UK DEFRA / EU Registry Engine */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">⚡</div>
-              <h3>Deterministic UK DEFRA / EU Registry Engine</h3>
-              <p>Bypass manual spreadsheet calculations. Our backend instantly references raw consumption metrics against up-to-date official UK DEFRA and European carbon conversion factor matrices with mathematical precision and full audit trails.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 4. One-Click Granular Log Exports */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">📋</div>
-              <h3>One-Click Granular Log Exports</h3>
-              <p>Keep your independent financial and environmental auditors satisfied. Export clean, normalized, line-by-line database transaction sheets displaying complete calculations, transparent data lineage vectors, and full calculation methodology.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 5. Compliant Auditor & Boardroom PDF Reports */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">📄</div>
-              <h3>Compliant Auditor & Boardroom PDF Reports</h3>
-              <p>Generate and print presentation-ready, professionally structured compliance disclosure documents that satisfy global reporting rules, including SECR, CSRD, ESRS E1, and ISSB standards — all in one click.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 6. Raw Data Bulk Export Capabilities */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">💾</div>
-              <h3>Raw Data Bulk Export Capabilities</h3>
-              <p>Need to move your compliance metrics to external business suites or enterprise ERP frameworks? Securely export your audited data variables into standardized, highly compatible CSV sets instantly for seamless integration.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 7. Premium Managed Back-Office Operations */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">👥</div>
-              <h3>Premium Managed Back-Office Operations</h3>
-              <p>Have an overwhelming backlog of loose, unorganized paperwork? Batch-upload up to 50 documents at once and let our dedicated data operations team organize, clean, and format them into an exportable database matrix for you — with 24-hour turnaround.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 8. Side-by-Side OCR Extraction Screen */}
-            <div className="feature-card animate-on-scroll">
-              <div className="icon">👁️</div>
-              <h3>Side-by-Side OCR Extraction Screen</h3>
-              <p>Upload any digital utility invoice or paper receipt copy. Our advanced Tesseract OCR engine scans the document layer and renders a side-by-side verification interface — allowing you to inspect text parsing errors alongside the file layout before importing.</p>
-              <span className="feature-status status-ready">✅ Ready</span>
-            </div>
-
-            {/* 9. Enterprise-Grade Security */}
             <div className="feature-card animate-on-scroll">
               <div className="icon">🔒</div>
               <h3>Enterprise-Grade Security</h3>
-              <p>Your data is encrypted at rest and in transit with AES-256. SOC 2 compliant infrastructure with SSO, role-based access control, detailed audit logs, and GDPR-compliant data handling for complete peace of mind.</p>
+              <p>Your data is encrypted at rest and in transit. SOC 2 compliant with SSO, role-based access, and detailed audit logs.</p>
               <span className="feature-status status-ready">✅ Ready</span>
             </div>
           </div>
@@ -395,12 +285,6 @@ const handleSubmitEmail2 = async (e) => {
                       placeholder="you@company.com"
                       required
                       disabled={isSubmitting}
-                    />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Your full name (optional)"
                     />
                   </div>
 

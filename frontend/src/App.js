@@ -24,6 +24,8 @@ import MobileMenu from './components/MobileMenu';
 import CompanyNamePrompt from './CompanyNamePrompt'; // We'll create this
 import AuthCallback from './AuthCallback';
 import BetaSignup from './BetaSignup';
+import BetaLogin from './BetaLogin';
+import Glossary from './Glossary';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -2019,6 +2021,8 @@ useEffect(() => {
         <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/signup" element={<BetaSignup />} />
+        <Route path="/beta-login" element={<BetaLogin />} />
+        <Route path="/glossary" element={<Glossary />} />
 
 
         <Route path="/dashboard/*" element={

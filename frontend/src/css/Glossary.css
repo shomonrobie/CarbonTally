@@ -1,0 +1,274 @@
+/* frontend/src/pages/Glossary.css */
+
+.glossary-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.glossary-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.glossary-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+}
+
+.glossary-header h1 .highlight {
+  background: linear-gradient(135deg, #10b981, #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glossary-header p {
+  color: #64748b;
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Controls */
+.glossary-controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.glossary-search {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.glossary-search:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+
+.glossary-filter {
+  padding: 0.75rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 1rem;
+  background: white;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.glossary-filter:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+/* Stats */
+.glossary-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  background: white;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.stat-badge strong {
+  color: #0f172a;
+}
+
+/* Terms List */
+.glossary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.glossary-item {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.glossary-item:hover {
+  border-color: #10b981;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.glossary-term {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.glossary-term h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.glossary-category {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.15rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.glossary-definition {
+  color: #475569;
+  line-height: 1.7;
+  margin: 0.5rem 0;
+}
+
+.glossary-example {
+  background: #f1f5f9;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #334155;
+  margin-top: 0.5rem;
+}
+
+.glossary-example strong {
+  color: #0f172a;
+}
+
+.glossary-related {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.glossary-related strong {
+  color: #0f172a;
+}
+
+/* Loading & Empty States */
+.glossary-loading {
+  text-align: center;
+  padding: 3rem;
+  color: #94a3b8;
+  font-size: 1.1rem;
+}
+
+.glossary-empty {
+  text-align: center;
+  padding: 3rem;
+  color: #94a3b8;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Letter Index */
+.glossary-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+  justify-content: center;
+}
+
+.index-letter {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  background: white;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.index-letter:hover {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.index-letter.active {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .glossary-page {
+    padding: 2rem 1rem;
+  }
+
+  .glossary-header h1 {
+    font-size: 2rem;
+  }
+
+  .glossary-controls {
+    flex-direction: column;
+  }
+
+  .glossary-search,
+  .glossary-filter {
+    width: 100%;
+  }
+
+  .glossary-item {
+    padding: 1.25rem;
+  }
+
+  .glossary-term h3 {
+    font-size: 1.1rem;
+  }
+
+  .glossary-stats {
+    gap: 0.75rem;
+  }
+
+  .stat-badge {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .glossary-item {
+    padding: 1rem;
+  }
+
+  .glossary-term {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+}

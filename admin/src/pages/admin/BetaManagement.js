@@ -24,8 +24,9 @@ const BetaManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedEmails, setSelectedEmails] = useState([]);
   const [showDebug, setShowDebug] = useState(false);
+  const API_URL = process.env.REACT_APP_API_URL || 'https://carbontally-api.onrender.com';
 
-  // Fetch waitlist data
+  // Fetch w  aitlist data
   const { data: waitlist, isLoading, refetch } = useQuery({
     queryKey: ['betaWaitlist'],
     queryFn: async () => {
@@ -67,7 +68,7 @@ const BetaManagement = () => {
   // Send beta invite mutation
   const sendInviteMutation = useMutation({
     mutationFn: async ({ email, betaCode }) => {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/waitlist/invite`, {
+      const response = await fetch(`${API_URL}/api/waitlist/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, beta_code: betaCode })
@@ -89,10 +90,10 @@ const BetaManagement = () => {
     },
   });
 
-  // Resend confirmation mutation
-  const resendConfirmationMutation = useMutation({
+  // Add unsubscribe mutation
+  const unsubscribeMutation = useMutation({
     mutationFn: async (email) => {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/send-beta-confirmation`, {
+      const response = await fetch(`${API_URL}/api/waitlist/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -100,18 +101,43 @@ const BetaManagement = () => {
       
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to resend');
+        throw new Error(error.detail || 'Failed to unsubscribe');
       }
       return response.json();
     },
     onSuccess: () => {
-      toast.success('Confirmation email resent!');
-      queryClient.invalidateQueries(['emailLogs']);
+      toast.success('Successfully unsubscribed!');
+      queryClient.invalidateQueries(['betaWaitlist']);
     },
     onError: (error) => {
-      toast.error(`Failed to resend: ${error.message}`);
+      toast.error(`Failed to unsubscribe: ${error.message}`);
     },
   });
+
+  // Add resubscribe mutation
+  const resubscribeMutation = useMutation({
+    mutationFn: async (email) => {
+      const response = await fetch(`${API_URL}/api/waitlist/resubscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to resubscribe');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Successfully resubscribed!');
+      queryClient.invalidateQueries(['betaWaitlist']);
+    },
+    onError: (error) => {
+      toast.error(`Failed to resubscribe: ${error.message}`);
+    },
+  });
+
 
   // Generate beta code
   const generateBetaCode = () => {
@@ -381,35 +407,58 @@ const BetaManagement = () => {
                       {new Date(entry.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        {entry.status === 'pending' && (
-                          <button
-                            onClick={() => handleSendInvite(entry.email)}
-                            disabled={sendInviteMutation.isPending}
-                            className="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                          >
-                            {sendInviteMutation.isPending ? '⏳' : '📨 Invite'}
-                          </button>
-                        )}
-                        {(entry.status === 'invited' || entry.status === 'pending') && (
-                          <button
-                            onClick={() => handleResendConfirmation(entry.email)}
-                            disabled={resendConfirmationMutation.isPending}
-                            className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                          >
-                            🔄 Resend
-                          </button>
-                        )}
-                        {getEmailStatus(entry.email).error && (
-                          <span 
-                            className="px-2 py-1 text-sm text-red-600 cursor-help"
-                            title={getEmailStatus(entry.email).error}
-                          >
-                            ⚠️
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                    <div className="flex gap-2 flex-wrap">
+                      {entry.status === 'pending' && (
+                        <button
+                          onClick={() => handleSendInvite(entry.email)}
+                          disabled={sendInviteMutation.isPending}
+                          className="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                        >
+                          {sendInviteMutation.isPending ? '⏳' : '📨 Invite'}
+                        </button>
+                      )}
+                      {(entry.status === 'invited' || entry.status === 'pending') && (
+                        <button
+                          onClick={() => handleResendConfirmation(entry.email)}
+                          disabled={resendConfirmationMutation.isPending}
+                          className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          🔄 Resend
+                        </button>
+                      )}
+                      {entry.status !== 'unsubscribed' && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Unsubscribe ${entry.email} from the waitlist?`)) {
+                              unsubscribeMutation.mutate(entry.email);
+                            }
+                          }}
+                          className="px-3 py-1 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          Unsubscribe
+                        </button>
+                      )}
+                      {entry.status === 'unsubscribed' && (
+                        <button
+                          onClick={() => {
+                            resubscribeMutation.mutate(entry.email);
+                          }}
+                          className="px-3 py-1 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          Resubscribe
+                        </button>
+                      )}
+                      {getEmailStatus(entry.email).error && (
+                        <span 
+                          className="px-2 py-1 text-sm text-red-600 cursor-help"
+                          title={getEmailStatus(entry.email).error}
+                        >
+                          ⚠️
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
                   </tr>
                 ))
               )}

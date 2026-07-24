@@ -6,6 +6,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
+
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
@@ -20,6 +21,7 @@ import RecentProcessedData from './RecentProcessedData';
 import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
+
 
 // Constants
 const DEFRA_FACTORS = { 

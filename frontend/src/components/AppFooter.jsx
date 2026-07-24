@@ -54,7 +54,7 @@ export default function AppFooter() {
               <li><a href="#">Blog</a></li>
               <li><a href="#">Documentation</a></li>
               <li><a href="#">Help Center</a></li>
-              <li><a href="#">API Reference</a></li>
+              <li><Link to="/glossary">Glossary</Link></li>
               <li><a href="#">Community</a></li>
             </ul>
           </div>
