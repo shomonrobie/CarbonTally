@@ -1,5 +1,8 @@
 {
-  "dependencies": {
-    "react-hot-toast": "^2.6.0"
+  "name": "carbon-ledger-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cd ../admin && npm install && npm run build && cd .. && mkdir -p public/admin && cp -r frontend/build/* public/ && cp -r admin/build/* public/admin/"
   }
 }
