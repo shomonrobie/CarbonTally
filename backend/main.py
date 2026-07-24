@@ -2158,7 +2158,7 @@ async def send_beta_invite(request: BetaInviteRequest):
 
         # 4. Send beta invite email
         try:
-            email_sent = await send_beta_invite_email(
+            email_sent = send_beta_invite_email_sync(
                 email=email_lower,
                 beta_code=beta_code,
                 full_name=existing.data.get("full_name")
@@ -2167,6 +2167,8 @@ async def send_beta_invite(request: BetaInviteRequest):
                 print(f"✅ Beta invite email sent to {email_lower}")
             else:
                 print(f"⚠️ Failed to send beta invite email to {email_lower}")
+        except Exception as email_error:
+            print(f"Email error: {email_error}")
         except Exception as email_error:
             print(f"Email error: {email_error}")
             # Don't fail the request if email fails
@@ -2308,12 +2310,11 @@ def generate_beta_code() -> str:
     import secrets
     import string
     return f"BETA-{secrets.token_hex(4).upper()}-{secrets.token_hex(3).upper()}"
-
-async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None):
-    """Send beta invite email with magic link"""
+def send_beta_invite_email_sync(email: str, beta_code: str, full_name: Optional[str] = None):
+    """Send beta invite email with magic link (synchronous version)"""
     try:
-        import httpx
         import secrets
+        import httpx
         
         resend_api_key = os.getenv("RESEND_API_KEY")
         if not resend_api_key:
@@ -2322,18 +2323,20 @@ async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional
 
         name = full_name or email.split('@')[0]
         
-        # ✅ Generate a magic link token
-        # This creates a one-time use token for automatic signup
+        # Generate a magic link token
         token = secrets.token_urlsafe(32)
-        
-        # ✅ Store the token in beta_access_codes
-        supabase.table("beta_access_codes").update({
-            "magic_token": token,
-            "token_created_at": datetime.now().isoformat()
-        }).eq("code", beta_code).execute()
-        
-        # ✅ Magic link URL
         magic_link = f"https://carbontally.co.uk/auth/magic?token={token}&email={email}"
+        
+        # ✅ Update the beta_access_codes with the magic token
+        try:
+            supabase.table("beta_access_codes").update({
+                "magic_token": token,
+                "token_created_at": datetime.now().isoformat()
+            }).eq("code", beta_code).execute()
+            print(f"✅ Magic token saved for code: {beta_code}")
+        except Exception as db_error:
+            print(f"⚠️ Failed to save magic token: {db_error}")
+            # Continue anyway - we can still send the email
         
         html_content = f"""
         <!DOCTYPE html>
@@ -2378,36 +2381,37 @@ async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional
         </body>
         </html>
         """
-
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {resend_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "from": "CarbonTally <notifications@carbontally.co.uk>",
-                    "to": [email],
-                    "subject": "🎉 You've been invited to CarbonTally Beta!",
-                    "html": html_content
-                },
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                print(f"✅ Beta invite email sent to {email}")
-                return True
-            else:
-                print(f"⚠️ Email send failed: {response.status_code} - {response.text}")
-                return False
+        # ✅ Use requests library (synchronous) instead of httpx.AsyncClient
+        import requests
+        
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": "CarbonTally <notifications@carbontally.co.uk>",
+                "to": [email],
+                "subject": "🎉 You've been invited to CarbonTally Beta!",
+                "html": html_content
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Beta invite email sent to {email}")
+            return True
+        else:
+            print(f"⚠️ Email send failed: {response.status_code} - {response.text}")
+            return False
                 
     except Exception as e:
         print(f"❌ Beta invite email error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-
-
 
 class GlossaryTerm(BaseModel):
     term: str
