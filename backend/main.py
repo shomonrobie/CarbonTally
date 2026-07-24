@@ -7,7 +7,7 @@ load_dotenv(dotenv_path)
 
 # DEBUG PRINTS (We will remove these later)
 print("🔍 DEBUG: SUPABASE_URL is", os.getenv("SUPABASE_URL"))
-print("🔍 DEBUG: SUPABASE_SERVICE_KEY is", "SET" if os.getenv("SUPABASE_SERVICE_KEY") else "MISSING")
+print("🔍 DEBUG: SUPABASE_SERVICE_KEY2 is", "SET" if os.getenv("SUPABASE_SERVICE_KEY2") else "MISSING")
 import base64
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,21 +66,35 @@ app.add_middleware(
 # ============ SUPABASE CLIENT ============
 # ✅ Initialize Supabase as a global variable
 supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-print(f"🔍 DEBUG: SUPABASE_SERVICE_KEY length is {len(os.getenv('SUPABASE_SERVICE_KEY', ''))}")
+supabase_key = os.getenv("SUPABASE_SERVICE_KEY2")
+print(f"🔍 DEBUG: SUPABASE_SERVICE_KEY2 length is {len(os.getenv('SUPABASE_SERVICE_KEY2', ''))}")
 
 if not supabase_url or not supabase_key:
     print("❌ ERROR: Missing Supabase credentials!")
     supabase = None
 else:
     try:
+        # ✅ Try with explicit initialization
+        from supabase import create_client, Client
+        
+        # Clean the key - remove any whitespace
+        supabase_key = supabase_key.strip()
+        
+        print(f"🔍 DEBUG: Key after strip length: {len(supabase_key)}")
+        print(f"🔍 DEBUG: Key starts with: {supabase_key[:10]}...")
+        
+        # Test the connection with a simple query
         supabase = create_client(supabase_url, supabase_key)
-        print("✅ Supabase initialized successfully")
+        
         # Test the connection
-        test = supabase.table("waitlist").select("count").limit(1).execute()
+        test = supabase.table("glossary").select("count").limit(1).execute()
         print("✅ Supabase connection test successful")
+        print(f"✅ supabase_connected: True")
+        
     except Exception as e:
         print(f"❌ Supabase initialization error: {e}")
+        import traceback
+        traceback.print_exc()
         supabase = None
 
 
