@@ -67,6 +67,7 @@ app.add_middleware(
 # ✅ Initialize Supabase as a global variable
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+print(f"🔍 DEBUG: SUPABASE_SERVICE_KEY length is {len(os.getenv('SUPABASE_SERVICE_KEY', ''))}")
 
 if not supabase_url or not supabase_key:
     print("❌ ERROR: Missing Supabase credentials!")
