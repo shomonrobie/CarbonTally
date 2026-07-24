@@ -2377,6 +2377,7 @@ class GlossaryTerm(BaseModel):
     related_terms: Optional[List[str]] = None
     example: Optional[str] = None
 
+
 @app.get("/api/glossary")
 async def get_glossary(category: Optional[str] = None, search: Optional[str] = None):
     """Get all glossary terms with optional filtering"""
@@ -2398,14 +2399,14 @@ async def get_glossary(category: Optional[str] = None, search: Optional[str] = N
         if search:
             query = query.or_(f"term.ilike.%{search}%,definition.ilike.%{search}%")
         
-        # ✅ No ordering - just execute
+        # Execute query
         result = query.execute()
         
         # Log results
         data = result.data or []
         print(f"📚 Found {len(data)} glossary terms")
         
-        # Sort in Python instead
+        # Sort in Python
         data.sort(key=lambda x: x.get("term", "").lower())
         
         return {
@@ -2473,6 +2474,7 @@ async def create_glossary_term(term: GlossaryTerm):
             "category": term.category,
             "related_terms": term.related_terms,
             "example": term.example,
+            "is_active": True,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }).execute()
@@ -2497,6 +2499,16 @@ async def update_glossary_term(term_id: str, term: GlossaryTerm):
         if supabase is None:
             raise HTTPException(status_code=500, detail="Database not available")
         
+        # Check if term exists
+        existing = supabase.table("glossary")\
+            .select("id")\
+            .eq("id", term_id)\
+            .maybe_single()\
+            .execute()
+        
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Term not found")
+        
         result = supabase.table("glossary")\
             .update({
                 "term": term.term,
@@ -2508,9 +2520,6 @@ async def update_glossary_term(term_id: str, term: GlossaryTerm):
             })\
             .eq("id", term_id)\
             .execute()
-        
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Term not found")
         
         return {
             "success": True,
@@ -2532,6 +2541,17 @@ async def delete_glossary_term(term_id: str):
         if supabase is None:
             raise HTTPException(status_code=500, detail="Database not available")
         
+        # Check if term exists
+        existing = supabase.table("glossary")\
+            .select("id")\
+            .eq("id", term_id)\
+            .maybe_single()\
+            .execute()
+        
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Term not found")
+        
+        # ✅ Soft delete - set is_active to false
         result = supabase.table("glossary")\
             .update({
                 "is_active": False,
@@ -2539,9 +2559,6 @@ async def delete_glossary_term(term_id: str):
             })\
             .eq("id", term_id)\
             .execute()
-        
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Term not found")
         
         return {
             "success": True,

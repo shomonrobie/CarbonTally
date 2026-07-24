@@ -10,6 +10,7 @@ import {
   FaTimes,
   FaBook,
   FaList,
+  FaExclamationTriangle,
 } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ const GlossaryManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingTerm, setEditingTerm] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -32,16 +34,29 @@ const GlossaryManagement = () => {
   });
 
   // Fetch glossary terms
-  const { data: terms, isLoading, refetch } = useQuery({
+  const { data: terms, isLoading, refetch, error: fetchError } = useQuery({
     queryKey: ['glossary'],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/glossary`);
-      const data = await response.json();
-      if (data.success) {
-        return data.data || [];
+      try {
+        const response = await fetch(`${API_URL}/api/glossary`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error:', response.status, errorText);
+          throw new Error(`API returned ${response.status}: ${errorText}`);
+        }
+        
+        const data = await response.json();
+        if (data.success) {
+          return data.data || [];
+        }
+        throw new Error(data.detail || 'Failed to fetch glossary');
+      } catch (err) {
+        console.error('Fetch error:', err);
+        throw err;
       }
-      throw new Error('Failed to fetch glossary');
     },
+    retry: 2,
   });
 
   // Create mutation
@@ -168,6 +183,25 @@ const GlossaryManagement = () => {
     t.term.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.definition.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Show error state
+  if (fetchError) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <FaExclamationTriangle className="text-4xl text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-red-800 mb-2">Failed to Load Glossary</h3>
+          <p className="text-red-600 mb-4">{fetchError.message || 'Please check your connection and try again.'}</p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
