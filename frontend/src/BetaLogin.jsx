@@ -1,22 +1,17 @@
-// frontend/src/BetaLogin.jsx - Fixed version
-
+// frontend/src/BetaLogin.jsx
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { useNavigate } from 'react-router-dom';
-import './css/BetaLogin.css';
+import './BetaLogin.css';
 
 function BetaLogin() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [betaCode, setBetaCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('login'); // 'login' or 'signup'
-  const [searchParams] = useSearchParams();  
-  const autoLogin = searchParams.get('auto') === 'true';
-  const firstLogin = searchParams.get('first_login') === 'true';
 
   // Check if already logged in
   useEffect(() => {
@@ -29,8 +24,11 @@ function BetaLogin() {
     checkSession();
   }, [navigate]);
 
+  // ✅ Handle auto-login from magic link (when user clicks email link)
   useEffect(() => {
-    // ✅ Auto-login with temp password
+    const autoLogin = searchParams.get('auto') === 'true';
+    const firstLogin = searchParams.get('first_login') === 'true';
+
     if (autoLogin) {
       const tempEmail = localStorage.getItem('temp_email');
       const tempPassword = localStorage.getItem('temp_password');
@@ -41,9 +39,54 @@ function BetaLogin() {
         localStorage.removeItem('temp_password');
       }
     }
-  }, [autoLogin]);
 
-  // Handle beta login
+    // If first login, show welcome message
+    if (firstLogin) {
+      setMessage('🎉 Welcome to CarbonTally Beta! Please set your password to continue.');
+    }
+  }, [searchParams]);
+
+  // ✅ Auto-login handler (for magic link flow)
+  const handleAutoLogin = async (email, password) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password,
+      });
+
+      if (error) {
+        console.error('Auto-login error:', error);
+        setError('Auto-login failed. Please try signing in manually.');
+        setLoading(false);
+        return;
+      }
+
+      // Check if user is a beta user
+      const { data: betaCheck } = await supabase
+        .from('beta_users')
+        .select('email')
+        .eq('email', email.toLowerCase().trim())
+        .single();
+
+      if (!betaCheck) {
+        await supabase.auth.signOut();
+        setError('❌ This is a beta-only application. Please use your beta invite.');
+        setLoading(false);
+        return;
+      }
+
+      navigate('/dashboard');
+      
+    } catch (err) {
+      console.error('Auto-login error:', err);
+      setError('Auto-login failed. Please try signing in manually.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Regular login (for returning users)
   const handleBetaLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -60,7 +103,7 @@ function BetaLogin() {
         if (error.message.includes('Invalid login credentials')) {
           setError('❌ Invalid email or password. Please try again.');
         } else if (error.message.includes('Email not confirmed')) {
-          setError('❌ Please confirm your email address before signing in. Check your inbox.');
+          setError('❌ Please confirm your email address before signing in.');
         } else {
           setError(`❌ ${error.message}`);
         }
@@ -68,108 +111,25 @@ function BetaLogin() {
         return;
       }
 
-      // Success
+      // ✅ Check if user is a beta user
+      const { data: betaCheck } = await supabase
+        .from('beta_users')
+        .select('email')
+        .eq('email', email.toLowerCase().trim())
+        .single();
+
+      if (!betaCheck) {
+        await supabase.auth.signOut();
+        setError('❌ This is a beta-only application. Please use your beta invite.');
+        setLoading(false);
+        return;
+      }
+
       navigate('/dashboard');
       
     } catch (err) {
       console.error('Login error:', err);
       setError('❌ An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle beta signup
-  const handleBetaSignup = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    setMessage('');
-
-    try {
-      // 1. Validate beta code
-      if (!betaCode.trim()) {
-        setError('❌ Please enter your beta access code.');
-        setLoading(false);
-        return;
-      }
-
-      // 2. Check if email already exists in Supabase Auth
-      // We'll try to sign up and handle the error
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.toLowerCase().trim(),
-        password,
-        options: {
-          data: {
-            is_beta_user: true,
-            beta_code: betaCode.trim().toUpperCase(),
-          },
-          emailRedirectTo: window.location.origin + '/beta-login',
-        },
-      });
-
-      // ✅ Handle existing user error properly
-      if (signUpError) {
-        if (signUpError.message.includes('User already registered')) {
-          // ✅ User exists - offer to login instead
-          setError('❌ This email is already registered.');
-          setMessage('💡 Please sign in with your existing account.');
-          setActiveTab('login');
-          setLoading(false);
-          return;
-        } else {
-          setError(`❌ ${signUpError.message}`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // If we got here, user was created successfully
-      if (signUpData.user) {
-        // Check if beta code is valid and mark it as used
-        const { data: codeData, error: codeError } = await supabase
-          .from('beta_access_codes')
-          .select('status')
-          .eq('code', betaCode.trim().toUpperCase())
-          .single();
-
-        if (!codeError && codeData) {
-          // Mark beta code as used
-          await supabase
-            .from('beta_access_codes')
-            .update({ 
-              status: 'used', 
-              used_at: new Date().toISOString(),
-              used_by: signUpData.user.id
-            })
-            .eq('code', betaCode.trim().toUpperCase());
-
-          // Add to beta_users table
-          await supabase
-            .from('beta_users')
-            .insert({
-              user_id: signUpData.user.id,
-              email: email.toLowerCase().trim(),
-              beta_code: betaCode.trim().toUpperCase(),
-              access_level: 'beta',
-              created_at: new Date().toISOString()
-            });
-        }
-
-        setMessage('✅ Account created! Please check your email to confirm your address.');
-        setEmail('');
-        setPassword('');
-        setBetaCode('');
-        setActiveTab('login');
-        
-        setTimeout(() => {
-          setMessage('✅ Please confirm your email, then sign in.');
-        }, 3000);
-      }
-
-    } catch (err) {
-      console.error('Signup error:', err);
-      setError('❌ Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -181,7 +141,7 @@ function BetaLogin() {
         <div className="beta-header">
           <div className="beta-logo">🌱</div>
           <h1>CarbonTally</h1>
-          <p className="beta-subtitle">Beta Access Program</p>
+          <p className="beta-subtitle">Beta Access Login</p>
         </div>
 
         {/* Beta Notice */}
@@ -190,138 +150,52 @@ function BetaLogin() {
           <span className="beta-message">Limited beta access — by invitation only</span>
         </div>
 
-        {/* Tabs: Login / Signup */}
-        <div className="beta-tabs">
-          <button 
-            className={`beta-tab ${activeTab === 'login' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('login');
-              setError('');
-              setMessage('');
-            }}
-          >
-            Sign In
-          </button>
-          <button 
-            className={`beta-tab ${activeTab === 'signup' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('signup');
-              setError('');
-              setMessage('');
-            }}
-          >
-            Sign Up
-          </button>
-        </div>
+        {message && (
+          <div className="success-message" style={{ marginBottom: '1rem' }}>
+            {message}
+          </div>
+        )}
 
         {/* Login Form */}
-        {activeTab === 'login' && (
-          <form onSubmit={handleBetaLogin} className="beta-form">
-            <div className="form-group">
-              <label>Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@company.com"
-                disabled={loading}
-              />
-            </div>
+        <form onSubmit={handleBetaLogin} className="beta-form">
+          <div className="form-group">
+            <label>Email Address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="you@company.com"
+              disabled={loading}
+            />
+          </div>
 
-            <div className="form-group">
-              <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                minLength={6}
-                disabled={loading}
-              />
-            </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
+              minLength={6}
+              disabled={loading}
+            />
+          </div>
 
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
+          {error && <div className="error-message">{error}</div>}
 
-            <button type="submit" disabled={loading} className="beta-btn-primary">
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-
-            <p className="beta-help-text">
-              Don't have an account? <span className="switch-tab" onClick={() => {
-                setActiveTab('signup');
-                setError('');
-                setMessage('');
-              }}>Sign up with your beta code</span>
-            </p>
-          </form>
-        )}
-
-        {/* Signup Form */}
-        {activeTab === 'signup' && (
-          <form onSubmit={handleBetaSignup} className="beta-form">
-            <div className="form-group">
-              <label>Beta Access Code</label>
-              <input
-                type="text"
-                value={betaCode}
-                onChange={(e) => setBetaCode(e.target.value)}
-                placeholder="e.g., BETA-XXXXXX"
-                required
-                disabled={loading}
-                style={{ textTransform: 'uppercase', letterSpacing: '1px' }}
-              />
-              <small className="form-hint">Enter the code from your beta invite email</small>
-            </div>
-
-            <div className="form-group">
-              <label>Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@company.com"
-                disabled={loading}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="•••••••• (min 6 characters)"
-                minLength={6}
-                disabled={loading}
-              />
-              <small className="form-hint">Must be at least 6 characters</small>
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" disabled={loading} className="beta-btn-primary">
-              {loading ? 'Creating Account...' : 'Create Beta Account'}
-            </button>
-
-            <p className="beta-help-text">
-              Already have an account? <span className="switch-tab" onClick={() => {
-                setActiveTab('login');
-                setError('');
-                setMessage('');
-              }}>Sign in instead</span>
-            </p>
-          </form>
-        )}
+          <button type="submit" disabled={loading} className="beta-btn-primary">
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
 
         <div className="beta-footer">
           <p>🧪 Beta version — All features are functional</p>
           <p className="beta-legal">🔒 Secure, UK GDPR Compliant</p>
+          <p className="beta-help-text" style={{ marginTop: '0.75rem' }}>
+            Need help? <a href="mailto:support@carbontally.co.uk">Contact support</a>
+          </p>
         </div>
       </div>
     </div>
