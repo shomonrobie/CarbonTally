@@ -49,6 +49,7 @@ const ProtectedRoute = ({ children }) => {
 const AppRoutes = () => {
   const { user, isStaff } = useAuth();
 
+  // 1. Unauthenticated Gateway
   if (!user || !isStaff) {
     return (
       <Routes>
@@ -58,34 +59,35 @@ const AppRoutes = () => {
     );
   }
 
+  // 2. Authenticated Admin/Staff Dashboard Portal
   return (
     <Layout>
       <Routes>
-        {/* Admin Routes */}
-        <Route path="/admin" element={<Dashboard />} />
-        <Route path="/admin/reviews" element={<Reviews />} />
-        <Route path="/admin/users" element={<Users />} />
-        <Route path="/admin/organizations" element={<Organizations />} />
-        <Route path="/admin/batches" element={<Batches />} />
-        <Route path="/admin/analytics" element={<Analytics />} />
-        <Route path="/admin/settings" element={<Settings />} />
-        <Route path="/admin/defra" element={<DefraFactors />} />
-        <Route path="/admin/customers" element={<Customers />} />
-        <Route path="/admin/reviews" element={<ManualReviewQueue />} />
-        <Route path="/admin/errors" element={<ExtractionErrorReview />} />
-        <Route path="/admin/beta" element={<BetaManagement />} />
-        <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
-        <Route path="/admin/review-assignment" element={<GlossaryManagement />} />
+        {/* Admin Routes (Removed redundant /admin prefix) */}
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/reviews" element={<Reviews />} />
+        <Route path="/users" element={<Users />} />
+        <Route path="/organizations" element={<Organizations />} />
+        <Route path="/batches" element={<Batches />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/defra" element={<DefraFactors />} />
+        <Route path="/customers" element={<Customers />} />
+        <Route path="/errors" element={<ExtractionErrorReview />} />
+        <Route path="/beta" element={<BetaManagement />} />
+        <Route path="/review-assignment" element={<ReviewAssignment />} />
+        <Route path="/glossary-management" element={<GlossaryManagement />} />
         
         {/* Staff Routes */}
         <Route path="/staff/dashboard" element={<StaffDashboard />} />
         
-        {/* ✅ Fix: Default redirect for staff goes to staff dashboard */}
-        <Route path="*" element={<Navigate to="/staff/dashboard" replace />} />
+        {/* Default fallback for authenticated staff */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
   );
 };
+
 function App() {
   console.log('🚀 Admin App rendering!');
   

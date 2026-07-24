@@ -1,29 +1,26 @@
 {
   "version": 2,
-  "builds": [
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "frontend/**",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "frontend/build"
-      }
+      "source": "/admin/(.*\\..*)",
+      "destination": "/admin/$1"
     },
     {
-      "src": "admin/**",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "admin/build"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/admin/(.*)",
-      "dest": "/admin/index.html"
+      "source": "/admin/(.*)",
+      "destination": "/admin/index.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/frontend/index.html"
+      "source": "/admin",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/(.*\\..*)",
+      "destination": "/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
