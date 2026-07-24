@@ -3,6 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/admin/static/(.*)",
+      "destination": "/admin/static/$1"
+    },
+    {
       "source": "/admin/(.*\\..*)",
       "destination": "/admin/$1"
     },
@@ -15,12 +19,12 @@
       "destination": "/admin/index.html"
     },
     {
-      "source": "/(.*\\..*)",
-      "destination": "/$1"
+      "source": "/static/(.*)",
+      "destination": "/frontend/static/$1"
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/frontend/index.html"
     }
   ]
 }
