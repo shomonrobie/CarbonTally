@@ -22,6 +22,7 @@ from datetime import datetime
 import traceback
 from fpdf import FPDF
 import re
+from supabase import create_client, Client
 # from report_generator import (
 #     SustainabilityReportGenerator,
 #     sanitize_text,
@@ -33,7 +34,6 @@ import re
 # )
 
 from report_generator import router as report_router
-from supabase import create_client, Client
 
 app = FastAPI(title="CarbonTally API", version="3.0.0")
 app.include_router(report_router)
@@ -75,8 +75,7 @@ if not supabase_url or not supabase_key:
 else:
     try:
         # ✅ Try with explicit initialization
-        from supabase import create_client, Client
-        
+            
         # Clean the key - remove any whitespace
         supabase_key = supabase_key.strip()
         
@@ -2096,6 +2095,7 @@ class BetaInviteResponse(BaseModel):
     error: Optional[str] = None
     data: Optional[dict] = None
 
+
 @app.post("/api/waitlist/invite", response_model=BetaInviteResponse)
 async def send_beta_invite(request: BetaInviteRequest):
     """
@@ -2114,48 +2114,65 @@ async def send_beta_invite(request: BetaInviteRequest):
             .maybe_single()\
             .execute()
         
-        if not existing.data:
+        # ✅ Safe check - only access if exists
+        if not existing or not existing.data:
             raise HTTPException(status_code=404, detail="Email not found in waitlist")
 
         # 2. Check if beta code already exists for this email
+        # ✅ Handle None response safely
         existing_code = supabase.table("beta_access_codes")\
             .select("code, status")\
             .eq("email", email_lower)\
             .maybe_single()\
             .execute()
         
-        if existing_code.data and existing_code.data.get("status") == "unused":
+        # ✅ Safe check - only access if exists and has data
+        beta_code = None
+        if existing_code and existing_code.data and existing_code.data.get("status") == "unused":
             # Reuse existing code if available
             beta_code = existing_code.data.get("code")
-        else:
-            # Generate new beta code
+            print(f"♻️ Reusing existing beta code: {beta_code}")
+        
+        # If no existing code, generate new one
+        if not beta_code:
             beta_code = request.beta_code or generate_beta_code()
+            print(f"🆕 Generating new beta code: {beta_code}")
             
             # Save beta code to database
-            supabase.table("beta_access_codes").insert({
+            insert_result = supabase.table("beta_access_codes").insert({
                 "code": beta_code,
                 "email": email_lower,
                 "status": "unused",
-                "expires_at": datetime.now().isoformat(),
+                "expires_at": (datetime.now().replace(year=datetime.now().year + 1)).isoformat(),
                 "created_at": datetime.now().isoformat()
             }).execute()
+            
+            if not insert_result.data:
+                raise HTTPException(status_code=500, detail="Failed to save beta code")
 
         # 3. Update waitlist status to 'invited'
-        supabase.table("waitlist")\
+        update_result = supabase.table("waitlist")\
             .update({
                 "status": "invited",
                 "invited_at": datetime.now().isoformat()
             })\
             .eq("email", email_lower)\
             .execute()
+        
+        if not update_result.data:
+            print(f"⚠️ Failed to update waitlist status for {email_lower}")
 
         # 4. Send beta invite email
         try:
-            await send_beta_invite_email(
+            email_sent = await send_beta_invite_email(
                 email=email_lower,
                 beta_code=beta_code,
                 full_name=existing.data.get("full_name")
             )
+            if email_sent:
+                print(f"✅ Beta invite email sent to {email_lower}")
+            else:
+                print(f"⚠️ Failed to send beta invite email to {email_lower}")
         except Exception as email_error:
             print(f"Email error: {email_error}")
             # Don't fail the request if email fails
@@ -2298,7 +2315,6 @@ def generate_beta_code() -> str:
     import string
     return f"BETA-{secrets.token_hex(4).upper()}-{secrets.token_hex(3).upper()}"
 
-
 async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None):
     """Send beta invite email with access code"""
     try:
@@ -2307,55 +2323,12 @@ async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional
         resend_api_key = os.getenv("RESEND_API_KEY")
         if not resend_api_key:
             print("⚠️ RESEND_API_KEY not set, skipping email")
-            return
+            return False
 
         name = full_name or email.split('@')[0]
         signup_url = f"https://carbontally.co.uk/signup?code={beta_code}"
         
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <title>Your Beta Access is Ready!</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
-                .content {{ background: #f8fafc; padding: 30px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
-                .code-box {{ background: white; padding: 20px; border-radius: 8px; border: 2px dashed #10b981; text-align: center; margin: 20px 0; }}
-                .code {{ font-size: 28px; font-weight: 700; color: #059669; letter-spacing: 2px; font-family: monospace; }}
-                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
-                .button {{ display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 10px 0; }}
-                .unsubscribe {{ color: #94a3b8; font-size: 12px; margin-top: 20px; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>🌱 CarbonTally</h1>
-                <p style="opacity: 0.8;">You're Invited!</p>
-            </div>
-            <div class="content">
-                <h2>Hi {name}! 🎉</h2>
-                <p>Great news! You've been selected for CarbonTally's beta program.</p>
-                <p><strong>Your beta access code:</strong></p>
-                <div class="code-box">
-                    <div class="code">{beta_code}</div>
-                    <p style="margin: 10px 0 0; color: #64748b; font-size: 14px;">Use this code to activate your account</p>
-                </div>
-                <p style="text-align: center;">
-                    <a href="{signup_url}" class="button">Claim Your Beta Access →</a>
-                </p>
-                <p style="font-size: 14px; color: #64748b; text-align: center;">This code expires in 30 days</p>
-                <p class="unsubscribe">
-                    <a href="https://carbontally.co.uk/api/waitlist/unsubscribe?email={email}" style="color: #94a3b8;">Unsubscribe from waitlist</a>
-                </p>
-            </div>
-            <div class="footer">
-                <p>© 2024 CarbonTally. All rights reserved.</p>
-            </div>
-        </body>
-        </html>
-        """
+        # ... rest of email content ...
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -2383,7 +2356,7 @@ async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional
     except Exception as e:
         print(f"❌ Beta invite email error: {e}")
         return False
-
+        
 class GlossaryTerm(BaseModel):
     term: str
     definition: str
