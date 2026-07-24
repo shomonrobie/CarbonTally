@@ -26,6 +26,7 @@ import AuthCallback from './AuthCallback';
 import BetaSignup from './BetaSignup';
 import BetaLogin from './BetaLogin';
 import Glossary from './Glossary';
+import MagicLink from './MagicLink';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -2023,6 +2024,7 @@ useEffect(() => {
         <Route path="/signup" element={<BetaSignup />} />
         <Route path="/beta-login" element={<BetaLogin />} />
         <Route path="/glossary" element={<Glossary />} />
+        <Route path="/auth/magic" element={<MagicLink />} />
 
 
         <Route path="/dashboard/*" element={

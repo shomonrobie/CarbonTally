@@ -22,7 +22,6 @@ import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
 import OnboardingWizard from './OnboardingWizard';
-import BetaSignup from './BetaSignup';  // ✅ Make sure this exists
 
 
 // Constants
@@ -1142,8 +1141,7 @@ export default function App() {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/about" element={<AboutUs />} />
         <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
-        <Route path="/signup" element={<BetaSignup />} />
-
+        
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <DashboardLayout>
