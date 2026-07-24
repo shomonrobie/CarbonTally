@@ -1,6 +1,6 @@
 // src/App.js
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
@@ -15,7 +15,6 @@ import Analytics from './pages/admin/Analytics';
 import Settings from './pages/admin/Settings';
 import DefraFactors from './pages/admin/DefraFactors';
 import Customers from './pages/admin/Customers';
-import ManualReviewQueue from './pages/admin/ManualReviewQueue';
 import ExtractionErrorReview from './pages/admin/ExtractionErrorReview';
 import BetaManagement from './pages/admin/BetaManagement';
 import ReviewAssignment from './pages/admin/ReviewAssignment';
@@ -24,8 +23,8 @@ import GlossaryManagement from './pages/admin/GlossaryManagement';
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
 
-// Protected Route Component - Staff Only
-const ProtectedRoute = ({ children }) => {
+// Secure Route Structural Guard Wrapper
+const AdminProtectedLayout = () => {
   const { user, loading, isStaff } = useAuth();
 
   if (loading) {
@@ -33,77 +32,62 @@ const ProtectedRoute = ({ children }) => {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-gray-600">Loading Access Panel...</p>
         </div>
       </div>
     );
   }
 
+  // If unauthorized, redirect cleanly back to the absolute sub-login path
   if (!user || !isStaff) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
-  return children;
-};
-// src/App.js
-const AppRoutes = () => {
-  const { user, isStaff } = useAuth();
-
-  // 1. Unauthenticated Gateway
-  if (!user || !isStaff) {
-    return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    );
-  }
-
-  // 2. Authenticated Admin/Staff Dashboard Portal
+  // Authorized: Wrap the nested pages inside your application sidebar container
   return (
     <Layout>
-      <Routes>
-        {/* Admin Routes (Removed redundant /admin prefix) */}
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/reviews" element={<Reviews />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/organizations" element={<Organizations />} />
-        <Route path="/batches" element={<Batches />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/defra" element={<DefraFactors />} />
-        <Route path="/customers" element={<Customers />} />
-        <Route path="/errors" element={<ExtractionErrorReview />} />
-        <Route path="/beta" element={<BetaManagement />} />
-        <Route path="/review-assignment" element={<ReviewAssignment />} />
-        <Route path="/glossary-management" element={<GlossaryManagement />} />
-        
-        {/* Staff Routes */}
-        <Route path="/staff/dashboard" element={<StaffDashboard />} />
-        
-        {/* Default fallback for authenticated staff */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Outlet />
     </Layout>
   );
 };
 
+const AppRoutes = () => {
+  return (
+    <Routes>
+      {/* 1. Public Auth Route (Always retains complete structural pathing) */}
+      <Route path="/admin/login" element={<Login />} />
+
+      {/* 2. Fully Shielded Subdirectory Portal Route Group */}
+      <Route element={<AdminProtectedLayout />}>
+        <Route path="/admin" element={<Dashboard />} />
+        <Route path="/admin/reviews" element={<Reviews />} />
+        <Route path="/admin/users" element={<Users />} />
+        <Route path="/admin/organizations" element={<Organizations />} />
+        <Route path="/admin/batches" element={<Batches />} />
+        <Route path="/admin/analytics" element={<Analytics />} />
+        <Route path="/admin/settings" element={<Settings />} />
+        <Route path="/admin/defra" element={<DefraFactors />} />
+        <Route path="/admin/customers" element={<Customers />} />
+        <Route path="/admin/errors" element={<ExtractionErrorReview />} />
+        <Route path="/admin/beta" element={<BetaManagement />} />
+        <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
+        <Route path="/admin/glossary-management" element={<GlossaryManagement />} />
+        <Route path="/admin/staff/dashboard" element={<StaffDashboard />} />
+      </Route>
+
+      {/* Catch-all global route fallback */}
+      <Route path="*" element={<Navigate to="/admin/login" replace />} />
+    </Routes>
+  );
+};
+
+// Clean Mount Instantiation without buggy configuration variables
 function App() {
-  console.log('🚀 Admin App rendering!');
-  
-  const [testLoaded, setTestLoaded] = React.useState(false);
-  React.useEffect(() => {
-    console.log('✅ Admin App mounted successfully!');
-    setTestLoaded(true);
-  }, []);
-  
-  if (!testLoaded) {
-    return <div>Loading App...</div>;
-  }
+  console.log('🚀 Admin System Booted!');
 
   return (
     <AuthProvider>
-      <BrowserRouter basename="/admin">
+      <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>
     </AuthProvider>
