@@ -27,13 +27,36 @@ const ManualReviewQueue = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Fetch queue items
+  // ✅ Fetch queue items - using only columns that exist in your table
   const { data: queue, isLoading, refetch } = useQuery({
     queryKey: ['manualReviewQueue'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manual_review_queue')
-        .select('*')
+        .select(`
+          id,
+          organization_id,
+          file_url,
+          file_name,
+          file_type,
+          data_type,
+          status,
+          auto_extraction_result,
+          manual_extraction_result,
+          assigned_to,
+          priority,
+          customer_notes,
+          staff_notes,
+          created_at,
+          completed_at,
+          estimated_completion_hours,
+          batch_id,
+          assigned_by,
+          started_at,
+          completed_by,
+          data_entry,
+          review_time_seconds
+        `)  // ✅ Explicitly list all columns
         .eq('status', 'pending')
         .order('priority', { ascending: false })
         .order('created_at', { ascending: true });
