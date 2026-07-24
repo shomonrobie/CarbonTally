@@ -2172,6 +2172,105 @@ async def send_beta_invite(request: BetaInviteRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+def send_magic_link_email_sync(email: str, beta_code: str, full_name: Optional[str] = None):
+    """Send magic link email (no confirmation, just the magic link)"""
+    try:
+        import secrets
+        import requests
+        
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        if not resend_api_key:
+            print("⚠️ RESEND_API_KEY not set, skipping email")
+            return False
+
+        name = full_name or email.split('@')[0]
+        
+        # ✅ Generate magic token
+        token = secrets.token_urlsafe(32)
+        magic_link = f"https://carbontally.co.uk/auth/magic?token={token}&email={email}"
+        
+        # ✅ Save magic token to database
+        try:
+            supabase.table("beta_access_codes").update({
+                "magic_token": token,
+                "token_created_at": datetime.now().isoformat()
+            }).eq("code", beta_code).execute()
+            print(f"✅ Magic token saved for code: {beta_code}")
+        except Exception as db_error:
+            print(f"⚠️ Failed to save magic token: {db_error}")
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>You're Invited to CarbonTally Beta!</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
+                .content {{ background: #f8fafc; padding: 30px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
+                .button {{ display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 10px 0; }}
+                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
+                .highlight {{ color: #10b981; font-weight: 600; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🌱 CarbonTally</h1>
+                <p style="opacity: 0.8;">You're Invited to the Beta!</p>
+            </div>
+            <div class="content">
+                <h2>Hi {name}! 🎉</h2>
+                <p>Great news! You've been selected for CarbonTally's beta program.</p>
+                <p><strong>Click the button below to get started instantly:</strong></p>
+                <p style="text-align: center;">
+                    <a href="{magic_link}" class="button">🚀 Claim Your Beta Access</a>
+                </p>
+                <p style="font-size: 14px; color: #64748b; text-align: center;">
+                    ✨ <span class="highlight">No signup form needed.</span> Just click and you're in!
+                </p>
+                <p style="font-size: 14px; color: #64748b; text-align: center; margin-top: 10px;">
+                    Your beta code: <span class="highlight">{beta_code}</span>
+                </p>
+                <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 20px;">
+                    🔒 This link expires in 7 days
+                </p>
+            </div>
+            <div class="footer">
+                <p>© 2024 CarbonTally. All rights reserved.</p>
+                <p style="font-size: 12px;">This email was sent to {email}</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": "CarbonTally <notifications@carbontally.co.uk>",
+                "to": [email],
+                "subject": "🎉 You've been invited to CarbonTally Beta!",
+                "html": html_content
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Magic link email sent to {email}")
+            return True
+        else:
+            print(f"⚠️ Email send failed: {response.status_code} - {response.text}")
+            return False
+                
+    except Exception as e:
+        print(f"❌ Magic link email error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 @app.post("/api/send-beta-confirmation")
 async def resend_beta_confirmation(request: dict):
