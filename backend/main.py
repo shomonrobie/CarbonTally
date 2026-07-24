@@ -2089,11 +2089,10 @@ class BetaInviteResponse(BaseModel):
     error: Optional[str] = None
     data: Optional[dict] = None
 
-
 @app.post("/api/waitlist/invite", response_model=BetaInviteResponse)
 async def send_beta_invite(request: BetaInviteRequest):
     """
-    Send beta invite email to user with their access code
+    Send beta invite email with magic link
     """
     try:
         if supabase is None:
@@ -2108,74 +2107,60 @@ async def send_beta_invite(request: BetaInviteRequest):
             .maybe_single()\
             .execute()
         
-        # ✅ Safe check - only access if exists
         if not existing or not existing.data:
             raise HTTPException(status_code=404, detail="Email not found in waitlist")
 
-        # 2. Check if beta code already exists for this email
-        # ✅ Handle None response safely
+        # 2. Get or generate beta code
         existing_code = supabase.table("beta_access_codes")\
             .select("code, status")\
             .eq("email", email_lower)\
             .maybe_single()\
             .execute()
         
-        # ✅ Safe check - only access if exists and has data
         beta_code = None
         if existing_code and existing_code.data and existing_code.data.get("status") == "unused":
-            # Reuse existing code if available
             beta_code = existing_code.data.get("code")
             print(f"♻️ Reusing existing beta code: {beta_code}")
         
-        # If no existing code, generate new one
         if not beta_code:
             beta_code = request.beta_code or generate_beta_code()
             print(f"🆕 Generating new beta code: {beta_code}")
             
-            # Save beta code to database
-            insert_result = supabase.table("beta_access_codes").insert({
+            supabase.table("beta_access_codes").insert({
                 "code": beta_code,
                 "email": email_lower,
                 "status": "unused",
                 "expires_at": (datetime.now().replace(year=datetime.now().year + 1)).isoformat(),
                 "created_at": datetime.now().isoformat()
             }).execute()
-            
-            if not insert_result.data:
-                raise HTTPException(status_code=500, detail="Failed to save beta code")
 
         # 3. Update waitlist status to 'invited'
-        update_result = supabase.table("waitlist")\
+        supabase.table("waitlist")\
             .update({
                 "status": "invited",
                 "invited_at": datetime.now().isoformat()
             })\
             .eq("email", email_lower)\
             .execute()
-        
-        if not update_result.data:
-            print(f"⚠️ Failed to update waitlist status for {email_lower}")
 
-        # 4. Send beta invite email
+        # 4. ✅ Send ONLY the magic link email (no confirmation email)
         try:
-            email_sent = send_beta_invite_email_sync(
+            email_sent = send_magic_link_email_sync(
                 email=email_lower,
                 beta_code=beta_code,
                 full_name=existing.data.get("full_name")
             )
             if email_sent:
-                print(f"✅ Beta invite email sent to {email_lower}")
+                print(f"✅ Magic link email sent to {email_lower}")
             else:
-                print(f"⚠️ Failed to send beta invite email to {email_lower}")
-        except Exception as email_error:
-            print(f"Email error: {email_error}")
+                print(f"⚠️ Failed to send magic link email to {email_lower}")
         except Exception as email_error:
             print(f"Email error: {email_error}")
             # Don't fail the request if email fails
 
         return BetaInviteResponse(
             success=True,
-            message=f"Beta invite sent to {email_lower}",
+            message=f"Magic link sent to {email_lower}",
             data={"beta_code": beta_code}
         )
 
@@ -2310,6 +2295,8 @@ def generate_beta_code() -> str:
     import secrets
     import string
     return f"BETA-{secrets.token_hex(4).upper()}-{secrets.token_hex(3).upper()}"
+
+
 def send_beta_invite_email_sync(email: str, beta_code: str, full_name: Optional[str] = None):
     """Send beta invite email with magic link (synchronous version)"""
     try:
