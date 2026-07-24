@@ -2309,11 +2309,11 @@ def generate_beta_code() -> str:
     import string
     return f"BETA-{secrets.token_hex(4).upper()}-{secrets.token_hex(3).upper()}"
 
-
 async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None):
-    """Send beta invite email with access code"""
+    """Send beta invite email with magic link"""
     try:
         import httpx
+        import secrets
         
         resend_api_key = os.getenv("RESEND_API_KEY")
         if not resend_api_key:
@@ -2321,52 +2321,64 @@ async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional
             return False
 
         name = full_name or email.split('@')[0]
-        signup_url = f"https://carbontally.co.uk/signup?code={beta_code}"
+        
+        # ✅ Generate a magic link token
+        # This creates a one-time use token for automatic signup
+        token = secrets.token_urlsafe(32)
+        
+        # ✅ Store the token in beta_access_codes
+        supabase.table("beta_access_codes").update({
+            "magic_token": token,
+            "token_created_at": datetime.now().isoformat()
+        }).eq("code", beta_code).execute()
+        
+        # ✅ Magic link URL
+        magic_link = f"https://carbontally.co.uk/auth/magic?token={token}&email={email}"
         
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="utf-8">
-            <title>Your Beta Access is Ready!</title>
+            <title>You're Invited to CarbonTally Beta!</title>
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; }}
                 .header {{ background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }}
                 .content {{ background: #f8fafc; padding: 30px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }}
-                .code-box {{ background: white; padding: 20px; border-radius: 8px; border: 2px dashed #10b981; text-align: center; margin: 20px 0; }}
-                .code {{ font-size: 28px; font-weight: 700; color: #059669; letter-spacing: 2px; font-family: monospace; }}
-                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
                 .button {{ display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 10px 0; }}
-                .unsubscribe {{ color: #94a3b8; font-size: 12px; margin-top: 20px; }}
+                .footer {{ background: #f1f5f9; padding: 20px; text-align: center; border-radius: 0 0 12px 12px; color: #64748b; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h1>🌱 CarbonTally</h1>
-                <p style="opacity: 0.8;">You're Invited!</p>
+                <p style="opacity: 0.8;">You're Invited to the Beta!</p>
             </div>
             <div class="content">
                 <h2>Hi {name}! 🎉</h2>
-                <p>Great news! You've been selected for CarbonTally's beta program.</p>
-                <p><strong>Your beta access code:</strong></p>
-                <div class="code-box">
-                    <div class="code">{beta_code}</div>
-                    <p style="margin: 10px 0 0; color: #64748b; font-size: 14px;">Use this code to activate your account</p>
-                </div>
+                <p>You've been selected for CarbonTally's beta program.</p>
+                <p><strong>Click the button below to get started:</strong></p>
                 <p style="text-align: center;">
-                    <a href="{signup_url}" class="button">Claim Your Beta Access →</a>
+                    <a href="{magic_link}" class="button">🚀 Claim Your Beta Access</a>
                 </p>
-                <p style="font-size: 14px; color: #64748b; text-align: center;">This code expires in 30 days</p>
-                <p class="unsubscribe">
-                    <a href="https://carbontally.co.uk/api/waitlist/unsubscribe?email={email}" style="color: #94a3b8;">Unsubscribe from waitlist</a>
+                <p style="font-size: 14px; color: #64748b;">
+                    This link will automatically create your account. No password needed to start!
+                </p>
+                <p style="font-size: 14px; color: #64748b; text-align: center;">
+                    Your beta code: <strong style="color: #10b981;">{beta_code}</strong>
+                </p>
+                <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 20px;">
+                    This link expires in 7 days
                 </p>
             </div>
             <div class="footer">
                 <p>© 2024 CarbonTally. All rights reserved.</p>
+                <p style="font-size: 12px;">This email was sent to {email}</p>
             </div>
         </body>
         </html>
         """
+
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -2596,4 +2608,99 @@ async def delete_glossary_term(term_id: str):
         raise
     except Exception as e:
         print(f"❌ Delete glossary error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/auth/magic")
+async def magic_auth(token: str, email: str):
+    """Handle magic link authentication"""
+    try:
+        if supabase is None:
+            raise HTTPException(status_code=500, detail="Database not available")
+        
+        # ✅ Verify the token
+        code_data = supabase.table("beta_access_codes")\
+            .select("code, email, status")\
+            .eq("magic_token", token)\
+            .eq("email", email)\
+            .maybe_single()\
+            .execute()
+        
+        if not code_data.data:
+            raise HTTPException(status_code=404, detail="Invalid or expired magic link")
+        
+        # Check if token is expired (7 days)
+        token_created = code_data.data.get("token_created_at")
+        if token_created:
+            from datetime import timedelta
+            created_date = datetime.fromisoformat(token_created.replace('Z', '+00:00'))
+            if datetime.now().replace(tzinfo=created_date.tzinfo) - created_date > timedelta(days=7):
+                raise HTTPException(status_code=410, detail="Magic link has expired")
+        
+        # ✅ Check if user already exists
+        from supabase import Client
+        supabase_admin: Client = create_client(supabase_url, supabase_key)
+        
+        try:
+            existing_user = supabase_admin.auth.admin.get_user_by_email(email)
+            user_exists = True
+        except:
+            user_exists = False
+        
+        if user_exists:
+            return {
+                "status": "user_exists",
+                "message": "User already exists. Please sign in."
+            }
+        
+        # ✅ Create user account automatically
+        import secrets
+        import string
+        temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+        
+        # Create user
+        user_response = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": temp_password,
+            "email_confirm": True,
+            "user_metadata": {
+                "is_beta_user": True,
+                "beta_code": code_data.data["code"],
+                "has_temp_password": True
+            }
+        })
+        
+        if not user_response.user:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+        
+        # Mark beta code as used
+        supabase.table("beta_access_codes").update({
+            "status": "used",
+            "used_at": datetime.now().isoformat()
+        }).eq("code", code_data.data["code"]).execute()
+        
+        # Add to beta_users
+        supabase.table("beta_users").insert({
+            "user_id": user_response.user.id,
+            "email": email,
+            "beta_code": code_data.data["code"],
+            "access_level": "beta"
+        }).execute()
+        
+        # ✅ Sign the user in and return session
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": temp_password
+        })
+        
+        return {
+            "status": "success",
+            "message": "Account created and signed in!",
+            "session": auth_response.session.dict() if auth_response.session else None,
+            "temp_password": temp_password,
+            "redirect": "/dashboard"
+        }
+            
+    except Exception as e:
+        print(f"❌ Magic auth error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

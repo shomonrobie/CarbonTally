@@ -14,6 +14,9 @@ function BetaLogin() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('login'); // 'login' or 'signup'
+  const [searchParams] = useSearchParams();  
+  const autoLogin = searchParams.get('auto') === 'true';
+  const firstLogin = searchParams.get('first_login') === 'true';
 
   // Check if already logged in
   useEffect(() => {
@@ -25,6 +28,20 @@ function BetaLogin() {
     };
     checkSession();
   }, [navigate]);
+
+  useEffect(() => {
+    // ✅ Auto-login with temp password
+    if (autoLogin) {
+      const tempEmail = localStorage.getItem('temp_email');
+      const tempPassword = localStorage.getItem('temp_password');
+      
+      if (tempEmail && tempPassword) {
+        handleAutoLogin(tempEmail, tempPassword);
+        localStorage.removeItem('temp_email');
+        localStorage.removeItem('temp_password');
+      }
+    }
+  }, [autoLogin]);
 
   // Handle beta login
   const handleBetaLogin = async (e) => {
