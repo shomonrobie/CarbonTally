@@ -38,7 +38,7 @@ const Sidebar = ({ open, setOpen }) => {
     { path: '/admin/customers', icon: FaUsers, label: 'Customers' },
     { path: '/admin/reviews', icon: FaClipboardList, label: 'Review Queue' },
     { path: '/admin/errors', icon: FaBug, label: 'Extraction Errors' },
-    { path: '/admin/beta', icon: FaBug, label: 'Beta Management' },
+    { path: '/admin/beta-management', icon: FaBug, label: 'Beta Management' },
     { path: '/admin/review-assignment', icon: FaUsers, label: 'Review Assignment' },
     { path: '/admin/glossary-management', icon: FaBook, label: 'Glossary Management' },
 

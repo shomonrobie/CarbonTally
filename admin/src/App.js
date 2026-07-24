@@ -69,7 +69,7 @@ const AppRoutes = () => {
         <Route path="/admin/defra" element={<DefraFactors />} />
         <Route path="/admin/customers" element={<Customers />} />
         <Route path="/admin/errors" element={<ExtractionErrorReview />} />
-        <Route path="/admin/beta" element={<BetaManagement />} />
+        <Route path="/admin/beta-management" element={<BetaManagement />} />
         <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
         <Route path="/admin/glossary-management" element={<GlossaryManagement />} />
         <Route path="/admin/staff/dashboard" element={<StaffDashboard />} />
