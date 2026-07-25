@@ -12,7 +12,9 @@ function BetaLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-
+  const location = useLocation();
+  
+const preFilledEmail = location.state?.email || '';
   // Check if already logged in
   useEffect(() => {
     const checkSession = async () => {
@@ -162,7 +164,7 @@ function BetaLogin() {
             <label>Email Address</label>
             <input
               type="email"
-              value={email}
+              value={email || preFilledEmail}
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@company.com"

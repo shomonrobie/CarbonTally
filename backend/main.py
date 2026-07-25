@@ -2736,83 +2736,72 @@ async def magic_auth(token: str, email: str):
             except Exception as date_error:
                 print(f"⚠️ Date parsing error: {date_error}")
         
-        # ✅ Check if user already exists - FIXED!
+        # ✅ Check if user already exists - CORRECT METHOD
         user_exists = False
         user_id = None
         
         try:
-            # ✅ Use the correct method to check if user exists
-            # Try to get user by email from auth.users
             from supabase import Client
             supabase_admin: Client = create_client(
                 os.getenv("SUPABASE_URL"), 
                 os.getenv("SUPABASE_SERVICE_KEY")
             )
             
-            # ✅ Use the admin API to list users and filter by email
+            # ✅ CORRECT: Use the supabase client's auth admin API
+            # The admin API returns a response with 'data' containing the list of users
             try:
-                # Get all users (limited to 1000)
-                users_response = supabase_admin.auth.admin.list_users()
+                # ✅ CORRECT METHOD - get all users
+                response = supabase_admin.auth.admin.list_users()
+                
+                # ✅ The response has a 'data' attribute (not 'users')
+                if hasattr(response, 'data'):
+                    users_list = response.data
+                elif hasattr(response, 'users'):
+                    users_list = response.users
+                else:
+                    # Try as dict
+                    users_list = response.get('data', []) if isinstance(response, dict) else []
                 
                 # Check if email exists
-                for user in users_response.users:
-                    if user.email == email:
+                for user in users_list:
+                    if user.get('email') == email:
                         user_exists = True
-                        user_id = user.id
+                        user_id = user.get('id')
                         print(f"👤 User already exists: {email} (ID: {user_id})")
                         break
                         
             except Exception as list_error:
                 print(f"⚠️ List users error: {list_error}")
-                # Try a different approach - attempt to get user by email directly
+                # ✅ FALLBACK: Try to get user by email directly
                 try:
-                    # This will throw an error if user doesn't exist
-                    user_response = supabase_admin.auth.admin.get_user_by_email(email)
-                    if user_response:
+                    # This works if the user exists
+                    response = supabase_admin.auth.admin.get_user_by_email(email)
+                    if response and hasattr(response, 'id'):
                         user_exists = True
-                        user_id = user_response.id
+                        user_id = response.id
+                        print(f"👤 User already exists: {email} (ID: {user_id})")
+                    elif response and isinstance(response, dict) and response.get('id'):
+                        user_exists = True
+                        user_id = response.get('id')
                         print(f"👤 User already exists: {email} (ID: {user_id})")
                 except Exception as get_error:
                     print(f"ℹ️ User not found: {email}")
                     
         except Exception as e:
             print(f"⚠️ User check error: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # ✅ If user exists, sign them in instead of creating a new one
+        # ✅ If user exists, don't try to create them
         if user_exists:
-            try:
-                # Try to sign in with the existing user
-                # Check if user has a password set
-                auth_response = supabase.auth.sign_in_with_password({
-                    "email": email,
-                    "password": "magic-link-temp-2024"  # Use a known temp password
-                })
-                
-                if auth_response.session:
-                    print(f"✅ User signed in successfully")
-                    
-                    # Update beta code status
-                    supabase.table("beta_access_codes").update({
-                        "status": "used",
-                        "used_at": datetime.now().isoformat()
-                    }).eq("code", code_data.data["code"]).execute()
-                    
-                    return {
-                        "status": "success",
-                        "message": "Signed in successfully!",
-                        "session": auth_response.session.dict(),
-                        "redirect": "/dashboard"
-                    }
-            except Exception as signin_error:
-                print(f"⚠️ Auto-login failed: {signin_error}")
-                # User exists but can't auto-login - redirect to login page
-                return {
-                    "status": "user_exists",
-                    "message": "Account already exists. Please sign in.",
-                    "redirect": "/beta-login"
-                }
+            print(f"✅ User already exists, redirecting to login: {email}")
+            return {
+                "status": "user_exists",
+                "message": "Account already exists. Please sign in.",
+                "redirect": "/beta-login"
+            }
         
-        # ✅ If user doesn't exist, create them (only if user_exists is False)
+        # ✅ If user doesn't exist, create them
         if not user_exists:
             import secrets
             import string
@@ -2838,7 +2827,7 @@ async def magic_auth(token: str, email: str):
                     }
                 })
                 
-                if not user_response.user:
+                if not user_response or not hasattr(user_response, 'user') or not user_response.user:
                     raise HTTPException(status_code=500, detail="Failed to create user")
                 
                 print(f"✅ User created: {user_response.user.id}")
@@ -2865,7 +2854,7 @@ async def magic_auth(token: str, email: str):
                         "password": temp_password
                     })
                     
-                    if auth_response.session:
+                    if auth_response and auth_response.session:
                         print(f"✅ New user signed in automatically")
                         return {
                             "status": "success",
@@ -2884,14 +2873,21 @@ async def magic_auth(token: str, email: str):
                     
             except Exception as create_error:
                 print(f"❌ User creation error: {create_error}")
+                # Check if the error is because user already exists
+                if "already been registered" in str(create_error):
+                    return {
+                        "status": "user_exists",
+                        "message": "Account already exists. Please sign in.",
+                        "redirect": "/beta-login"
+                    }
                 raise HTTPException(status_code=500, detail=f"User creation failed: {str(create_error)}")
-        else:
-            # User exists but we couldn't sign them in
-            return {
-                "status": "user_exists",
-                "message": "Account already exists. Please sign in.",
-                "redirect": "/beta-login"
-            }
+        
+        # Fallback - should never reach here
+        return {
+            "status": "error",
+            "message": "Something went wrong. Please try again.",
+            "redirect": "/beta-login"
+        }
             
     except HTTPException:
         raise
