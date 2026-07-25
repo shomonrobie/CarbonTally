@@ -17,6 +17,8 @@ export default function MagicLink() {
       const token = searchParams.get('token');
       const emailParam = searchParams.get('email');
 
+      console.log('🔍 MagicLink: token=', token?.slice(0, 10) + '...', 'email=', emailParam);
+
       if (!token || !emailParam) {
         setError('Invalid magic link. Missing token or email.');
         setLoading(false);
@@ -26,12 +28,14 @@ export default function MagicLink() {
       setEmail(emailParam);
 
       try {
-        // Call your backend to validate the token
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL || 'https://carbontally-api.onrender.com'}/api/auth/magic?token=${token}&email=${emailParam}`
-        );
+        const apiUrl = process.env.REACT_APP_API_URL || 'https://carbontally-api.onrender.com';
+        const url = `${apiUrl}/api/auth/magic?token=${token}&email=${emailParam}`;
+        console.log('🔍 Calling API:', url);
 
+        const response = await fetch(url);
         const data = await response.json();
+
+        console.log('📦 API Response:', data);
 
         if (!response.ok) {
           throw new Error(data.detail || 'Invalid magic link');
@@ -39,15 +43,18 @@ export default function MagicLink() {
 
         // ✅ User already exists - show clear message
         if (data.status === 'user_exists') {
+          console.log('👤 User already exists, showing login prompt');
           setUserExists(true);
-          toast.info('🔐 This email is already registered.');
-          toast.success('Please sign in with your existing account.');
           setLoading(false);
+          // ✅ Show toast notification
+          toast.info('🔐 This email is already registered.');
           return;
         }
 
         // ✅ New user created and signed in
         if (data.status === 'success') {
+          console.log('✅ Success:', data.message);
+          
           if (data.session) {
             await supabase.auth.setSession(data.session);
             toast.success('🎉 Welcome to CarbonTally Beta! Your account has been created.');
@@ -67,7 +74,7 @@ export default function MagicLink() {
           navigate('/beta-login');
         }
       } catch (err) {
-        console.error('Magic link error:', err);
+        console.error('❌ Magic link error:', err);
         setError(err.message || 'Failed to authenticate');
         toast.error('Failed to authenticate. Please try again.');
       } finally {
@@ -78,12 +85,13 @@ export default function MagicLink() {
     handleMagicLink();
   }, [searchParams, navigate]);
 
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-secondary-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Setting up your account...</p>
+          <p className="mt-4 text-gray-600">Verifying your magic link...</p>
         </div>
       </div>
     );
@@ -106,16 +114,21 @@ export default function MagicLink() {
           </div>
           <div className="space-y-3">
             <button
-              onClick={() => navigate('/beta-login')}
+              onClick={() => navigate('/beta-login', { state: { email } })}
               className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
             >
               Go to Login
             </button>
             <button
-              onClick={() => {
-                // Send password reset email
-                supabase.auth.resetPasswordForEmail(email);
-                toast.success('📧 Password reset email sent!');
+              onClick={async () => {
+                try {
+                  const { error } = await supabase.auth.resetPasswordForEmail(email);
+                  if (error) throw error;
+                  toast.success('📧 Password reset email sent! Check your inbox.');
+                } catch (err) {
+                  console.error('Password reset error:', err);
+                  toast.error('Failed to send password reset email.');
+                }
               }}
               className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
             >
@@ -130,6 +143,7 @@ export default function MagicLink() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-secondary-50 px-4">
