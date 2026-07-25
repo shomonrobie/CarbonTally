@@ -2699,14 +2699,19 @@ async def delete_glossary_term(term_id: str):
     except Exception as e:
         print(f"❌ Delete glossary error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+# backend/main.py - Fixed magic_auth function
+
 @app.get("/api/auth/magic")
 async def magic_auth(token: str, email: str):
     """Handle magic link authentication"""
     try:
         if supabase is None:
+            print("❌ Supabase client is None")
             raise HTTPException(status_code=500, detail="Database not available")
         
-        # ✅ Verify the token
+        print(f"🔍 Magic link attempt: token={token[:10]}..., email={email}")
+        
+        # ✅ Verify the token exists in beta_access_codes
         code_data = supabase.table("beta_access_codes")\
             .select("code, email, status")\
             .eq("magic_token", token)\
@@ -2714,81 +2719,182 @@ async def magic_auth(token: str, email: str):
             .maybe_single()\
             .execute()
         
-        if not code_data.data:
+        if not code_data or not code_data.data:
+            print(f"❌ Invalid or expired magic token: {token[:10]}...")
             raise HTTPException(status_code=404, detail="Invalid or expired magic link")
+        
+        print(f"✅ Magic token found for: {email}")
         
         # Check if token is expired (7 days)
         token_created = code_data.data.get("token_created_at")
         if token_created:
             from datetime import timedelta
-            created_date = datetime.fromisoformat(token_created.replace('Z', '+00:00'))
-            if datetime.now().replace(tzinfo=created_date.tzinfo) - created_date > timedelta(days=7):
-                raise HTTPException(status_code=410, detail="Magic link has expired")
+            try:
+                created_date = datetime.fromisoformat(token_created.replace('Z', '+00:00'))
+                if datetime.now().replace(tzinfo=created_date.tzinfo) - created_date > timedelta(days=7):
+                    raise HTTPException(status_code=410, detail="Magic link has expired")
+            except Exception as date_error:
+                print(f"⚠️ Date parsing error: {date_error}")
         
-        # ✅ Check if user already exists
-        from supabase import Client
-        supabase_admin: Client = create_client(supabase_url, supabase_key)
+        # ✅ Check if user already exists - FIXED!
+        user_exists = False
+        user_id = None
         
         try:
-            existing_user = supabase_admin.auth.admin.get_user_by_email(email)
-            user_exists = True
-        except:
-            user_exists = False
+            # ✅ Use the correct method to check if user exists
+            # Try to get user by email from auth.users
+            from supabase import Client
+            supabase_admin: Client = create_client(
+                os.getenv("SUPABASE_URL"), 
+                os.getenv("SUPABASE_SERVICE_KEY")
+            )
+            
+            # ✅ Use the admin API to list users and filter by email
+            try:
+                # Get all users (limited to 1000)
+                users_response = supabase_admin.auth.admin.list_users()
+                
+                # Check if email exists
+                for user in users_response.users:
+                    if user.email == email:
+                        user_exists = True
+                        user_id = user.id
+                        print(f"👤 User already exists: {email} (ID: {user_id})")
+                        break
+                        
+            except Exception as list_error:
+                print(f"⚠️ List users error: {list_error}")
+                # Try a different approach - attempt to get user by email directly
+                try:
+                    # This will throw an error if user doesn't exist
+                    user_response = supabase_admin.auth.admin.get_user_by_email(email)
+                    if user_response:
+                        user_exists = True
+                        user_id = user_response.id
+                        print(f"👤 User already exists: {email} (ID: {user_id})")
+                except Exception as get_error:
+                    print(f"ℹ️ User not found: {email}")
+                    
+        except Exception as e:
+            print(f"⚠️ User check error: {e}")
         
+        # ✅ If user exists, sign them in instead of creating a new one
         if user_exists:
+            try:
+                # Try to sign in with the existing user
+                # Check if user has a password set
+                auth_response = supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": "magic-link-temp-2024"  # Use a known temp password
+                })
+                
+                if auth_response.session:
+                    print(f"✅ User signed in successfully")
+                    
+                    # Update beta code status
+                    supabase.table("beta_access_codes").update({
+                        "status": "used",
+                        "used_at": datetime.now().isoformat()
+                    }).eq("code", code_data.data["code"]).execute()
+                    
+                    return {
+                        "status": "success",
+                        "message": "Signed in successfully!",
+                        "session": auth_response.session.dict(),
+                        "redirect": "/dashboard"
+                    }
+            except Exception as signin_error:
+                print(f"⚠️ Auto-login failed: {signin_error}")
+                # User exists but can't auto-login - redirect to login page
+                return {
+                    "status": "user_exists",
+                    "message": "Account already exists. Please sign in.",
+                    "redirect": "/beta-login"
+                }
+        
+        # ✅ If user doesn't exist, create them (only if user_exists is False)
+        if not user_exists:
+            import secrets
+            import string
+            temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
+            
+            print(f"🆕 Creating new user: {email}")
+            
+            try:
+                from supabase import Client
+                supabase_admin: Client = create_client(
+                    os.getenv("SUPABASE_URL"), 
+                    os.getenv("SUPABASE_SERVICE_KEY")
+                )
+                
+                user_response = supabase_admin.auth.admin.create_user({
+                    "email": email,
+                    "password": temp_password,
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "is_beta_user": True,
+                        "beta_code": code_data.data["code"],
+                        "has_temp_password": True
+                    }
+                })
+                
+                if not user_response.user:
+                    raise HTTPException(status_code=500, detail="Failed to create user")
+                
+                print(f"✅ User created: {user_response.user.id}")
+                
+                # Mark beta code as used
+                supabase.table("beta_access_codes").update({
+                    "status": "used",
+                    "used_at": datetime.now().isoformat()
+                }).eq("code", code_data.data["code"]).execute()
+                
+                # Add to beta_users
+                supabase.table("beta_users").insert({
+                    "user_id": user_response.user.id,
+                    "email": email,
+                    "beta_code": code_data.data["code"],
+                    "access_level": "beta",
+                    "created_at": datetime.now().isoformat()
+                }).execute()
+                
+                # Try to sign the user in automatically
+                try:
+                    auth_response = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": temp_password
+                    })
+                    
+                    if auth_response.session:
+                        print(f"✅ New user signed in automatically")
+                        return {
+                            "status": "success",
+                            "message": "Account created and signed in!",
+                            "session": auth_response.session.dict(),
+                            "redirect": "/dashboard"
+                        }
+                except Exception as auth_error:
+                    print(f"⚠️ Auto-login failed: {auth_error}")
+                    return {
+                        "status": "success",
+                        "message": "Account created! Please sign in.",
+                        "temp_password": temp_password,
+                        "redirect": "/beta-login"
+                    }
+                    
+            except Exception as create_error:
+                print(f"❌ User creation error: {create_error}")
+                raise HTTPException(status_code=500, detail=f"User creation failed: {str(create_error)}")
+        else:
+            # User exists but we couldn't sign them in
             return {
                 "status": "user_exists",
-                "message": "User already exists. Please sign in."
+                "message": "Account already exists. Please sign in.",
+                "redirect": "/beta-login"
             }
-        
-        # ✅ Create user account automatically
-        import secrets
-        import string
-        temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
-        
-        # Create user
-        user_response = supabase_admin.auth.admin.create_user({
-            "email": email,
-            "password": temp_password,
-            "email_confirm": True,
-            "user_metadata": {
-                "is_beta_user": True,
-                "beta_code": code_data.data["code"],
-                "has_temp_password": True
-            }
-        })
-        
-        if not user_response.user:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-        
-        # Mark beta code as used
-        supabase.table("beta_access_codes").update({
-            "status": "used",
-            "used_at": datetime.now().isoformat()
-        }).eq("code", code_data.data["code"]).execute()
-        
-        # Add to beta_users
-        supabase.table("beta_users").insert({
-            "user_id": user_response.user.id,
-            "email": email,
-            "beta_code": code_data.data["code"],
-            "access_level": "beta"
-        }).execute()
-        
-        # ✅ Sign the user in and return session
-        auth_response = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": temp_password
-        })
-        
-        return {
-            "status": "success",
-            "message": "Account created and signed in!",
-            "session": auth_response.session.dict() if auth_response.session else None,
-            "temp_password": temp_password,
-            "redirect": "/dashboard"
-        }
             
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Magic auth error: {e}")
         import traceback
