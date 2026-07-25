@@ -1,6 +1,6 @@
 // frontend/src/BetaLogin.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import './css/BetaLogin.css';
 
@@ -13,7 +13,7 @@ function BetaLogin() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const location = useLocation();
-  
+
 const preFilledEmail = location.state?.email || '';
   // Check if already logged in
   useEffect(() => {
