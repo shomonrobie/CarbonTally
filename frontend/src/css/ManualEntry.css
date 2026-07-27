@@ -1,0 +1,648 @@
+/* ManualEntry.css */
+.manual-entry-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+/* ==========================================
+   HEADER
+   ========================================== */
+.manual-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.back-btn {
+  padding: 0.4rem 0.8rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #475569;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: #e2e8f0;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.file-icon {
+  font-size: 1.5rem;
+  color: #ef4444;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #0f172a;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-type-badge {
+  padding: 0.15rem 0.6rem;
+  background: #f1f5f9;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #0f172a;
+  min-width: 80px;
+}
+
+.progress-bar {
+  width: 120px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #16a34a;
+  transition: width 0.3s ease;
+}
+
+.save-draft-btn {
+  padding: 0.4rem 1rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 0.2s;
+}
+
+.save-draft-btn:hover:not(:disabled) {
+  background: #bfdbfe;
+}
+
+.save-draft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-draft-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================
+   SPLIT SCREEN
+   ========================================== */
+.manual-entry-split {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* Left Panel - Viewer */
+.viewer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.viewer-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow: auto;
+  min-height: 300px;
+}
+
+.viewer-container .pdf-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+}
+
+.viewer-container .pdf-loading .spinner {
+  animation: spin 1s linear infinite;
+}
+
+.viewer-container .image-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer-container .file-preview {
+  text-align: center;
+  color: #64748b;
+}
+
+.file-preview-icon {
+  font-size: 4rem;
+  margin-bottom: 0.5rem;
+}
+
+.file-preview-size {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.viewer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: white;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.viewer-controls button {
+  padding: 0.2rem 0.5rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.viewer-controls button:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.viewer-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rotation-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+}
+
+.rotate-btn {
+  padding: 0.2rem 0.6rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  font-weight: 600;
+  color: #475569;
+}
+
+.rotate-btn:hover {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.rotate-btn.reset {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.rotate-btn.reset:hover {
+  background: #fecaca;
+}
+
+.rotation-badge {
+  font-size: 0.7rem;
+  color: #64748b;
+  padding: 0.15rem 0.4rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.page-info {
+  color: #64748b;
+  font-size: 0.85rem;
+  padding: 0 0.5rem;
+}
+
+/* Right Panel - Form */
+.form-panel {
+  flex: 1;
+  background: white;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e2e8f0;
+}
+
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.form-panel h3 {
+  color: #0f172a;
+  margin-bottom: 1.25rem;
+  font-size: 1.1rem;
+}
+
+/* Draft Notice */
+.draft-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.draft-icon {
+  color: #16a34a;
+}
+
+.draft-notice span {
+  flex: 1;
+  color: #166534;
+  font-size: 0.9rem;
+}
+
+.discard-draft-btn {
+  padding: 0.2rem 0.75rem;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.discard-draft-btn:hover {
+  background: #fecaca;
+}
+
+/* Form Sections */
+.form-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.section-header h4 {
+  color: #0f172a;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.section-status {
+  font-size: 1rem;
+}
+
+.section-status.completed {
+  color: #16a34a;
+}
+
+.section-status.pending {
+  color: #94a3b8;
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 0.85rem;
+  margin-bottom: 0.2rem;
+}
+
+.form-group label svg {
+  margin-right: 0.25rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+}
+
+.form-group input.error,
+.form-group select.error {
+  border-color: #dc2626;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+/* Asset Suggestions */
+.asset-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.asset-suggestion {
+  padding: 0.15rem 0.5rem;
+  background: #dbeafe;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #1e40af;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.asset-suggestion:hover {
+  background: #bfdbfe;
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.action-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-back {
+  padding: 0.5rem 1rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background: #e2e8f0;
+}
+
+.btn-discard {
+  padding: 0.5rem 1rem;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-discard:hover {
+  background: #fecaca;
+}
+
+.btn-save {
+  padding: 0.5rem 1rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 0.2s;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #bfdbfe;
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-submit {
+  padding: 0.5rem 1.25rem;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-submit .spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Form Hint */
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: #fef3c7;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
+.form-hint svg {
+  color: #f59e0b;
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+@media (max-width: 1024px) {
+  .manual-entry-split {
+    flex-direction: column;
+  }
+  
+  .viewer-panel {
+    max-height: 50vh;
+  }
+  
+  .form-panel {
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
+@media (max-width: 768px) {
+  .manual-entry-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .header-left {
+    flex-wrap: wrap;
+  }
+  
+  .header-right {
+    flex-wrap: wrap;
+  }
+  
+  .progress-indicator {
+    flex: 1;
+  }
+  
+  .progress-bar {
+    flex: 1;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .action-left,
+  .action-right {
+    justify-content: center;
+  }
+  
+  .viewer-controls {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  
+  .rotation-controls {
+    border: none;
+    padding: 0;
+  }
+  
+  .file-name {
+    max-width: 120px;
+  }
+}

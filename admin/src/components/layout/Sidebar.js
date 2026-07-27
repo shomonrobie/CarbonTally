@@ -1,143 +1,145 @@
-import React from 'react';
+// admin/src/components/layout/Sidebar.jsx
+import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  FaHome, 
-  FaClipboardList, 
-  FaUsers, 
-  FaBuilding, 
-  FaFolderOpen, 
-  FaChartBar, 
+import {
+  FaTachometerAlt,
+  FaTasks,
+  FaUserFriends,
+  FaBuilding,
+  FaBoxes,
+  FaChartBar,
   FaCog,
+  FaLeaf,
+  FaUsers,
+  FaExclamationTriangle,
+  FaUserCheck,
+  FaBook,
+  FaClipboardList,
+  FaUserCog,
+  FaHistory,
+  FaFileAlt,
   FaSignOutAlt,
-  FaChevronLeft,
-  FaChevronRight,
-  FaBook 
+  FaBars,
+  FaTimes
 } from 'react-icons/fa';
-import { FaCalculator } from 'react-icons/fa';
-import { FaBug } from 'react-icons/fa';
+import '../../css/sidebar.css';
 
-const Sidebar = ({ open, setOpen }) => {
-  const { signOut, user, staffRole } = useAuth();
+const Sidebar = () => {
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
-    await signOut();
-    navigate('/login');
+    await logout();
+    navigate('/admin/login');
   };
 
-  const menuItems = [
-    { path: '/admin', icon: FaHome, label: 'Dashboard' },
-    { path: '/admin/reviews', icon: FaClipboardList, label: 'Reviews' },
-    { path: '/admin/users', icon: FaUsers, label: 'Users' },
-    { path: '/admin/organizations', icon: FaBuilding, label: 'Organizations' },
-    { path: '/admin/batches', icon: FaFolderOpen, label: 'Batches' },
-    { path: '/admin/analytics', icon: FaChartBar, label: 'Analytics' },
-    { path: '/admin/settings', icon: FaCog, label: 'Settings' },
-    { path: '/admin/defra', icon: FaCalculator, label: 'DEFRA Factors' },
-    { path: '/admin/customers', icon: FaUsers, label: 'Customers' },
-    { path: '/admin/reviews', icon: FaClipboardList, label: 'Review Queue' },
-    { path: '/admin/errors', icon: FaBug, label: 'Extraction Errors' },
-    { path: '/admin/beta-management', icon: FaBug, label: 'Beta Management' },
-    { path: '/admin/review-assignment', icon: FaUsers, label: 'Review Assignment' },
-    { path: '/admin/glossary-management', icon: FaBook, label: 'Glossary Management' },
-
-  ];
+  const toggleMobile = () => setIsMobileOpen(!isMobileOpen);
+  const closeMobile = () => setIsMobileOpen(false);
 
   return (
     <>
-      {/* Mobile backdrop */}
-      {!open && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setOpen(true)}
-        />
-      )}
-      
-      <aside 
-        className={`
-          fixed lg:static inset-y-0 left-0 z-50
-          bg-white border-r border-gray-200
-          transition-all duration-300 ease-in-out
-          ${open ? 'w-64' : 'w-20'}
-          flex flex-col
-        `}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🌱</span>
-            {open && (
-              <span className="font-bold text-lg text-gray-800">CarbonTally</span>
-            )}
-          </div>
-          <button
-            onClick={() => setOpen(!open)}
-            className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {open ? <FaChevronLeft /> : <FaChevronRight />}
-          </button>
+      {/* Mobile Toggle Button */}
+      <button className="mobile-toggle" onClick={toggleMobile}>
+        <FaBars />
+      </button>
+
+      {/* Mobile Overlay */}
+      <div 
+        className={`sidebar-overlay ${isMobileOpen ? 'active' : ''}`} 
+        onClick={closeMobile}
+      />
+
+      {/* Sidebar */}
+      <div className={`sidebar ${isMobileOpen ? 'open' : ''}`}>
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <h2>🌱 CarbonTally</h2>
+          <p className="brand-sub">Admin Panel</p>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {menuItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) => `
-                flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
-                ${isActive 
-                  ? 'bg-primary-50 text-primary-600 font-medium' 
-                  : 'text-gray-600 hover:bg-gray-50'
-                }
-                ${!open && 'justify-center'}
-              `}
-              title={!open ? item.label : ''}
-            >
-              <item.icon className="text-xl" />
-              {open && <span>{item.label}</span>}
-            </NavLink>
-          ))}
+        <nav className="sidebar-nav">
+          <NavLink to="/admin" className="nav-link" end onClick={closeMobile}>
+            <FaTachometerAlt /> Dashboard
+          </NavLink>
+
+          <NavLink to="/admin/reviews" className="nav-link" onClick={closeMobile}>
+            <FaTasks /> Reviews
+          </NavLink>
+
+          <NavLink to="/admin/assignments" className="nav-link" onClick={closeMobile}>
+            <FaUserCheck /> Assignments
+          </NavLink>
+
+          <NavLink to="/admin/reviews-queue" className="nav-link" onClick={closeMobile}>
+            <FaClipboardList /> My Queue
+          </NavLink>
+
+          <NavLink to="/admin/users" className="nav-link" onClick={closeMobile}>
+            <FaUserFriends /> Users
+          </NavLink>
+
+          <NavLink to="/admin/review-assignment" className="nav-link" onClick={closeMobile}>
+            <FaUserCog /> Staff Management
+          </NavLink>
+
+          <NavLink to="/admin/organizations" className="nav-link" onClick={closeMobile}>
+            <FaBuilding /> Organizations
+          </NavLink>
+
+          <NavLink to="/admin/batches" className="nav-link" onClick={closeMobile}>
+            <FaBoxes /> Batches
+          </NavLink>
+
+          <NavLink to="/admin/customers" className="nav-link" onClick={closeMobile}>
+            <FaUsers /> Customers
+          </NavLink>
+
+          <NavLink to="/admin/defra" className="nav-link" onClick={closeMobile}>
+            <FaLeaf /> DEFRA Factors
+          </NavLink>
+
+          <NavLink to="/admin/analytics" className="nav-link" onClick={closeMobile}>
+            <FaChartBar /> Analytics
+          </NavLink>
+
+          <NavLink to="/admin/log-viewer" className="nav-link" onClick={closeMobile}>
+            <FaHistory /> Activity Logs
+          </NavLink>
+
+          <NavLink to="/admin/errors" className="nav-link" onClick={closeMobile}>
+            <FaExclamationTriangle /> Extraction Errors
+          </NavLink>
+
+          <NavLink to="/admin/beta-management" className="nav-link" onClick={closeMobile}>
+            <FaFileAlt /> Beta Management
+          </NavLink>
+
+          <NavLink to="/admin/glossary-management" className="nav-link" onClick={closeMobile}>
+            <FaBook /> Glossary
+          </NavLink>
+
+          <NavLink to="/admin/settings" className="nav-link" onClick={closeMobile}>
+            <FaCog /> Settings
+          </NavLink>
         </nav>
 
-        {/* User & Logout */}
-        <div className="border-t border-gray-200 p-4">
-          {open ? (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-medium">
-                {user?.email?.[0]?.toUpperCase() || 'U'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate">
-                  {user?.email || 'User'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {staffRole || 'User'}
-                </p>
-              </div>
+        {/* Footer */}
+        <div className="sidebar-footer">
+          <div className="user-info">
+            <div className="avatar">{user?.email?.[0]?.toUpperCase() || 'A'}</div>
+            <div className="user-details">
+              <div className="user-name">{user?.email || 'Admin'}</div>
+              <div className="user-role">Administrator</div>
             </div>
-          ) : (
-            <div className="flex justify-center">
-              <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-medium">
-                {user?.email?.[0]?.toUpperCase() || 'U'}
-              </div>
-            </div>
-          )}
-          
-          <button
-            onClick={handleLogout}
-            className={`
-              w-full mt-3 flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors
-              ${!open && 'justify-center'}
-            `}
-            title={!open ? 'Logout' : ''}
-          >
-            <FaSignOutAlt />
-            {open && <span>Logout</span>}
-          </button>
+            <button className="logout-btn" onClick={handleLogout}>
+              <FaSignOutAlt />
+            </button>
+          </div>
         </div>
-      </aside>
+      </div>
     </>
   );
 };

@@ -1,0 +1,949 @@
+/* StaffManualEntry.css - Complete Styles */
+
+/* ==========================================
+   MAIN CONTAINER
+   ========================================== */
+.staff-manual-entry {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+/* ==========================================
+   HEADER
+   ========================================== */
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border-bottom: 2px solid #e2e8f0;
+  flex-shrink: 0;
+  gap: 1rem;
+  flex-wrap: wrap;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 200px;
+}
+
+.back-btn {
+  padding: 0.4rem 0.8rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #475569;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  background: #e2e8f0;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 150px;
+  overflow: hidden;
+}
+
+.file-icon {
+  font-size: 1.5rem;
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #0f172a;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-name {
+  font-size: 0.85rem;
+  color: #64748b;
+  white-space: nowrap;
+  background: #f1f5f9;
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #0f172a;
+  min-width: 70px;
+}
+
+.progress-bar {
+  width: 100px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #16a34a;
+  transition: width 0.5s ease;
+}
+
+.save-draft-btn {
+  padding: 0.4rem 1rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-draft-btn:hover:not(:disabled) {
+  background: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+.save-draft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-draft-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================
+   BATCH CONTEXT
+   ========================================== */
+.batch-context {
+  padding: 0.5rem 1.5rem;
+  background: #f0fdf4;
+  border-bottom: 1px solid #bbf7d0;
+  flex-shrink: 0;
+}
+
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.85rem;
+  color: #166534;
+  flex-wrap: wrap;
+}
+
+.batch-name {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 500;
+}
+
+.batch-progress-bar {
+  margin-top: 0.3rem;
+}
+
+.batch-progress-bar .progress-track {
+  height: 4px;
+  background: #bbf7d0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.batch-progress-bar .progress-fill {
+  height: 100%;
+  background: #16a34a;
+  transition: width 0.3s ease;
+}
+
+/* ==========================================
+   SPLIT SCREEN
+   ========================================== */
+.entry-split {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* ==========================================
+   LEFT PANEL - DOCUMENT VIEWER
+   ========================================== */
+.viewer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f1f5f9;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.viewer-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow: auto;
+  min-height: 300px;
+  background: #f8fafc;
+  position: relative;
+}
+
+.viewer-container .pdf-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+}
+
+.viewer-container .pdf-loading .spinner {
+  animation: spin 1s linear infinite;
+  font-size: 2rem;
+  color: #16a34a;
+}
+
+.viewer-container .image-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer-container .file-preview {
+  text-align: center;
+  color: #64748b;
+}
+
+.file-preview-icon {
+  font-size: 4rem;
+  margin-bottom: 0.5rem;
+}
+
+.file-preview-hint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+/* PDF Container */
+.viewer-container .react-pdf__Document {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-container .react-pdf__Page {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: white;
+  border-radius: 4px;
+}
+
+.viewer-container .react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+/* ==========================================
+   VIEWER CONTROLS
+   ========================================== */
+.viewer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: white;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 48px;
+}
+
+.viewer-controls button {
+  padding: 0.25rem 0.6rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  color: #475569;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-controls button:hover:not(:disabled) {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.viewer-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.viewer-controls .zoom-level {
+  font-size: 0.8rem;
+  color: #0f172a;
+  font-weight: 500;
+  min-width: 45px;
+  text-align: center;
+}
+
+.rotation-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+}
+
+.rotate-btn {
+  padding: 0.2rem 0.6rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  font-weight: 600;
+  color: #475569;
+  min-width: 32px;
+}
+
+.rotate-btn:hover {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.rotate-btn.reset {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.rotate-btn.reset:hover {
+  background: #fecaca;
+}
+
+.rotation-badge {
+  font-size: 0.7rem;
+  color: #64748b;
+  padding: 0.15rem 0.4rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+  font-weight: 500;
+  min-width: 30px;
+  text-align: center;
+}
+
+.page-info {
+  color: #64748b;
+  font-size: 0.85rem;
+  padding: 0 0.5rem;
+  white-space: nowrap;
+}
+
+/* ==========================================
+   CUSTOMER NOTES
+   ========================================== */
+.customer-notes {
+  padding: 0.75rem 1rem;
+  background: #fef3c7;
+  border-top: 1px solid #f59e0b;
+  flex-shrink: 0;
+}
+
+.notes-header {
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.customer-notes p {
+  margin: 0;
+  color: #78350f;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   RIGHT PANEL - FORM
+   ========================================== */
+.form-panel {
+  flex: 1;
+  background: white;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e2e8f0;
+  min-width: 0;
+}
+
+.form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.form-header h3 {
+  color: #0f172a;
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.load-auto-btn {
+  padding: 0.3rem 0.8rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.load-auto-btn:hover {
+  background: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+.draft-badge {
+  padding: 0.2rem 0.6rem;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ==========================================
+   FORM SECTIONS
+   ========================================== */
+.form-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-section:hover {
+  border-color: #cbd5e1;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.section-header h4 {
+  color: #0f172a;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.section-status {
+  font-size: 1rem;
+}
+
+.section-status.completed {
+  color: #16a34a;
+}
+
+.section-status.pending {
+  color: #94a3b8;
+}
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 0.85rem;
+  margin-bottom: 0.2rem;
+}
+
+.form-group label svg {
+  margin-right: 0.25rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: all 0.2s;
+  background: white;
+  color: #0f172a;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+}
+
+.form-group input.error,
+.form-group select.error {
+  border-color: #dc2626;
+}
+
+.form-group input.error:focus,
+.form-group select.error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.form-group input:disabled,
+.form-group select:disabled,
+.form-group textarea:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* ==========================================
+   ASSET SUGGESTIONS
+   ========================================== */
+.asset-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.asset-suggestion {
+  padding: 0.15rem 0.5rem;
+  background: #dbeafe;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #1e40af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.asset-suggestion:hover {
+  background: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+/* ==========================================
+   FORM ACTIONS
+   ========================================== */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.action-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-reject {
+  padding: 0.5rem 1rem;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-reject:hover:not(:disabled) {
+  background: #fecaca;
+  transform: translateY(-1px);
+}
+
+.btn-reject:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-back {
+  padding: 0.5rem 1rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-back:hover {
+  background: #e2e8f0;
+}
+
+.btn-save {
+  padding: 0.5rem 1rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-submit {
+  padding: 0.5rem 1.25rem;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #15803d;
+  transform: translateY(-1px);
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-submit .spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================
+   FORM HINT
+   ========================================== */
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: #fef3c7;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.85rem;
+  border-left: 4px solid #f59e0b;
+}
+
+.form-hint svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   LOADING STATE
+   ========================================== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 1rem;
+}
+
+.loading-state .spinner {
+  animation: spin 1s linear infinite;
+  font-size: 2rem;
+  color: #16a34a;
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+@media (max-width: 1024px) {
+  .entry-split {
+    flex-direction: column;
+  }
+
+  .viewer-panel {
+    max-height: 50vh;
+    min-height: 300px;
+  }
+
+  .form-panel {
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    max-height: 50vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .entry-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .header-left {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .header-right {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .progress-indicator {
+    flex: 1;
+  }
+
+  .progress-bar {
+    flex: 1;
+    width: auto;
+  }
+
+  .file-name {
+    max-width: 120px;
+  }
+
+  .batch-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .action-left,
+  .action-right {
+    justify-content: center;
+  }
+
+  .viewer-controls {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .rotation-controls {
+    border: none;
+    padding: 0;
+  }
+
+  .viewer-container {
+    padding: 0.5rem;
+    min-height: 200px;
+  }
+
+  .form-scroll {
+    padding: 1rem;
+  }
+
+  .form-section {
+    padding: 0.75rem;
+  }
+
+  .save-draft-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn-save,
+  .btn-submit,
+  .btn-reject,
+  .btn-back {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .action-left,
+  .action-right {
+    width: 100%;
+  }
+
+  .action-left button,
+  .action-right button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .entry-header {
+    padding: 0.5rem;
+  }
+
+  .file-info {
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .file-name {
+    max-width: 100px;
+    font-size: 0.85rem;
+  }
+
+  .org-name {
+    font-size: 0.7rem;
+  }
+
+  .progress-label {
+    font-size: 0.7rem;
+    min-width: 50px;
+  }
+
+  .form-section {
+    padding: 0.5rem;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .viewer-controls button {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.8rem;
+    min-width: 28px;
+  }
+
+  .viewer-controls .zoom-level {
+    font-size: 0.7rem;
+    min-width: 35px;
+  }
+
+  .rotate-btn {
+    font-size: 0.85rem;
+    min-width: 28px;
+  }
+}

@@ -1,162 +1,315 @@
+// TeamManagement.jsx - Complete with Backend API
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import './TeamManagement.css';
-
+import './css/TeamManagement.css';
+import toast from 'react-hot-toast';
 
 function TeamManagement({ organization, userRole }) {
   const [members, setMembers] = useState([]);
-  const [invites, setInvites] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('viewer');
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
+  const isAdmin = userRole === 'admin';
 
-  const fetchTeamData = async () => {
-  setLoading(true);
-  const { data: membersData } = await supabase.from('organization_members').select('id, role, user_id, auth.users(email)').eq('organization_id', organization.id);
-  const { data: invitesData } = await supabase.from('pending_invites').select('id, email, role, created_at').eq('organization_id', organization.id);
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-    if (membersData) setMembers(membersData);
-    if (invitesData) setInvites(invitesData);
-    setLoading(false);
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || localStorage.getItem('access_token');
+  };
+
+  const fetchMembers = async () => {
+    setLoading(true);
+    const token = await getToken();
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/organizations/team/${organization.id}/members`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        setMembers(result.members || []);
+        console.log('✅ Team members loaded:', result.members?.length || 0);
+      } else {
+        console.error('Failed to fetch members:', response.status);
+        toast.error('Failed to load team members');
+        setMembers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching members:', error);
+      toast.error('Failed to load team members');
+      setMembers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (organization) fetchTeamData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization]);
+    if (organization?.id) {
+      fetchMembers();
+    }
+  }, [organization?.id]);
 
   const handleInvite = async (e) => {
     e.preventDefault();
-    setError('');
-    setMessage('');
+    
+    if (!inviteEmail) {
+      toast.error('Please enter an email address');
+      return;
+    }
 
-    const { error } = await supabase
-      .from('pending_invites')
-      .insert({ organization_id: organization.id, email: inviteEmail, role: inviteRole });
+    setSending(true);
+    const token = await getToken();
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setMessage(`✅ Invite created for ${inviteEmail}! Tell them to sign up at CarbonTally using this exact email.`);
-      setInviteEmail('');
-      fetchTeamData();
+    try {
+      const response = await fetch(
+        `${API_URL}/api/organizations/team/${organization.id}/invite`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            email: inviteEmail,
+            role: inviteRole,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast.success(`✅ ${inviteEmail} invited as ${inviteRole}!`);
+        setInviteEmail('');
+        setInviteRole('viewer');
+        fetchMembers();
+      } else {
+        toast.error(result.detail || 'Failed to invite member');
+      }
+    } catch (error) {
+      console.error('Error inviting member:', error);
+      toast.error('Failed to invite member');
+    } finally {
+      setSending(false);
     }
   };
 
   const handleRemoveMember = async (memberId) => {
-    if (!window.confirm('Are you sure you want to remove this team member?')) return;
-    
-    const { error } = await supabase.from('organization_members').delete().eq('id', memberId);
-    if (error) setError(error.message);
-    else fetchTeamData();
+    if (!window.confirm('Are you sure you want to remove this member?')) return;
+
+    const token = await getToken();
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/organizations/team/${organization.id}/members/${memberId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        toast.success('Member removed successfully');
+        fetchMembers();
+      } else {
+        const result = await response.json();
+        toast.error(result.detail || 'Failed to remove member');
+      }
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast.error('Failed to remove member');
+    }
   };
 
-  const handleCancelInvite = async (inviteId) => {
-    const { error } = await supabase.from('pending_invites').delete().eq('id', inviteId);
-    if (error) setError(error.message);
-    else fetchTeamData();
+  const handleUpdateRole = async (memberId, newRole) => {
+    const token = await getToken();
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/organizations/team/${organization.id}/members/${memberId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ role: newRole }),
+        }
+      );
+
+      if (response.ok) {
+        toast.success('Role updated successfully');
+        fetchMembers();
+      } else {
+        const result = await response.json();
+        toast.error(result.detail || 'Failed to update role');
+      }
+    } catch (error) {
+      console.error('Error updating role:', error);
+      toast.error('Failed to update role');
+    }
   };
 
-  if (userRole !== 'admin') {
-    return <div className="access-denied">Only Company Admins can manage the team.</div>;
+  const getRoleBadgeColor = (role) => {
+    const colors = {
+      admin: 'bg-red-100 text-red-800',
+      editor: 'bg-blue-100 text-blue-800',
+      viewer: 'bg-gray-100 text-gray-800',
+    };
+    return colors[role] || colors.viewer;
+  };
+
+  const getRoleDisplayName = (role) => {
+    const names = {
+      admin: 'Admin',
+      editor: 'Editor',
+      viewer: 'Viewer',
+    };
+    return names[role] || role;
+  };
+
+  if (loading) {
+    return (
+      <div className="team-management-container">
+        <div className="skeleton skeleton-text title" style={{ width: '30%', marginBottom: '1.5rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+        <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+      </div>
+    );
   }
 
   return (
-    <div className="team-container">
-      <h2> Team Management</h2>
-      
-      {/* INVITE FORM */}
-      <div className="invite-section">
-        <h3>Invite Team Member</h3>
-        <form onSubmit={handleInvite} className="invite-form">
-          <input 
-            type="email" 
-            value={inviteEmail} 
-            onChange={(e) => setInviteEmail(e.target.value)} 
-            placeholder="colleague@company.com" 
-            required 
-          />
-          <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-            <option value="viewer">Viewer (Read-only)</option>
-            <option value="editor">Editor (Upload & Edit)</option>
-            <option value="admin">Admin (Full Control)</option>
-          </select>
-          <button type="submit" className="invite-btn">Send Invite</button>
-        </form>
-        {message && <div className="success-msg">{message}</div>}
-        {error && <div className="error-msg">{error}</div>}
-        <p className="invite-hint">
-          💡 <strong>How it works:</strong> Since we are using the free email tier, simply share your CarbonTally login URL with your colleague. When they sign up using the exact email address you entered above, they will automatically be added to your team with the assigned role.
-        </p>
-      </div>
+    <div className="team-management-container">
+      <h2>👥 Team Management</h2>
+      <p className="subtitle">Invite team members and manage their access to your organization.</p>
+
+      {!isAdmin && (
+        <div className="info-banner">
+          ⚠️ You have view-only access. Only organization admins can manage team members.
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="invite-section">
+          <h3>Invite Team Member</h3>
+          <form onSubmit={handleInvite} className="invite-form">
+            <input
+              type="email"
+              placeholder="colleague@company.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              required
+              disabled={sending}
+            />
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              disabled={sending}
+            >
+              <option value="viewer">Viewer (Read-only)</option>
+              <option value="editor">Editor (Can edit data)</option>
+              <option value="admin">Admin (Full access)</option>
+            </select>
+            <button type="submit" className="invite-btn" disabled={sending}>
+              {sending ? '⏳ Sending...' : 'Send Invite'}
+            </button>
+          </form>
+          <p className="hint">
+            💡 Users must already have a CarbonTally account. They will be added to your team immediately.
+          </p>
+        </div>
+      )}
 
       <div className="members-section">
         <h3>Current Team Members ({members.length})</h3>
         
-        {loading ? (
-          <div className="skeleton-table-container" style={{ marginTop: '1rem' }}>
-            {/* Skeleton for Table Headers */}
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', paddingLeft: '0.5rem' }}>
-              <div className="skeleton skeleton-text" style={{ width: '40%', height: '20px' }}></div>
-              <div className="skeleton skeleton-text" style={{ width: '20%', height: '20px' }}></div>
-              <div className="skeleton skeleton-text" style={{ width: '20%', height: '20px' }}></div>
-            </div>
-            
-            {/* Skeleton for Table Rows */}
-            {[1, 2, 3].map((i) => (
-              <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', alignItems: 'center', paddingLeft: '0.5rem' }}>
-                <div className="skeleton skeleton-text" style={{ width: '40%', height: '24px' }}></div>
-                <div className="skeleton skeleton-text" style={{ width: '20%', height: '24px', borderRadius: '999px' }}></div>
-                <div className="skeleton skeleton-text" style={{ width: '20%', height: '32px', borderRadius: '6px' }}></div>
-              </div>
-            ))}
-          </div>
+        {members.length === 0 ? (
+          <p className="empty-msg">No team members yet.</p>
         ) : (
-          <table className="team-table">
-            <thead>
-              <tr><th>Email</th><th>Role</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              {members.map((member) => (
+          <div className="members-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((member) => (
                 <tr key={member.id}>
-                  <td>{member.auth?.users?.email || 'Unknown'}</td>
-                  <td><span className={`role-badge ${member.role}`}>{member.role}</span></td>
                   <td>
-                    {member.role !== 'admin' && (
-                      <button onClick={() => handleRemoveMember(member.id)} className="remove-btn">Remove</button>
+                    <div className="member-info">
+                      <div className="member-avatar">
+                        {member.full_name?.[0] || member.email?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <div className="member-name">
+                          {member.full_name || 'Team Member'}
+                        </div>
+                        <div className="member-email">
+                          {member.email || `User ${member.user_id.slice(0, 8)}`}
+                        </div>
+                        <div className="member-status">
+                          {member.is_active ? '🟢 Active' : '🔴 Inactive'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    {isAdmin ? (
+                      <select
+                        value={member.role}
+                        onChange={(e) => handleUpdateRole(member.id, e.target.value)}
+                        className={`role-select ${getRoleBadgeColor(member.role)}`}
+                      >
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    ) : (
+                      <span className={`role-badge ${getRoleBadgeColor(member.role)}`}>
+                        {getRoleDisplayName(member.role)}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    {isAdmin && member.role !== 'admin' && (
+                      <button
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="remove-btn"
+                        title="Remove member"
+                      >
+                        ✕
+                      </button>
+                    )}
+                    {isAdmin && member.role === 'admin' && (
+                      <span className="admin-badge">👑 Admin</span>
                     )}
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
+
+
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
-
-      {/* PENDING INVITES */}
-      {invites.length > 0 && (
-        <div className="invites-section">
-          <h3>Pending Invites ({invites.length})</h3>
-          <table className="team-table">
-            <thead>
-              <tr><th>Email</th><th>Proposed Role</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              {invites.map((invite) => (
-                <tr key={invite.id}>
-                  <td>{invite.email}</td>
-                  <td><span className={`role-badge ${invite.role}`}>{invite.role}</span></td>
-                  <td>
-                    <button onClick={() => handleCancelInvite(invite.id)} className="cancel-btn">Cancel</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }

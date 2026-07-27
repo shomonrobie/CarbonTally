@@ -112,12 +112,13 @@ body {
 /* ===== APP CONTAINER ===== */
 .App {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
+  background: rgba(255, 255, 255, 0.95);
 
 /* ===== HEADERS ===== */
 .App-header {
-  background: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(to right, #868f96 0%, #a7aaac 100%);
+}  
+   
   padding: 2rem;
   text-align: center;
   box-shadow: var(--shadow-sm);
@@ -2462,7 +2463,7 @@ tr:hover {
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--gray-500);
+  color: var(--white-500);
   cursor: pointer;
   border-bottom: 3px solid transparent;
   margin-bottom: -2px;

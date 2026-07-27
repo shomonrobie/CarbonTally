@@ -1,194 +1,183 @@
-// src/pages/Login.js
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+// Login.js - Fixed redirect logic
+
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../supabaseClient';
-import toast from 'react-hot-toast';
+import { useNavigate, Link } from 'react-router-dom';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
-  const { signIn, user, isStaff, checkStaffStatus } = useAuth();
+  
+  const { user, isStaff, loading: authLoading, authInitialized, signIn } = useAuth();
   const navigate = useNavigate();
-  const redirectAttempted = useRef(false);
 
+  // Handle redirect based on auth state - REMOVED redirectAttempted
   useEffect(() => {
-    if (user && !redirecting && !redirectAttempted.current) {
-      const timer = setTimeout(() => {
-        handleRedirect(user.id);
-      }, 500);
-      return () => clearTimeout(timer);
+    console.log('🔄 Login useEffect triggered');
+    console.log('📊 State:', { 
+      authInitialized, 
+      authLoading, 
+      user: user?.email, 
+      isStaff,
+      userObject: user 
+    });
+
+    // Don't redirect if auth hasn't initialized yet
+    if (!authInitialized || authLoading) {
+      console.log('⏳ Auth initializing, waiting...');
+      return;
     }
-  }, [user, isStaff]);
 
-  const handleRedirect = async (userId) => {
-    if (redirectAttempted.current || redirecting) return;
-    redirectAttempted.current = true;
-    setRedirecting(true);
-
-    try {
-      console.log('🔄 Checking user role for redirect...');
-      console.log('📊 isStaff from context:', isStaff);
-
-      // ✅ Staff user - redirect to staff dashboard
-      if (isStaff === true) {
-        console.log('✅ Staff user - redirecting to staff dashboard');
-        // The basename is /admin, so /staff/dashboard becomes /admin/staff/dashboard
-        navigate('/staff/dashboard');
-        setRedirecting(false);
-        return;
-      }
-
-      // ✅ Double-check staff status
-      const { data: staffData } = await supabase
-        .from('staff_profiles')
-        .select('role')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (staffData) {
-        console.log('✅ Staff found via direct query');
-        await checkStaffStatus(userId);
-        navigate('/staff/dashboard');
-        setRedirecting(false);
-        return;
-      }
-
-      // ✅ Check organization admin
-      const { data: orgData } = await supabase
-        .from('organization_members')
-        .select('role')
-        .eq('user_id', userId)
-        .eq('role', 'admin')
-        .maybeSingle();
-
-      if (orgData) {
-        console.log('✅ Organization admin - redirecting to admin');
-        navigate('/admin');
-        setRedirecting(false);
-        return;
-      }
-
-      // ❌ No role found
-      console.warn('⚠️ No role found for user');
-      toast.error('Access denied. No valid role found.');
-      await supabase.auth.signOut();
-      navigate('/login');
-      setRedirecting(false);
-
-    } catch (error) {
-      console.error('❌ Redirect error:', error);
-      toast.error('Error determining user role');
-      setRedirecting(false);
-      redirectAttempted.current = false;
+    // If no user, stay on login page
+    if (!user) {
+      console.log('ℹ️ No user, staying on login page');
+      return;
     }
-  };
+
+    console.log('🔄 Checking user role for redirect...');
+    console.log('📊 isStaff from context:', isStaff);
+    console.log('👤 User:', user?.email);
+
+    // Staff user - redirect to admin/staff dashboard
+    if (isStaff) {
+      console.log('✅ Staff user - redirecting to staff dashboard');
+      navigate('/staff-dashboard');
+    } else {
+      // Regular user - redirect to customer dashboard
+      console.log('⚠️ User is not staff - redirecting to customer dashboard');
+      navigate('/dashboard');
+    }
+  }, [user, isStaff, authLoading, authInitialized, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
-    setRedirecting(false);
-    redirectAttempted.current = false;
 
     try {
-      const { data, error } = await signIn(email, password);
+      console.log('🔐 Submitting login for:', email);
       
-      if (error) {
-        toast.error(error.message || 'Failed to sign in');
-        setLoading(false);
-        return;
+      const result = await signIn(email, password);
+      
+      if (result.success) {
+        console.log('✅ Login successful');
+        // The useEffect will handle the redirect
+      } else {
+        setError(result.error || 'Login failed. Please try again.');
       }
-
-      if (data.user) {
-        console.log('✅ User signed in, checking staff status...');
-        await checkStaffStatus(data.user.id);
-        setTimeout(() => {
-          setLoading(false);
-        }, 300);
-      }
-    } catch (error) {
-      toast.error(error.message || 'Failed to sign in');
+    } catch (err) {
+      console.error('❌ Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
 
-  if (redirecting) {
+  // If auth is still loading, show a loading state
+  if (!authInitialized || authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-secondary-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Redirecting to dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center px-4">
-      <div className="max-w-md w-full">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            <div className="text-4xl mb-3">🌱</div>
-            <h1 className="text-2xl font-bold text-gray-900">CarbonTally Admin</h1>
-            <p className="text-gray-600 mt-1">Staff login portal</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Admin Login
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Enter your credentials to access the admin dashboard
+          </p>
+        </div>
+        
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
+              <label htmlFor="email" className="sr-only">
+                Email address
               </label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200"
-                placeholder="staff@carbontally.co.uk"
-                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm"
+                placeholder="Email address"
+                disabled={loading}
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="password" className="sr-only">
                 Password
               </label>
               <input
+                id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200"
-                placeholder="••••••••"
-                required
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm"
+                placeholder="Password"
+                disabled={loading}
               />
             </div>
+          </div>
 
+          <div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="fill-current" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
                   Signing in...
                 </span>
               ) : (
-                'Sign In'
+                'Sign in'
               )}
             </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              This portal is for staff members only.
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Customers please use the main application.
-            </p>
           </div>
-        </div>
+          
+          <div className="text-sm text-center">
+            <Link to="/" className="font-medium text-green-600 hover:text-green-500">
+              ← Back to Home
+            </Link>
+          </div>
+        </form>
       </div>
     </div>
   );
