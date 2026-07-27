@@ -47,7 +47,8 @@ export default function MagicLink() {
           setUserExists(true);
           setLoading(false);
           // ✅ Show toast notification
-          toast.info('🔐 This email is already registered.');
+          toast('🔐 This email is already registered.');
+
           return;
         }
 

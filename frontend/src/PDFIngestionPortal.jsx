@@ -1,10 +1,14 @@
+// src/PDFIngestionPortal.jsx
+
 import React, { useState, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { FaSpinner, FaCheck, FaExclamationTriangle, FaSync, FaFilePdf, FaEye, FaEyeSlash } from 'react-icons/fa';
 
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
+import './css/PDFIngestionPortal.css';
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -19,139 +23,284 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
   const [extractionProgress, setExtractionProgress] = useState(0);
   const [extractionStatus, setExtractionStatus] = useState('initializing');
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
-  const [specialInstructions, setSpecialInstructions] = useState('');  
+  const [specialInstructions, setSpecialInstructions] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
   const [noteSent, setNoteSent] = useState(false);
+  const [repairStatus, setRepairStatus] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
 
+  // Auto-process the PDF when component mounts
   useEffect(() => {
-    const extractFile = async () => {
-      try {
-        setExtractionStatus('uploading');
-        setExtractionProgress(10);
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('data_type', dataType);
-        formData.append('organization_id', organizationId || ''); 
-        
-        const isImage = file.type.startsWith('image/');
-        const endpoint = isImage ? '/upload-image' : '/upload-pdf';
-        
-        setExtractionStatus('processing');
-        setExtractionProgress(30);
-        
-        const response = await axios.post(`${process.env.REACT_APP_API_URL}${endpoint}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setExtractionProgress(30 + (percentCompleted * 0.4));
-          }
-        });
-        
-        setExtractionProgress(90);
-        setExtractionStatus('finalizing');
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setExtractionData(response.data);
+    processPDF();
+  }, []);
+
+  const processPDF = async () => {
+    try {
+      setLoading(true);
+      setExtractionStatus('uploading');
+      setExtractionProgress(10);
+      toast.info('📤 Uploading PDF...');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('data_type', dataType);
+      formData.append('organization_id', organizationId || '');
+
+      const isImage = file.type.startsWith('image/');
+      const endpoint = isImage ? '/upload-image' : '/upload-pdf';
+
+      setExtractionStatus('processing');
+      setExtractionProgress(30);
+
+      // Step 1: Try extraction first
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}${endpoint}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setExtractionProgress(30 + (percentCompleted * 0.4));
+        }
+      });
+
+      setExtractionProgress(90);
+      setExtractionStatus('finalizing');
+
+      const result = response.data;
+
+      // Step 2: Check if extraction succeeded
+      if (result.status === 'success' || result.status === 'auto_extracted') {
         setExtractionProgress(100);
         setExtractionStatus('complete');
+        setExtractionData(result);
         setLoading(false);
-        
-      } catch (err) {
-            console.error("File extraction failed:", err);
-    
-            let errorMsg = "Failed to extract data from file.";
-            let technicalDetails = "";
-            let userFriendlyMessage = "";
-            let extractionIssues = [];
-            let extractionSummary = {};
-            
-            if (err.response?.data) {
-                const data = err.response.data;
-                
-                // Check if we have extraction issues in the response
-                if (data.extraction_issues) {
-                    extractionIssues = data.extraction_issues;
-                }
-                if (data.extraction_summary) {
-                    extractionSummary = data.extraction_summary;
-                }
-                
-                if (typeof data === 'string') {
-                    errorMsg = data;
-                    technicalDetails = data;
-                    userFriendlyMessage = "Our system encountered an issue while processing your file. Please try again or contact support.";
-                } else if (data.detail) {
-                    errorMsg = data.detail;
-                    technicalDetails = data.detail;
-                    userFriendlyMessage = data.user_message || "We're having trouble processing this file. Please ensure it's a valid document and try again.";
-                } else if (data.error) {
-                    errorMsg = data.error;
-                    technicalDetails = data.error;
-                    userFriendlyMessage = data.user_message || "Something went wrong. Please try uploading a different file.";
-                } else {
-                    errorMsg = "Unknown error occurred";
-                    technicalDetails = JSON.stringify(data);
-                    userFriendlyMessage = "An unexpected error occurred. Please try again or contact support.";
-                }
-            } else if (err.message) {
-                errorMsg = err.message;
-                technicalDetails = err.message;
-                userFriendlyMessage = "Network error. Please check your connection and try again.";
+        toast.success('✅ PDF processed successfully!');
+        return;
+      }
+
+      // Step 3: If extraction failed or needs review, check if repair is needed
+      if (result.status === 'manual_review_required' || result.status === 'error') {
+        // Check if this is likely a scanned/corrupted PDF
+        const isScanned = result.extraction_issues?.some(i => 
+          i.type === 'no_text' || 
+          i.type === 'low_confidence' ||
+          i.message?.toLowerCase().includes('scan') ||
+          i.message?.toLowerCase().includes('ocr')
+        );
+
+        if (isScanned || result.extraction_summary?.confidence_score < 0.3) {
+          // 🔧 Auto-repair needed
+          setExtractionStatus('repairing');
+          setExtractionProgress(50);
+          toast.info('🔧 Your PDF appears to be scanned/corrupted. We\'re repairing it for carbon data extraction...');
+
+          // Try to repair the PDF
+          const repairFormData = new FormData();
+          repairFormData.append('file', file);
+
+          const repairResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/repair-pdf`, {
+            method: 'POST',
+            body: repairFormData,
+          });
+
+          setExtractionProgress(75);
+
+          if (repairResponse.ok) {
+            const repairResult = await repairResponse.json();
+
+            if (repairResult.status === 'success') {
+              setRepairStatus({
+                status: 'success',
+                message: '✅ PDF repaired successfully!',
+                repairedUrl: repairResult.repaired_url,
+                pages: repairResult.pages
+              });
+
+              // Step 4: Try extraction again with repaired PDF
+              setExtractionStatus('re-extracting');
+              setExtractionProgress(80);
+              toast.info('📊 Re-extracting data from repaired PDF...');
+
+              // Download the repaired file
+              const downloadResponse = await fetch(repairResult.repaired_url);
+              const blob = await downloadResponse.blob();
+              const repairedFile = new File([blob], `repaired_${file.name}`, {
+                type: 'application/pdf'
+              });
+
+              // Re-upload the repaired file
+              const retryFormData = new FormData();
+              retryFormData.append('file', repairedFile);
+              retryFormData.append('data_type', dataType);
+              retryFormData.append('organization_id', organizationId || '');
+
+              const retryResponse = await axios.post(
+                `${process.env.REACT_APP_API_URL}${endpoint}`,
+                retryFormData,
+                { headers: { 'Content-Type': 'multipart/form-data' } }
+              );
+
+              setExtractionProgress(95);
+              const retryResult = retryResponse.data;
+
+              if (retryResult.status === 'success' || retryResult.status === 'auto_extracted') {
+                setExtractionProgress(100);
+                setExtractionStatus('complete');
+                setExtractionData(retryResult);
+                setLoading(false);
+                toast.success('✅ PDF repaired and extracted successfully!');
+                return;
+              } else {
+                // Even after repair, extraction failed
+                setExtractionStatus('manual_required');
+                setError({
+                  message: 'Auto-extraction still failed after repair. Please enter data manually.',
+                  technical: 'Even after OCR repair, the system could not extract structured data.',
+                  extractionIssues: retryResult.extraction_issues || [],
+                  extractionSummary: retryResult.extraction_summary || {}
+                });
+                toast.warning('⚠️ Please enter data manually');
+                setLoading(false);
+                return;
+              }
+            } else {
+              // Repair failed
+              setExtractionStatus('repair_failed');
+              setError({
+                message: 'PDF repair failed. The file may be corrupted or encrypted.',
+                technical: repairResult.message || 'Unknown repair error',
+                extractionIssues: [],
+                extractionSummary: {}
+              });
+              toast.error('❌ PDF repair failed');
+              setLoading(false);
+              return;
             }
-            
+          } else {
+            // Repair endpoint error
+            setExtractionStatus('repair_failed');
             setError({
-                message: userFriendlyMessage,
-                technical: technicalDetails,
-                originalError: errorMsg,
-                timestamp: new Date().toISOString(),
-                fileInfo: {
-                    name: file.name,
-                    size: file.size,
-                    type: file.type
-                },
-                extractionIssues: extractionIssues,
-                extractionSummary: extractionSummary
+              message: 'Unable to repair PDF. Please try a different file or enter data manually.',
+              technical: 'Repair service returned an error',
+              extractionIssues: [],
+              extractionSummary: {}
             });
-            
-            toast.error(userFriendlyMessage);
+            toast.error('❌ PDF repair service unavailable');
             setLoading(false);
-            setExtractionStatus('error');
+            return;
+          }
+        } else {
+          // Not a scanned PDF, but still needs manual review
+          setExtractionData(result);
+          setExtractionProgress(100);
+          setExtractionStatus('complete');
+          setLoading(false);
+        }
+      }
+    } catch (err) {
+      console.error("File extraction failed:", err);
+
+      let errorMsg = "Failed to extract data from file.";
+      let technicalDetails = "";
+      let userFriendlyMessage = "";
+      let extractionIssues = [];
+      let extractionSummary = {};
+
+      if (err.response?.data) {
+        const data = err.response.data;
+
+        if (data.extraction_issues) {
+          extractionIssues = data.extraction_issues;
+        }
+        if (data.extraction_summary) {
+          extractionSummary = data.extraction_summary;
         }
 
-    };
-    
-    extractFile();
-  }, [file, dataType, organizationId]);
+        if (typeof data === 'string') {
+          errorMsg = data;
+          technicalDetails = data;
+          userFriendlyMessage = "Our system encountered an issue while processing your file. Please try again or contact support.";
+        } else if (data.detail) {
+          errorMsg = data.detail;
+          technicalDetails = data.detail;
+          userFriendlyMessage = data.user_message || "We're having trouble processing this file. Please ensure it's a valid document and try again.";
+        } else if (data.error) {
+          errorMsg = data.error;
+          technicalDetails = data.error;
+          userFriendlyMessage = data.user_message || "Something went wrong. Please try uploading a different file.";
+        } else {
+          errorMsg = "Unknown error occurred";
+          technicalDetails = JSON.stringify(data);
+          userFriendlyMessage = "An unexpected error occurred. Please try again or contact support.";
+        }
+      } else if (err.message) {
+        errorMsg = err.message;
+        technicalDetails = err.message;
+        userFriendlyMessage = "Network error. Please check your connection and try again.";
+      }
+
+      // Check if this is a scanned PDF that needs repair
+      if (err.message?.toLowerCase().includes('scan') || err.message?.toLowerCase().includes('ocr')) {
+        setExtractionStatus('repair_needed');
+        setError({
+          message: '📄 This appears to be a scanned document. We recommend repairing it first.',
+          technical: technicalDetails,
+          originalError: errorMsg,
+          extractionIssues: extractionIssues,
+          extractionSummary: extractionSummary
+        });
+      } else {
+        setExtractionStatus('error');
+        setError({
+          message: userFriendlyMessage,
+          technical: technicalDetails,
+          originalError: errorMsg,
+          timestamp: new Date().toISOString(),
+          fileInfo: {
+            name: file.name,
+            size: file.size,
+            type: file.type
+          },
+          extractionIssues: extractionIssues,
+          extractionSummary: extractionSummary
+        });
+      }
+
+      toast.error(userFriendlyMessage);
+      setLoading(false);
+    }
+  };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
   };
+
   const handleSendNote = async () => {
     if (!specialInstructions.trim() || !extractionData?.review_id) return;
-    
+
     setSendingNote(true);
     try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/add-manual-review-note`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/add-manual-review-note`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            review_id: extractionData.review_id,
-            special_instructions: specialInstructions.trim()
+          review_id: extractionData.review_id,
+          special_instructions: specialInstructions.trim()
         })
-        });
-        
-        if (response.ok) {
+      });
+
+      if (response.ok) {
         setNoteSent(true);
-        setSpecialInstructions(''); // Clear the box after sending
-        }
+        setSpecialInstructions('');
+        toast.success('✅ Note sent to our team!');
+      }
     } catch (error) {
-        console.error('Failed to send note:', error);
+      console.error('Failed to send note:', error);
+      toast.error('Failed to send note');
     } finally {
-        setSendingNote(false);
+      setSendingNote(false);
     }
-    };
+  };
+
   const handleFieldUpdate = (streamId, fieldName, newValue) => {
     setExtractionData(prev => {
       if (!prev) return prev;
@@ -187,14 +336,14 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
       toast.error("Please resolve all errors before approving");
       return;
     }
-    
+
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/approve-pdf-batch`, {
         batch_id: extractionData.batch_id,
         data_streams: extractionData.data_streams,
         organization_id: organizationId || 'mock-org-id'
       });
-      
+
       toast.success("Batch approved and committed to database!");
       onApprove(extractionData);
     } catch (err) {
@@ -209,456 +358,423 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
     }
   };
 
-  // 1. Loading State with Spinner
+  // 1. Loading State with Auto-Repair Progress
   if (loading) {
     const progressPercentage = Math.min(extractionProgress, 100);
     const statusMessages = {
       initializing: 'Initializing extraction engine...',
       uploading: 'Uploading file to secure storage...',
       processing: 'Extracting data from document...',
+      repairing: '🔧 Your PDF appears to be scanned/corrupted. We\'re repairing it for carbon data extraction...',
+      're-extracting': '📊 Re-extracting data from repaired PDF...',
       finalizing: 'Finalizing extraction results...',
       complete: 'Extraction complete!'
     };
 
+    const isRepairing = ['repairing', 're-extracting'].includes(extractionStatus);
+    const isRepairSuccess = repairStatus?.status === 'success';
+
     return (
-      <div className="ingestion-portal" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f8fafc' }}>
-        <div style={{ textAlign: 'center', padding: '3rem', background: 'white', borderRadius: '16px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)', maxWidth: '500px', width: '100%' }}>
-          {/* Spinner */}
-          <div style={{ 
-            width: '80px', 
-            height: '80px', 
-            margin: '0 auto 1.5rem',
-            border: '6px solid #e2e8f0',
-            borderTopColor: '#16a34a',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }} />
-          
-          {/* Progress Bar */}
-          <div style={{ 
-            width: '100%', 
-            height: '8px', 
-            background: '#e2e8f0', 
-            borderRadius: '4px', 
-            overflow: 'hidden',
-            marginBottom: '1rem'
-          }}>
-            <div style={{ 
-              width: `${progressPercentage}%`, 
-              height: '100%', 
-              background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-              transition: 'width 0.5s ease',
-              borderRadius: '4px'
-            }} />
+      <div className="ingestion-portal">
+        <div className="loading-container">
+          <div className="loading-card">
+            {/* Status Icon */}
+            <div className="loading-icon">
+              {isRepairing ? (
+                <FaSync className="spinner" />
+              ) : isRepairSuccess ? (
+                <FaCheck className="success-icon" />
+              ) : (
+                <div className="spinner-ring" />
+              )}
+            </div>
+
+            {/* Status Message */}
+            <h3 className="loading-title">
+              {isRepairing ? '🔧 Repairing Document...' : '📄 Processing Document...'}
+            </h3>
+            <p className="loading-message">
+              {statusMessages[extractionStatus] || 'Processing...'}
+            </p>
+
+            {/* Progress Bar */}
+            <div className="progress-container">
+              <div className="progress-bar-track">
+                <div
+                  className={`progress-bar-fill ${isRepairing ? 'repairing' : ''} ${isRepairSuccess ? 'success' : ''}`}
+                  style={{ width: `${progressPercentage}%` }}
+                />
+              </div>
+              <span className="progress-text">{Math.round(progressPercentage)}%</span>
+            </div>
+
+            {/* Repair Status Details */}
+            {isRepairing && (
+              <div className="repair-status-details">
+                <p className="repair-detail-text">
+                  {extractionStatus === 'repairing' 
+                    ? '🔄 Adding OCR text layer to make document searchable...' 
+                    : '📊 Extracting carbon data from repaired document...'}
+                </p>
+                <div className="repair-steps">
+                  <div className={`step ${extractionProgress >= 50 ? 'active' : ''}`}>
+                    <span className="step-number">1</span>
+                    <span className="step-label">Detect Issue</span>
+                  </div>
+                  <div className={`step ${extractionProgress >= 70 ? 'active' : ''}`}>
+                    <span className="step-number">2</span>
+                    <span className="step-label">Repair PDF</span>
+                  </div>
+                  <div className={`step ${extractionProgress >= 85 ? 'active' : ''}`}>
+                    <span className="step-number">3</span>
+                    <span className="step-label">Extract Data</span>
+                  </div>
+                  <div className={`step ${extractionProgress >= 100 ? 'active' : ''}`}>
+                    <span className="step-number">4</span>
+                    <span className="step-label">Complete</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* File Info */}
+            <p className="file-info">
+              File: {file.name} ({(file.size / 1024).toFixed(1)} KB)
+            </p>
+
+            {/* Cancel Button */}
+            {!isRepairing && (
+              <button onClick={onBack} className="cancel-btn">
+                Cancel
+              </button>
+            )}
           </div>
-          
-          <p style={{ fontSize: '1.1rem', fontWeight: '600', color: '#0f172a', marginBottom: '0.5rem' }}>
-            Extracting data from {file.type.startsWith('image/') ? 'image' : 'PDF'}...
-          </p>
-          <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
-            {statusMessages[extractionStatus] || 'Processing...'}
-          </p>
-          <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
-            {Math.round(progressPercentage)}% complete
-          </p>
-          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-            File: {file.name}
-          </p>
         </div>
       </div>
     );
   }
 
-  // 2. Error State with Detailed Technical Info
+  // 2. Manual Entry Mode (when repair fails)
+  if (manualEntryMode) {
+    return (
+      <div className="ingestion-portal">
+        <div className="manual-entry-container">
+          <div className="manual-entry-card">
+            <div className="manual-entry-header">
+              <FaExclamationTriangle className="warning-icon-large" />
+              <h2>✏️ Manual Data Entry</h2>
+              <p>Auto-extraction failed. Please enter the data from your document manually.</p>
+            </div>
+
+            <div className="manual-entry-form">
+              <div className="form-group">
+                <label>📅 Billing Period Start</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  placeholder="Select date"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>⚡ Consumption (kWh or Litres)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="form-input"
+                  placeholder="Enter consumption value"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>🏢 Asset / Vehicle Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g., Vehicle ABC-123 or Meter #456"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>⛽ Fuel / Utility Type</label>
+                <select className="form-input">
+                  <option value="">Select type...</option>
+                  <option value="Diesel">Diesel</option>
+                  <option value="Petrol">Petrol</option>
+                  <option value="Electricity">Electricity</option>
+                  <option value="Natural Gas">Natural Gas</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>📝 Notes (optional)</label>
+                <textarea
+                  className="form-textarea"
+                  rows="3"
+                  placeholder="Any additional information..."
+                />
+              </div>
+
+              <div className="manual-actions">
+                <button className="submit-btn">📤 Submit for Review</button>
+                <button onClick={() => setManualEntryMode(false)} className="back-btn">
+                  ← Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Error State
   if (error || !extractionData) {
     const errorInfo = error || { message: "Unknown error occurred" };
     const issues = errorInfo.extractionIssues || [];
-    
+    const isRepairNeeded = extractionStatus === 'repair_needed';
+
     return (
-      <div className="ingestion-portal" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f8fafc' }}>
-        <div style={{ maxWidth: '700px', width: '100%', padding: '2rem', background: 'white', borderRadius: '16px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>❌</div>
-            <h3 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>Extraction Failed</h3>
-            <p style={{ color: '#475569', fontSize: '1.05rem' }}>{errorInfo.message}</p>
-          </div>
-
-          {/* Show issues if available */}
-          {issues.length > 0 && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h4 style={{ color: '#0f172a', marginBottom: '0.75rem', fontSize: '0.95rem' }}>📋 Issues Found:</h4>
-              {issues.map((issue, index) => (
-                <div 
-                  key={index} 
-                  style={{ 
-                    padding: '0.75rem', 
-                    marginBottom: '0.5rem',
-                    background: issue.severity === 'critical' ? '#fef2f2' : '#fffbeb',
-                    borderLeft: `4px solid ${issue.severity === 'critical' ? '#ef4444' : '#f59e0b'}`,
-                    borderRadius: '4px'
-                  }}
-                >
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#0f172a' }}>
-                    {issue.field}: {issue.message}
-                  </div>
-                  {issue.value && (
-                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.25rem' }}>
-                      Value: <code style={{ background: '#f1f5f9', padding: '1px 4px', borderRadius: '3px' }}>{issue.value}</code>
-                    </div>
-                  )}
-                  {issue.technical_details && (
-                    <div style={{ 
-                      fontSize: '0.8rem', 
-                      color: '#64748b', 
-                      marginTop: '0.5rem',
-                      padding: '0.5rem',
-                      background: '#f1f5f9',
-                      borderRadius: '4px',
-                      fontFamily: 'monospace'
-                    }}>
-                      💻 {issue.technical_details}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Technical Details Section */}
-          <div style={{ background: '#f1f5f9', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
-            <h4 style={{ color: '#0f172a', marginBottom: '1rem', fontSize: '0.95rem' }}>🔍 Technical Details</h4>
-            <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#475569' }}>
-              <p><strong>Error:</strong> {errorInfo.originalError || errorInfo.technical || 'Unknown error'}</p>
-              <p><strong>Timestamp:</strong> {errorInfo.timestamp || new Date().toISOString()}</p>
-              {errorInfo.fileInfo && (
-                <>
-                  <p><strong>File:</strong> {errorInfo.fileInfo.name}</p>
-                  <p><strong>Size:</strong> {(errorInfo.fileInfo.size / 1024).toFixed(1)} KB</p>
-                  <p><strong>Type:</strong> {errorInfo.fileInfo.type}</p>
-                </>
+      <div className="ingestion-portal">
+        <div className="error-container">
+          <div className="error-card">
+            <div className="error-header">
+              {isRepairNeeded ? (
+                <FaExclamationTriangle className="warning-icon-large" />
+              ) : (
+                <FaExclamationTriangle className="error-icon-large" />
               )}
+              <h2>{isRepairNeeded ? '📄 Scanned Document Detected' : '❌ Extraction Failed'}</h2>
+              <p>{errorInfo.message}</p>
             </div>
-          </div>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-            <button 
-              onClick={() => window.location.reload()} 
-              style={{ 
-                padding: '0.75rem 1.5rem', 
-                background: '#3b82f6', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px', 
-                fontWeight: '600', 
-                cursor: 'pointer',
-                fontSize: '0.95rem'
-              }}
-            >
-              🔄 Retry
-            </button>
-            <button 
-              onClick={onBack} 
-              style={{ 
-                padding: '0.75rem 1.5rem', 
-                background: '#f1f5f9', 
-                color: '#475569', 
-                border: '1px solid #cbd5e1', 
-                borderRadius: '8px', 
-                fontWeight: '600', 
-                cursor: 'pointer',
-                fontSize: '0.95rem'
-              }}
-            >
-              ← Back to Upload
-            </button>
+            {/* Repair Suggestion */}
+            {isRepairNeeded && (
+              <div className="repair-suggestion">
+                <div className="suggestion-content">
+                  <h4>🔧 Recommended Action</h4>
+                  <p>This appears to be a scanned document without text. We can repair it using OCR technology to extract carbon data.</p>
+                  <button
+                    onClick={processPDF}
+                    className="repair-suggest-btn"
+                  >
+                    <FaSync /> Auto-Repair Document
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Issues List */}
+            {issues.length > 0 && (
+              <div className="issues-list">
+                <h4>📋 Issues Found:</h4>
+                {issues.map((issue, index) => (
+                  <div key={index} className={`issue-item ${issue.severity}`}>
+                    <div className="issue-header">
+                      <span className="issue-field">{issue.field}</span>
+                      <span className="issue-severity">{issue.severity}</span>
+                    </div>
+                    <p className="issue-message">{issue.message}</p>
+                    {issue.technical_details && (
+                      <details className="technical-details">
+                        <summary>Technical Details</summary>
+                        <code>{issue.technical_details}</code>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="error-actions">
+              <button onClick={() => setManualEntryMode(true)} className="manual-entry-btn">
+                ✏️ Enter Data Manually
+              </button>
+              <button onClick={() => window.location.reload()} className="retry-btn">
+                🔄 Retry
+              </button>
+              <button onClick={onBack} className="back-btn">
+                ← Back to Upload
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // 3. Manual Review Queued State with Detailed Issues
+  // 4. Manual Review Queued State
   if (extractionData?.status === 'manual_review_required') {
     const issues = extractionData.extraction_issues || [];
     const summary = extractionData.extraction_summary || {};
     const confidenceScore = extractionData.confidence_score || 0;
-    
+
     return (
-      <div className="ingestion-portal" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f8fafc' }}>
-        <div style={{ maxWidth: '650px', width: '100%', padding: '2rem', background: 'white', borderRadius: '16px', boxShadow: '0 10px 40px rgba(0,0,0,0.08)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '0.5rem' }}>⏳</div>
-            <h2 style={{ marginBottom: '0.5rem', color: '#0f172a' }}>Queued for Manual Review</h2>
-            <p style={{ fontSize: '1rem', color: '#475569' }}>
-              {extractionData.message || 'Our team will manually extract your data within 24 hours.'}
-            </p>
-          </div>
-
-          {/* Confidence Score */}
-          {confidenceScore > 0 && (
-            <div style={{ 
-              textAlign: 'center', 
-              marginBottom: '1.5rem',
-              padding: '0.75rem',
-              background: confidenceScore > 0.7 ? '#f0fdf4' : '#fffbeb',
-              borderRadius: '8px',
-              border: `1px solid ${confidenceScore > 0.7 ? '#bbf7d0' : '#fde68a'}`
-            }}>
-              <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Confidence Score: </span>
-              <span style={{ 
-                fontWeight: 'bold',
-                color: confidenceScore > 0.7 ? '#16a34a' : '#d97706'
-              }}>
-                {(confidenceScore * 100).toFixed(0)}%
-              </span>
+      <div className="ingestion-portal">
+        <div className="manual-review-container">
+          <div className="manual-review-card">
+            <div className="review-header">
+              <div className="review-icon">⏳</div>
+              <h2>Queued for Manual Review</h2>
+              <p>{extractionData.message || 'Our team will manually extract your data within 24 hours.'}</p>
             </div>
-          )}
 
-          {/* EXTRACTION SUMMARY */}
-          {Object.keys(summary).length > 0 && Object.values(summary).some(v => v > 0) && (
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', 
-              gap: '0.75rem',
-              marginBottom: '1.5rem',
-              padding: '1rem',
-              background: '#f8fafc',
-              borderRadius: '8px'
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a' }}>{summary.total_fields || 0}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Fields</div>
+            {/* Confidence Score */}
+            {confidenceScore > 0 && (
+              <div className="confidence-section">
+                <span className="confidence-label">Confidence Score:</span>
+                <span className={`confidence-value ${confidenceScore > 0.7 ? 'high' : confidenceScore > 0.4 ? 'medium' : 'low'}`}>
+                  {(confidenceScore * 100).toFixed(0)}%
+                </span>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#22c55e' }}>{summary.extracted_successfully || 0}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✅ Extracted</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#f59e0b' }}>{summary.needs_manual_review || 0}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>⚠️ Needs Review</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>{summary.failed || 0}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>❌ Failed</div>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* ISSUES LIST */}
-          {issues.length > 0 && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h4 style={{ color: '#0f172a', margin: 0, fontSize: '0.95rem' }}>📋 Extraction Issues</h4>
-                <button 
-                  onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#3b82f6',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  {showTechnicalDetails ? 'Hide Technical Details' : 'Show Technical Details'}
-                </button>
+            {/* Extraction Summary */}
+            {Object.keys(summary).length > 0 && Object.values(summary).some(v => v > 0) && (
+              <div className="summary-grid">
+                <div className="summary-item">
+                  <div className="summary-value">{summary.total_fields || 0}</div>
+                  <div className="summary-label">Total Fields</div>
+                </div>
+                <div className="summary-item success">
+                  <div className="summary-value">{summary.extracted_successfully || 0}</div>
+                  <div className="summary-label">✅ Extracted</div>
+                </div>
+                <div className="summary-item warning">
+                  <div className="summary-value">{summary.needs_manual_review || 0}</div>
+                  <div className="summary-label">⚠️ Needs Review</div>
+                </div>
+                <div className="summary-item error">
+                  <div className="summary-value">{summary.failed || 0}</div>
+                  <div className="summary-label">❌ Failed</div>
+                </div>
               </div>
-              
-              {issues.map((issue, index) => (
-                <div 
-                  key={index} 
-                  style={{ 
-                    padding: '0.75rem', 
-                    marginBottom: '0.5rem',
-                    background: issue.severity === 'critical' ? '#fef2f2' : '#fffbeb',
-                    borderLeft: `4px solid ${issue.severity === 'critical' ? '#ef4444' : '#f59e0b'}`,
-                    borderRadius: '4px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#0f172a' }}>
+            )}
+
+            {/* Issues List */}
+            {issues.length > 0 && (
+              <div className="issues-container">
+                <div className="issues-header">
+                  <h4>📋 Extraction Issues</h4>
+                  <button
+                    onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+                    className="toggle-tech-btn"
+                  >
+                    {showTechnicalDetails ? 'Hide Technical Details' : 'Show Technical Details'}
+                  </button>
+                </div>
+
+                {issues.map((issue, index) => (
+                  <div key={index} className={`issue-item ${issue.severity}`}>
+                    <div className="issue-content">
+                      <div className="issue-message">
                         {issue.field ? `${issue.field}: ` : ''}{issue.message}
                       </div>
                       {issue.value && (
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.25rem' }}>
-                          Value: <code style={{ background: '#f1f5f9', padding: '1px 4px', borderRadius: '3px' }}>{issue.value}</code>
+                        <div className="issue-value">
+                          Value: <code>{issue.value}</code>
                         </div>
                       )}
                       {showTechnicalDetails && issue.technical_details && (
-                        <div style={{ 
-                          fontSize: '0.8rem', 
-                          color: '#64748b', 
-                          marginTop: '0.5rem',
-                          padding: '0.5rem',
-                          background: '#f1f5f9',
-                          borderRadius: '4px',
-                          fontFamily: 'monospace'
-                        }}>
+                        <div className="technical-details">
                           💻 {issue.technical_details}
                         </div>
                       )}
                     </div>
-                    <span style={{ 
-                      fontSize: '0.65rem', 
-                      padding: '2px 8px', 
-                      borderRadius: '12px',
-                      background: issue.severity === 'critical' ? '#fee2e2' : '#fef3c7',
-                      color: issue.severity === 'critical' ? '#dc2626' : '#d97706',
-                      whiteSpace: 'nowrap',
-                      marginLeft: '0.5rem'
-                    }}>
+                    <span className={`severity-badge ${issue.severity}`}>
                       {issue.severity}
                     </span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          {/* REVIEW INFO */}
-          <div style={{ background: '#f1f5f9', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
-            <p style={{ margin: '0.5rem 0' }}><strong>Review ID:</strong> <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{extractionData.review_id}</code></p>
-            <p style={{ margin: '0.5rem 0' }}><strong>Estimated Completion:</strong> {extractionData.estimated_completion || '24-48 hours'}</p>
-            <p style={{ margin: '0.5rem 0' }}><strong>File:</strong> {file.name}</p>
-          </div>
-          {/* 📝 ADD SPECIAL INSTRUCTIONS SECTION */}
-            <div style={{ 
-            background: '#f0fdf4', 
-            padding: '1.5rem', 
-            borderRadius: '8px', 
-            marginBottom: '1.5rem', 
-            border: '1px solid #bbf7d0' 
-            }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: '#166534', fontSize: '0.95rem' }}>
-                📝 Add Special Instructions for Our Team (Optional)
-            </h4>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#15803d' }}>
-                Need this logged under a specific fiscal year or have other details? Add a note below and our team will see it.
-            </p>
-            
-            <textarea
+            {/* Review Info */}
+            <div className="review-info">
+              <p><strong>Review ID:</strong> <code>{extractionData.review_id}</code></p>
+              <p><strong>Estimated Completion:</strong> {extractionData.estimated_completion || '24-48 hours'}</p>
+              <p><strong>File:</strong> {file.name}</p>
+            </div>
+
+            {/* Special Instructions */}
+            <div className="special-instructions">
+              <h4>📝 Add Special Instructions for Our Team (Optional)</h4>
+              <p className="instructions-hint">
+                Need this logged under a specific fiscal year or have other details? Add a note below.
+              </p>
+
+              <textarea
                 value={specialInstructions}
                 onChange={(e) => {
-                setSpecialInstructions(e.target.value);
-                setNoteSent(false); // Reset success message if they type again
+                  setSpecialInstructions(e.target.value);
+                  setNoteSent(false);
                 }}
                 placeholder="e.g., 'Please log this under our 2024 fiscal year'"
-                rows={3}
-                style={{ 
-                width: '100%', 
-                padding: '0.75rem', 
-                border: '1px solid #86efac', 
-                borderRadius: '6px', 
-                fontSize: '0.9rem', 
-                resize: 'vertical',
-                fontFamily: 'inherit',
-                outline: 'none'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#16a34a'}
-                onBlur={(e) => e.target.style.borderColor = '#86efac'}
-            />
-            
-            <button 
+                rows="3"
+                className="instructions-textarea"
+              />
+
+              <button
                 onClick={handleSendNote}
                 disabled={!specialInstructions.trim() || sendingNote}
-                style={{ 
-                marginTop: '0.75rem',
-                padding: '0.6rem 1.2rem', 
-                background: specialInstructions.trim() ? '#16a34a' : '#94a3b8', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '6px', 
-                fontWeight: '600', 
-                cursor: specialInstructions.trim() ? 'pointer' : 'not-allowed',
-                fontSize: '0.9rem',
-                transition: 'background 0.2s'
-                }}
-            >
+                className={`send-note-btn ${specialInstructions.trim() ? 'active' : 'disabled'}`}
+              >
                 {sendingNote ? 'Sending...' : '💾 Send Note to Team'}
-            </button>
-            
-            {noteSent && (
-                <p style={{ color: '#16a34a', fontSize: '0.85rem', marginTop: '0.75rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>✅</span> Note sent successfully! Our team will see this when processing your file.
+              </button>
+
+              {noteSent && (
+                <p className="note-sent">
+                  ✅ Note sent successfully! Our team will see this when processing your file.
                 </p>
-            )}
+              )}
             </div>
-          <p style={{ color: '#64748b', marginBottom: '2rem', fontSize: '0.95rem', textAlign: 'center' }}>
-            📧 You will receive an email notification as soon as your data is extracted and ready to review.
-          </p>
-          
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-            <button 
-              onClick={() => window.location.reload()} 
-              style={{ 
-                padding: '0.75rem 1.5rem', 
-                background: '#3b82f6', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px', 
-                fontWeight: '600', 
-                cursor: 'pointer',
-                fontSize: '0.95rem'
-              }}
-            >
-              🔄 Retry
-            </button>
-            <button 
-              onClick={onBack} 
-              style={{ 
-                padding: '0.75rem 1.5rem', 
-                background: '#f1f5f9', 
-                color: '#475569', 
-                border: '1px solid #cbd5e1', 
-                borderRadius: '8px', 
-                fontWeight: '600', 
-                cursor: 'pointer',
-                fontSize: '0.95rem'
-              }}
-            >
-              ← Back to Dashboard
-            </button>
+
+            <p className="email-notification">
+              📧 You will receive an email notification as soon as your data is extracted.
+            </p>
+
+            <div className="review-actions">
+              <button onClick={() => window.location.reload()} className="retry-btn">
+                🔄 Retry
+              </button>
+              <button onClick={onBack} className="back-btn">
+                ← Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // 4. Success State
+  // 5. Success State
   const hasErrors = extractionData?.data_streams?.some(s => s.status === "error") || false;
 
-  return (    
+  return (
     <div className="ingestion-portal">
-      {/* HEADER */}
       <div className="portal-header">
         <button className="back-btn" onClick={onBack}>← Back to Upload</button>
         <div className="batch-info">
-          <h2>📊 Active Batch: #{extractionData.batch_id}</h2>
+          <h2>📊 Active Batch: #{extractionData?.batch_id}</h2>
           <span className={`batch-status ${hasErrors ? 'pending' : 'ready'}`}>
             {hasErrors ? '⚠️ Pending Corrections' : '✅ Ready to Commit'}
           </span>
         </div>
       </div>
 
-      {/* MAIN CONTENT - SPLIT SCREEN */}
       <div className="portal-content">
-        {/* LEFT PANEL - FILE VIEWER (40%) */}
+        {/* LEFT PANEL - PDF Viewer */}
         <div className="pdf-viewer-panel">
           <div className="file-metadata">
-            <h3>📄 {extractionData.file_metadata?.filename || file.name}</h3>
-            <p>Method: 🔍 {extractionData.file_metadata?.extraction_method || 'OCR'} | Pages: {extractionData.file_metadata?.page_count || 1}</p>
+            <h3>📄 {extractionData?.file_metadata?.filename || file.name}</h3>
+            <p>Method: 🔍 {extractionData?.file_metadata?.extraction_method || 'OCR'} | Pages: {extractionData?.file_metadata?.page_count || 1}</p>
           </div>
 
           <div className="pdf-container">
             {file.type.startsWith('image/') ? (
               <div className="image-container">
-                <img 
-                  src={URL.createObjectURL(file)} 
-                  alt="Uploaded document" 
-                  style={{ maxWidth: '100%', height: 'auto' }}
-                />
+                <img src={URL.createObjectURL(file)} alt="Uploaded document" className="image-preview" />
               </div>
             ) : (
               <Document
@@ -692,17 +808,16 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
           </div>
         </div>
 
-        {/* RIGHT PANEL - DATA CORRECTION INTERFACE (60%) */}
+        {/* RIGHT PANEL - Data Correction */}
         <div className="correction-panel">
           {hasErrors && (
             <div className="error-banner">
-              ⚠️ {extractionData.data_streams?.filter(s => s.status === "error").length || 0} Critical Parsing Exceptions Discovered. Resolve errors below to unlock database transaction.
+              ⚠️ {extractionData?.data_streams?.filter(s => s.status === "error").length || 0} Critical Parsing Exceptions Discovered.
             </div>
           )}
 
-          {/* SECTION A: METADATA */}
           <div className="correction-section">
-            <h3>SECTION A: MULTI-TENANT ROUTING & METADATA</h3>
+            <h3>SECTION A: METADATA</h3>
             <div className="metadata-grid">
               <div className="field-group">
                 <label>Reporting Year:</label>
@@ -718,28 +833,26 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
             </div>
           </div>
 
-          {/* DATA STREAMS */}
-          {extractionData.data_streams?.map((stream) => (
+          {extractionData?.data_streams?.map((stream) => (
             <div key={stream.stream_id} className={`correction-section data-stream ${stream.status}`}>
               <h3>
-                DATA STREAM {stream.stream_id} — {stream.stream_name} ({stream.scope} Compliance)
+                DATA STREAM {stream.stream_id} — {stream.stream_name}
                 {stream.status === "verified" && <span className="status-badge verified">✅ Verified</span>}
                 {stream.status === "error" && <span className="status-badge error">❌ Errors Found</span>}
               </h3>
 
-              {/* ERRORS */}
               {stream.errors && stream.errors.map((err, idx) => (
                 <div key={idx} className="error-block">
                   <div className="error-header">
-                    ❌ ERROR: {err.error_type === "low_confidence" ? "PARSER CHARACTER MATCH STRUCTURAL EXCEPTION" : "UNMAPPED SOURCE ASSET IDENTIFIED"}
+                    ❌ {err.error_type === "low_confidence" ? "Low Confidence" : "Unmapped Asset"}
                   </div>
                   <p>{err.message}</p>
-                  
+
                   {err.requires_manual_input && (
                     <div className="field-group">
                       <label>Manual Quantity Input:</label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         placeholder="Enter raw numerical value"
                         onChange={(e) => handleFieldUpdate(stream.stream_id, "consumption_kwh", parseFloat(e.target.value))}
                       />
@@ -750,7 +863,7 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
                     <div className="field-group">
                       <label>Map to System Asset:</label>
                       <select onChange={(e) => handleAssetMapping(stream.stream_id, e.target.value)}>
-                        <option value="">⚠️ Select Asset Profile to Route Log...</option>
+                        <option value="">Select Asset...</option>
                         {stream.asset_mapping?.suggested_assets?.map((asset, i) => (
                           <option key={i} value={asset}>{asset}</option>
                         ))}
@@ -760,58 +873,48 @@ export default function PDFIngestionPortal({ file, dataType, organizationId, onB
                 </div>
               ))}
 
-              {/* EXTRACTED FIELDS */}
               <div className="extracted-fields">
                 {Object.entries(stream.extracted_fields || {}).map(([key, field]) => (
                   <div key={key} className={`field-row ${field.status}`}>
                     <label>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</label>
-                    <input 
+                    <input
                       type={field.value && typeof field.value === 'number' ? 'number' : 'text'}
                       value={field.value || ''}
                       onChange={(e) => handleFieldUpdate(stream.stream_id, key, e.target.value)}
                       className={field.status === 'failed' ? 'error-input' : ''}
                     />
                     <span className={`confidence-badge ${field.status}`}>
-                      {field.status === 'verified' ? '✅ Auto-Verified' : 
-                       field.status === 'manually_corrected' ? '✏️ Manually Corrected' : 
+                      {field.status === 'verified' ? '✅ Verified' :
+                       field.status === 'manually_corrected' ? '✏️ Corrected' :
                        '❌ Failed'}
                     </span>
                   </div>
                 ))}
               </div>
 
-              {/* DEFRA FACTOR INFO */}
               {stream.defra_factor && (
                 <div className="defra-info">
-                  <p><strong>Legal DEFRA Factor:</strong> {stream.defra_factor.factor_name} → Multiplier: {stream.defra_factor.multiplier} {stream.defra_factor.unit}</p>
+                  <p><strong>DEFRA Factor:</strong> {stream.defra_factor.factor_name} → {stream.defra_factor.multiplier} {stream.defra_factor.unit}</p>
                   {stream.calculated_emissions_kg_co2e && (
-                    <p><strong>Calculated Baseline:</strong> {stream.calculated_emissions_kg_co2e.toFixed(2)} kg CO2e</p>
+                    <p><strong>Emissions:</strong> {stream.calculated_emissions_kg_co2e.toFixed(2)} kg CO2e</p>
                   )}
                 </div>
               )}
             </div>
           ))}
 
-          {/* ACTION BUTTONS */}
           <div className="action-buttons">
-            <button className="purge-btn" onClick={handlePurge}>🗑️ Purge Processing Batch</button>
-            <button 
-              className="approve-btn" 
+            <button className="purge-btn" onClick={handlePurge}>🗑️ Purge Batch</button>
+            <button
+              className="approve-btn"
               onClick={handleApprove}
               disabled={hasErrors}
             >
-              🔒 APPROVE CORRECTIONS & COMMIT TO SYSTEM
+              🔒 APPROVE & COMMIT
             </button>
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

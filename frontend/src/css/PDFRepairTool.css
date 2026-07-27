@@ -1,0 +1,476 @@
+/* src/styles/css/PDFRepairTool.css */
+
+.pdf-repair-container {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.pdf-repair-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pdf-repair-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.repair-icon {
+  font-size: 2rem;
+  color: #2563eb;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.pdf-repair-title h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.5rem;
+}
+
+.pdf-repair-title p {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Dropzone */
+.pdf-repair-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #f8fafc;
+}
+
+.pdf-repair-dropzone:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.pdf-repair-dropzone.has-file {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.dropzone-icon {
+  font-size: 3rem;
+  color: #94a3b8;
+  margin-bottom: 1rem;
+}
+
+.dropzone-text {
+  font-size: 1.1rem;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+}
+
+.browse-link {
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.browse-link:hover {
+  text-decoration: underline;
+}
+
+.file-input-hidden {
+  position: absolute;
+  opacity: 0;
+  width: 0.1px;
+  height: 0.1px;
+}
+
+.dropzone-hint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+/* File Info */
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.file-icon {
+  font-size: 2rem;
+  color: #ef4444;
+}
+
+.file-details {
+  flex: 1;
+  text-align: left;
+}
+
+.file-name {
+  margin: 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.file-size {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.remove-file-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.remove-file-btn:hover {
+  background: #fef2f2;
+}
+
+/* Preview */
+.pdf-preview-section {
+  margin-top: 1rem;
+}
+
+.preview-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 6px;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.preview-toggle-btn:hover {
+  background: #e2e8f0;
+}
+
+.pdf-preview-container {
+  margin-top: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.pdf-preview-iframe {
+  width: 100%;
+  height: 400px;
+  border: none;
+}
+
+/* Processing Status */
+.processing-status {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+  min-width: 2rem;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.status-success {
+  color: #22c55e;
+}
+
+.status-error {
+  color: #ef4444;
+}
+
+.status-text {
+  font-weight: 500;
+  color: #0f172a;
+}
+
+/* Progress Bar */
+.progress-bar-container {
+  margin-top: 0.75rem;
+  position: relative;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.progress-uploading {
+  background: #3b82f6;
+}
+
+.progress-processing {
+  background: #f59e0b;
+}
+
+.progress-repairing {
+  background: #8b5cf6;
+}
+
+.progress-done {
+  background: #22c55e;
+}
+
+.progress-text {
+  position: absolute;
+  right: 0;
+  top: -1.25rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* Error Message */
+.error-message {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #fef2f2;
+  border-radius: 6px;
+  border-left: 3px solid #ef4444;
+}
+
+.error-message p {
+  margin: 0 0 0.5rem;
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.retry-btn:hover {
+  background: #dc2626;
+}
+
+/* Repair Stats */
+.repair-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #0f172a;
+  margin-top: 0.25rem;
+}
+
+/* Actions */
+.pdf-repair-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.repair-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  justify-content: center;
+  min-width: 140px;
+}
+
+.repair-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.repair-btn.primary {
+  background: #2563eb;
+  color: white;
+}
+
+.repair-btn.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.repair-btn.success {
+  background: #22c55e;
+  color: white;
+}
+
+.repair-btn.success:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+}
+
+.repair-btn.secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.repair-btn.secondary:hover {
+  background: #e2e8f0;
+}
+
+/* Features */
+.pdf-repair-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.feature-card {
+  text-align: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.feature-card:hover {
+  background: #f1f5f9;
+  transform: translateY(-2px);
+}
+
+.feature-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.feature-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .pdf-repair-container {
+    padding: 1rem;
+  }
+  
+  .pdf-repair-title h2 {
+    font-size: 1.2rem;
+  }
+  
+  .pdf-repair-dropzone {
+    padding: 2rem 1rem;
+  }
+  
+  .pdf-repair-actions {
+    flex-direction: column;
+  }
+  
+  .repair-btn {
+    min-width: auto;
+  }
+  
+  .pdf-repair-features {
+    grid-template-columns: 1fr 1fr;
+  }
+}

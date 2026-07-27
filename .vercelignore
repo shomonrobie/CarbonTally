@@ -1,0 +1,6 @@
+# Block Vercel from tracking or compiling backend code
+backend/
+requirements.txt
+runtime.txt
+*.py
+__pycache__/

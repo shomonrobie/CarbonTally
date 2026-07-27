@@ -1,3 +1,5 @@
+// App.js - Refactored with PDFIngestionPortal and backend integration
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
@@ -21,14 +23,19 @@ import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
 import MobileMenu from './components/MobileMenu';
-import CompanyNamePrompt from './CompanyNamePrompt'; // We'll create this
+import CompanyNamePrompt from './CompanyNamePrompt';
 import AuthCallback from './AuthCallback';
 import BetaSignup from './BetaSignup';
 import BetaLogin from './BetaLogin';
 import Glossary from './Glossary';
 import MagicLink from './MagicLink';
+import OrganizationMetadata from './OrganizationMetadata';
+import DocumentStatus from './DocumentStatus';
+import UploadManager from './UploadManager';
+import ManualEntryStandalone from './components/ManualEntryStandalone';
+import { ReferenceDataProvider } from './context/ReferenceDataContext';
 
-// Constants
+// Constants - Updated to match backend DEFRA mapping
 const DEFRA_FACTORS = { 
   'Diesel': 2.54, 
   'Petrol': 2.16, 
@@ -116,7 +123,6 @@ function ProtectedRoute({ children }) {
   }
   
   if (!session) {
-    // Redirect to login but preserve the intended URL
     return <Navigate to="/login" replace />;
   }
   
@@ -147,7 +153,6 @@ function Dashboard() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);  
 
-  // Toggle menu function with debug
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
@@ -157,7 +162,7 @@ function Dashboard() {
   const [organization, setOrganization] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [showCompanyPrompt, setShowCompanyPrompt] = useState(false);
-  const [isNewUser, setIsNewUser] = useState(false); // ✅ ADD THIS LINE
+  const [isNewUser, setIsNewUser] = useState(false);
 
   // UI State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -165,7 +170,8 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState('');
-  
+  const [docStats, setDocStats] = useState(null); // ✅ Add this
+
   // Onboarding State
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
@@ -189,12 +195,138 @@ function Dashboard() {
   });
   const [historyData, setHistoryData] = useState([]);
   const [assets, setAssets] = useState([]);
-  // eslint-disable-next-line no-unused-vars
   const [facilities, setFacilities] = useState([]);
 
-    // Year selector state
+  // Year selector state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
+
+  // API Base URL
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualEntryLoading, setManualEntryLoading] = useState(false);
+
+
+  // ============================================
+  // FILE SELECTION HANDLER - UNIFIED
+  // ============================================
+  const handleFileSelect = (selectedFile) => {
+    if (!selectedFile) return;
+
+    const isPDF = selectedFile.type === 'application/pdf' || 
+                  selectedFile.name.toLowerCase().endsWith('.pdf');
+    const isImage = selectedFile.type.startsWith('image/');
+
+    if (isPDF || isImage) {
+      // Route to PDF/Image Portal with auto-repair
+      setPdfFile(selectedFile);
+      setShowPDFPortal(true);
+      setFile(null);
+      setError('');
+      toast.info('📄 Opening document in PDF portal...');
+    } else {
+      // Route to CSV/Excel Parser
+      setFile(selectedFile);
+      setPdfFile(null);
+      setShowPDFPortal(false);
+      setError('');
+      toast.info('📊 CSV file ready for upload');
+    }
+  };
+
+  // ============================================
+  // FILE UPLOAD HANDLER (CSV/Excel only)
+  // ============================================
+  // App.js - Updated handleUpload with better error handling
+  const fetchDocumentStats = async () => {
+    if (!organization?.id) return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`${API_URL}/api/documents/stats`, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDocStats(data.stats || {});
+      }
+    } catch (error) {
+      console.error('Error fetching document stats:', error);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setError('Please select a file first');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('data_type', uploadType);
+
+    try {
+      console.log('📤 Uploading to:', `${API_URL}/upload-csv`);
+      console.log('📄 File:', file.name, 'Type:', uploadType);
+      
+      const response = await axios.post(`${API_URL}/upload-csv`, formData, { 
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 second timeout
+        withCredentials: true // If your backend needs credentials
+      });
+      
+      console.log('✅ Upload response:', response.data);
+      setResult(response.data);
+      setData(response.data.data);
+      toast.success('✅ CSV processed successfully!');
+    } catch (err) {
+      console.error('❌ Upload error:', err);
+      console.error('❌ Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        config: err.config
+      });
+      
+      // Better error messages
+      if (err.code === 'ECONNABORTED') {
+        setError('Request timed out. Please try again.');
+        toast.error('⏱️ Request timed out');
+      } else if (err.response?.status === 404) {
+        setError('Upload endpoint not found. Please check backend configuration.');
+        toast.error('❌ Endpoint not found');
+      } else if (err.response?.status === 500) {
+        setError('Server error: ' + (err.response?.data?.detail || 'Unknown server error'));
+        toast.error('❌ Server error');
+      } else if (err.message === 'Network Error') {
+        setError('Cannot connect to server. Please ensure backend is running on port 8000.');
+        toast.error('🔌 Cannot connect to server');
+      } else {
+        setError('Error processing file: ' + (err.response?.data?.detail || err.message));
+        toast.error('❌ Failed to process CSV');
+      }
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  // ============================================
+  // CLEAR FILE
+  // ============================================
+  const clearFile = () => {
+    setFile(null);
+    const fileInput = document.getElementById('singleFileInput');
+    if (fileInput) fileInput.value = '';
+  };
 
   useEffect(() => {
     const checkUserStatus = async () => {
@@ -205,19 +337,15 @@ function Dashboard() {
         if (user) {
           console.log('👤 Checking user status:', user.email);
           
-          // Check if this is a new user
           const isNew = user.created_at === user.last_sign_at;
           setIsNewUser(isNew);
           
-          // Check if user has company_name
           const hasCompany = user.user_metadata?.company_name;
           
           if (!hasCompany) {
-            // New user or user without company
             console.log('📝 User needs company setup');
             setShowCompanyPrompt(true);
           } else {
-            // Existing user with company
             console.log('✅ User has company setup');
             setShowCompanyPrompt(false);
             await fetchOrgAndAssets(user.id);
@@ -238,7 +366,6 @@ function Dashboard() {
     try {
       console.log('🔍 Fetching organization and assets for user:', userId);
       
-      // Fetch organization membership
       const { data: orgData, error: orgError } = await supabase
         .from('organization_members')
         .select(`
@@ -248,8 +375,7 @@ function Dashboard() {
             id, 
             name, 
             company_number,
-            created_at,
-            settings
+            created_at
           )
         `)
         .eq('user_id', userId)
@@ -257,14 +383,12 @@ function Dashboard() {
 
       if (orgError) {
         if (orgError.code === 'PGRST116') {
-          // No organization found, check user metadata
           const { data: { user } } = await supabase.auth.getUser();
           if (user?.user_metadata?.company_name) {
             console.log('📝 User has company_name in metadata, creating organization...');
             await createOrganizationFromMetadata(user);
             return;
           }
-          // No organization at all, show company prompt
           setShowCompanyPrompt(true);
           return;
         }
@@ -275,13 +399,9 @@ function Dashboard() {
         setOrganization(orgData.organizations);
         setUserRole(orgData.role);
         
-        // Fetch dashboard stats
         await fetchDashboardStats(orgData.organizations.id);
-        
-        // Fetch assets
         await fetchAssets(orgData.organizations.id);
         
-        // Fetch facilities
         const { data: facData, error: facError } = await supabase
           .from('facilities')
           .select('id, name, address, facility_type')
@@ -297,80 +417,74 @@ function Dashboard() {
       console.error('❌ Error in fetchOrgAndAssets:', error);
     }
   };
-const createOrganizationFromMetadata = async (user) => {
-  try {
-    const companyName = user.user_metadata.company_name;
-    
-    console.log('🏢 Creating organization from metadata:', companyName);
-    
-    // Create organization
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert({
-        name: companyName,
-        created_by: user.id,
-        created_at: new Date().toISOString(),
-        settings: {
-          currency: 'GBP',
-          country: 'UK'
+
+  const createOrganizationFromMetadata = async (user) => {
+    try {
+      const companyName = user.user_metadata.company_name;
+      
+      console.log('🏢 Creating organization from metadata:', companyName);
+      
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert({
+          name: companyName,
+          created_by: user.id,
+          created_at: new Date().toISOString(),
+          settings: {
+            currency: 'GBP',
+            country: 'UK'
+          }
+        })
+        .select()
+        .single();
+
+      if (orgError) throw orgError;
+
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert({
+          organization_id: org.id,
+          user_id: user.id,
+          role: 'admin',
+          joined_at: new Date().toISOString()
+        });
+
+      if (memberError) throw memberError;
+
+      await supabase.auth.updateUser({
+        data: { 
+          organization_id: org.id,
+          organization_name: org.name
         }
-      })
-      .select()
-      .single();
-
-    if (orgError) throw orgError;
-
-    // Add user as admin member
-    const { error: memberError } = await supabase
-      .from('organization_members')
-      .insert({
-        organization_id: org.id,
-        user_id: user.id,
-        role: 'admin',
-        joined_at: new Date().toISOString()
       });
 
-    if (memberError) throw memberError;
-
-    // Update user metadata with organization_id
-    await supabase.auth.updateUser({
-      data: { 
-        organization_id: org.id,
-        organization_name: org.name
-      }
-    });
-
-    setOrganization(org);
-    setUserRole('admin');
-    setShowCompanyPrompt(false);
-    
-    console.log('✅ Organization created from metadata:', org.name);
-    
-    // Fetch assets for the new organization
-    await fetchAssets(org.id);
-    
-    toast.success(`✅ Welcome ${org.name}!`);
-    
-  } catch (error) {
-    console.error('❌ Error creating organization from metadata:', error);
-    toast.error('Failed to create organization');
-  }
-};
+      setOrganization(org);
+      setUserRole('admin');
+      setShowCompanyPrompt(false);
+      
+      console.log('✅ Organization created from metadata:', org.name);
+      
+      await fetchAssets(org.id);
+      
+      toast.success(`✅ Welcome ${org.name}!`);
+      
+    } catch (error) {
+      console.error('❌ Error creating organization from metadata:', error);
+      toast.error('Failed to create organization');
+    }
+  };
 
   useEffect(() => {
     const handleNewUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Check if this is a new Google user
         const isNewUser = user.created_at === user.last_sign_in_at;
         const provider = user.app_metadata?.provider || user.identities?.[0]?.provider;
         
         if (isNewUser && provider === 'google') {
-          // This is a new user who signed up with Google
           console.log('🆕 New Google user registered:', user.email);
           
-          // Check if they have company_name
           if (!user.user_metadata?.company_name) {
             setShowCompanyPrompt(true);
           }
@@ -384,7 +498,6 @@ const createOrganizationFromMetadata = async (user) => {
   // Check if onboarding is needed
   useEffect(() => {
     const checkOnboarding = async () => {
-      // Wait until we have the organization data
       if (!organization) {
         setOnboardingChecked(true);
         return;
@@ -392,7 +505,6 @@ const createOrganizationFromMetadata = async (user) => {
 
       console.log('🏢 Checking onboarding for organization:', organization.id);
 
-      // Check if this organization has any facilities yet
       const { data: facilities, error } = await supabase
         .from('facilities')
         .select('id')
@@ -405,7 +517,6 @@ const createOrganizationFromMetadata = async (user) => {
         return;
       }
 
-      // If no facilities exist, trigger the onboarding wizard
       if (!facilities || facilities.length === 0) {
         console.log('🚀 No facilities found - showing onboarding');
         setShowOnboarding(true);
@@ -418,7 +529,7 @@ const createOrganizationFromMetadata = async (user) => {
     };
 
     checkOnboarding();
-  }, [organization]); // This will trigger when organization is set
+  }, [organization]);
 
   
   const handleSaveCompanyName = async (orgData) => {
@@ -428,7 +539,6 @@ const createOrganizationFromMetadata = async (user) => {
       
       const { data: { user } } = await supabase.auth.getUser();
       
-      // 1. Update user metadata with company name
       const { data: updatedUser, error: updateError } = await supabase.auth.updateUser({
         data: { 
           company_name: orgData.name,
@@ -440,7 +550,6 @@ const createOrganizationFromMetadata = async (user) => {
       
       if (updateError) throw updateError;
       
-      // 2. Create organization
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .insert({
@@ -458,7 +567,6 @@ const createOrganizationFromMetadata = async (user) => {
         
       if (orgError) {
         if (orgError.code === '23505') {
-          // Organization already exists, try to fetch it
           const { data: existingOrg } = await supabase
             .from('organizations')
             .select('*')
@@ -476,7 +584,6 @@ const createOrganizationFromMetadata = async (user) => {
         throw orgError;
       }
       
-      // 3. Add user as admin member
       const { error: memberError } = await supabase
         .from('organization_members')
         .insert({
@@ -488,14 +595,12 @@ const createOrganizationFromMetadata = async (user) => {
       
       if (memberError) throw memberError;
       
-      // 4. Update user metadata with organization_id
       await supabase.auth.updateUser({
         data: { 
           organization_id: org.id,
         }
       });
       
-      // 5. Set state
       setOrganization(org);
       setUserRole('admin');
       setShowCompanyPrompt(false);
@@ -504,11 +609,8 @@ const createOrganizationFromMetadata = async (user) => {
       console.log('✅ Company setup complete for:', orgData.name);
       toast.success(`🎉 Welcome ${orgData.name}! Let's set up your first facility.`);
       
-      // 6. Fetch initial data
       await fetchDashboardStats(org.id);
       await fetchAssets(org.id);
-      
-      // 7. Check if onboarding is needed (will trigger via useEffect)
       
     } catch (error) {
       console.error('❌ Error saving company:', error);
@@ -520,7 +622,6 @@ const createOrganizationFromMetadata = async (user) => {
 
   const handleOnboardingComplete = async () => {
     try {
-      // Update user metadata to mark onboarding as complete
       const { data: { user } } = await supabase.auth.getUser();
       await supabase.auth.updateUser({
         data: { 
@@ -532,17 +633,18 @@ const createOrganizationFromMetadata = async (user) => {
       setShowOnboarding(false);
       toast.success('🎉 Onboarding complete! You\'re ready to go.');
       
-      // Refresh dashboard data
       if (organization) {
         await fetchDashboardStats(organization.id);
         await fetchAssets(organization.id);
         await fetchHistory();
+        fetchDocumentStats(); // ✅ Add this
       }
     } catch (error) {
       console.error('Error completing onboarding:', error);
       toast.error('Failed to complete onboarding');
     }
   };
+
   const fetchAssets = async (orgId) => {
     try {
       console.log('📦 Fetching assets for organization:', orgId);
@@ -581,17 +683,12 @@ const createOrganizationFromMetadata = async (user) => {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
-        // Check if user has company_name in metadata
         const hasCompanyName = user.user_metadata?.company_name;
         
-        // Check if user has organization in organizations table
         if (!hasCompanyName) {
-          // Show company name prompt for new Google users
           setShowCompanyPrompt(true);
         } else {
-          // User already has organization
           setShowCompanyPrompt(false);
-          // Fetch organization details
           await fetchOrgAndAssets(user.id);
         }
       }
@@ -627,7 +724,6 @@ const createOrganizationFromMetadata = async (user) => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user && !user.user_metadata.company_name) {
-        // Prompt user to add company name
         setShowCompanyPrompt(true);
       }
     };
@@ -648,7 +744,6 @@ const createOrganizationFromMetadata = async (user) => {
   useEffect(() => {
     const fetchOrgAndAssets = async (userId) => {
       try {
-        // Fetch organization
         const { data: orgData, error: orgError } = await supabase
           .from('organization_members')
           .select(`role, organization_id, organizations (id, name, company_number)`)
@@ -662,14 +757,12 @@ const createOrganizationFromMetadata = async (user) => {
           setUserRole(orgData.role);
           await fetchDashboardStats(orgData.organizations.id);
           
-          // Fetch assets
           const { data: assetData } = await supabase
             .from('assets')
             .select('id, name');
           if (assetData) setAssets(assetData);
         }
 
-        // Fetch facilities
         const { data: facData, error: facError } = await supabase
           .from('facilities')
           .select('id, name');
@@ -701,7 +794,6 @@ const createOrganizationFromMetadata = async (user) => {
 
   // --- Data Fetching Functions ---
   const fetchDashboardStats = async (orgId) => {
-    // First, get the total count
     const { count, error: countError } = await supabase
       .from('emissions_logs')
       .select('*', { count: 'exact', head: true })
@@ -714,7 +806,6 @@ const createOrganizationFromMetadata = async (user) => {
     
     console.log(`📊 Total records in database: ${count}`);
     
-    // Now get all emissions data for the total
     let allData = [];
     let hasMore = true;
     let page = 0;
@@ -748,7 +839,7 @@ const createOrganizationFromMetadata = async (user) => {
     const total = allData.reduce((sum, row) => sum + (parseFloat(row.calculated_kg_co2e) || 0), 0);
     setDashboardStats({
       totalEmissions: total,
-      totalTransactions: allData.length // Use the actual count from fetched data
+      totalTransactions: allData.length
     });
     
     console.log(`📊 Dashboard stats: ${allData.length} transactions, ${total} kgCO2e`);
@@ -759,7 +850,7 @@ const createOrganizationFromMetadata = async (user) => {
       console.log("📊 Organization loaded, fetching history...");
       fetchHistory();
     }
-  }, [organization]); // Runs when organization is set
+  }, [organization]);
 
   const availableYears = useMemo(() => {
     console.log("🔄 Computing available years from historyData:", historyData?.length || 0, "records");
@@ -772,7 +863,6 @@ const createOrganizationFromMetadata = async (user) => {
     const years = new Set();
     historyData.forEach(row => {
       if (row.start_date) {
-        // Handle both string and date objects
         let yearStr;
         if (typeof row.start_date === 'string') {
           yearStr = row.start_date.substring(0, 4);
@@ -795,17 +885,14 @@ const createOrganizationFromMetadata = async (user) => {
   }, [historyData]);
 
 
-
-  // Also update the selectedYear useEffect
   useEffect(() => {
     if (availableYears.length > 0) {
-      // If current selected year is not in available years, use the first one
       if (!availableYears.includes(selectedYear)) {
         setSelectedYear(availableYears[0]);
       }
     }
   }, [availableYears]);
-    // 👇 AUTO-SELECT MOST RECENT YEAR
+
   useEffect(() => {
     if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
       setSelectedYear(availableYears[0]);
@@ -869,7 +956,6 @@ const createOrganizationFromMetadata = async (user) => {
           page++;
         }
         
-        // If we got less than pageSize, we've reached the end
         if (!data || data.length < pageSize) {
           hasMore = false;
         }
@@ -878,7 +964,6 @@ const createOrganizationFromMetadata = async (user) => {
       console.log("✅ History fetched successfully:", allData?.length, "records total");
       
       if (allData && allData.length > 0) {
-        // Log all distinct years found
         const years = new Set();
         const yearCounts = {};
         
@@ -904,55 +989,29 @@ const createOrganizationFromMetadata = async (user) => {
       setLoadingHistory(false);
     }
   };
+
   // --- File Upload Functions ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Detect if it's a PDF or Image
     const isPDF = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
     const isImage = selectedFile.type.startsWith('image/');
 
     if (isPDF || isImage) {
-      // 🚀 Route to PDF/Image Portal
       setPdfFile(selectedFile);
       setShowPDFPortal(true);
-      setFile(null); // Clear CSV file state
+      setFile(null);
       setError('');
     } else {
-      // 📊 Route to CSV/Excel Parser
       setFile(selectedFile);
-      setPdfFile(null); // Clear PDF file state
+      setPdfFile(null);
       setShowPDFPortal(false);
       setError('');
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) {
-      setError('Please select a file first');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('data_type', uploadType);
-
-    try {
-      const response = await axios.post('http://localhost:8000/upload-csv', formData, { 
-        headers: { 'Content-Type': 'multipart/form-data' } 
-      });
-      setResult(response.data);
-      setData(response.data.data);
-    } catch (err) {
-      setError('Error processing file: ' + (err.response?.data?.detail || err.message));
-    } finally { 
-      setLoading(false); 
-    }
-  };
+  
 
   // --- Data Processing Functions ---
   const getFieldConfig = (type) => {
@@ -977,12 +1036,10 @@ const createOrganizationFromMetadata = async (user) => {
 
     row[field] = value;
 
-    // Auto-populate factor when type changes
     if (field === fieldConfig.type) {
       row[fieldConfig.factor] = DEFRA_FACTORS[value] || 0;
     }
 
-    // Recalculate emissions
     row['Total kgCO2e'] = calculateEmissions(row, fieldConfig);
 
     newData[index] = row;
@@ -996,7 +1053,6 @@ const createOrganizationFromMetadata = async (user) => {
     const fieldConfig = getFieldConfig(dataType);
 
     const volume = parseFloat(row[fieldConfig.volume]);
-    // eslint-disable-next-line no-unused-vars
     const factor = parseFloat(row[fieldConfig.factor]);
     const site = row[fieldConfig.site];
 
@@ -1039,7 +1095,7 @@ const createOrganizationFromMetadata = async (user) => {
         return {
           organization_id: organization.id,
           asset_id: matchedAsset ? matchedAsset.id : null,
-          defra_factor_id: null, 
+          defra_factor_id: row['DEFRA Factor ID'] || null,
           start_date: row[fieldConfig.date], 
           end_date: row[fieldConfig.date],
           raw_quantity: parseFloat(row[fieldConfig.volume]) || 0,
@@ -1050,6 +1106,7 @@ const createOrganizationFromMetadata = async (user) => {
             asset_name: rawName,
             fuel_type: row[fieldConfig.type],
             defra_factor_used: row[fieldConfig.factor],
+            defra_factor_year: row['DEFRA Factor Year'] || null,
             original_filename: result.filename,
             auto_mapped: !!matchedAsset
           }
@@ -1067,7 +1124,6 @@ const createOrganizationFromMetadata = async (user) => {
       await fetchHistory();
       await fetchDashboardStats(organization.id);
       
-      // Reset upload state
       setResult(null);
       setData([]);
       setCleanData([]);
@@ -1084,7 +1140,6 @@ const createOrganizationFromMetadata = async (user) => {
   };
 
   // --- Export Functions ---
-  // eslint-disable-next-line no-unused-vars
   const exportSECRReport = () => {
     const wb = XLSX.utils.book_new();
     const summaryData = [
@@ -1455,129 +1510,133 @@ const renderDashboard = () => (
         
         {/* 2. REPORT GENERATION DROPDOWN */}
         <div style={{ position: 'relative' }}>
-          <button 
-            onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
-            disabled={loading || availableYears.length === 0}
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: availableYears.length > 0 ? '#16a34a' : '#94a3b8',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: '600',
-              cursor: loading || availableYears.length === 0 ? 'not-allowed' : 'pointer',
-              fontSize: '0.95rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-          >
-            {loading ? '⏳ Generating...' : '📥 Generate Reports'}
-            <span style={{ fontSize: '0.8rem' }}>▼</span>
-          </button>
+        <button 
+          onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
+          disabled={loading || availableYears.length === 0}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: availableYears.length > 0 ? '#16a34a' : '#94a3b8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: '600',
+            cursor: loading || availableYears.length === 0 ? 'not-allowed' : 'pointer',
+            fontSize: '0.95rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          {loading ? '⏳ Generating...' : '📥 Generate Reports'}
+          <span style={{ fontSize: '0.8rem' }}>▼</span>
+        </button>
 
-          {/* Dropdown Menu */}
-          {reportDropdownOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: '0.5rem',
-              backgroundColor: 'white',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-              zIndex: 100,
-              minWidth: '280px',
-              overflow: 'hidden'
-            }}>
-              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase' }}>
-                  Generate Report for {selectedYear}
-                </span>
-              </div>
-              
-              {[
-                { type: 'SECR', label: '🇬🇧 SECR Compliance Report (PDF)', desc: 'UK Streamlined Energy & Carbon Reporting' },
-                { type: 'CSRD', label: '🇪🇺 CSRD / ESRS Report (PDF)', desc: 'EU Corporate Sustainability Reporting' },
-                { type: 'ISSB', label: '🌍 ISSB / IFRS S2 Report (PDF)', desc: 'International Climate Disclosures' },
-                { type: 'AUDITOR_EXCEL', label: '📊 Auditor Data Export (Excel)', desc: 'Granular GHG Protocol mapping for Big 4' }
-              ].map((report) => (
-                <button
-                  key={report.type}
-                  onClick={async () => {
-                    setReportDropdownOpen(false);
-                    setLoading(true);
-                    try {
-                      const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-sustainability-report`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          organization_id: organization.id,
-                          reporting_year: selectedYear,
-                          report_type: report.type
-                        })
-                      });
-                      
-                      const result = await response.json();
-                      
-                      if (result.status === 'success') {
-                        const isExcel = report.type === 'AUDITOR_EXCEL';
-                        const mimeType = isExcel 
-                          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                          : 'application/pdf';
-                        
-                        const binaryString = window.atob(isExcel ? result.file_base64 : result.pdf_base64);
-                        const bytes = new Uint8Array(binaryString.length);
-                        for (let i = 0; i < binaryString.length; i++) {
-                          bytes[i] = binaryString.charCodeAt(i);
-                        }
-                        
-                        const blob = new Blob([bytes], { type: mimeType });
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = result.filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                        
-                        toast.success(`${report.type} Report for ${selectedYear} downloaded!`);
-                      } else {
-                        toast.error(result.detail || 'Failed to generate report');
-                      }
-                    } catch (error) {
-                      console.error('Report generation error:', error);
-                      toast.error('Failed to generate report');
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.85rem 1rem',
-                    backgroundColor: 'white',
-                    border: 'none',
-                    borderBottom: '1px solid #f1f5f9',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                >
-                  <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
-                    {report.label}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                    {report.desc}
-                  </div>
-                </button>
-              ))}
+        {/* Dropdown Menu */}
+        {reportDropdownOpen && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            marginTop: '0.5rem',
+            backgroundColor: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: '8px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+            zIndex: 100,
+            minWidth: '300px',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase' }}>
+                Generate Report for {selectedYear}
+              </span>
             </div>
-          )}
-        </div>
+            
+            {[
+              { type: 'SECR', label: '🇬🇧 Enhanced SECR Report', desc: 'With narratives & YoY comparison' },
+              { type: 'CSRD', label: '🇪🇺 Enhanced CSRD Report', desc: 'With methodology & analysis' },
+              { type: 'ISSB', label: '🌍 Enhanced ISSB Report', desc: 'With trend analysis & narratives' },
+              { type: 'AUDITOR_EXCEL', label: '📊 Auditor Data Export (Excel)', desc: 'Granular GHG Protocol mapping' }
+            ].map((report) => (
+              <button
+                key={report.type}
+                onClick={async () => {
+                  setReportDropdownOpen(false);
+                  setLoading(true);
+                  try {
+                    const isExcel = report.type === 'AUDITOR_EXCEL';
+                    const endpoint = isExcel ? '/generate-sustainability-report' : '/generate-enhanced-report';
+                    
+                    const response = await fetch(`${API_URL}${endpoint}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        organization_id: organization.id,
+                        reporting_year: selectedYear,
+                        report_type: report.type,
+                        include_narratives: true
+                      })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                      const mimeType = isExcel 
+                        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                        : 'application/pdf';
+                      
+                      const binaryString = window.atob(isExcel ? result.file_base64 : result.pdf_base64);
+                      const bytes = new Uint8Array(binaryString.length);
+                      for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                      }
+                      
+                      const blob = new Blob([bytes], { type: mimeType });
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = result.filename || `Enhanced_${report.type}_Report_${selectedYear}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                      
+                      toast.success(`${report.type} Report for ${selectedYear} downloaded!`);
+                    } else {
+                      toast.error(result.detail || 'Failed to generate report');
+                    }
+                  } catch (error) {
+                    console.error('Report generation error:', error);
+                    toast.error('Failed to generate report');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'white',
+                  border: 'none',
+                  borderBottom: '1px solid #f1f5f9',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+              >
+                <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.95rem', marginBottom: '0.2rem' }}>
+                  {report.label}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  {report.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       </div>
     </div>
 
@@ -1619,6 +1678,44 @@ const renderDashboard = () => (
             Upload your first file
           </button>
         )}
+      </div>
+      
+      {/* ✅ Document Stats Card - Fixed */}
+      <div className="card">
+        <h3>📄 Documents</h3>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+          <span style={{ fontSize: '0.85rem', background: '#f1f5f9', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+            📤 {docStats?.uploaded || 0}
+          </span>
+          <span style={{ fontSize: '0.85rem', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+            ⏳ {docStats?.processing || 0}
+          </span>
+          <span style={{ fontSize: '0.85rem', background: '#dbeafe', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+            📝 {docStats?.ready_for_review || 0}
+          </span>
+          <span style={{ fontSize: '0.85rem', background: '#dcfce7', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+            ✅ {docStats?.approved || 0}
+          </span>
+          <span style={{ fontSize: '0.85rem', background: '#fee2e2', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+            ❌ {docStats?.rejected || 0}
+          </span>
+        </div>
+        <div className="subtext" style={{ marginTop: '0.5rem' }}>
+          <button
+            onClick={() => setActiveTab('documents')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              textDecoration: 'underline',
+              padding: 0
+            }}
+          >
+            View all documents →
+          </button>
+        </div>
       </div>
     </div>
     
@@ -1793,7 +1890,7 @@ const renderHistory = () => (
   );
 
   // --- Main Render ---
-      return (
+  return (
     <div className="App">
       <header className="App-header">
         <div className="header-top">
@@ -1822,6 +1919,15 @@ const renderHistory = () => (
             }}
           >
             ⬆️ Upload Data
+          </button>
+          <button 
+            className={`nav-btn ${activeTab === 'documents' ? 'active' : ''}`} 
+            onClick={() => {
+              setActiveTab('documents');
+              setIsMenuOpen(false);
+            }}
+          >
+            📄 Documents
           </button>
           <button 
             className={`nav-btn ${activeTab === 'history' ? 'active' : ''}`} 
@@ -1853,7 +1959,27 @@ const renderHistory = () => (
           >
             🏢 Assets
           </button>
-          
+           <button 
+              className={`nav-btn ${activeTab === 'org-data' ? 'active' : ''}`} 
+              onClick={() => {
+                setActiveTab('org-data');
+                setIsMenuOpen(false);
+              }}
+            >
+              📊 Org Data
+            </button>
+            <button 
+              className={`nav-btn ${activeTab === 'manual-entry' ? 'active' : ''}`} 
+              onClick={() => {
+                console.log('🔘 Manual Entry tab clicked');
+                setActiveTab('manual-entry');
+                setShowManualEntry(true);
+                setIsMenuOpen(false);
+              }}
+            >
+              ✏️ Manual Entry
+            </button>
+
           {/* Hamburger Toggle Button */}
           <button 
             className="hamburger-toggle"
@@ -1865,13 +1991,10 @@ const renderHistory = () => (
         </nav>
       </header>
 
-
-
-
-
       <div className="container">
         {activeTab === 'dashboard' && renderDashboard()}
-        {/* PDF/IMAGE INGESTION PORTAL */}
+        
+        {/* PDF/IMAGE INGESTION PORTAL - With Auto-Repair */}
         {showPDFPortal && pdfFile && (
           <PDFIngestionPortal
             file={pdfFile}
@@ -1883,12 +2006,17 @@ const renderHistory = () => (
               setFile(null);
             }}
             onApprove={(data) => {
-              console.log("Approved extraction:", data);
-              toast.success("Data approved and saved!");
+              console.log("✅ Approved extraction:", data);
+              toast.success("✅ Data approved and saved!");
               setShowPDFPortal(false);
               setPdfFile(null);
               setFile(null);
               setActiveTab('history');
+              // Refresh data
+              if (organization) {
+                fetchHistory();
+                fetchDashboardStats(organization.id);
+              }
             }}
             onPurge={() => {
               toast.success("File discarded");
@@ -1898,23 +2026,33 @@ const renderHistory = () => (
             }}
           />
         )}
-        {activeTab === 'upload' && !showPDFPortal && (
-          <div className="view-section">
-            {!showBulkUpload ? (
-              <>
-                {renderFileUpload()}
-                {renderReviewQueue()}
-                {organization?.id && <RecentProcessedData organizationId={organization.id} />}
-              </>
-            ) : (
-              <BulkUpload 
-                organizationId={organization?.id}
-                onBack={() => setShowBulkUpload(false)}
-              />
-            )}
-          </div>
-        )}
         
+        {activeTab === 'upload' && !showPDFPortal && (
+            <div className="view-section">
+              {!showBulkUpload ? (
+                <>
+                  <UploadManager 
+                    organization={organization}
+                    onUploadComplete={(data) => {
+                      console.log('Upload complete:', data);
+                      fetchHistory();
+                      fetchDashboardStats(organization.id);
+                    }}
+                  />
+                  {organization?.id && <RecentProcessedData organizationId={organization.id} />}
+                </>
+              ) : (
+                <BulkUpload 
+                  organizationId={organization?.id}
+                  onBack={() => setShowBulkUpload(false)}
+                />
+              )}
+            </div>
+        )}
+        {activeTab === 'documents' && (
+          <DocumentStatus organization={organization} />
+        )}
+
         {activeTab === 'history' && renderHistory()}
 
         {activeTab === 'team' && (
@@ -1924,6 +2062,34 @@ const renderHistory = () => (
         {activeTab === 'assets' && (
           <AssetManager organization={organization} />
         )}
+        {activeTab === 'org-data' && (
+          <OrganizationMetadata 
+            organization={organization} 
+            userRole={userRole} 
+          />
+        )}  
+      
+      {activeTab === 'manual-entry' && showManualEntry && (
+        <div className="view-section" style={{ padding: 0, margin: 0 }}>
+          <ManualEntryStandalone
+            organization={organization}
+            onComplete={() => {
+              console.log('✅ Manual entry completed');
+              setShowManualEntry(false);
+              setActiveTab('dashboard');
+              fetchHistory();
+              fetchDashboardStats(organization.id);
+              toast.success('✅ Data entered successfully!');
+            }}
+            onCancel={() => {
+              console.log('❌ Manual entry cancelled');
+              setShowManualEntry(false);
+              setActiveTab('dashboard');
+            }}
+          />
+        </div>
+      )}
+
       </div>
       
       {/* Onboarding Wizard - Full Screen Overlay */}
@@ -1944,62 +2110,60 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
 
-useEffect(() => {
-  const initializeAuth = async () => {
-    try {
-      console.log('🚀 Initializing auth...');
-      
-      // Get initial session
-      const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('❌ Error getting session:', error);
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        console.log('🚀 Initializing auth...');
+        
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('❌ Error getting session:', error);
+        }
+        
+        console.log('📊 Initial session:', initialSession ? 'Exists' : 'None');
+        
+        if (initialSession) {
+          console.log('👤 Session found for:', initialSession.user.email);
+          setSession(initialSession);
+        } else {
+          console.log('👤 No session found');
+        }
+      } catch (error) {
+        console.error('❌ Auth initialization error:', error);
+      } finally {
+        setLoading(false);
+        console.log('✅ Auth initialization complete');
       }
-      
-      console.log('📊 Initial session:', initialSession ? 'Exists' : 'None');
-      
-      if (initialSession) {
-        console.log('👤 Session found for:', initialSession.user.email);
-        setSession(initialSession);
-      } else {
-        console.log('👤 No session found');
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔐 App auth event:', event);
+        console.log('📊 App session:', session ? 'Exists' : 'None');
+        
+        if (event === 'SIGNED_IN') {
+          console.log('✅ User signed in:', session?.user?.email);
+          setSession(session);
+        } else if (event === 'SIGNED_OUT') {
+          console.log('👋 User signed out');
+          setSession(null);
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('🔄 Token refreshed');
+        } else if (event === 'USER_UPDATED') {
+          console.log('👤 User updated');
+        }
+        
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('❌ Auth initialization error:', error);
-    } finally {
-      setLoading(false);
-      console.log('✅ Auth initialization complete');
-    }
-  };
+    );
 
-  initializeAuth();
-
-  // Listen for auth state changes
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      console.log('🔐 App auth event:', event);
-      console.log('📊 App session:', session ? 'Exists' : 'None');
-      
-      if (event === 'SIGNED_IN') {
-        console.log('✅ User signed in:', session?.user?.email);
-        setSession(session);
-      } else if (event === 'SIGNED_OUT') {
-        console.log('👋 User signed out');
-        setSession(null);
-      } else if (event === 'TOKEN_REFRESHED') {
-        console.log('🔄 Token refreshed');
-      } else if (event === 'USER_UPDATED') {
-        console.log('👤 User updated');
-      }
-      
-      setLoading(false);
-    }
-  );
-
-  return () => {
-    subscription.unsubscribe();
-  };
-}, []);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
 
   if (loading) {
@@ -2012,6 +2176,8 @@ useEffect(() => {
   
   return (
     <BrowserRouter>
+     <ReferenceDataProvider> {/* ✅ Wrap everything */}
+
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
@@ -2026,7 +2192,6 @@ useEffect(() => {
         <Route path="/glossary" element={<Glossary />} />
         <Route path="/auth/magic" element={<MagicLink />} />
 
-
         <Route path="/dashboard/*" element={
           <ProtectedRoute>
             <DashboardLayout>
@@ -2039,6 +2204,8 @@ useEffect(() => {
       </Routes>
       
       <CookieBanner />
+     </ReferenceDataProvider>
+
     </BrowserRouter>
   );
 }

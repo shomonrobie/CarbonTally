@@ -1,20 +1,25 @@
-// frontend/src/BetaLogin.jsx
+// frontend/src/BetaLogin.jsx - Fixed version
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import toast from 'react-hot-toast';
 import './css/BetaLogin.css';
 
 function BetaLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState('');
+  
+  // ✅ Get email from location state (passed from MagicLink)
+  const preFilledEmail = location.state?.email || '';
+  
+  const [email, setEmail] = useState(preFilledEmail || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const location = useLocation();
 
-const preFilledEmail = location.state?.email || '';
   // Check if already logged in
   useEffect(() => {
     const checkSession = async () => {
@@ -26,7 +31,7 @@ const preFilledEmail = location.state?.email || '';
     checkSession();
   }, [navigate]);
 
-  // ✅ Handle auto-login from magic link (when user clicks email link)
+  // ✅ Handle auto-login from magic link
   useEffect(() => {
     const autoLogin = searchParams.get('auto') === 'true';
     const firstLogin = searchParams.get('first_login') === 'true';
@@ -42,13 +47,12 @@ const preFilledEmail = location.state?.email || '';
       }
     }
 
-    // If first login, show welcome message
     if (firstLogin) {
       setMessage('🎉 Welcome to CarbonTally Beta! Please set your password to continue.');
     }
   }, [searchParams]);
 
-  // ✅ Auto-login handler (for magic link flow)
+  // ✅ Auto-login handler
   const handleAutoLogin = async (email, password) => {
     setLoading(true);
     try {
@@ -64,12 +68,12 @@ const preFilledEmail = location.state?.email || '';
         return;
       }
 
-      // Check if user is a beta user
-      const { data: betaCheck } = await supabase
+      // ✅ Check if user is a beta user
+      const { data: betaCheck, error: betaError } = await supabase
         .from('beta_users')
         .select('email')
         .eq('email', email.toLowerCase().trim())
-        .single();
+        .maybeSingle();
 
       if (!betaCheck) {
         await supabase.auth.signOut();
@@ -88,16 +92,30 @@ const preFilledEmail = location.state?.email || '';
     }
   };
 
-  // ✅ Regular login (for returning users)
+  // ✅ Handle beta login
   const handleBetaLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     setMessage('');
 
+    // ✅ Validate email
+    const emailTrimmed = email?.trim();
+    if (!emailTrimmed) {
+      setError('❌ Please enter your email address.');
+      setLoading(false);
+      return;
+    }
+
+    if (!emailTrimmed.includes('@')) {
+      setError('❌ Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
+        email: emailTrimmed.toLowerCase(),
         password,
       });
 
@@ -114,11 +132,11 @@ const preFilledEmail = location.state?.email || '';
       }
 
       // ✅ Check if user is a beta user
-      const { data: betaCheck } = await supabase
+      const { data: betaCheck, error: betaError } = await supabase
         .from('beta_users')
         .select('email')
-        .eq('email', email.toLowerCase().trim())
-        .single();
+        .eq('email', emailTrimmed.toLowerCase())
+        .maybeSingle();
 
       if (!betaCheck) {
         await supabase.auth.signOut();
@@ -164,11 +182,12 @@ const preFilledEmail = location.state?.email || '';
             <label>Email Address</label>
             <input
               type="email"
-              value={email || preFilledEmail}
+              value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@company.com"
               disabled={loading}
+              className={!email ? 'input-error' : ''}
             />
           </div>
 

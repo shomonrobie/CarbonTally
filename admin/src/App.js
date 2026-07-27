@@ -1,4 +1,5 @@
-// src/App.js
+// src/App.js - Add the assignment route import and path
+
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -17,8 +18,11 @@ import DefraFactors from './pages/admin/DefraFactors';
 import Customers from './pages/admin/Customers';
 import ExtractionErrorReview from './pages/admin/ExtractionErrorReview';
 import BetaManagement from './pages/admin/BetaManagement';
-import ReviewAssignment from './pages/admin/ReviewAssignment';
 import GlossaryManagement from './pages/admin/GlossaryManagement';
+import ManualReviewQueue from './pages/admin/ManualReviewQueue';
+import StaffReviewQueue from './components/StaffReviewQueue';
+import LogViewer from './components/LogViewer';
+import AdminAssignment from './components/AdminAssignment'; // ✅ Add this import
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -68,11 +72,15 @@ const AppRoutes = () => {
         <Route path="/admin/settings" element={<Settings />} />
         <Route path="/admin/defra" element={<DefraFactors />} />
         <Route path="/admin/customers" element={<Customers />} />
+        <Route path="/admin/manual-review-queue" element={<ManualReviewQueue />} />
         <Route path="/admin/errors" element={<ExtractionErrorReview />} />
         <Route path="/admin/beta-management" element={<BetaManagement />} />
-        <Route path="/admin/review-assignment" element={<ReviewAssignment />} />
+        
         <Route path="/admin/glossary-management" element={<GlossaryManagement />} />
-        <Route path="/admin/staff/dashboard" element={<StaffDashboard />} />
+        <Route path="/staff-dashboard" element={<StaffDashboard />} />
+        <Route path="/admin/reviews-queue" element={<StaffReviewQueue />} />
+        <Route path="/admin/log-viewer" element={<LogViewer />} />
+        <Route path="/admin/assignments" element={<AdminAssignment />} /> {/* ✅ Add this */}
       </Route>
 
       {/* Catch-all global route fallback */}

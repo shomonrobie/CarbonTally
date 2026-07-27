@@ -25,6 +25,19 @@
   margin-bottom: 1rem;
 }
 
+.member-status {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.1rem;
+}
+
+.member-email {
+  font-size: 0.85rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+
 /* ===== ACCESS DENIED ===== */
 .access-denied {
   background: #fee2e2;
@@ -550,4 +563,98 @@
     background: #7f1d1d;
     color: #fca5a5;
   }
+}
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.member-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.member-name {
+  font-weight: 500;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.member-email {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.member-status {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-top: 0.1rem;
+}
+
+.role-select {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: white;
+}
+
+.role-select:focus {
+  outline: none;
+  border-color: #16a34a;
+}
+
+.role-badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.bg-red-100 {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.bg-blue-100 {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.bg-gray-100 {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.remove-btn:hover {
+  background: #fee2e2;
+}
+
+.admin-badge {
+  color: #8b5cf6;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
