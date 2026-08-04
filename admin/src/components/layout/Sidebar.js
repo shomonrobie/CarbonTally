@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useRealtime } from '../../context/RealtimeContext';
 import {
   FaTachometerAlt,
   FaTasks,
@@ -21,14 +22,17 @@ import {
   FaFileAlt,
   FaSignOutAlt,
   FaBars,
-  FaTimes
+  FaBell,
+  FaCircle,
+  FaRobot,
 } from 'react-icons/fa';
-import '../../css/sidebar.css';
+import '../../css/Sidebar.css';
 
 const Sidebar = () => {
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { isConnected, unreadCount } = useRealtime();
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -37,6 +41,19 @@ const Sidebar = () => {
 
   const toggleMobile = () => setIsMobileOpen(!isMobileOpen);
   const closeMobile = () => setIsMobileOpen(false);
+
+  // Notification badge
+  const notificationBadge = unreadCount > 0 ? (
+    <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+  ) : null;
+
+  // Live status indicator
+  const liveStatus = (
+    <span className={`live-status ${isConnected ? 'connected' : 'disconnected'}`}>
+      <FaCircle className={`status-dot ${isConnected ? 'active' : ''}`} />
+      {isConnected ? 'Live' : 'Offline'}
+    </span>
+  );
 
   return (
     <>
@@ -56,7 +73,10 @@ const Sidebar = () => {
         {/* Brand */}
         <div className="sidebar-brand">
           <h2>🌱 CarbonTally</h2>
-          <p className="brand-sub">Admin Panel</p>
+          <div className="brand-sub">
+            Admin Panel
+            {liveStatus}
+          </div>
         </div>
 
         {/* Navigation */}
@@ -77,6 +97,8 @@ const Sidebar = () => {
             <FaClipboardList /> My Queue
           </NavLink>
 
+          <div className="nav-section">Management</div>
+
           <NavLink to="/admin/users" className="nav-link" onClick={closeMobile}>
             <FaUserFriends /> Users
           </NavLink>
@@ -96,6 +118,8 @@ const Sidebar = () => {
           <NavLink to="/admin/customers" className="nav-link" onClick={closeMobile}>
             <FaUsers /> Customers
           </NavLink>
+
+          <div className="nav-section">Data & Settings</div>
 
           <NavLink to="/admin/defra" className="nav-link" onClick={closeMobile}>
             <FaLeaf /> DEFRA Factors
@@ -121,6 +145,17 @@ const Sidebar = () => {
             <FaBook /> Glossary
           </NavLink>
 
+          {/* ✅ Notifications with badge */}
+          <NavLink to="/admin/notifications" className="nav-link" onClick={closeMobile}>
+            <FaBell /> Notifications {notificationBadge}
+          </NavLink>
+          <NavLink to="/admin/work-hub" className="nav-link" onClick={closeMobile}>
+            <FaHome /> Work Hub
+            {unreadCount > 0 && (
+              <span className="badge">{unreadCount}</span>
+            )}
+          </NavLink>
+
           <NavLink to="/admin/settings" className="nav-link" onClick={closeMobile}>
             <FaCog /> Settings
           </NavLink>
@@ -129,14 +164,26 @@ const Sidebar = () => {
         {/* Footer */}
         <div className="sidebar-footer">
           <div className="user-info">
-            <div className="avatar">{user?.email?.[0]?.toUpperCase() || 'A'}</div>
+            <div className="avatar">
+              {user?.email?.[0]?.toUpperCase() || 'A'}
+            </div>
             <div className="user-details">
               <div className="user-name">{user?.email || 'Admin'}</div>
               <div className="user-role">Administrator</div>
             </div>
-            <button className="logout-btn" onClick={handleLogout}>
+            <button className="logout-btn" onClick={handleLogout} title="Logout">
               <FaSignOutAlt />
             </button>
+          </div>
+          
+          {/* ✅ Realtime status in footer */}
+          <div className="sidebar-footer-status">
+            <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
+              {isConnected ? '●' : '○'}
+            </span>
+            <span className="status-text">
+              {isConnected ? 'Realtime Connected' : 'Realtime Disconnected'}
+            </span>
           </div>
         </div>
       </div>
