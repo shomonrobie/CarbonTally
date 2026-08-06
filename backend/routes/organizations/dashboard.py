@@ -5,10 +5,15 @@ from datetime import datetime, timedelta
 from auth import AuthUser, require_org_member
 from database import get_supabase_client
 
-router = APIRouter(prefix="/api/organizations/dashboard", tags=["Organization Dashboard"])
+router = APIRouter(prefix="/api/organizations", tags=["Organization Dashboard"])
 
-@router.get("/summary")
+# ==========================================
+# ✅ FIXED: Use org_id from path, not current_user.organization_id
+# ==========================================
+
+@router.get("/{org_id}/dashboard-summary")
 async def get_dashboard_summary(
+    org_id: str,  # ✅ Add org_id parameter
     current_user: AuthUser = Depends(require_org_member())
 ):
     """
@@ -17,11 +22,18 @@ async def get_dashboard_summary(
     try:
         supabase = get_supabase_client()
         
-        org_id = current_user.organization_id
-        if not org_id:
+        # ✅ Verify user has access to this organization
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not associated with an organization"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
             )
         
         # Get organization details
@@ -61,11 +73,11 @@ async def get_dashboard_summary(
         
         for record in records:
             scope = record.get('metadata', {}).get('scope', 'Unknown')
-            if scope == '1':
+            if scope == 'Scope 1' or scope == '1':
                 scope_breakdown['scope1'] += record.get('calculated_kg_co2e', 0)
-            elif scope == '2':
+            elif scope == 'Scope 2' or scope == '2':
                 scope_breakdown['scope2'] += record.get('calculated_kg_co2e', 0)
-            elif scope == '3':
+            elif scope == 'Scope 3' or scope == '3':
                 scope_breakdown['scope3'] += record.get('calculated_kg_co2e', 0)
         
         # Convert to tonnes
@@ -135,7 +147,7 @@ async def get_dashboard_summary(
                 "month_over_month_change": monthly_change
             },
             "scope_breakdown": scope_breakdown,
-            "monthly_breakdown": {k: v / 1000 for k, v in monthly_data.items()},  # Convert to tonnes
+            "monthly_breakdown": {k: v / 1000 for k, v in monthly_data.items()},
             "recent_activity": recent_activity
         }
         
@@ -143,13 +155,17 @@ async def get_dashboard_summary(
         raise
     except Exception as e:
         print(f"❌ Error getting dashboard summary: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get dashboard summary: {str(e)}"
         )
 
-@router.get("/activity")
+
+@router.get("/{org_id}/organization-activity")
 async def get_organization_activity(
+    org_id: str,  # ✅ Add org_id parameter
     days: int = Query(30, description="Number of days to look back"),
     current_user: AuthUser = Depends(require_org_member())
 ):
@@ -159,11 +175,18 @@ async def get_organization_activity(
     try:
         supabase = get_supabase_client()
         
-        org_id = current_user.organization_id
-        if not org_id:
+        # ✅ Verify user has access to this organization
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not associated with an organization"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
             )
         
         cutoff_date = datetime.utcnow() - timedelta(days=days)
@@ -241,6 +264,8 @@ async def get_organization_activity(
         raise
     except Exception as e:
         print(f"❌ Error getting organization activity: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get organization activity: {str(e)}"

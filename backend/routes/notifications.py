@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from auth import AuthUser, require_role, require_permission
+from auth import AuthUser, require_auth, require_org_admin, require_org_member, require_permission, require_role
 from database import get_supabase_client
 import resend
 import os

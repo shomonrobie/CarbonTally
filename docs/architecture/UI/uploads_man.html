@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Upload Data</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --primary-foreground: 0, 0%, 100%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: hsl(var(--muted));
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            background: hsl(var(--primary));
+        }
+        .progress-bar .fill.success { background: hsl(var(--success)); }
+        .progress-bar .fill.error { background: hsl(var(--destructive)); }
+
+        .input {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            min-width: 140px;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* Drop zone */
+        .drop-zone {
+            border: 2px dashed hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: hsl(var(--background));
+        }
+        .drop-zone:hover {
+            border-color: hsl(var(--ring));
+            background: hsl(var(--accent));
+        }
+        .drop-zone.dragover {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+            transform: scale(1.01);
+        }
+        .drop-zone .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        .drop-zone .title {
+            font-size: 16px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .drop-zone .sub {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+        .drop-zone .supported {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 8px;
+        }
+
+        /* File list */
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            transition: all 0.15s ease;
+        }
+        .file-item:hover { background: hsl(var(--accent)); }
+        .file-item .file-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        .file-item .file-info { flex: 1; }
+        .file-item .file-info .name {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .file-item .file-info .meta {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .file-item .file-status { font-size: 12px; }
+        .file-item .file-progress { width: 80px; }
+
+        /* Table */
+        .table-wrap { overflow-x: auto; }
+        .table-wrap table { width: 100%; border-collapse: collapse; }
+        .table-wrap th {
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: hsl(var(--muted-foreground));
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid hsl(var(--border));
+            background: hsl(var(--muted));
+        }
+        .table-wrap td {
+            padding: 10px 14px;
+            border-bottom: 1px solid hsl(var(--border));
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+        .table-wrap tr:hover td { background: hsl(var(--accent)); }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* Upload Mode Toggle */
+        .upload-mode-toggle {
+            display: flex;
+            gap: 8px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+        }
+        .upload-mode-btn {
+            padding: 8px 20px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .upload-mode-btn:hover { color: hsl(var(--foreground)); }
+        .upload-mode-btn.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* Stats Summary */
+        .upload-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .upload-stat {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 14px 16px;
+            text-align: center;
+        }
+        .upload-stat .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .upload-stat .label {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* Batch Grid */
+        .batch-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 16px;
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-10px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid hsl(var(--muted));
+            border-top-color: hsl(var(--primary));
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1200px) {
+            .batch-grid { grid-template-columns: 1fr; }
+            .upload-stats { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+        }
+
+        @media (max-width: 768px) {
+            .upload-stats { grid-template-columns: 1fr 1fr; }
+            .upload-mode-toggle { width: 100%; }
+            .upload-mode-btn { flex: 1; text-align: center; }
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .drop-zone { padding: 24px 16px; }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item active">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search documents, files..." />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>📤 Upload Data</h1>
+                        <p>Upload single or multiple files for carbon emissions processing</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="showToast('📋 Downloading template...')">
+                            📋 Download Template
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadMockData()">
+                            🧪 Load Mock Data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Upload Mode Toggle -->
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                    <div class="upload-mode-toggle">
+                        <button class="upload-mode-btn active" data-mode="single" onclick="switchMode('single')">
+                            📄 Single File
+                        </button>
+                        <button class="upload-mode-btn" data-mode="batch" onclick="switchMode('batch')">
+                            📚 Batch Upload
+                        </button>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span class="text-muted" style="font-size:13px;">Status:</span>
+                        <span class="badge badge-success" id="connectionStatus">🟢 Connected</span>
+                    </div>
+                </div>
+
+                <!-- Upload Stats -->
+                <div class="upload-stats" id="uploadStats">
+                    <div class="upload-stat">
+                        <div class="value" id="totalFiles">0</div>
+                        <div class="label">Total Files</div>
+                    </div>
+                    <div class="upload-stat">
+                        <div class="value" id="totalSize">0 MB</div>
+                        <div class="label">Total Size</div>
+                    </div>
+                    <div class="upload-stat">
+                        <div class="value" id="processedFiles">0</div>
+                        <div class="label">Processed</div>
+                    </div>
+                    <div class="upload-stat">
+                        <div class="value" id="pendingFiles">0</div>
+                        <div class="label">Pending</div>
+                    </div>
+                </div>
+
+                <!-- Upload Area -->
+                <div class="card">
+                    <div class="card-content">
+                        <!-- Single Upload -->
+                        <div id="singleUploadArea">
+                            <div class="drop-zone" id="dropZone">
+                                <div class="icon">📤</div>
+                                <div class="title">Drop your file here</div>
+                                <div class="sub">or click to browse</div>
+                                <div class="supported">Supported: CSV, XLSX, PDF, JPEG, PNG • Max 50MB</div>
+                            </div>
+                            <input type="file" id="fileInput" style="display:none;" accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png" />
+
+                            <div style="margin-top:16px;" id="fileListContainer">
+                                <!-- File list rendered by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Batch Upload -->
+                        <div id="batchUploadArea" style="display:none;">
+                            <div class="drop-zone" id="batchDropZone">
+                                <div class="icon">📚</div>
+                                <div class="title">Drop multiple files here</div>
+                                <div class="sub">or click to browse</div>
+                                <div class="supported">Supported: CSV, XLSX, PDF, JPEG, PNG • Max 50MB each</div>
+                            </div>
+                            <input type="file" id="batchFileInput" style="display:none;" accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png" multiple />
+
+                            <div style="margin-top:16px;" id="batchFileListContainer">
+                                <!-- Batch file list rendered by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Upload Actions -->
+                        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;border-top:1px solid hsl(var(--border));padding-top:16px;">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <select class="select" id="dataTypeSelect">
+                                    <option value="fuel">⛽ Fuel</option>
+                                    <option value="utility">💡 Utility</option>
+                                    <option value="scope3">🌍 Scope 3</option>
+                                    <option value="document">📄 Document</option>
+                                </select>
+                                <select class="select" id="batchSelect">
+                                    <option value="new">📁 New Batch</option>
+                                    <option value="existing">📂 Existing Batch</option>
+                                </select>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button class="btn btn-secondary btn-sm" onclick="clearAllFiles()">
+                                    🗑️ Clear All
+                                </button>
+                                <button class="btn btn-primary" id="uploadBtn" onclick="startUpload()">
+                                    ⬆️ Upload Files
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Processing Queue / History -->
+                <div class="card" style="margin-top:24px;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📋 Upload History</div>
+                            <div class="card-description">Recent uploads and their status</div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-ghost btn-sm" onclick="refreshHistory()">🔄 Refresh</button>
+                            <button class="btn btn-ghost btn-sm" onclick="clearHistory()">🗑️ Clear</button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Type</th>
+                                        <th>Size</th>
+                                        <th>Status</th>
+                                        <th>Progress</th>
+                                        <th>Uploaded</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <!-- Rendered by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let currentMode = 'single';
+        let uploadedFiles = [];
+        let batchFiles = [];
+        let uploadHistory = [];
+        let isUploading = false;
+        let uploadIdCounter = 0;
+
+        // ============================================
+        // MOCK DATA - Based on Schema
+        // ============================================
+
+        const mockFiles = [
+            { name: 'Utility_Bill_London_Dec2026.pdf', type: 'utility', size: 2450000, status: 'uploaded',
+                records: 12, date: '2026-12-15' },
+            { name: 'Fleet_Fuel_Q4_2026.csv', type: 'fuel', size: 1800000, status: 'processing', records: 245,
+                date: '2026-12-14' },
+            { name: 'Supplier_Invoice_IT_Equipment.pdf', type: 'scope3', size: 3100000, status: 'review', records: 8,
+                date: '2026-12-13' },
+            { name: 'Electricity_Bill_Manchester.xlsx', type: 'utility', size: 1200000, status: 'uploaded',
+                records: 18, date: '2026-12-12' },
+            { name: 'Gas_Bill_Birmingham_Q4.pdf', type: 'utility', size: 890000, status: 'processing', records: 6,
+                date: '2026-12-11' },
+            { name: 'Scope3_Supplier_Report.csv', type: 'scope3', size: 3200000, status: 'review', records: 156,
+                date: '2026-12-10' },
+            { name: 'Fleet_Maintenance_Records.xlsx', type: 'fuel', size: 560000, status: 'approved', records: 34,
+                date: '2026-12-09' },
+            { name: 'Renewable_Energy_Certificates.pdf', type: 'document', size: 450000, status: 'approved',
+                records: 0, date: '2026-12-08' }
+        ];
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const batchDropZone = document.getElementById('batchDropZone');
+        const batchFileInput = document.getElementById('batchFileInput');
+        const fileListContainer = document.getElementById('fileListContainer');
+        const batchFileListContainer = document.getElementById('batchFileListContainer');
+        const historyTableBody = document.getElementById('historyTableBody');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const dataTypeSelect = document.getElementById('dataTypeSelect');
+        const batchSelect = document.getElementById('batchSelect');
+
+        const totalFilesEl = document.getElementById('totalFiles');
+        const totalSizeEl = document.getElementById('totalSize');
+        const processedFilesEl = document.getElementById('processedFiles');
+        const pendingFilesEl = document.getElementById('pendingFiles');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // UPLOAD FUNCTIONS
+        // ============================================
+
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.upload-mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            document.getElementById('singleUploadArea').style.display = mode === 'single' ? 'block' : 'none';
+            document.getElementById('batchUploadArea').style.display = mode === 'batch' ? 'block' : 'none';
+            updateStats();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const icons = {
+                'csv': '📊',
+                'xlsx': '📊',
+                'xls': '📊',
+                'pdf': '📄',
+                'jpg': '🖼️',
+                'jpeg': '🖼️',
+                'png': '🖼️',
+                'doc': '📝',
+                'docx': '📝'
+            };
+            return icons[ext] || '📁';
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'uploaded': '<span class="badge badge-muted">📤 Uploaded</span>',
+                'processing': '<span class="badge badge-warning">⏳ Processing</span>',
+                'review': '<span class="badge badge-primary">📝 Review</span>',
+                'approved': '<span class="badge badge-success">✅ Approved</span>',
+                'rejected': '<span class="badge badge-destructive">❌ Rejected</span>',
+                'error': '<span class="badge badge-destructive">❌ Error</span>',
+                'complete': '<span class="badge badge-success">✅ Complete</span>'
+            };
+            return badges[status] || badges.uploaded;
+        }
+
+        function getStatusProgress(status) {
+            const progress = {
+                'uploaded': 0,
+                'processing': 45,
+                'review': 70,
+                'approved': 100,
+                'complete': 100,
+                'rejected': 100,
+                'error': 100
+            };
+            return progress[status] || 0;
+        }
+
+        function renderFileList(files, container, isBatch = false) {
+            if (files.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted" style="padding:20px;">
+                        <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                        <div>No files uploaded yet</div>
+                        <div style="font-size:13px;">Drop files here or click to browse</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = files.map((file, index) => `
+                <div class="file-item" style="margin-bottom:8px;animation:slideIn 0.3s ease;">
+                    <div class="file-icon">${getFileIcon(file.name)}</div>
+                    <div class="file-info">
+                        <div class="name">${file.name}</div>
+                        <div class="meta">${formatFileSize(file.size)} • ${file.records || 0} records • ${file.date || 'Today'}</div>
+                    </div>
+                    <div class="file-status">${getStatusBadge(file.status)}</div>
+                    ${file.status !== 'uploaded' ? `
+                        <div class="file-progress">
+                            <div class="progress-bar">
+                                <div class="fill ${file.status === 'error' ? 'error' : file.status === 'approved' || file.status === 'complete' ? 'success' : ''}" 
+                                     style="width:${getStatusProgress(file.status)}%;"></div>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <button class="btn btn-ghost btn-sm" onclick="removeFile(${index}, ${isBatch})" style="color:hsl(var(--destructive));">
+                        ✕
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function renderHistory() {
+            if (uploadHistory.length === 0) {
+                historyTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted" style="padding:32px;">
+                            <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                            <div>No upload history yet</div>
+                            <div style="font-size:13px;">Start uploading files to see them here</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            historyTableBody.innerHTML = uploadHistory.slice().reverse().map(item => `
+                <tr>
+                    <td><strong>${item.name}</strong></td>
+                    <td><span class="badge badge-muted">${item.type}</span></td>
+                    <td>${formatFileSize(item.size)}</td>
+                    <td>${getStatusBadge(item.status)}</td>
+                    <td>
+                        <div class="progress-bar" style="width:100px;">
+                            <div class="fill ${item.status === 'error' ? 'error' : item.status === 'approved' || item.status === 'complete' ? 'success' : ''}" 
+                                 style="width:${getStatusProgress(item.status)}%;"></div>
+                        </div>
+                    </td>
+                    <td style="font-size:12px;color:hsl(var(--muted-foreground));">${item.date || 'Today'}</td>
+                    <td>
+                        <button class="btn btn-ghost btn-sm" onclick="showToast('📄 Viewing: ${item.name}')">👁️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="showToast('⬇️ Downloading: ${item.name}')">⬇️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="removeHistoryItem('${item.id}')" style="color:hsl(var(--destructive));">✕</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateStats() {
+            const files = currentMode === 'single' ? uploadedFiles : batchFiles;
+            const total = files.length;
+            const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+            const processed = files.filter(f => f.status === 'approved' || f.status === 'complete' || f.status === 'rejected')
+                .length;
+            const pending = files.filter(f => f.status === 'uploaded' || f.status === 'processing').length;
+
+            totalFilesEl.textContent = total;
+            totalSizeEl.textContent = formatFileSize(totalSize);
+            processedFilesEl.textContent = processed;
+            pendingFilesEl.textContent = pending;
+        }
+
+        function addFile(file, isBatch = false) {
+            const fileObj = {
+                id: `file_${++uploadIdCounter}`,
+                name: file.name,
+                size: file.size,
+                type: dataTypeSelect.value,
+                status: 'uploaded',
+                records: Math.floor(Math.random() * 200) + 5,
+                date: new Date().toISOString().split('T')[0],
+                progress: 0
+            };
+
+            if (isBatch) {
+                batchFiles.push(fileObj);
+                renderFileList(batchFiles, batchFileListContainer, true);
+            } else {
+                uploadedFiles.push(fileObj);
+                renderFileList(uploadedFiles, fileListContainer, false);
+            }
+            updateStats();
+            showToast(`📤 ${file.name} added to upload queue`);
+        }
+
+        function removeFile(index, isBatch = false) {
+            if (isBatch) {
+                const removed = batchFiles.splice(index, 1)[0];
+                renderFileList(batchFiles, batchFileListContainer, true);
+                showToast(`🗑️ Removed ${removed.name}`);
+            } else {
+                const removed = uploadedFiles.splice(index, 1)[0];
+                renderFileList(uploadedFiles, fileListContainer, false);
+                showToast(`🗑️ Removed ${removed.name}`);
+            }
+            updateStats();
+        }
+
+        function clearAllFiles() {
+            if (currentMode === 'single') {
+                uploadedFiles = [];
+                renderFileList(uploadedFiles, fileListContainer, false);
+            } else {
+                batchFiles = [];
+                renderFileList(batchFiles, batchFileListContainer, true);
+            }
+            updateStats();
+            showToast('🗑️ All files cleared');
+        }
+
+        function clearHistory() {
+            uploadHistory = [];
+            renderHistory();
+            showToast('🗑️ History cleared');
+        }
+
+        function refreshHistory() {
+            renderHistory();
+            showToast('🔄 History refreshed');
+        }
+
+        function removeHistoryItem(id) {
+            uploadHistory = uploadHistory.filter(item => item.id !== id);
+            renderHistory();
+            showToast('🗑️ Item removed from history');
+        }
+
+        // ============================================
+        // MOCK DATA LOADER
+        // ============================================
+
+        function loadMockData() {
+            const files = mockFiles.map(f => ({
+                ...f,
+                id: `mock_${++uploadIdCounter}`,
+                date: f.date || new Date().toISOString().split('T')[0]
+            }));
+
+            if (currentMode === 'single') {
+                uploadedFiles = files.slice(0, 3);
+                renderFileList(uploadedFiles, fileListContainer, false);
+            } else {
+                batchFiles = files;
+                renderFileList(batchFiles, batchFileListContainer, true);
+            }
+
+            // Add to history
+            files.forEach(f => {
+                uploadHistory.push({ ...f });
+            });
+            renderHistory();
+            updateStats();
+            showToast(`🧪 Loaded ${files.length} mock files`);
+        }
+
+        // ============================================
+        // UPLOAD SIMULATION
+        // ============================================
+
+        function startUpload() {
+            const files = currentMode === 'single' ? uploadedFiles : batchFiles;
+            if (files.length === 0) {
+                showToast('⚠️ No files to upload. Add some files first.', 'warning');
+                return;
+            }
+
+            if (isUploading) {
+                showToast('⏳ Upload already in progress', 'warning');
+                return;
+            }
+
+            isUploading = true;
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+            showToast('⏳ Starting upload...', 'info');
+
+            let completed = 0;
+            const total = files.length;
+
+            files.forEach((file, index) => {
+                // Simulate processing
+                const steps = [
+                    { status: 'processing', progress: 30, delay: 1000 },
+                    { status: 'processing', progress: 60, delay: 2000 },
+                    { status: 'review', progress: 80, delay: 3000 },
+                    { status: Math.random() > 0.2 ? 'approved' : 'rejected', progress: 100, delay: 4000 }
+                ];
+
+                steps.forEach((step, stepIndex) => {
+                    setTimeout(() => {
+                        file.status = step.status;
+                        file.progress = step.progress;
+
+                        // Update UI
+                        if (currentMode === 'single') {
+                            renderFileList(uploadedFiles, fileListContainer, false);
+                        } else {
+                            renderFileList(batchFiles, batchFileListContainer, true);
+                        }
+                        updateStats();
+
+                        // Add to history when complete
+                        if (step.status === 'approved' || step.status === 'rejected') {
+                            const historyItem = {
+                                ...file,
+                                id: `history_${Date.now()}_${index}`,
+                                date: new Date().toISOString().split('T')[0]
+                            };
+                            uploadHistory.push(historyItem);
+                            renderHistory();
+
+                            completed++;
+                            if (completed === total) {
+                                isUploading = false;
+                                uploadBtn.disabled = false;
+                                uploadBtn.innerHTML = '⬆️ Upload Files';
+                                const successCount = files.filter(f => f.status === 'approved').length;
+                                showToast(`✅ Upload complete! ${successCount}/${total} files approved`);
+                            }
+                        }
+                    }, step.delay);
+                });
+            });
+        }
+
+        // ============================================
+        // DROP ZONE EVENTS
+        // ============================================
+
+        function setupDropZone(zone, input, isBatch = false) {
+            zone.addEventListener('click', () => input.click());
+
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('dragover');
+            });
+
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('dragover');
+            });
+
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (isBatch) {
+                    Array.from(files).forEach(f => addFile(f, true));
+                } else {
+                    if (files.length > 0) addFile(files[0], false);
+                }
+            });
+
+            input.addEventListener('change', () => {
+                const files = input.files;
+                if (isBatch) {
+                    Array.from(files).forEach(f => addFile(f, true));
+                } else {
+                    if (files.length > 0) addFile(files[0], false);
+                }
+                input.value = '';
+            });
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Setup drop zones
+        setupDropZone(dropZone, fileInput, false);
+        setupDropZone(batchDropZone, batchFileInput, true);
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Render initial state
+        renderFileList([], fileListContainer, false);
+        renderFileList([], batchFileListContainer, true);
+        renderHistory();
+        updateStats();
+
+        // Console
+        console.log('🌱 CarbonTally - Upload Page');
+        console.log('📤 Single and batch upload support');
+        console.log('📊 Based on schema: organization_files, customer_documents, upload_batches');
+        console.log('🧪 Click "Load Mock Data" to test with sample files');
+        console.log('🎨 9 themes available with localStorage persistence');
+        console.log('⌨️  Use arrow keys (← →) to cycle themes');
+        console.log('📱 Fully responsive with mobile sidebar');
+    </script>
+
+</body>
+</html>

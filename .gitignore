@@ -62,3 +62,7 @@ Thumbs.db
 .turbo
 .render/
 .env*
+
+/generated/prisma
+backend/carbon_tally_backup.sql
+backend/carbon_tally_backup_data.sql

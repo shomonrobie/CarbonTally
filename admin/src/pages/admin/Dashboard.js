@@ -1,5 +1,6 @@
+// admin/src/pages/admin/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   FaClipboardList, 
   FaCheckCircle, 
@@ -8,15 +9,20 @@ import {
   FaFileAlt,
   FaUsers,
   FaBuilding,
-  FaChartLine
+  FaChartLine,
+  FaBell,
+  FaCircle
 } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
+import { useRealtime } from '../../context/RealtimeContext';
 import StatCard from '../../components/admin/StatCard';
 import ActivityChart from '../../components/admin/ActivityChart';
 import RecentActivity from '../../components/admin/RecentActivity';
 import ReviewStatusChart from '../../components/admin/ReviewStatusChart';
 
 const Dashboard = () => {
+  const queryClient = useQueryClient();
+  const { isConnected, unreadCount, onlineStaff } = useRealtime();
   const [stats, setStats] = useState({
     pending: 0,
     completed: 0,
@@ -90,7 +96,25 @@ const Dashboard = () => {
         reportsGenerated: years.size || 0,
       };
     },
+    refetchInterval: 30000, // Refresh every 30 seconds as fallback
   });
+
+  // ✅ Realtime subscription for queue updates
+  useEffect(() => {
+    const handleQueueUpdate = (event) => {
+      // Refetch stats when queue changes
+      queryClient.invalidateQueries(['dashboardStats']);
+    };
+
+    // Listen for queue updates via Realtime
+    window.addEventListener('queue-updated', handleQueueUpdate);
+    window.addEventListener('document-updated', handleQueueUpdate);
+
+    return () => {
+      window.removeEventListener('queue-updated', handleQueueUpdate);
+      window.removeEventListener('document-updated', handleQueueUpdate);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     if (statsData) {
@@ -178,9 +202,38 @@ const Dashboard = () => {
 
   return (
     <div>
+      {/* Header with Realtime Status */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Welcome back! Here's what's happening with your carbon management platform.</p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600">Welcome back! Here's what's happening with your carbon management platform.</p>
+          </div>
+          
+          {/* Realtime Status Badge */}
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+              isConnected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+            }`}>
+              <FaCircle className={`text-xs ${isConnected ? 'text-green-500 animate-pulse' : 'text-yellow-500'}`} />
+              <span>{isConnected ? 'Live' : 'Connecting...'}</span>
+            </div>
+            
+            {unreadCount > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm">
+                <FaBell className="text-xs" />
+                <span>{unreadCount} new notification{unreadCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+            
+            {onlineStaff.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                <FaUsers className="text-xs" />
+                <span>{onlineStaff.length} online</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Stats Grid */}

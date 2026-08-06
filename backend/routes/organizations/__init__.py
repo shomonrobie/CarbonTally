@@ -12,6 +12,9 @@ from . import analytics
 from . import dashboard
 from . import files
 from . import team
+from . import metadata
+from . import exports  # ✅ Fixed: was 'export', should be 'exports' to match the filename
+from . import bulk     # ✅ New: Bulk operations
 
 __all__ = [
     'management',
@@ -21,5 +24,8 @@ __all__ = [
     'analytics',
     'dashboard',
     'files',
-    'team'
+    'team',
+    'metadata',
+    'exports',  # ✅ Fixed: was 'export'
+    'bulk',     # ✅ New
 ]

@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Validation Queue</title>
+    <style>
+        /* Reset & Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+            min-height: 100vh;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 240px;
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            padding: 20px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 0 20px 20px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 16px;
+        }
+
+        .sidebar-logo h1 {
+            font-size: 20px;
+            color: #0f172a;
+        }
+
+        .sidebar-logo span {
+            color: #166534;
+        }
+
+        .sidebar-nav {
+            padding: 0 12px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+            margin-bottom: 2px;
+        }
+
+        .sidebar-item:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .sidebar-item.active {
+            background: #166534;
+            color: white;
+        }
+
+        .sidebar-item .icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .sidebar-item .badge {
+            margin-left: auto;
+            background: #dc2626;
+            color: white;
+            padding: 1px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
+        .sidebar-section {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #94a3b8;
+            padding: 12px 12px 6px 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #e2e8f0;
+            margin-top: 20px;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 240px;
+            flex: 1;
+            padding: 24px 32px;
+        }
+
+        /* Page Header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .page-header p {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 14px 16px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transform: translateY(-2px);
+        }
+
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .stat-card .label {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .stat-card .icon {
+            font-size: 18px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .stat-card.highlight {
+            border-left: 3px solid #ef4444;
+        }
+
+        /* Filter Bar */
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            align-items: center;
+        }
+
+        .filter-bar select {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            font-size: 13px;
+            min-width: 130px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .filter-bar select:focus {
+            border-color: #166534;
+            box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15);
+        }
+
+        .filter-bar .count {
+            margin-left: auto;
+            font-size: 13px;
+            color: #64748b;
+            background: #f1f5f9;
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-primary {
+            background: #166534;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #166534;
+            border: 2px solid #166534;
+        }
+
+        .btn-outline:hover {
+            background: #166534;
+            color: white;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: #0f172a;
+        }
+
+        .btn-ghost:hover {
+            background: #f1f5f9;
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+
+        .btn-success {
+            background: #16a34a;
+            color: white;
+        }
+
+        .btn-success:hover {
+            opacity: 0.85;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            opacity: 0.85;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            gap: 4px;
+        }
+
+        .badge-muted {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-primary {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-destructive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Queue Items */
+        .queue-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            transition: all 0.15s ease;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+
+        .queue-item:hover {
+            background: #f8fafc;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .queue-item .priority-bar {
+            width: 4px;
+            height: 40px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .queue-item .priority-bar.high { background: #ef4444; }
+        .queue-item .priority-bar.medium { background: #f59e0b; }
+        .queue-item .priority-bar.low { background: #22c55e; }
+
+        .queue-item .info {
+            flex: 1;
+        }
+
+        .queue-item .info .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .queue-item .info .meta {
+            font-size: 12px;
+            color: #64748b;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+
+        .queue-item .status-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
+        .queue-item .status-group .progress-text {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .progress-bar {
+            width: 120px;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+            background: #166534;
+        }
+
+        .progress-bar .fill.warning { background: #f59e0b; }
+        .progress-bar .fill.error { background: #ef4444; }
+
+        .queue-item .actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #64748b;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .modal-close:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .modal-body {
+            margin: 16px 0;
+        }
+
+        .detail-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .detail-row .label {
+            font-weight: 500;
+            color: #64748b;
+            width: 140px;
+            flex-shrink: 0;
+        }
+
+        .detail-row .value {
+            color: #0f172a;
+        }
+
+        .modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast .icon { font-size: 18px; }
+        .toast .message { font-size: 13px; color: #0f172a; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state .title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .empty-state .subtitle {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 8px;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .filter-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-bar select {
+                min-width: 100%;
+            }
+
+            .filter-bar .count {
+                margin-left: 0;
+                text-align: center;
+            }
+
+            .queue-item {
+                flex-wrap: wrap;
+            }
+
+            .queue-item .status-group {
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .queue-item .actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .modal {
+                padding: 16px;
+            }
+
+            .detail-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .detail-row .label {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>🌱 Carbon<span>Tally</span></h1>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section">Workflow</div>
+                <button class="sidebar-item active">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section">Admin</div>
+                <button class="sidebar-item">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div>
+                    <h1>✅ Validation Queue</h1>
+                    <p>Review and validate documents awaiting verification</p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-outline btn-sm" onclick="refreshQueue()">
+                        🔄 Refresh
+                    </button>
+                    <button class="btn btn-primary" onclick="showToast('📊 Exporting queue data...')">
+                        📊 Export
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid" id="statsGrid">
+                <!-- Rendered by JS -->
+            </div>
+
+            <!-- Filters -->
+            <div class="filter-bar">
+                <select id="statusFilter" onchange="applyFilters()">
+                    <option value="all">📊 All Status</option>
+                    <option value="pending">📤 Pending</option>
+                    <option value="in-progress">⏳ In Progress</option>
+                    <option value="review">📝 Review</option>
+                    <option value="approved">✅ Approved</option>
+                    <option value="rejected">❌ Rejected</option>
+                    <option value="escalated">🚨 Escalated</option>
+                </select>
+
+                <select id="priorityFilter" onchange="applyFilters()">
+                    <option value="all">⚡ All Priority</option>
+                    <option value="high">🔴 High</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="low">🟢 Low</option>
+                </select>
+
+                <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+                <span class="count" id="itemCount">0 items</span>
+            </div>
+
+            <!-- Queue List -->
+            <div id="queueList">
+                <!-- Rendered by JS -->
+            </div>
+
+        </main>
+
+    </div>
+
+    <!-- Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="detailTitle">Review Item</div>
+                    <div style="font-size:13px;color:#64748b;" id="detailSubtitle">View and manage review</div>
+                </div>
+                <button class="modal-close" id="modalClose">✕</button>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer" id="detailFooter">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <script>
+        // ============================================
+        // MOCK DATA - 12 items with various statuses
+        // ============================================
+
+        const queueItems = [{
+            id: 1,
+            file_name: 'Utility_Bill_London_Dec2026.pdf',
+            file_type: 'pdf',
+            data_type: 'utility',
+            status: 'pending',
+            priority: 'high',
+            assigned_to: null,
+            created_at: '2026-12-15T10:00:00Z',
+            sla_deadline: '2026-12-16T10:00:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Please verify the electricity consumption values for December',
+            staff_notes: null,
+            confidence: 92,
+            extracted_data: {
+                period: 'Dec 2026',
+                consumption: '4,500 kWh',
+                facility: 'London Office',
+                scope: 'Scope 2'
+            }
+        }, {
+            id: 2,
+            file_name: 'Fleet_Fuel_Q4_2026.csv',
+            file_type: 'csv',
+            data_type: 'fuel',
+            status: 'in-progress',
+            priority: 'high',
+            assigned_to: 'staff_001',
+            created_at: '2026-12-14T14:30:00Z',
+            sla_deadline: '2026-12-17T14:30:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Fleet fuel data for Q4 2026',
+            staff_notes: 'Reviewing fuel consumption patterns',
+            confidence: 88,
+            extracted_data: {
+                period: 'Q4 2026',
+                records: '245',
+                total_consumption: '14,500 L',
+                fleet_size: '12',
+                scope: 'Scope 1'
+            }
+        }, {
+            id: 3,
+            file_name: 'Supplier_Invoice_IT_Equipment.pdf',
+            file_type: 'pdf',
+            data_type: 'scope3',
+            status: 'review',
+            priority: 'medium',
+            assigned_to: 'staff_003',
+            created_at: '2026-12-13T09:15:00Z',
+            sla_deadline: '2026-12-18T09:15:00Z',
+            sla_breached: false,
+            escalation_level: 1,
+            customer_notes: 'IT equipment supplier invoice for Scope 3 reporting',
+            staff_notes: 'Need to verify equipment category',
+            confidence: 76,
+            extracted_data: {
+                period: 'Dec 2026',
+                amount: '£45,000',
+                supplier: 'TechCorp Ltd',
+                category: 'IT Equipment',
+                scope: 'Scope 3'
+            }
+        }, {
+            id: 4,
+            file_name: 'Electricity_Bill_Manchester.xlsx',
+            file_type: 'xlsx',
+            data_type: 'utility',
+            status: 'pending',
+            priority: 'medium',
+            assigned_to: null,
+            created_at: '2026-12-12T16:45:00Z',
+            sla_deadline: '2026-12-19T16:45:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'December electricity bill for Manchester office',
+            staff_notes: null,
+            confidence: 94,
+            extracted_data: {
+                period: 'Dec 2026',
+                consumption: '3,200 kWh',
+                facility: 'Manchester Office',
+                scope: 'Scope 2'
+            }
+        }, {
+            id: 5,
+            file_name: 'Gas_Bill_Birmingham_Q4.pdf',
+            file_type: 'pdf',
+            data_type: 'utility',
+            status: 'in-progress',
+            priority: 'low',
+            assigned_to: 'staff_004',
+            created_at: '2026-12-11T11:20:00Z',
+            sla_deadline: '2026-12-20T11:20:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Q4 gas bill for Birmingham office',
+            staff_notes: 'Checking consumption against previous quarters',
+            confidence: 82,
+            extracted_data: {
+                period: 'Q4 2026',
+                consumption: '1,800 kWh',
+                facility: 'Birmingham Office',
+                scope: 'Scope 2'
+            }
+        }, {
+            id: 6,
+            file_name: 'Scope3_Supplier_Report.csv',
+            file_type: 'csv',
+            data_type: 'scope3',
+            status: 'review',
+            priority: 'high',
+            assigned_to: 'staff_005',
+            created_at: '2026-12-10T08:00:00Z',
+            sla_deadline: '2026-12-15T08:00:00Z',
+            sla_breached: true,
+            escalation_level: 2,
+            customer_notes: 'Supplier sustainability report for Scope 3',
+            staff_notes: 'URGENT: SLA breached - needs immediate attention',
+            confidence: 68,
+            extracted_data: {
+                period: 'Q4 2026',
+                records: '156',
+                suppliers: '23',
+                total_emissions: '45,000 kgCO₂e',
+                scope: 'Scope 3'
+            }
+        }, {
+            id: 7,
+            file_name: 'Fleet_Maintenance_Records.xlsx',
+            file_type: 'xlsx',
+            data_type: 'fuel',
+            status: 'approved',
+            priority: 'low',
+            assigned_to: 'staff_002',
+            created_at: '2026-12-09T13:30:00Z',
+            sla_deadline: '2026-12-16T13:30:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Fleet maintenance and fuel records',
+            staff_notes: 'All verified - approved',
+            confidence: 95,
+            extracted_data: {
+                period: '2026',
+                records: '34',
+                vehicles: '12',
+                total_fuel: '5,600 L',
+                scope: 'Scope 1'
+            }
+        }, {
+            id: 8,
+            file_name: 'Renewable_Energy_Certificates.pdf',
+            file_type: 'pdf',
+            data_type: 'document',
+            status: 'approved',
+            priority: 'low',
+            assigned_to: 'staff_001',
+            created_at: '2026-12-08T09:00:00Z',
+            sla_deadline: '2026-12-22T09:00:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Renewable energy certificates for 2026',
+            staff_notes: 'Verified and approved',
+            confidence: 98,
+            extracted_data: {
+                period: '2026',
+                certificates: '125',
+                energy_source: 'Solar',
+                total_mwh: '2,500 MWh',
+                scope: 'Scope 2'
+            }
+        }, {
+            id: 9,
+            file_name: 'Water_Bill_Manchester_Q4.pdf',
+            file_type: 'pdf',
+            data_type: 'utility',
+            status: 'rejected',
+            priority: 'medium',
+            assigned_to: 'staff_003',
+            created_at: '2026-12-07T10:15:00Z',
+            sla_deadline: '2026-12-21T10:15:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Water bill - missing consumption data',
+            staff_notes: 'Rejected - insufficient data',
+            confidence: 45,
+            extracted_data: null,
+            error: 'Missing consumption values'
+        }, {
+            id: 10,
+            file_name: 'Business_Travel_Expenses_Q4.csv',
+            file_type: 'csv',
+            data_type: 'scope3',
+            status: 'pending',
+            priority: 'high',
+            assigned_to: null,
+            created_at: '2026-12-06T15:00:00Z',
+            sla_deadline: '2026-12-18T15:00:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Q4 business travel expenses for Scope 3',
+            staff_notes: null,
+            confidence: 85,
+            extracted_data: {
+                period: 'Q4 2026',
+                records: '89',
+                total_emissions: '12,500 kgCO₂e',
+                flights: '45',
+                rail: '32',
+                hotels: '12',
+                scope: 'Scope 3'
+            }
+        }, {
+            id: 11,
+            file_name: 'Data_Center_Energy_Report.pdf',
+            file_type: 'pdf',
+            data_type: 'document',
+            status: 'in-progress',
+            priority: 'medium',
+            assigned_to: 'staff_004',
+            created_at: '2026-12-05T12:00:00Z',
+            sla_deadline: '2026-12-19T12:00:00Z',
+            sla_breached: false,
+            escalation_level: 0,
+            customer_notes: 'Data center energy efficiency report',
+            staff_notes: 'Reviewing PUE and energy consumption',
+            confidence: 79,
+            extracted_data: {
+                period: '2026',
+                pue: '1.35',
+                total_energy: '1,200,000 kWh',
+                facility: 'Data Center',
+                scope: 'Scope 2'
+            }
+        }, {
+            id: 12,
+            file_name: 'Fleet_Fuel_Nov2026.csv',
+            file_type: 'csv',
+            data_type: 'fuel',
+            status: 'review',
+            priority: 'high',
+            assigned_to: 'staff_005',
+            created_at: '2026-12-04T08:45:00Z',
+            sla_deadline: '2026-12-14T08:45:00Z',
+            sla_breached: true,
+            escalation_level: 1,
+            customer_notes: 'November fleet fuel consumption data',
+            staff_notes: 'SLA breached - escalation level 1',
+            confidence: 87,
+            extracted_data: {
+                period: 'Nov 2026',
+                records: '210',
+                total_consumption: '11,800 L',
+                fleet_size: '10',
+                scope: 'Scope 1'
+            }
+        }];
+
+        // Staff mapping
+        const staffNames = {
+            'staff_001': 'John Doe',
+            'staff_002': 'Sarah Johnson',
+            'staff_003': 'Mike Roberts',
+            'staff_004': 'Anna Liu',
+            'staff_005': 'Tom Chen'
+        };
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentFilters = {
+            status: 'all',
+            priority: 'all'
+        };
+
+        // ============================================
+        // UI FUNCTIONS
+        // ============================================
+
+        function getStatusBadge(status) {
+            const badges = {
+                'pending': '<span class="badge badge-muted">📤 Pending</span>',
+                'in-progress': '<span class="badge badge-warning">⏳ In Progress</span>',
+                'review': '<span class="badge badge-primary">📝 Review</span>',
+                'approved': '<span class="badge badge-success">✅ Approved</span>',
+                'rejected': '<span class="badge badge-destructive">❌ Rejected</span>',
+                'escalated': '<span class="badge badge-destructive">🚨 Escalated</span>'
+            };
+            return badges[status] || badges.pending;
+        }
+
+        function getPriorityBadge(priority) {
+            const badges = {
+                'high': '<span class="badge badge-destructive">🔴 High</span>',
+                'medium': '<span class="badge badge-warning">🟡 Medium</span>',
+                'low': '<span class="badge badge-success">🟢 Low</span>'
+            };
+            return badges[priority] || badges.medium;
+        }
+
+        function getStatusProgress(status) {
+            const progress = {
+                'pending': 0,
+                'in-progress': 30,
+                'review': 60,
+                'approved': 100,
+                'rejected': 100,
+                'escalated': 80
+            };
+            return progress[status] || 0;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getTimeRemaining(deadline) {
+            const now = new Date();
+            const end = new Date(deadline);
+            const diff = end - now;
+
+            if (diff < 0) return '⏰ Overdue';
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const days = Math.floor(hours / 24);
+
+            if (days > 0) return `${days}d ${hours % 24}h remaining`;
+            if (hours > 0) return `${hours}h remaining`;
+            return 'Less than 1 hour';
+        }
+
+        function getStaffName(id) {
+            return staffNames[id] || 'Unassigned';
+        }
+
+        function renderStats() {
+            const total = queueItems.length;
+            const pending = queueItems.filter(q => q.status === 'pending').length;
+            const inProgress = queueItems.filter(q => q.status === 'in-progress').length;
+            const review = queueItems.filter(q => q.status === 'review').length;
+            const approved = queueItems.filter(q => q.status === 'approved').length;
+            const rejected = queueItems.filter(q => q.status === 'rejected').length;
+            const escalated = queueItems.filter(q => q.escalation_level > 0).length;
+
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat-card">
+                    <span class="icon">📊</span>
+                    <div class="value">${total}</div>
+                    <div class="label">Total Items</div>
+                </div>
+                <div class="stat-card">
+                    <span class="icon">📤</span>
+                    <div class="value">${pending}</div>
+                    <div class="label">Pending</div>
+                </div>
+                <div class="stat-card">
+                    <span class="icon">⏳</span>
+                    <div class="value">${inProgress}</div>
+                    <div class="label">In Progress</div>
+                </div>
+                <div class="stat-card">
+                    <span class="icon">📝</span>
+                    <div class="value">${review}</div>
+                    <div class="label">Review</div>
+                </div>
+                <div class="stat-card">
+                    <span class="icon">✅</span>
+                    <div class="value">${approved}</div>
+                    <div class="label">Approved</div>
+                </div>
+                <div class="stat-card">
+                    <span class="icon">❌</span>
+                    <div class="value">${rejected}</div>
+                    <div class="label">Rejected</div>
+                </div>
+                <div class="stat-card highlight">
+                    <span class="icon">🚨</span>
+                    <div class="value">${escalated}</div>
+                    <div class="label">Escalated</div>
+                </div>
+            `;
+        }
+
+        function applyFilters() {
+            currentFilters.status = document.getElementById('statusFilter').value;
+            currentFilters.priority = document.getElementById('priorityFilter').value;
+            renderQueue();
+        }
+
+        function clearFilters() {
+            document.getElementById('statusFilter').value = 'all';
+            document.getElementById('priorityFilter').value = 'all';
+            currentFilters.status = 'all';
+            currentFilters.priority = 'all';
+            renderQueue();
+            showToast('🔄 Filters cleared');
+        }
+
+        function renderQueue() {
+            let filtered = [...queueItems];
+
+            if (currentFilters.status !== 'all') {
+                filtered = filtered.filter(q => q.status === currentFilters.status);
+            }
+
+            if (currentFilters.priority !== 'all') {
+                filtered = filtered.filter(q => q.priority === currentFilters.priority);
+            }
+
+            // Sort by priority
+            filtered.sort((a, b) => {
+                const priorityOrder = { high: 0, medium: 1, low: 2 };
+                if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+                    return priorityOrder[a.priority] - priorityOrder[b.priority];
+                }
+                return new Date(a.sla_deadline) - new Date(b.sla_deadline);
+            });
+
+            document.getElementById('itemCount').textContent = `${filtered.length} items`;
+
+            if (filtered.length === 0) {
+                document.getElementById('queueList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">✅</div>
+                        <div class="title">No items in queue</div>
+                        <div class="subtitle">All caught up! Check back later for new items.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            document.getElementById('queueList').innerHTML = filtered.map(q => `
+                <div class="queue-item" onclick="openDetail(${q.id})">
+                    <div class="priority-bar ${q.priority}"></div>
+                    <div class="info">
+                        <div class="title">
+                            ${q.file_name}
+                            ${q.sla_breached ? '<span class="badge badge-destructive">⏰ SLA Breached</span>' : ''}
+                            ${q.escalation_level > 0 ? `<span class="badge badge-destructive">🚨 Escalation Lvl ${q.escalation_level}</span>` : ''}
+                        </div>
+                        <div class="meta">
+                            <span>📄 ${q.data_type.toUpperCase()}</span>
+                            <span>📅 ${formatDate(q.created_at)}</span>
+                            <span>👤 ${getStaffName(q.assigned_to)}</span>
+                            <span>⏳ ${getTimeRemaining(q.sla_deadline)}</span>
+                            <span>📊 ${q.confidence || 0}%</span>
+                        </div>
+                    </div>
+                    <div class="status-group">
+                        ${getStatusBadge(q.status)}
+                        ${getPriorityBadge(q.priority)}
+                        <div class="progress-text">${getStatusProgress(q.status)}% complete</div>
+                        <div class="progress-bar">
+                            <div class="fill ${q.status === 'approved' ? '' : q.status === 'rejected' ? 'error' : q.status === 'in-progress' ? 'warning' : ''}" 
+                                 style="width:${getStatusProgress(q.status)}%;"></div>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDetail(${q.id})" title="View Details">👁️</button>
+                        ${q.status === 'pending' || q.status === 'in-progress' ? `
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();assignItem(${q.id})" title="Assign">👤</button>
+                        ` : ''}
+                        ${q.status === 'review' ? `
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();approveItem(${q.id})" title="Approve" style="color:#16a34a;">✅</button>
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();rejectItem(${q.id})" title="Reject" style="color:#dc2626;">❌</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // DETAIL MODAL
+        // ============================================
+
+        let selectedItemId = null;
+
+        function openDetail(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (!q) return;
+
+            selectedItemId = id;
+            document.getElementById('detailTitle').textContent = q.file_name;
+            document.getElementById('detailSubtitle').textContent = `${q.data_type.toUpperCase()} • ${q.priority.toUpperCase()} Priority`;
+
+            document.getElementById('detailBody').innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="detail-row">
+                        <span class="label">Status</span>
+                        <span class="value">${getStatusBadge(q.status)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Priority</span>
+                        <span class="value">${getPriorityBadge(q.priority)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">File Type</span>
+                        <span class="value">${q.file_type.toUpperCase()}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Data Type</span>
+                        <span class="value">${q.data_type.toUpperCase()}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Created</span>
+                        <span class="value">${formatDate(q.created_at)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">SLA Deadline</span>
+                        <span class="value">${formatDate(q.sla_deadline)} ${q.sla_breached ? '⚠️' : ''}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Assigned To</span>
+                        <span class="value">${getStaffName(q.assigned_to)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Confidence</span>
+                        <span class="value">${q.confidence || 0}%</span>
+                    </div>
+                    ${q.escalation_level > 0 ? `
+                        <div class="detail-row">
+                            <span class="label">Escalation Level</span>
+                            <span class="value">${q.escalation_level}</span>
+                        </div>
+                    ` : ''}
+                </div>
+
+                ${q.customer_notes ? `
+                    <div style="margin-top:12px;padding:12px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;">
+                        <div style="font-size:12px;font-weight:600;color:#0f172a;margin-bottom:4px;">📝 Customer Notes</div>
+                        <div style="font-size:13px;color:#0f172a;">${q.customer_notes}</div>
+                    </div>
+                ` : ''}
+
+                ${q.staff_notes ? `
+                    <div style="margin-top:8px;padding:12px;background:#f1f5f9;border-radius:8px;">
+                        <div style="font-size:12px;font-weight:600;color:#0f172a;margin-bottom:4px;">👤 Staff Notes</div>
+                        <div style="font-size:13px;color:#0f172a;">${q.staff_notes}</div>
+                    </div>
+                ` : ''}
+
+                ${q.extracted_data ? `
+                    <div style="margin-top:12px;">
+                        <div style="font-size:12px;font-weight:600;color:#0f172a;margin-bottom:8px;">📊 Extracted Data</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:#f1f5f9;border-radius:8px;">
+                            ${Object.entries(q.extracted_data).map(([key, value]) => `
+                                <div>
+                                    <div style="font-size:10px;color:#64748b;">${key.replace(/_/g, ' ').toUpperCase()}</div>
+                                    <div style="font-size:13px;font-weight:500;color:#0f172a;">${value}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                ${q.error ? `
+                    <div style="margin-top:12px;padding:12px;background:#fee2e2;border-radius:8px;border:1px solid #fca5a5;">
+                        <div style="font-size:12px;font-weight:600;color:#991b1b;margin-bottom:4px;">⚠️ Extraction Error</div>
+                        <div style="font-size:13px;color:#991b1b;">${q.error}</div>
+                    </div>
+                ` : ''}
+            `;
+
+            document.getElementById('detailFooter').innerHTML = `
+                <button class="btn btn-ghost btn-sm" onclick="closeDetail()">Close</button>
+                ${q.status === 'pending' || q.status === 'in-progress' ? `
+                    <button class="btn btn-outline btn-sm" onclick="closeDetail();assignItem(${q.id})">👤 Assign</button>
+                    <button class="btn btn-outline btn-sm" onclick="startReview(${q.id});closeDetail();">▶️ Start Review</button>
+                ` : ''}
+                ${q.status === 'review' ? `
+                    <button class="btn btn-success btn-sm" onclick="approveItem(${q.id});closeDetail();">✅ Approve</button>
+                    <button class="btn btn-danger btn-sm" onclick="rejectItem(${q.id});closeDetail();">❌ Reject</button>
+                ` : ''}
+                ${q.escalation_level === 0 && q.status !== 'approved' && q.status !== 'rejected' ? `
+                    <button class="btn btn-outline btn-sm" onclick="escalateItem(${q.id});closeDetail();" style="color:#dc2626;">🚨 Escalate</button>
+                ` : ''}
+            `;
+
+            document.getElementById('detailModal').classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDetail() {
+            document.getElementById('detailModal').classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // QUEUE ACTIONS
+        // ============================================
+
+        function assignItem(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (q) {
+                const staffIds = ['staff_001', 'staff_002', 'staff_003', 'staff_004', 'staff_005'];
+                const currentIndex = staffIds.indexOf(q.assigned_to);
+                const nextIndex = (currentIndex + 1) % staffIds.length;
+                q.assigned_to = staffIds[nextIndex];
+                q.status = 'in-progress';
+                showToast(`👤 Assigned ${q.file_name} to ${getStaffName(q.assigned_to)}`);
+                renderQueue();
+                renderStats();
+            }
+        }
+
+        function startReview(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (q) {
+                q.status = 'in-progress';
+                showToast(`▶️ Started review: ${q.file_name}`);
+                renderQueue();
+                renderStats();
+            }
+        }
+
+        function approveItem(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (q) {
+                q.status = 'approved';
+                showToast(`✅ Approved: ${q.file_name}`);
+                renderQueue();
+                renderStats();
+            }
+        }
+
+        function rejectItem(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (q) {
+                q.status = 'rejected';
+                showToast(`❌ Rejected: ${q.file_name}`);
+                renderQueue();
+                renderStats();
+            }
+        }
+
+        function escalateItem(id) {
+            const q = queueItems.find(item => item.id === id);
+            if (q) {
+                q.escalation_level = (q.escalation_level || 0) + 1;
+                if (q.escalation_level > 1) {
+                    q.status = 'escalated';
+                }
+                showToast(`🚨 Escalated ${q.file_name} to level ${q.escalation_level}`);
+                renderQueue();
+                renderStats();
+            }
+        }
+
+        function refreshQueue() {
+            showToast('🔄 Refreshing queue...');
+            setTimeout(() => {
+                renderQueue();
+                renderStats();
+                showToast('✅ Queue refreshed');
+            }, 1000);
+        }
+
+        // ============================================
+        // TOAST
+        // ============================================
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMessage').textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Modal close events
+        document.getElementById('modalClose').addEventListener('click', closeDetail);
+        document.getElementById('detailModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDetail();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (document.getElementById('detailModal').classList.contains('show')) {
+                    closeDetail();
+                }
+            }
+        });
+
+        // Render initial data
+        renderStats();
+        renderQueue();
+
+        console.log('✅ Validation Queue module loaded');
+        console.log('📊 12 items in queue with various statuses');
+        console.log('🔍 Filters: status and priority');
+        console.log('👁️ Click any item for detail view');
+    </script>
+
+</body>
+</html>

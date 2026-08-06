@@ -1,0 +1,383 @@
+/* Notification Center Module - SPA Compatible */
+
+.notification-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.notification-stat {
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    padding: 14px 16px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+.notification-stat:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+.notification-stat .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+}
+.notification-stat .label {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    margin-top: 2px;
+}
+.notification-stat .icon {
+    font-size: 18px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.filter-bar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: hsl(var(--muted));
+    border-radius: var(--radius);
+    align-items: center;
+}
+.filter-bar .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.filter-bar .filter-group label {
+    font-size: 12px;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    white-space: nowrap;
+}
+.filter-bar .filter-group .select {
+    min-width: 120px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.notification-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    transition: all 0.15s ease;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+.notification-item:hover {
+    background: hsl(var(--accent));
+    box-shadow: var(--shadow);
+}
+.notification-item.unread {
+    border-left: 3px solid hsl(var(--primary));
+    background: hsl(var(--accent));
+}
+.notification-item .notif-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    background: hsl(var(--muted));
+}
+.notification-item .notif-content {
+    flex: 1;
+}
+.notification-item .notif-content .title {
+    font-size: 14px;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+}
+.notification-item .notif-content .message {
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+    margin-top: 2px;
+}
+.notification-item .notif-content .meta {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+    flex-wrap: wrap;
+}
+.notification-item .notif-content .meta .badge {
+    font-size: 10px;
+}
+.notification-item .notif-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.setting-row:last-child {
+    border-bottom: none;
+}
+.setting-row .setting-info {
+    flex: 1;
+}
+.setting-row .setting-info .label {
+    font-size: 14px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+}
+.setting-row .setting-info .desc {
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+    margin-top: 2px;
+}
+.setting-row .setting-control {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.switch .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: hsl(var(--muted));
+    transition: 0.3s;
+    border-radius: 24px;
+}
+.switch .slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+.switch input:checked + .slider {
+    background: hsl(var(--primary));
+}
+.switch input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.email-log-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    transition: all 0.15s ease;
+    margin-bottom: 8px;
+}
+.email-log-item:hover {
+    background: hsl(var(--accent));
+}
+.email-log-item .email-info {
+    flex: 1;
+}
+.email-log-item .email-info .recipient {
+    font-size: 13px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+}
+.email-log-item .email-info .subject {
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+}
+.email-log-item .email-info .meta {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    margin-top: 2px;
+}
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+}
+.modal-overlay.show {
+    display: flex !important;
+}
+.modal {
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-xl);
+    max-width: 700px;
+    width: 95%;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+    padding: 32px;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+}
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: hsl(var(--muted-foreground));
+    padding: 0 8px;
+    border-radius: var(--radius);
+    transition: all 0.15s ease;
+    line-height: 1;
+}
+.modal-close:hover {
+    background: hsl(var(--accent));
+    color: hsl(var(--foreground));
+}
+.modal-body {
+    margin: 8px 0 16px 0;
+}
+.modal-body .detail-row {
+    display: flex;
+    padding: 8px 0;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.modal-body .detail-row .label {
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    width: 140px;
+    flex-shrink: 0;
+}
+.modal-body .detail-row .value {
+    color: hsl(var(--foreground));
+}
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid hsl(var(--border));
+    margin-top: 16px;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1200px) {
+    .notification-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 992px) {
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .filter-bar .filter-group {
+        flex-wrap: wrap;
+    }
+    .filter-bar .filter-group .select {
+        min-width: 100%;
+    }
+    .notification-item {
+        flex-wrap: wrap;
+    }
+    .notification-item .notif-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 768px) {
+    .notification-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .modal {
+        padding: 16px;
+        margin: 10px;
+    }
+    .modal-body .detail-row {
+        flex-direction: column;
+        gap: 4px;
+    }
+    .modal-body .detail-row .label {
+        width: 100%;
+    }
+    .setting-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .setting-row .setting-control {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}

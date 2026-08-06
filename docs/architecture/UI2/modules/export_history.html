@@ -1,0 +1,198 @@
+<!-- Export History Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- PAGE HEADER -->
+    <div class="page-header">
+        <div>
+            <h1>📊 Export History</h1>
+            <p>Track and manage all data exports, downloads, and generated reports</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="openExportModal()">
+                ➕ New Export
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="refreshData()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">📄 Total Exports</div>
+            <div class="stat-value" id="totalExports">0</div>
+            <div class="stat-sub">all time</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">✅ Completed</div>
+            <div class="stat-value" id="completedExports">0</div>
+            <div class="stat-sub">ready to download</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⏳ Processing</div>
+            <div class="stat-value" id="processingExports">0</div>
+            <div class="stat-sub">in progress</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⚠️ Failed</div>
+            <div class="stat-value" id="failedExports">0</div>
+            <div class="stat-sub">needs retry</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⬇️ Total Downloads</div>
+            <div class="stat-value" id="totalDownloads">0</div>
+            <div class="stat-sub">file downloads</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">💾 Total Size</div>
+            <div class="stat-value" id="totalSize">0</div>
+            <div class="stat-sub">exported</div>
+        </div>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="filters-bar">
+        <select id="formatFilter">
+            <option value="all">All Formats</option>
+            <option value="pdf">PDF</option>
+            <option value="xlsx">Excel</option>
+            <option value="csv">CSV</option>
+            <option value="docx">Word</option>
+            <option value="zip">ZIP</option>
+        </select>
+        <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="completed">Completed</option>
+            <option value="processing">Processing</option>
+            <option value="failed">Failed</option>
+            <option value="expired">Expired</option>
+        </select>
+        <input type="date" id="dateFrom" placeholder="From" />
+        <span style="color:hsl(var(--muted-foreground));font-size:12px;">to</span>
+        <input type="date" id="dateTo" placeholder="To" />
+        <button class="btn btn-sm btn-primary" id="applyFiltersBtn">🔍 Apply</button>
+        <button class="btn btn-sm btn-ghost" id="clearFiltersBtn">✕ Clear</button>
+        <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 exports</span>
+    </div>
+
+    <!-- EXPORT TABLE -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📋 Export History</div>
+            <span class="badge badge-primary" id="exportCount">0</span>
+        </div>
+        <div class="card-content" style="padding:0 20px 20px 20px;">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortBy('fileName')" style="min-width:200px;cursor:pointer;">File Name <span class="sort-icon" id="sort-fileName">↕</span></th>
+                            <th onclick="sortBy('format')" style="min-width:80px;cursor:pointer;">Format <span class="sort-icon" id="sort-format">↕</span></th>
+                            <th onclick="sortBy('recordCount')" style="min-width:100px;cursor:pointer;">Records <span class="sort-icon" id="sort-recordCount">↕</span></th>
+                            <th onclick="sortBy('size')" style="min-width:100px;cursor:pointer;">Size <span class="sort-icon" id="sort-size">↕</span></th>
+                            <th onclick="sortBy('status')" style="min-width:120px;cursor:pointer;">Status <span class="sort-icon" id="sort-status">↕</span></th>
+                            <th onclick="sortBy('createdAt')" style="min-width:150px;cursor:pointer;">Created <span class="sort-icon" id="sort-createdAt">↕</span></th>
+                            <th onclick="sortBy('expiresAt')" style="min-width:130px;cursor:pointer;">Expires <span class="sort-icon" id="sort-expiresAt">↕</span></th>
+                            <th style="min-width:120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="exportTableBody">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="pagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== DETAIL VIEW MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailTitle">📄 Export Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;" id="detailSubtitle">View export information</div>
+            </div>
+            <button class="modal-close" onclick="closeDetailModal()">✕</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- ===== NEW EXPORT MODAL ===== -->
+<div class="modal-overlay" id="exportModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">📊 New Export</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Generate a new data export
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeExportModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Export Type</label>
+                <select id="exportType">
+                    <option value="emissions">Emissions Data</option>
+                    <option value="compliance">Compliance Report</option>
+                    <option value="secr">SECR Report</option>
+                    <option value="csrd">CSRD Report</option>
+                    <option value="issb">ISSB Disclosure</option>
+                    <option value="audit">Audit Log</option>
+                    <option value="custom">Custom Query</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Format</label>
+                <select id="exportFormat">
+                    <option value="pdf">PDF</option>
+                    <option value="xlsx" selected>Excel (XLSX)</option>
+                    <option value="csv">CSV</option>
+                    <option value="docx">Word (DOCX)</option>
+                    <option value="zip">ZIP Archive</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Date Range</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <input type="date" id="exportDateFrom" />
+                    <input type="date" id="exportDateTo" />
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Include Options</label>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;padding:8px 0;">
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" checked /> Metadata
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" checked /> Charts
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" /> Raw Data
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" /> Calculations
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeExportModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="generateExport()">📤 Generate Export</button>
+        </div>
+    </div>
+</div>

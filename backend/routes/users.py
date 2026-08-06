@@ -179,6 +179,7 @@ async def confirm_password_reset(
             detail=f"Failed to reset password: {str(e)}"
         )
 
+
 @router.get("/profile", response_model=UserProfileResponse)
 async def get_user_profile(
     current_user: AuthUser = Depends(get_current_user)

@@ -1,0 +1,51 @@
+<!-- Messaging & Chat Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- PAGE HEADER -->
+    <div class="page-header">
+        <div>
+            <h1>💬 Messaging & Chat</h1>
+            <p>Team collaboration, direct messages, and real-time communication</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="newConversation()">
+                ➕ New Conversation
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showTeam()">
+                👥 Team
+            </button>
+        </div>
+    </div>
+
+    <!-- CHAT LAYOUT -->
+    <div class="chat-layout">
+
+        <!-- Conversations List -->
+        <div class="card" style="overflow:hidden; display:flex; flex-direction:column;">
+            <div class="card-header">
+                <div class="card-title">💬 Conversations</div>
+                <span class="badge badge-primary" id="convoCount">0</span>
+            </div>
+            <div class="card-content chat-conversations" id="conversationList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="card" style="overflow:hidden; display:flex; flex-direction:column;">
+            <div class="chat-messages-header" id="chatHeader">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="chat-messages-body" id="messagesContainer">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="chat-messages-footer">
+                <button class="btn btn-sm btn-ghost" onclick="showToast('📎 Attach file')">📎</button>
+                <input type="text" placeholder="Type a message..." id="messageInput" />
+                <button class="btn btn-primary btn-sm" id="sendBtn">📤</button>
+            </div>
+        </div>
+
+    </div>
+
+</div>

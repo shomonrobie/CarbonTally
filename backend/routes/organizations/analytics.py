@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 from auth import AuthUser, require_org_member
 from database import get_supabase_client
+from .management import get_organization_name  # ✅ Fixed: added the 'g'
 
 router = APIRouter(prefix="/api/organizations/analytics", tags=["Organization Analytics"])
 
@@ -73,22 +74,10 @@ def get_month(date_str: str) -> str:
     except:
         return 'Unknown'
 
-async def get_organization_name(supabase_client, org_id: str) -> Optional[str]:
-    """Get organization name."""
-    try:
-        result = supabase_client.from_('organizations') \
-            .select('name') \
-            .eq('id', org_id) \
-            .maybe_single() \
-            .execute()
-        return result.data.get('name') if result.data else None
-    except:
-        return None
 
 # ==========================================
 # ENDPOINTS
 # ==========================================
-
 @router.get("/emissions-trend", response_model=EmissionsTrendResponse)
 async def get_emissions_trend(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
@@ -132,8 +121,8 @@ async def get_emissions_trend(
         if asset_id:
             query = query.eq('asset_id', asset_id)
         
-        # Execute query
-        result = query.order('start_date', asc=True).execute()
+        # ✅ Fixed: Use desc=False instead of asc=True
+        result = query.order('start_date', desc=False).execute()  # ✅ This is correct
         
         if not result.data:
             return EmissionsTrendResponse(
@@ -144,6 +133,27 @@ async def get_emissions_trend(
                 summary={"message": "No emissions data found"}
             )
         
+        # Helper functions for grouping
+        def get_month(date_str: str) -> str:
+            """Get month string from date."""
+            if not date_str or len(date_str) < 7:
+                return 'Unknown'
+            return date_str[:7]  # YYYY-MM
+        
+        def get_quarter(date_str: str) -> str:
+            """Get quarter string from date."""
+            if not date_str or len(date_str) < 7:
+                return 'Unknown'
+            month = int(date_str[5:7])
+            quarter = (month - 1) // 3 + 1
+            return f"{date_str[:4]}-Q{quarter}"
+        
+        def get_year(date_str: str) -> str:
+            """Get year string from date."""
+            if not date_str:
+                return 'Unknown'
+            return date_str[:4]
+        
         # Group by period
         grouped_data = {}
         for record in result.data:
@@ -152,7 +162,7 @@ async def get_emissions_trend(
                 continue
             
             if period == 'yearly':
-                key = date_str[:4] if date_str else 'Unknown'
+                key = get_year(date_str)
             elif period == 'quarterly':
                 key = get_quarter(date_str)
             else:  # monthly
@@ -198,6 +208,8 @@ async def get_emissions_trend(
         raise
     except Exception as e:
         print(f"❌ Error getting emissions trend: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get emissions trend: {str(e)}"

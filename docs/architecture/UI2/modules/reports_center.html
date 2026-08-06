@@ -1,0 +1,209 @@
+<!-- Reports Center Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>📊 Reports Center</h1>
+            <p>Generate and manage all your carbon emissions reports</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="showReportGenerator()">
+                📄 Generate Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showToast('📋 Report schedule settings opened')">
+                ⏰ Schedule
+            </button>
+        </div>
+    </div>
+
+    <!-- Report Categories -->
+    <div class="report-categories" id="reportCategories">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filters-bar">
+        <div class="filter-group">
+            <label>📅</label>
+            <select class="select" id="reportYearFilter" onchange="applyFilters()">
+                <option value="all">All Years</option>
+                <option value="2026">2026</option>
+                <option value="2025" selected>2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>📊</label>
+            <select class="select" id="reportTypeFilter" onchange="applyFilters()">
+                <option value="all">All Types</option>
+                <option value="regulatory">Regulatory</option>
+                <option value="compliance">Compliance</option>
+                <option value="operational">Operational</option>
+                <option value="financial">Financial</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>📋</label>
+            <select class="select" id="reportStatusFilter" onchange="applyFilters()">
+                <option value="all">All Status</option>
+                <option value="ready">Ready</option>
+                <option value="draft">Draft</option>
+                <option value="processing">Processing</option>
+                <option value="archived">Archived</option>
+            </select>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+            <span class="badge badge-muted" id="reportCount">0 reports</span>
+        </div>
+    </div>
+
+    <!-- Report Grid -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">📋 Report List</div>
+                <div class="card-description">Generated reports and documents</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+                <button class="btn btn-ghost btn-sm" onclick="sortReports('name')">Sort by Name</button>
+                <button class="btn btn-ghost btn-sm" onclick="sortReports('date')">Sort by Date</button>
+            </div>
+        </div>
+        <div class="card-content">
+            <div class="report-grid" id="reportGrid">
+                <!-- Rendered by JS -->
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="pagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== REPORT GENERATOR MODAL ===== -->
+<div class="modal-overlay" id="reportGeneratorModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">📄 Generate Report</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Configure and generate a new report
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeReportGenerator()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Report Type <span style="color:hsl(var(--destructive));">*</span></label>
+                <select class="select" id="genReportType">
+                    <option value="">Select report type...</option>
+                    <option value="secr">SECR Report</option>
+                    <option value="csrd">CSRD Report</option>
+                    <option value="issb">ISSB Disclosure</option>
+                    <option value="ghg">GHG Protocol Report</option>
+                    <option value="tcfd">TCFD Report</option>
+                    <option value="custom">Custom Report</option>
+                    <option value="audit">Audit Data Export</option>
+                    <option value="compliance">Compliance Summary</option>
+                    <option value="trend">Emissions Trend Analysis</option>
+                    <option value="facility">Facility Emissions Report</option>
+                    <option value="asset">Asset Emissions Report</option>
+                    <option value="scope">Scope Analysis Report</option>
+                </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>Reporting Year <span style="color:hsl(var(--destructive));">*</span></label>
+                    <select class="select" id="genReportYear">
+                        <option value="2026">2026</option>
+                        <option value="2025" selected>2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Format <span style="color:hsl(var(--destructive));">*</span></label>
+                    <select class="select" id="genReportFormat">
+                        <option value="pdf">PDF</option>
+                        <option value="excel">Excel</option>
+                        <option value="csv">CSV</option>
+                        <option value="json">JSON</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>Scope</label>
+                    <select class="select" id="genReportScope">
+                        <option value="all">All Scopes</option>
+                        <option value="scope1">Scope 1</option>
+                        <option value="scope2">Scope 2</option>
+                        <option value="scope3">Scope 3</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Facility</label>
+                    <select class="select" id="genReportFacility">
+                        <option value="all">All Facilities</option>
+                        <option value="London Office">London Office</option>
+                        <option value="Manchester Office">Manchester Office</option>
+                        <option value="Birmingham Office">Birmingham Office</option>
+                        <option value="Data Center">Data Center</option>
+                    </select>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Report Name</label>
+                <input type="text" class="input" id="genReportName" placeholder="e.g., CarbonTally_SECR_Report_2025" />
+                <div class="hint">Leave blank for auto-generated name</div>
+            </div>
+            <div class="settings-group">
+                <label>Additional Options</label>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="genIncludeCharts" checked /> Include Charts
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="genIncludeNarratives" /> Include Narratives
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="genIncludeRawData" /> Include Raw Data
+                    </label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="genIncludeComparative" checked /> Include Comparative Data
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeReportGenerator()">Cancel</button>
+            <button class="btn btn-primary" onclick="generateReport()">📊 Generate Report</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== REPORT DETAIL MODAL ===== -->
+<div class="modal-overlay" id="reportDetailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailReportTitle">Report Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailReportSubtitle">View report information</div>
+            </div>
+            <button class="modal-close" onclick="closeReportDetail()">✕</button>
+        </div>
+        <div class="modal-body" id="detailReportBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailReportFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

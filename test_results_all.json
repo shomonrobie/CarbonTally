@@ -1,0 +1,404 @@
+{
+  "total": 66,
+  "passed": 36,
+  "failed": 30,
+  "skipped": 0,
+  "details": [
+    {
+      "name": "Root",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Health check",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Add to waitlist",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get waitlist",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get profile",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Update profile",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get units",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get fuel types",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get categories",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get facility types",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get asset types",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get facilities list",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get assets list",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get glossary",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get glossary categories",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Search glossary",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Create glossary term",
+      "status": "FAILED",
+      "status_code": 200,
+      "error": "{\"id\":\"5003b7da-52c9-446a-8424-4a6bf2cd9fc0\",\"term\":\"Test Term 8318\",\"definition\":\"This is a test definition\",\"category\":\"Test\",\"related_terms\":null,\"example\":null,\"is_active\":true,\"created_at\":\"2026-"
+    },
+    {
+      "name": "Get all organizations",
+      "status": "FAILED",
+      "status_code": 405,
+      "error": "{\"detail\":\"Method Not Allowed\"}"
+    },
+    {
+      "name": "Get staff list",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get staff performance",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get my staff profile",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get staff activity",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get staff activity: 'SyncRequestBuilder' object has no attribute 'gte'\",\"timestamp\":\"2026-07-28T19:34:47.723347\",\"path\":\"/api/admin/staff/acti"
+    },
+    {
+      "name": "Export staff performance",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get queue settings",
+      "status": "FAILED",
+      "status_code": 404,
+      "error": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get queue stats",
+      "status": "FAILED",
+      "status_code": 404,
+      "error": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get staff workload",
+      "status": "FAILED",
+      "status_code": 404,
+      "error": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get beta codes",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get beta users",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get beta stats",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get audit logs",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Export audit logs",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get activity log: {'message': 'invalid input syntax for type uuid: \\\"export\\\"', 'code': '22P02', 'hint': None, 'details': None}\",\"timestamp\":\""
+    },
+    {
+      "name": "Search audit logs",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get activity log: {'message': 'invalid input syntax for type uuid: \\\"search\\\"', 'code': '22P02', 'hint': None, 'details': None}\",\"timestamp\":\""
+    },
+    {
+      "name": "Get email logs",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get processing logs",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get email stats",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get email log: {'message': 'invalid input syntax for type uuid: \\\"stats\\\"', 'code': '22P02', 'hint': None, 'details': None}\",\"timestamp\":\"2026"
+    },
+    {
+      "name": "Get processing stats",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get processing log: {'message': 'invalid input syntax for type uuid: \\\"stats\\\"', 'code': '22P02', 'hint': None, 'details': None}\",\"timestamp\":"
+    },
+    {
+      "name": "Get roles",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get permissions list",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get defra factors",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get defra years",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get defra activities",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Validate defra factor",
+      "status": "FAILED",
+      "status_code": 422,
+      "error": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"reporting_year\"],\"msg\":\"Field required\",\"input\":null},{\"type\":\"missing\",\"loc\":[\"query\",\"activity_type\"],\"msg\":\"Field required\",\"input\":null}]}"
+    },
+    {
+      "name": "Get settings history",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get email templates",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get template types",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get email template: {'message': 'invalid input syntax for type uuid: \\\"types\\\"', 'code': '22P02', 'hint': None, 'details': None}\",\"timestamp\":"
+    },
+    {
+      "name": "Get pending reviews",
+      "status": "FAILED",
+      "status_code": 500,
+      "error": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get pending reviews: {'message': \\\"Could not find a relationship between 'manual_review_queue' and 'assets' in the schema cache\\\", 'code': 'PG"
+    },
+    {
+      "name": "Get review history",
+      "status": "FAILED",
+      "status_code": 404,
+      "error": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get review audit trail",
+      "status": "FAILED",
+      "status_code": 404,
+      "error": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Bulk delete documents",
+      "status": "PASSED",
+      "status_code": 422,
+      "error": null
+    },
+    {
+      "name": "Get system health",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get system performance",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get system usage",
+      "status": "PASSED",
+      "status_code": 200,
+      "error": null
+    },
+    {
+      "name": "Get assignment stats",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get available reviews",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get staff list",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Submit feedback",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get user feedback",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get report status",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get defra mapping",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get notification templates",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get documents",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get document stats",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Get drafts",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "User accessing admin (should fail)",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Org viewer accessing admin (should fail)",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    },
+    {
+      "name": "Admin accessing admin (should pass)",
+      "status": "FAILED",
+      "status_code": 0,
+      "error": null
+    }
+  ]
+}

@@ -2,19 +2,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime
+from datetime import datetime, timedelta
 from auth import AuthUser, require_role, require_permission, require_org_member, get_current_user
 from database import get_supabase_client
+from utils.organization_utils import get_organization_stats
+from supabase import Client
 
-
-router = APIRouter(prefix="/organizations", tags=["Organization Management"])  # ✅ This should be the prefix
+router = APIRouter(prefix="/api/organizations", tags=["Organization Management"])
 
 # ==========================================
 # PYDANTIC MODELS
 # ==========================================
 
 class OrganizationCreate(BaseModel):
-    """Request model for creating an organization."""
     name: str = Field(..., min_length=1, max_length=255)
     company_number: Optional[str] = Field(None, max_length=50)
     registered_address: Optional[str] = Field(None)
@@ -34,28 +34,8 @@ class OrganizationCreate(BaseModel):
     issb_enabled: bool = False
     default_defra_version: int = Field(2024)
     preferred_units: str = Field("metric")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "ACME Corporation",
-                "company_number": "12345678",
-                "registered_address": "123 Business St, London, UK",
-                "country": "UK",
-                "timezone": "Europe/London",
-                "currency": "GBP",
-                "website": "https://acme.com",
-                "industry": "Technology",
-                "sector": "Software",
-                "company_size": "50-100",
-                "reporting_standard": "SECR",
-                "secr_enabled": True,
-                "default_defra_version": 2024
-            }
-        }
 
 class OrganizationUpdate(BaseModel):
-    """Request model for updating an organization."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     company_number: Optional[str] = Field(None, max_length=50)
     registered_address: Optional[str] = Field(None)
@@ -75,18 +55,8 @@ class OrganizationUpdate(BaseModel):
     issb_enabled: Optional[bool] = Field(None)
     default_defra_version: Optional[int] = Field(None)
     preferred_units: Optional[str] = Field(None)
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "ACME Corporation Ltd",
-                "industry": "Technology - Software",
-                "secr_enabled": True
-            }
-        }
 
 class OrganizationResponse(BaseModel):
-    """Response model for an organization."""
     id: str
     name: str
     company_number: Optional[str] = None
@@ -116,29 +86,8 @@ class OrganizationResponse(BaseModel):
     updated_at: datetime
     member_count: Optional[int] = 0
     emissions_record_count: Optional[int] = 0
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "2b7a2e09-2cc3-461e-84e6-81137eb63ab3",
-                "name": "ACME Corporation",
-                "country": "UK",
-                "timezone": "Europe/London",
-                "currency": "GBP",
-                "reporting_standard": "SECR",
-                "secr_enabled": True,
-                "default_defra_version": 2024,
-                "subscription_status": "active",
-                "subscription_tier": "starter",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-                "member_count": 5,
-                "emissions_record_count": 150
-            }
-        }
 
 class OrganizationStats(BaseModel):
-    """Response model for organization stats."""
     organization_id: str
     organization_name: str
     total_members: int
@@ -151,177 +100,95 @@ class OrganizationStats(BaseModel):
     records_by_scope: Dict[str, int]
     last_activity: Optional[datetime] = None
 
+class EmployeeMetadataUpdate(BaseModel):
+    total_employees: Optional[int] = None
+    full_time_employees: Optional[int] = None
+    part_time_employees: Optional[int] = None
+    contract_employees: Optional[int] = None
+    average_employees: Optional[int] = None
+
+class FinancialMetadataUpdate(BaseModel):
+    annual_revenue: Optional[float] = None
+    ebitda: Optional[float] = None
+    total_assets: Optional[float] = None
+    fiscal_year_start: Optional[str] = None
+    fiscal_year_end: Optional[str] = None
+
+class SustainabilityMetadataUpdate(BaseModel):
+    renewable_energy_percentage: Optional[float] = None
+    carbon_offset_percentage: Optional[float] = None
+    energy_intensity: Optional[float] = None
+    reporting_standard: Optional[str] = None
+
+class ContactMetadataUpdate(BaseModel):
+    primary_contact_name: Optional[str] = None
+    primary_contact_email: Optional[str] = None
+    primary_contact_phone: Optional[str] = None
+    sustainability_officer_name: Optional[str] = None
+    sustainability_officer_email: Optional[str] = None
+
+class IndustryMetadataUpdate(BaseModel):
+    industry_sector: Optional[str] = None
+    naics_code: Optional[str] = None
+    sic_code: Optional[str] = None
+
+class CustomMetricsUpdate(BaseModel):
+    custom_metrics: Optional[Dict[str, Any]] = None
+
+class OrganizationMetadataUpdate(BaseModel):
+    total_employees: Optional[int] = None
+    full_time_employees: Optional[int] = None
+    part_time_employees: Optional[int] = None
+    contract_employees: Optional[int] = None
+    average_employees: Optional[int] = None
+    annual_revenue: Optional[float] = None
+    ebitda: Optional[float] = None
+    total_assets: Optional[float] = None
+    total_facilities: Optional[int] = None
+    total_floor_area_sqft: Optional[float] = None
+    occupied_floor_area_sqft: Optional[float] = None
+    renewable_energy_percentage: Optional[float] = None
+    carbon_offset_percentage: Optional[float] = None
+    energy_intensity: Optional[float] = None
+    reporting_standard: Optional[str] = None
+    fiscal_year_start: Optional[str] = None
+    fiscal_year_end: Optional[str] = None
+    primary_contact_name: Optional[str] = None
+    primary_contact_email: Optional[str] = None
+    primary_contact_phone: Optional[str] = None
+    sustainability_officer_name: Optional[str] = None
+    sustainability_officer_email: Optional[str] = None
+    industry_sector: Optional[str] = None
+    naics_code: Optional[str] = None
+    sic_code: Optional[str] = None
+    custom_metrics: Optional[Dict[str, Any]] = None
+
 # ==========================================
-# HELPER FUNCTIONS
+# ✅ HELPER FUNCTIONS
 # ==========================================
 
-async def get_organization_stats(supabase_client, org_id: str) -> Dict:
-    """Get statistics for an organization."""
+async def get_organization_name(supabase_client, org_id: str) -> Optional[str]:
+    """Get organization name by ID."""
     try:
-        # Get member count
-        members_result = supabase_client.from_('organization_members') \
-            .select('id, is_active', count='exact') \
-            .eq('organization_id', org_id) \
+        result = supabase_client.from_('organizations') \
+            .select('name') \
+            .eq('id', org_id) \
+            .maybe_single() \
             .execute()
-        
-        members = members_result.data or []
-        total_members = len(members)
-        active_members = sum(1 for m in members if m.get('is_active', True))
-        
-        # Get asset count
-        assets_result = supabase_client.from_('assets') \
-            .select('id', count='exact') \
-            .eq('organization_id', org_id) \
-            .execute()
-        total_assets = assets_result.count or 0
-        
-        # Get facility count
-        facilities_result = supabase_client.from_('facilities') \
-            .select('id', count='exact') \
-            .eq('organization_id', org_id) \
-            .execute()
-        total_facilities = facilities_result.count or 0
-        
-        # Get emissions records
-        emissions_result = supabase_client.from_('emissions_logs') \
-            .select('calculated_kg_co2e, metadata') \
-            .eq('organization_id', org_id) \
-            .execute()
-        
-        records = emissions_result.data or []
-        total_records = len(records)
-        total_kg = sum(r.get('calculated_kg_co2e', 0) for r in records)
-        
-        # Get scope breakdown
-        records_by_scope = {'1': 0, '2': 0, '3': 0}
-        for record in records:
-            scope = record.get('metadata', {}).get('scope', 'Unknown')
-            if scope in records_by_scope:
-                records_by_scope[scope] += 1
-        
-        # Get last activity
-        last_activity_result = supabase_client.from_('emissions_logs') \
-            .select('created_at') \
-            .eq('organization_id', org_id) \
-            .order('created_at', desc=True) \
-            .limit(1) \
-            .execute()
-        
-        last_activity = last_activity_result.data[0]['created_at'] if last_activity_result.data else None
-        
-        return {
-            'total_members': total_members,
-            'active_members': active_members,
-            'total_assets': total_assets,
-            'total_facilities': total_facilities,
-            'total_emissions_records': total_records,
-            'total_emissions_kg': total_kg,
-            'total_emissions_tonnes': total_kg / 1000,
-            'records_by_scope': records_by_scope,
-            'last_activity': last_activity
-        }
-        
-    except Exception as e:
-        print(f"⚠️ Error getting organization stats: {e}")
-        return {
-            'total_members': 0,
-            'active_members': 0,
-            'total_assets': 0,
-            'total_facilities': 0,
-            'total_emissions_records': 0,
-            'total_emissions_kg': 0,
-            'total_emissions_tonnes': 0,
-            'records_by_scope': {'1': 0, '2': 0, '3': 0},
-            'last_activity': None
-        }
+        return result.data.get('name') if result.data else None
+    except Exception:
+        return None
 
 # ==========================================
-# ENDPOINTS
+# ✅ MAIN ORGANIZATION ENDPOINTS
 # ==========================================
-
-@router.get("/", response_model=List[OrganizationResponse])
-async def get_all_organizations(
-    search: Optional[str] = Query(None, description="Search by name"),
-    industry: Optional[str] = Query(None, description="Filter by industry"),
-    subscription_status: Optional[str] = Query(None, description="Filter by subscription status"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    current_user: AuthUser = Depends(require_role(["admin"]))
-):
-    """
-    Get all organizations.
-    Admin only endpoint.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        query = supabase.from_('organizations').select('*')
-        
-        if search:
-            query = query.ilike('name', f'%{search}%')
-        if industry:
-            query = query.eq('industry', industry)
-        if subscription_status:
-            query = query.eq('subscription_status', subscription_status)
-        
-        result = query.order('name').range(offset, offset + limit - 1).execute()
-        
-        organizations = []
-        for org in result.data:
-            stats = await get_organization_stats(supabase, org['id'])
-            
-            organizations.append(OrganizationResponse(
-                id=org['id'],
-                name=org['name'],
-                company_number=org.get('company_number'),
-                registered_address=org.get('registered_address'),
-                country=org.get('country', 'UK'),
-                timezone=org.get('timezone', 'Europe/London'),
-                currency=org.get('currency', 'GBP'),
-                website=org.get('website'),
-                industry=org.get('industry'),
-                sector=org.get('sector'),
-                company_size=org.get('company_size'),
-                vat_number=org.get('vat_number'),
-                registration_number=org.get('registration_number'),
-                financial_year_end=org.get('financial_year_end'),
-                reporting_standard=org.get('reporting_standard', 'SECR'),
-                secr_enabled=org.get('secr_enabled', True),
-                esrs_enabled=org.get('esrs_enabled', False),
-                issb_enabled=org.get('issb_enabled', False),
-                default_defra_version=org.get('default_defra_version', 2024),
-                preferred_units=org.get('preferred_units', 'metric'),
-                logo_url=org.get('logo_url'),
-                subscription_status=org.get('subscription_status', 'trial'),
-                subscription_tier=org.get('subscription_tier', 'starter'),
-                trial_start_date=org.get('trial_start_date'),
-                trial_end_date=org.get('trial_end_date'),
-                created_at=org['created_at'],
-                updated_at=org.get('updated_at', org['created_at']),
-                member_count=stats['total_members'],
-                emissions_record_count=stats['total_emissions_records']
-            ))
-        
-        return organizations
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error getting organizations: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get organizations: {str(e)}"
-        )
 
 @router.get("/{org_id}", response_model=OrganizationResponse)
 async def get_organization(
     org_id: str,
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Get a specific organization by ID.
-    Admin only endpoint.
-    """
+    """Get a specific organization by ID. Admin only."""
     try:
         supabase = get_supabase_client()
         
@@ -381,19 +248,16 @@ async def get_organization(
             detail=f"Failed to get organization: {str(e)}"
         )
 
+
 @router.post("/", response_model=OrganizationResponse)
 async def create_organization(
     org_data: OrganizationCreate,
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Create a new organization.
-    Admin only endpoint.
-    """
+    """Create a new organization. Admin only."""
     try:
         supabase = get_supabase_client()
         
-        # Check if organization name already exists
         existing = supabase.from_('organizations') \
             .select('id') \
             .ilike('name', org_data.name) \
@@ -406,7 +270,6 @@ async def create_organization(
                 detail=f"Organization with name '{org_data.name}' already exists"
             )
         
-        # Create organization
         now = datetime.now().isoformat()
         result = supabase.from_('organizations') \
             .insert({
@@ -426,7 +289,6 @@ async def create_organization(
                 detail="Failed to create organization"
             )
         
-        # Get the created organization
         return await get_organization(result.data[0]['id'], current_user)
         
     except HTTPException:
@@ -438,20 +300,17 @@ async def create_organization(
             detail=f"Failed to create organization: {str(e)}"
         )
 
+
 @router.put("/{org_id}", response_model=OrganizationResponse)
 async def update_organization(
     org_id: str,
     update_data: OrganizationUpdate,
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Update an organization.
-    Admin only endpoint.
-    """
+    """Update an organization. Admin only."""
     try:
         supabase = get_supabase_client()
         
-        # Check if organization exists
         existing = supabase.from_('organizations') \
             .select('id') \
             .eq('id', org_id) \
@@ -464,7 +323,6 @@ async def update_organization(
                 detail="Organization not found"
             )
         
-        # Check name uniqueness if updating
         if update_data.name:
             name_check = supabase.from_('organizations') \
                 .select('id') \
@@ -479,7 +337,6 @@ async def update_organization(
                     detail=f"Organization with name '{update_data.name}' already exists"
                 )
         
-        # Update organization
         update_dict = update_data.dict(exclude_unset=True)
         update_dict['updated_at'] = datetime.now().isoformat()
         
@@ -505,20 +362,17 @@ async def update_organization(
             detail=f"Failed to update organization: {str(e)}"
         )
 
+
 @router.delete("/{org_id}")
 async def delete_organization(
     org_id: str,
     permanent: bool = Query(False, description="Permanently delete or soft delete"),
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Delete an organization.
-    Admin only endpoint.
-    """
+    """Delete an organization. Admin only."""
     try:
         supabase = get_supabase_client()
         
-        # Check if organization exists
         existing = supabase.from_('organizations') \
             .select('id, name') \
             .eq('id', org_id) \
@@ -532,7 +386,6 @@ async def delete_organization(
             )
         
         if permanent:
-            # Check if there are any members before permanent delete
             members = supabase.from_('organization_members') \
                 .select('id', count='exact') \
                 .eq('organization_id', org_id) \
@@ -541,19 +394,16 @@ async def delete_organization(
             if members.count > 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Cannot permanently delete organization with {members.count} members. Remove members first."
+                    detail=f"Cannot permanently delete organization with {members.count} members"
                 )
             
-            # Hard delete
-            result = supabase.from_('organizations') \
+            supabase.from_('organizations') \
                 .delete() \
                 .eq('id', org_id) \
                 .execute()
-            
             message = f"Organization '{existing.data['name']}' permanently deleted"
         else:
-            # Soft delete - deactivate
-            result = supabase.from_('organizations') \
+            supabase.from_('organizations') \
                 .update({
                     'is_active': False,
                     'deleted_at': datetime.now().isoformat(),
@@ -561,7 +411,6 @@ async def delete_organization(
                 }) \
                 .eq('id', org_id) \
                 .execute()
-            
             message = f"Organization '{existing.data['name']}' deactivated"
         
         return {
@@ -580,19 +429,16 @@ async def delete_organization(
             detail=f"Failed to delete organization: {str(e)}"
         )
 
+
 @router.get("/{org_id}/stats", response_model=OrganizationStats)
 async def get_organization_stats_endpoint(
     org_id: str,
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Get detailed statistics for an organization.
-    Admin only endpoint.
-    """
+    """Get detailed statistics for an organization. Admin only."""
     try:
         supabase = get_supabase_client()
         
-        # Get organization name
         org_result = supabase.from_('organizations') \
             .select('name') \
             .eq('id', org_id) \
@@ -610,7 +456,15 @@ async def get_organization_stats_endpoint(
         return OrganizationStats(
             organization_id=org_id,
             organization_name=org_result.data['name'],
-            **stats
+            total_members=stats['total_members'],
+            active_members=stats['active_members'],
+            total_assets=stats['total_assets'],
+            total_facilities=stats['total_facilities'],
+            total_emissions_records=stats['total_emissions_records'],
+            total_emissions_kg=stats['total_emissions_kg'],
+            total_emissions_tonnes=stats['total_emissions_tonnes'],
+            records_by_scope=stats['records_by_scope'],
+            last_activity=stats['last_activity']
         )
         
     except HTTPException:
@@ -621,254 +475,769 @@ async def get_organization_stats_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get organization stats: {str(e)}"
         )
-# ==========================================
-# ORGANIZATION METADATA ENDPOINTS
-# ==========================================
-# backend/routes/organizations/management.py - Add after the existing endpoints
+
 
 # ==========================================
-# ORGANIZATION METADATA MODELS
-# ==========================================
-class OrganizationMetadataUpdate(BaseModel):
-    """Request model for updating organization metadata."""
-    total_employees: Optional[int] = None
-    full_time_employees: Optional[int] = None
-    part_time_employees: Optional[int] = None
-    contract_employees: Optional[int] = None
-    average_employees: Optional[int] = None
-    annual_revenue: Optional[float] = None
-    ebitda: Optional[float] = None
-    total_assets: Optional[float] = None
-    total_facilities: Optional[int] = None
-    total_floor_area_sqft: Optional[float] = None
-    occupied_floor_area_sqft: Optional[float] = None
-    renewable_energy_percentage: Optional[float] = None
-    carbon_offset_percentage: Optional[float] = None
-    energy_intensity: Optional[float] = None
-    reporting_standard: Optional[str] = None
-    fiscal_year_start: Optional[str] = None
-    fiscal_year_end: Optional[str] = None
-    primary_contact_name: Optional[str] = None
-    primary_contact_email: Optional[str] = None
-    primary_contact_phone: Optional[str] = None
-    sustainability_officer_name: Optional[str] = None
-    sustainability_officer_email: Optional[str] = None
-    industry_sector: Optional[str] = None
-    naics_code: Optional[str] = None
-    sic_code: Optional[str] = None
-    custom_metrics: Optional[Dict[str, Any]] = None
-
-# ==========================================
-# HELPER FUNCTIONS
+# ✅ ORGANIZATION METADATA ENDPOINTS (ALL)
 # ==========================================
 
-async def get_organization_name(supabase_client, org_id: str) -> Optional[str]:
-    """Get organization name by ID."""
-    try:
-        result = supabase_client.from_('organizations') \
-            .select('name') \
-            .eq('id', org_id) \
-            .maybe_single() \
-            .execute()
-        return result.data.get('name') if result.data else None
-    except Exception:
-        return None
-
-# ==========================================
-# ORGANIZATION METADATA ENDPOINTS
-# ==========================================
-
-@router.get("/{org_id}/metadata")
-async def get_organization_metadata(
+@router.get("/{org_id}/metadata/all")
+async def get_all_metadata(
     org_id: str,
     current_user: AuthUser = Depends(require_org_member())
 ):
-    """
-    Get organization metadata for reporting.
-    """
+    """Get all metadata for an organization."""
     try:
         supabase = get_supabase_client()
         
-        # Check if user has access to this organization
-        if current_user.organization_id != org_id and not current_user.is_staff:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this organization's data"
-            )
-        
-        # Check if organization exists
-        org_check = supabase.from_('organizations') \
+        # Verify access
+        member_check = supabase.from_('organization_members') \
             .select('id') \
-            .eq('id', org_id) \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
-        if not org_check.data:
+        if not member_check.data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Organization not found"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
             )
         
-        # ✅ Try to get metadata - handle if table doesn't exist
-        try:
-            result = supabase.from_('organization_metadata') \
-                .select('*') \
-                .eq('organization_id', org_id) \
-                .maybe_single() \
-                .execute()
-            
-            # ✅ Check if result exists and has data
-            if result and result.data:
-                return {
-                    "success": True,
-                    "data": result.data
-                }
-                
-        except Exception as table_error:
-            print(f"⚠️ Table error (likely table doesn't exist): {table_error}")
-            # Fall through to return empty metadata
+        result = supabase.from_('organization_metadata') \
+            .select('*') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
         
-        # ✅ Return empty metadata if no data found or table doesn't exist
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting all metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/employees")
+async def get_employee_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get employee metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('total_employees, full_time_employees, part_time_employees, contract_employees, average_employees') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting employee metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get employee metadata: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/employees")
+async def update_employee_metadata(
+    org_id: str,
+    update_data: EmployeeMetadataUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update employee metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = update_data.dict(exclude_none=True)
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Employee metadata updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating employee metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update employee metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/financials")
+async def get_financial_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get financial metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('annual_revenue, ebitda, total_assets, fiscal_year_start, fiscal_year_end') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting financial metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get financial metadata: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/financials")
+async def update_financial_metadata(
+    org_id: str,
+    update_data: FinancialMetadataUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update financial metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = update_data.dict(exclude_none=True)
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Financial metadata updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating financial metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update financial metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/sustainability")
+async def get_sustainability_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get sustainability metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('renewable_energy_percentage, carbon_offset_percentage, energy_intensity, reporting_standard') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting sustainability metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get sustainability metadata: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/sustainability")
+async def update_sustainability_metadata(
+    org_id: str,
+    update_data: SustainabilityMetadataUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update sustainability metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = update_data.dict(exclude_none=True)
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Sustainability metadata updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating sustainability metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update sustainability metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/contacts")
+async def get_contact_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get contact metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('primary_contact_name, primary_contact_email, primary_contact_phone, sustainability_officer_name, sustainability_officer_email') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting contact metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get contact metadata: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/contacts")
+async def update_contact_metadata(
+    org_id: str,
+    update_data: ContactMetadataUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update contact metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = update_data.dict(exclude_none=True)
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Contact metadata updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating contact metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update contact metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/industry")
+async def get_industry_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get industry metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('industry_sector, naics_code, sic_code') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data or {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting industry metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get industry metadata: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/industry")
+async def update_industry_metadata(
+    org_id: str,
+    update_data: IndustryMetadataUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update industry metadata for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = update_data.dict(exclude_none=True)
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Industry metadata updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating industry metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update industry metadata: {str(e)}"
+        )
+
+
+@router.get("/{org_id}/metadata/custom-metrics")
+async def get_custom_metrics(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get custom metrics for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('custom_metrics') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        return {"success": True, "data": result.data.get('custom_metrics', {}) if result.data else {}}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting custom metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get custom metrics: {str(e)}"
+        )
+
+
+@router.put("/{org_id}/metadata/custom-metrics")
+async def update_custom_metrics(
+    org_id: str,
+    update_data: CustomMetricsUpdate,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Update custom metrics for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        existing = supabase.from_('organization_metadata') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        data = {'custom_metrics': update_data.custom_metrics}
+        data['updated_at'] = datetime.now().isoformat()
+        data['updated_by'] = current_user.user_id
+        
+        if existing.data:
+            result = supabase.from_('organization_metadata') \
+                .update(data) \
+                .eq('organization_id', org_id) \
+                .execute()
+        else:
+            data['organization_id'] = org_id
+            data['created_at'] = datetime.now().isoformat()
+            result = supabase.from_('organization_metadata') \
+                .insert(data) \
+                .execute()
+        
+        return {"success": True, "message": "Custom metrics updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating custom metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update custom metrics: {str(e)}"
+        )
+
+
+# ==========================================
+# ✅ METADATA VALIDATION ENDPOINTS
+# ==========================================
+
+@router.post("/{org_id}/metadata/validate")
+async def validate_metadata(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Validate organization metadata completeness."""
+    try:
+        supabase = get_supabase_client()
+        
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
+            )
+        
+        result = supabase.from_('organization_metadata') \
+            .select('*') \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "data": {
+                    "is_complete": False,
+                    "completeness_score": 0,
+                    "missing_fields": [
+                        "annual_revenue",
+                        "total_employees",
+                        "industry_sector",
+                        "fiscal_year_end",
+                        "reporting_standard"
+                    ]
+                }
+            }
+        
+        metadata = result.data
+        
+        required_fields = [
+            'annual_revenue',
+            'total_employees',
+            'full_time_employees',
+            'industry_sector',
+            'fiscal_year_end',
+            'reporting_standard',
+            'primary_contact_name',
+            'primary_contact_email'
+        ]
+        
+        missing_fields = []
+        present_fields = 0
+        
+        for field in required_fields:
+            if metadata.get(field) is not None and metadata.get(field) != '':
+                present_fields += 1
+            else:
+                missing_fields.append(field)
+        
+        completeness_score = round((present_fields / len(required_fields)) * 100, 2)
+        is_complete = completeness_score == 100
+        
         return {
             "success": True,
             "data": {
-                "organization_id": org_id,
-                "total_employees": 0,
-                "full_time_employees": 0,
-                "part_time_employees": 0,
-                "contract_employees": 0,
-                "average_employees": 0,
-                "annual_revenue": 0,
-                "ebitda": 0,
-                "total_assets": 0,
-                "total_facilities": 0,
-                "total_floor_area_sqft": 0,
-                "occupied_floor_area_sqft": 0,
-                "renewable_energy_percentage": 0,
-                "carbon_offset_percentage": 0,
-                "energy_intensity": 0,
-                "reporting_standard": "SECR",
-                "fiscal_year_start": f"{datetime.now().year}-04-01",
-                "fiscal_year_end": f"{datetime.now().year + 1}-03-31",
-                "primary_contact_name": "",
-                "primary_contact_email": "",
-                "primary_contact_phone": "",
-                "sustainability_officer_name": "",
-                "sustainability_officer_email": "",
-                "industry_sector": "",
-                "naics_code": "",
-                "sic_code": "",
-                "custom_metrics": {}
+                "is_complete": is_complete,
+                "completeness_score": completeness_score,
+                "missing_fields": missing_fields,
+                "present_fields_count": present_fields,
+                "total_required_fields": len(required_fields)
             }
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error in get_organization_metadata: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error validating metadata: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get organization metadata: {str(e)}"
+            detail=f"Failed to validate metadata: {str(e)}"
         )
 
-@router.put("/{org_id}/metadata")
-async def update_organization_metadata(
+
+@router.get("/{org_id}/metadata/required-fields")
+async def get_required_metadata_fields(
     org_id: str,
-    metadata_data: OrganizationMetadataUpdate,
     current_user: AuthUser = Depends(require_org_member())
 ):
-    """
-    Update organization metadata for reporting.
-    """
+    """Get list of required metadata fields."""
     try:
         supabase = get_supabase_client()
         
-        # Check if user has access to this organization
-        if current_user.organization_id != org_id and not current_user.is_staff:
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this organization's data"
+                detail="User does not have access to this organization"
             )
         
-        # Check if organization exists
-        org_check = supabase.from_('organizations') \
-            .select('id') \
-            .eq('id', org_id) \
-            .maybe_single() \
-            .execute()
+        required_fields = [
+            {'field': 'annual_revenue', 'type': 'number', 'description': 'Annual revenue in GBP'},
+            {'field': 'total_employees', 'type': 'number', 'description': 'Total number of employees'},
+            {'field': 'full_time_employees', 'type': 'number', 'description': 'Number of full-time employees'},
+            {'field': 'industry_sector', 'type': 'string', 'description': 'Industry sector classification'},
+            {'field': 'fiscal_year_end', 'type': 'date', 'description': 'End date of fiscal year'},
+            {'field': 'reporting_standard', 'type': 'string', 'description': 'Reporting standard used'},
+            {'field': 'primary_contact_name', 'type': 'string', 'description': 'Primary contact person'},
+            {'field': 'primary_contact_email', 'type': 'email', 'description': 'Primary contact email'}
+        ]
         
-        if not org_check.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Organization not found"
-            )
-        
-        # Build update dict (remove None values)
-        update_dict = {k: v for k, v in metadata_data.dict().items() if v is not None}
-        update_dict['updated_at'] = datetime.now().isoformat()
-        update_dict['updated_by'] = current_user.user_id
-        
-        if not update_dict:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update"
-            )
-        
-        try:
-            # Check if metadata exists
-            existing = supabase.from_('organization_metadata') \
-                .select('id') \
-                .eq('organization_id', org_id) \
-                .maybe_single() \
-                .execute()
-            
-            if existing and existing.data:
-                # Update existing
-                result = supabase.from_('organization_metadata') \
-                    .update(update_dict) \
-                    .eq('organization_id', org_id) \
-                    .execute()
-            else:
-                # Create new
-                update_dict['organization_id'] = org_id
-                update_dict['created_at'] = datetime.now().isoformat()
-                result = supabase.from_('organization_metadata') \
-                    .insert(update_dict) \
-                    .execute()
-                    
-        except Exception as table_error:
-            # Table might not exist - create it and retry
-            print(f"⚠️ Table error, creating metadata: {table_error}")
-            
-            # Insert directly - table should exist now
-            update_dict['organization_id'] = org_id
-            update_dict['created_at'] = datetime.now().isoformat()
-            result = supabase.from_('organization_metadata') \
-                .insert(update_dict) \
-                .execute()
-        
-        # Fetch the updated/created record
-        final_result = supabase.from_('organization_metadata') \
-            .select('*') \
-            .eq('organization_id', org_id) \
-            .maybe_single() \
-            .execute()
-        
-        return {
-            "success": True,
-            "message": "Organization metadata updated successfully",
-            "data": final_result.data if final_result and final_result.data else None
-        }
+        return {"success": True, "data": required_fields}
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error updating organization metadata: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error getting required fields: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update organization metadata: {str(e)}"
+            detail=f"Failed to get required fields: {str(e)}"
         )

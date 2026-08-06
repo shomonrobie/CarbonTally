@@ -1,145 +1,93 @@
 # backend/routes/reference.py
+"""
+Reference data endpoints for units, fuel types, and categories.
+These return REFERENCE DATA (types, categories, lists), not actual records.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-from auth import AuthUser, require_org_member
+from auth import AuthUser, require_auth
 from database import get_supabase_client
 
 router = APIRouter(prefix="/api/reference", tags=["Reference Data"])
 
 # ==========================================
-# ENDPOINTS
+# REFERENCE DATA - Available to all authenticated users
 # ==========================================
-
-@router.get("/fuel-types")
-async def get_fuel_types(
-    category: Optional[str] = Query(None, description="Filter by category: fuel, utility, scope3"),
-    current_user: AuthUser = Depends(require_org_member())
-):
-    """
-    Get fuel/utility types from DEFRA conversion factors.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        # Get distinct activity types from DEFRA factors
-        query = supabase.from_('defra_conversion_factors') \
-            .select('activity_type, reporting_year') \
-            .order('activity_type')
-        
-        if category:
-            # Filter by category - can add logic based on naming patterns
-            if category == 'fuel':
-                query = query.ilike('activity_type', '%Diesel%').or_(
-                    query.ilike('activity_type', '%Petrol%').or_(
-                        query.ilike('activity_type', '%LPG%').or_(
-                            query.ilike('activity_type', '%CNG%')
-                        )
-                    )
-                )
-            elif category == 'utility':
-                query = query.ilike('activity_type', '%Electricity%').or_(
-                    query.ilike('activity_type', '%Natural Gas%').or_(
-                        query.ilike('activity_type', '%Steam%')
-                    )
-                )
-            elif category == 'scope3':
-                query = query.ilike('activity_type', '%Flight%').or_(
-                    query.ilike('activity_type', '%Rail%').or_(
-                        query.ilike('activity_type', '%Waste%').or_(
-                            query.ilike('activity_type', '%Hotel%')
-                        )
-                    )
-                )
-        
-        result = query.execute()
-        
-        # Get unique activity types with latest reporting year
-        activity_map = {}
-        for item in result.data:
-            activity = item.get('activity_type')
-            year = item.get('reporting_year')
-            if activity not in activity_map or year > activity_map[activity]:
-                activity_map[activity] = year
-        
-        # Sort and format
-        fuel_types = [
-            {
-                'value': activity,
-                'label': activity,
-                'reporting_year': year
-            }
-            for activity, year in sorted(activity_map.items())
-        ]
-        
-        return {
-            "success": True,
-            "fuel_types": fuel_types,
-            "total": len(fuel_types)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error getting fuel types: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get fuel types: {str(e)}"
-        )
 
 @router.get("/units")
 async def get_units(
-    category: Optional[str] = Query(None, description="Filter by category: energy, volume, mass"),
-    current_user: AuthUser = Depends(require_org_member())
+    category: Optional[str] = Query(None, description="Filter by category"),
+    current_user: AuthUser = Depends(require_auth())
 ):
     """
-    Get available units from the units table.
+    Get all available units (reference data).
+    Available to all authenticated users.
     """
     try:
         supabase = get_supabase_client()
         
-        query = supabase.from_('units') \
-            .select('*') \
-            .eq('is_active', True) \
-            .order('name')
+        query = supabase.from_('units').select('*')
         
         if category:
             query = query.eq('category', category)
         
-        result = query.execute()
-        
-        units = []
-        for item in result.data:
-            units.append({
-                'id': item['id'],
-                'code': item['code'],
-                'name': item['name'],
-                'category': item['category'],
-                'symbol': item.get('symbol'),
-                'conversion_factor': item.get('conversion_factor', 1)
-            })
+        result = query.order('name').execute()
         
         return {
             "success": True,
-            "units": units,
-            "total": len(units)
+            "data": result.data,
+            "total": len(result.data) if result.data else 0
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"❌ Error getting units: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get units: {str(e)}"
         )
 
-@router.get("/categories")
-async def get_categories(
-    current_user: AuthUser = Depends(require_org_member())
+@router.get("/fuel-types")
+async def get_fuel_types(
+    current_user: AuthUser = Depends(require_auth())
 ):
     """
-    Get activity categories from activity_categories table.
+    Get all available fuel types (reference data).
+    Available to all authenticated users.
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get distinct fuel types from defra_conversion_factors
+        result = supabase.from_('defra_conversion_factors') \
+            .select('activity_type') \
+            .execute()
+        
+        fuel_types = []
+        if result.data:
+            all_types = list(set([r['activity_type'] for r in result.data]))
+            fuel_keywords = ['Diesel', 'Petrol', 'LPG', 'CNG', 'AdBlue', 'Fuel', 'Gasoline']
+            fuel_types = [t for t in all_types if any(kw.lower() in t.lower() for kw in fuel_keywords)]
+            fuel_types.sort()
+        
+        return {
+            "success": True,
+            "data": fuel_types,
+            "total": len(fuel_types)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get fuel types: {str(e)}"
+        )
+
+@router.get("/categories")
+async def get_reference_categories(
+    current_user: AuthUser = Depends(require_auth())
+):
+    """
+    Get all reference categories.
+    Available to all authenticated users.
     """
     try:
         supabase = get_supabase_client()
@@ -149,16 +97,21 @@ async def get_categories(
             .order('activity_type') \
             .execute()
         
+        categories = []
+        if result.data:
+            categories = list(set([r.get('esrs_e1_category', 'Other') for r in result.data if r.get('esrs_e1_category')]))
+            categories.sort()
+        
         return {
             "success": True,
-            "categories": result.data or [],
-            "total": len(result.data or [])
+            "data": {
+                "categories": categories,
+                "activity_categories": result.data,
+                "total": len(result.data) if result.data else 0
+            }
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"❌ Error getting categories: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get categories: {str(e)}"
@@ -166,98 +119,83 @@ async def get_categories(
 
 @router.get("/facilities")
 async def get_facilities_list(
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_auth())
 ):
     """
-    Get facilities for the current organization.
+    Get list of facility TYPES (reference data).
+    Available to all authenticated users.
     """
     try:
-        supabase = get_supabase_client()
-        
-        org_id = current_user.organization_id
-        if not org_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not associated with an organization"
-            )
-        
-        result = supabase.from_('facilities') \
-            .select('id, name, address_line1, city, postcode, country') \
-            .eq('organization_id', org_id) \
-            .eq('is_active', True) \
-            .order('name') \
-            .execute()
+        facility_types = [
+            {"value": "office", "label": "Office"},
+            {"value": "warehouse", "label": "Warehouse"},
+            {"value": "manufacturing", "label": "Manufacturing"},
+            {"value": "retail", "label": "Retail"},
+            {"value": "data_center", "label": "Data Center"},
+            {"value": "laboratory", "label": "Laboratory"},
+            {"value": "hospitality", "label": "Hospitality"},
+            {"value": "other", "label": "Other"}
+        ]
         
         return {
             "success": True,
-            "facilities": result.data or [],
-            "total": len(result.data or [])
+            "data": facility_types,
+            "total": len(facility_types)
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"❌ Error getting facilities: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get facilities: {str(e)}"
+            detail=f"Failed to get facilities list: {str(e)}"
         )
 
 @router.get("/assets")
 async def get_assets_list(
-    facility_id: Optional[str] = Query(None, description="Filter by facility"),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_auth())
 ):
     """
-    Get assets for the current organization.
+    Get list of asset TYPES (reference data).
+    Available to all authenticated users.
+    Note: Actual assets are accessed via /api/organizations/{org_id}/assets
     """
     try:
-        supabase = get_supabase_client()
-        
-        org_id = current_user.organization_id
-        if not org_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not associated with an organization"
-            )
-        
-        # Get facilities for this organization
-        facilities_result = supabase.from_('facilities') \
-            .select('id') \
-            .eq('organization_id', org_id) \
-            .execute()
-        
-        facility_ids = [f['id'] for f in (facilities_result.data or [])]
-        
-        if not facility_ids:
-            return {
-                "success": True,
-                "assets": [],
-                "total": 0
-            }
-        
-        query = supabase.from_('assets') \
-            .select('id, name, type, description, facility_id') \
-            .in_('facility_id', facility_ids) \
-            .eq('is_active', True) \
-            .order('name')
-        
-        if facility_id:
-            query = query.eq('facility_id', facility_id)
-        
-        result = query.execute()
+        # Return a list of common asset TYPES (reference data)
+        asset_types = [
+            {"value": "equipment", "label": "Equipment"},
+            {"value": "vehicle", "label": "Vehicle"},
+            {"value": "building", "label": "Building"},
+            {"value": "machinery", "label": "Machinery"},
+            {"value": "it_equipment", "label": "IT Equipment"},
+            {"value": "furniture", "label": "Furniture"},
+            {"value": "other", "label": "Other"}
+        ]
         
         return {
             "success": True,
-            "assets": result.data or [],
-            "total": len(result.data or [])
+            "data": asset_types,
+            "total": len(asset_types)
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"❌ Error getting assets: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get assets: {str(e)}"
+            detail=f"Failed to get assets list: {str(e)}"
         )
+
+@router.get("/facility-types")
+async def get_facility_types(
+    current_user: AuthUser = Depends(require_auth())
+):
+    """
+    Alias for /facilities - Get facility TYPES (reference data).
+    """
+    return await get_facilities_list(current_user)
+
+@router.get("/asset-types")
+async def get_asset_types(
+    current_user: AuthUser = Depends(require_auth())
+):
+    """
+    Alias for /assets - Get asset TYPES (reference data).
+    """
+    return await get_assets_list(current_user)

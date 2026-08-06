@@ -1,0 +1,106 @@
+<!-- Manual Review Queue Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>✅ Validation Queue</h1>
+            <p>Review and validate documents awaiting verification</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="refreshQueue()">
+                🔄 Refresh
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="exportQueue()">
+                📊 Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="queue-stats" id="queueStats">
+        <div class="queue-stat">
+            <span class="icon">📊</span>
+            <div class="value" id="statTotal">0</div>
+            <div class="label">Total Items</div>
+        </div>
+        <div class="queue-stat">
+            <span class="icon">📤</span>
+            <div class="value" id="statPending">0</div>
+            <div class="label">Pending</div>
+        </div>
+        <div class="queue-stat">
+            <span class="icon">⏳</span>
+            <div class="value" id="statInProgress">0</div>
+            <div class="label">In Progress</div>
+        </div>
+        <div class="queue-stat">
+            <span class="icon">📝</span>
+            <div class="value" id="statReview">0</div>
+            <div class="label">Review</div>
+        </div>
+        <div class="queue-stat">
+            <span class="icon">✅</span>
+            <div class="value" id="statApproved">0</div>
+            <div class="label">Approved</div>
+        </div>
+        <div class="queue-stat">
+            <span class="icon">🚨</span>
+            <div class="value" id="statEscalated">0</div>
+            <div class="label">Escalated</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <select id="statusFilter" onchange="applyFilters()">
+            <option value="all">📊 All Status</option>
+            <option value="pending">📤 Pending</option>
+            <option value="in-progress">⏳ In Progress</option>
+            <option value="review">📝 Review</option>
+            <option value="approved">✅ Approved</option>
+            <option value="escalated">🚨 Escalated</option>
+        </select>
+
+        <select id="priorityFilter" onchange="applyFilters()">
+            <option value="all">⚡ All Priority</option>
+            <option value="high">🔴 High</option>
+            <option value="medium">🟡 Medium</option>
+            <option value="low">🟢 Low</option>
+        </select>
+
+        <div style="flex:1;"></div>
+        <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+        <span class="badge badge-muted" id="queueCount">0 items</span>
+    </div>
+
+    <!-- Queue List -->
+    <div id="queueList">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination">
+        <!-- Rendered by JS -->
+    </div>
+
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailTitle">Review Item</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailSubtitle">View and manage review</div>
+            </div>
+            <button class="modal-close" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

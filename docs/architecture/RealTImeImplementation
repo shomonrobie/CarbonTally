@@ -1,0 +1,1604 @@
+CarbonTally Realtime Implementation - Technical Documentation
+📋 Table of Contents
+Overview
+
+Architecture
+
+Database Setup
+
+Backend Implementation
+
+Frontend Implementation
+
+Role-Based Access Control
+
+Features
+
+API Reference
+
+Troubleshooting
+
+Best Practices
+
+Overview
+CarbonTally uses Supabase Realtime to provide live updates across the platform without page refreshes. This enables real-time collaboration between customers and staff, instant notifications, and live status updates.
+
+Key Capabilities
+Feature	Description
+Live Notifications	Instant alerts for document status changes, approvals, and assignments
+Real-time Chat	Instant messaging with typing indicators and read receipts
+Document Status	Live updates on document processing progress
+Staff Presence	See who's online in real-time
+Activity Feed	Live feed of all platform activities
+Queue Updates	Real-time review queue changes
+Approval Workflow	Instant approval/rejection updates
+Architecture
+High-Level Architecture
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                    CarbonTally Platform                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                   PostgreSQL Database                    │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │   │
+│  │  │ notifications│  │  messages   │  │  customer_  │    │   │
+│  │  │              │  │             │  │  documents  │    │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘    │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │   │
+│  │  │    queue    │  │  workload   │  │   activity  │    │   │
+│  │  │             │  │             │  │    feed     │    │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │               Supabase Realtime Layer                    │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │   │
+│  │  │  Postgres   │  │  Broadcast  │  │  Presence   │    │   │
+│  │  │  Changes    │  │             │  │             │    │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    WebSocket Layer                       │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │   │
+│  │  │  /org/{id}  │  │ /staff/{id} │  │ /conv/{id}  │    │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                   Frontend Components                    │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │   │
+│  │  │ Notification │  │    Chat     │  │  Dashboard  │    │   │
+│  │  │    Bell     │  │   Window    │  │   Summary   │    │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+Channel Architecture
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                      Channel Types                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ● ORGANIZATION CHANNELS                                        │
+│    └── /org/{org_id}                                            │
+│        ├── /notifications     → INSERT: notifications          │
+│        ├── /documents         → UPDATE: customer_documents     │
+│        ├── /verifications     → UPDATE: customer_verifications │
+│        └── /activity          → INSERT: activity_feed          │
+│                                                                  │
+│  ● STAFF CHANNELS                                               │
+│    └── /staff/{staff_id}                                        │
+│        ├── /tasks             → UPDATE: manual_review_queue    │
+│        ├── /workload          → UPDATE: staff_workload         │
+│        └── /messages          → INSERT: messages               │
+│                                                                  │
+│  ● CONVERSATION CHANNELS                                        │
+│    └── /conversation/{conv_id}                                  │
+│        ├── /messages          → INSERT: messages               │
+│        ├── /typing            → Broadcast: typing events       │
+│        ├── /presence          → Presence: participants         │
+│        └── /read              → Broadcast: read receipts       │
+│                                                                  │
+│  ● PRESENCE CHANNELS                                            │
+│    └── /staff/presence                                          │
+│        └── /online            → Presence: staff status         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+Database Setup
+1. Enable Realtime on Tables
+sql
+-- Step 1: Enable Replica Identity for each table
+ALTER TABLE notifications REPLICA IDENTITY FULL;
+ALTER TABLE messages REPLICA IDENTITY FULL;
+ALTER TABLE customer_documents REPLICA IDENTITY FULL;
+ALTER TABLE customer_verifications REPLICA IDENTITY FULL;
+ALTER TABLE manual_review_queue REPLICA IDENTITY FULL;
+ALTER TABLE staff_workload REPLICA IDENTITY FULL;
+ALTER TABLE activity_feed REPLICA IDENTITY FULL;
+ALTER TABLE conversations REPLICA IDENTITY FULL;
+ALTER TABLE customer_review_log REPLICA IDENTITY FULL;
+
+-- Step 2: Add tables to supabase_realtime publication
+BEGIN;
+  ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_documents;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_verifications;
+  ALTER PUBLICATION supabase_realtime ADD TABLE manual_review_queue;
+  ALTER PUBLICATION supabase_realtime ADD TABLE staff_workload;
+  ALTER PUBLICATION supabase_realtime ADD TABLE activity_feed;
+  ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_review_log;
+COMMIT;
+
+-- Step 3: Verify
+SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';
+2. RLS Policies for Realtime
+sql
+-- Notifications: User can only see their own
+CREATE POLICY "Users can see own notifications" ON notifications
+    FOR SELECT USING (user_id = auth.uid());
+
+-- Messages: Only conversation participants
+CREATE POLICY "Can see messages in conversation" ON messages
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM conversation_participants 
+            WHERE conversation_id = messages.conversation_id 
+            AND user_id = auth.uid()
+        )
+    );
+
+-- Documents: Only organization members
+CREATE POLICY "Org members see documents" ON customer_documents
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM organization_members 
+            WHERE organization_id = customer_documents.organization_id 
+            AND user_id = auth.uid()
+        )
+    );
+Backend Implementation
+1. Realtime Manager (lib/realtime/manager.js)
+javascript
+// Core Realtime connection manager
+class RealtimeManager {
+  constructor() {
+    this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    this.channels = new Map();
+    this.eventDispatcher = new EventDispatcher();
+    this.isConnected = false;
+    this.user = null;
+  }
+
+  // Initialize with user data
+  initialize(user) {
+    this.user = user;
+    this.supabase.auth.setSession({
+      access_token: user.accessToken,
+      refresh_token: user.refreshToken,
+    });
+  }
+
+  // Connect to all channels
+  async connect() {
+    await this.connectOrganizationChannel(this.user.organization_id);
+    
+    if (this.user.isStaff) {
+      await this.connectStaffChannel(this.user.id);
+    }
+    
+    const conversations = await this.getActiveConversations();
+    for (const conv of conversations) {
+      await this.connectConversationChannel(conv.id);
+    }
+    
+    this.isConnected = true;
+  }
+}
+2. Channel Subscriptions
+javascript
+// Organization Channel
+async connectOrganizationChannel(orgId) {
+  const channel = this.supabase.channel(`org:${orgId}`);
+  
+  // Notifications
+  channel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'notifications',
+    filter: `organization_id=eq.${orgId}`
+  }, (payload) => {
+    this.eventDispatcher.dispatch('NOTIFICATION_INSERT', payload);
+  });
+
+  // Document updates
+  channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_documents',
+    filter: `organization_id=eq.${orgId}`
+  }, (payload) => {
+    this.eventDispatcher.dispatch('DOCUMENT_UPDATE', payload);
+  });
+
+  // Verification updates
+  channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_verifications',
+    filter: `organization_id=eq.${orgId}`
+  }, (payload) => {
+    this.eventDispatcher.dispatch('VERIFICATION_UPDATE', payload);
+  });
+
+  // Activity feed
+  channel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'activity_feed',
+    filter: `organization_id=eq.${orgId}`
+  }, (payload) => {
+    this.eventDispatcher.dispatch('ACTIVITY_INSERT', payload);
+  });
+
+  channel.subscribe();
+  return channel;
+}
+Frontend Implementation
+1. Realtime Context (context/RealtimeContext.jsx)
+javascript
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { getRealtimeManager } from '../lib/realtime/manager';
+
+const RealtimeContext = createContext(null);
+
+export function RealtimeProvider({ children, user }) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [onlineStaff, setOnlineStaff] = useState([]);
+  const managerRef = useRef(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const manager = getRealtimeManager();
+    managerRef.current = manager;
+    
+    manager.initialize(user);
+    manager.connect();
+
+    manager.on('CONNECTED', () => setIsConnected(true));
+    manager.on('DISCONNECTED', () => setIsConnected(false));
+    manager.on('PRESENCE_UPDATE', (payload) => {
+      setOnlineStaff(payload.online);
+    });
+
+    return () => {
+      manager.disconnect();
+    };
+  }, [user]);
+
+  const value = {
+    isConnected,
+    onlineStaff,
+    // ... other methods
+  };
+
+  return (
+    <RealtimeContext.Provider value={value}>
+      {children}
+    </RealtimeContext.Provider>
+  );
+}
+
+export const useRealtime = () => {
+  const context = useContext(RealtimeContext);
+  if (!context) {
+    throw new Error('useRealtime must be used within RealtimeProvider');
+  }
+  return context;
+};
+2. Notification Hook
+javascript
+// hooks/useNotifications.js
+export function useNotifications() {
+  const { on, off } = useRealtime();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const handleInsert = (payload) => {
+      setNotifications(prev => [payload.new, ...prev]);
+      if (!payload.new.is_read) {
+        setUnreadCount(prev => prev + 1);
+        showNotification(payload.new);
+      }
+    };
+
+    on('NOTIFICATION_INSERT', handleInsert);
+    return () => off('NOTIFICATION_INSERT', handleInsert);
+  }, [on, off]);
+
+  return { notifications, unreadCount };
+}
+Role-Based Access Control
+Staff Roles & Permissions
+javascript
+// Role definitions
+const ROLES = {
+  admin: {
+    name: 'Administrator',
+    permissions: ['can_view_all', 'can_manage_staff', 'can_manage_roles'],
+    canAccess: ['dashboard', 'reviews', 'users', 'organizations', 'settings']
+  },
+  data_extractor: {
+    name: 'Data Extractor',
+    permissions: ['can_extract', 'can_process'],
+    canAccess: ['dashboard', 'extraction', 'reviews']
+  },
+  data_approver: {
+    name: 'Data Approver',
+    permissions: ['can_approve', 'can_review', 'can_export'],
+    canAccess: ['dashboard', 'approvals', 'reports']
+  },
+  staff: {
+    name: 'Staff',
+    permissions: ['can_review', 'can_process'],
+    canAccess: ['dashboard', 'reviews', 'assignments']
+  },
+  viewer: {
+    name: 'Viewer',
+    permissions: ['can_view'],
+    canAccess: ['dashboard']
+  }
+};
+
+// Role-based access check
+function hasAccess(userRole, resource) {
+  const role = ROLES[userRole];
+  if (!role) return false;
+  return role.canAccess.includes(resource);
+}
+Role-Based Work Hub
+javascript
+// Work Hub components based on role
+const WorkHub = () => {
+  const { userRole } = useAuth();
+  
+  const canView = {
+    notifications: true,
+    tasks: ['admin', 'staff', 'data_extractor'].includes(userRole),
+    approvals: ['admin', 'data_approver'].includes(userRole),
+    processing: ['admin', 'staff', 'data_extractor'].includes(userRole),
+    staffList: ['admin', 'staff'].includes(userRole),
+    reports: ['admin', 'data_approver'].includes(userRole),
+    settings: userRole === 'admin',
+  };
+
+  return (
+    <div>
+      {canView.tasks && <TaskPanel />}
+      {canView.approvals && <ApprovalPanel />}
+      {canView.staffList && <StaffPresence />}
+    </div>
+  );
+};
+Features
+1. Live Notifications
+javascript
+// Notification subscription
+channel.on('postgres_changes', {
+  event: 'INSERT',
+  schema: 'public',
+  table: 'notifications',
+  filter: `user_id=eq.${userId}`
+}, (payload) => {
+  // Show toast notification
+  showToast(payload.new.title, payload.new.message);
+  // Update badge count
+  updateBadgeCount(prev => prev + 1);
+});
+2. Real-time Chat
+javascript
+// Chat subscription
+channel.on('postgres_changes', {
+  event: 'INSERT',
+  schema: 'public',
+  table: 'messages',
+  filter: `conversation_id=eq.${convId}`
+}, (payload) => {
+  // Append message to chat
+  appendMessage(payload.new);
+  // Mark as read
+  markAsRead(payload.new.id);
+});
+
+// Typing indicator (Broadcast)
+channel.send({
+  type: 'broadcast',
+  event: 'typing',
+  payload: { userId, isTyping: true }
+});
+3. Document Status Updates
+javascript
+// Document status subscription
+channel.on('postgres_changes', {
+  event: 'UPDATE',
+  schema: 'public',
+  table: 'customer_documents',
+  filter: `organization_id=eq.${orgId}`
+}, (payload) => {
+  // Update document status
+  updateDocumentStatus(payload.new.id, payload.new.status);
+  // Update progress bar
+  updateProgress(payload.new.status);
+});
+4. Staff Presence
+javascript
+// Presence tracking
+channel.presence().track({
+  user_id: userId,
+  status: 'online',
+  last_seen: new Date().toISOString()
+});
+
+// Listen for presence changes
+channel.presence().on('sync', () => {
+  const state = channel.presence().state();
+  updateOnlineStaff(Object.keys(state));
+});
+API Reference
+Realtime Manager Methods
+Method	Description
+initialize(user)	Initialize with user data
+connect()	Connect to all channels
+disconnect()	Disconnect all channels
+on(event, callback)	Register event listener
+off(event, callback)	Remove event listener
+sendTyping(conversationId, isTyping)	Send typing indicator
+sendReadReceipt(conversationId, messageId)	Send read receipt
+Events
+Event	Payload	Description
+CONNECTED	{ user }	Connection established
+DISCONNECTED	{}	Connection lost
+NOTIFICATION_INSERT	{ new }	New notification
+MESSAGE_INSERT	{ new }	New message
+DOCUMENT_UPDATE	{ new, old }	Document updated
+PRESENCE_UPDATE	{ online }	Presence changed
+Frontend Hooks
+Hook	Description
+useRealtime()	Access Realtime context
+useNotifications()	Subscribe to notifications
+useMessages(conversationId)	Subscribe to messages
+useDocumentStatus()	Subscribe to document updates
+usePresence()	Subscribe to presence updates
+Troubleshooting
+Common Issues
+1. Connection Not Establishing
+Problem: Realtime doesn't connect
+
+Solution:
+
+javascript
+// Check if user is authenticated
+if (!user) {
+  console.warn('No user to connect');
+  return;
+}
+
+// Check environment variables
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  console.error('Missing Supabase URL');
+  return;
+}
+
+// Enable debug logging
+channel.subscribe((status) => {
+  console.log('Channel status:', status);
+});
+2. Notifications Not Appearing
+Problem: Notifications not showing in UI
+
+Solution:
+
+javascript
+// Verify RLS policies
+// Check if user_id filter is correct
+filter: `user_id=eq.${user.id}`
+
+// Verify table is in publication
+SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';
+
+// Check console for errors
+channel.on('system', { event: 'error' }, (payload) => {
+  console.error('Realtime error:', payload);
+});
+3. Presence Not Working
+Problem: Can't see online users
+
+Solution:
+
+javascript
+// Ensure presence is tracked
+channel.presence().track({
+  user_id: userId,
+  status: 'online'
+});
+
+// Listen for sync
+channel.presence().on('sync', () => {
+  const state = channel.presence().state();
+  console.log('Presence state:', state);
+});
+4. Memory Leaks
+Problem: Realtime causing memory issues
+
+Solution:
+
+javascript
+// Unsubscribe on component unmount
+useEffect(() => {
+  const channel = subscribeToChannel();
+  return () => {
+    channel.unsubscribe();
+  };
+}, []);
+
+// Limit subscriptions
+const MAX_CHANNELS = 20;
+if (channels.size >= MAX_CHANNELS) {
+  console.warn('Too many channels open');
+}
+Best Practices
+1. Connection Management
+javascript
+// ✅ DO: Use singleton pattern
+let instance = null;
+export function getRealtimeManager() {
+  if (!instance) {
+    instance = new RealtimeManager();
+  }
+  return instance;
+}
+
+// ❌ DON'T: Create new instances
+const manager1 = new RealtimeManager();
+const manager2 = new RealtimeManager(); // ❌ Memory leak
+2. Subscription Cleanup
+javascript
+// ✅ DO: Clean up subscriptions
+useEffect(() => {
+  const channel = supabase.channel('test');
+  channel.subscribe();
+  
+  return () => {
+    channel.unsubscribe();
+  };
+}, []);
+
+// ❌ DON'T: Forget to unsubscribe
+useEffect(() => {
+  const channel = supabase.channel('test');
+  channel.subscribe(); // ❌ Memory leak
+}, []);
+3. Error Handling
+javascript
+// ✅ DO: Handle errors gracefully
+try {
+  await manager.connect();
+} catch (error) {
+  console.error('Connection failed:', error);
+  // Show user-friendly message
+  toast.error('Connection lost. Reconnecting...');
+  // Attempt reconnect with backoff
+  setTimeout(() => manager.connect(), 5000);
+}
+
+// ❌ DON'T: Ignore errors
+await manager.connect(); // ❌ Errors swallowed
+4. Performance Optimization
+javascript
+// ✅ DO: Debounce frequent updates
+const debouncedUpdate = debounce(updateUI, 300);
+channel.on('UPDATE', (payload) => {
+  debouncedUpdate(payload);
+});
+
+// ✅ DO: Batch updates
+let batch = [];
+channel.on('INSERT', (payload) => {
+  batch.push(payload);
+  if (batch.length >= 10) {
+    processBatch(batch);
+    batch = [];
+  }
+});
+5. Security
+javascript
+// ✅ DO: Validate payload
+channel.on('postgres_changes', (payload) => {
+  if (!payload.new || !payload.new.user_id) {
+    console.warn('Invalid payload');
+    return;
+  }
+  processNotification(payload);
+});
+
+// ✅ DO: Use RLS policies
+// All queries should respect RLS
+// Never bypass RLS for Realtime
+Deployment Notes
+Environment Variables
+env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+Performance Monitoring
+javascript
+// Monitor connection health
+setInterval(() => {
+  if (!manager.isConnected) {
+    console.warn('Connection lost, reconnecting...');
+    manager.reconnect();
+  }
+}, 30000);
+
+// Monitor channel count
+setInterval(() => {
+  console.log(`Active channels: ${manager.channels.size}`);
+}, 60000);
+Version History
+Version	Date	Changes
+1.0.0	2026-07-29	Initial Realtime implementation
+1.1.0	2026-07-29	Added role-based access control
+1.2.0	2026-07-29	Added Work Hub with live updates
+Contact & Support
+For questions or support:
+
+Documentation: /docs/realtime.md
+
+Issues: GitHub Issues
+
+Team: CarbonTally Development Team
+
+© 2026 CarbonTally (UK) Ltd. All rights reserved.
+
+🎯 YES! Admin & Staff Panel is Critical
+You're absolutely right! We've been building features but missing the Administration & Staff Management Interface. This is essential for:
+
+Managing users, roles, and permissions
+
+Monitoring platform activity
+
+Handling support requests
+
+System configuration
+
+Staff performance tracking
+
+1. Admin/Staff Panel Architecture
+1.1 Role-Based Access Control
+text
+┌─────────────────────────────────────────────────────────────┐
+│                    ROLE HIERARCHY                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  👑 SUPER ADMIN                                             │
+│  ├── Full system access                                    │
+│  ├── Manage all organizations                              │
+│  ├── System configuration                                  │
+│  └── Audit logs                                            │
+│                                                             │
+│  👔 ADMIN                                                   │
+│  ├── Manage staff                                          │
+│  ├── Manage organizations                                  │
+│  ├── Review queue                                          │
+│  ├── Performance reports                                   │
+│  └── System settings                                       │
+│                                                             │
+│  👥 STAFF                                                   │
+│  ├── Review queue                                          │
+│  ├── Process documents                                     │
+│  ├── Chat with customers                                   │
+│  ├── View assigned tasks                                   │
+│  └── Performance metrics                                   │
+│                                                             │
+│  👤 CUSTOMER                                                │
+│  ├── Upload documents                                      │
+│  ├── View emissions                                        │
+│  ├── Chat with staff                                       │
+│  └── Verify data                                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+
+🚀 NEXT STEPS: Realtime Implementation Roadmap
+Based on your completed Realtime configuration, here's what to do next:
+
+📊 CURRENT STATUS
+Component	Status
+✅ Tables enabled for Realtime	9 tables ready
+✅ Database schema	Complete
+✅ RLS policies	Configured
+❌ Frontend connection	NOT STARTED
+❌ Notification system	NOT STARTED
+❌ Chat system	NOT STARTED
+❌ Live dashboards	NOT STARTED
+❌ Work Hub	NOT STARTED
+🎯 PRIORITY 1: Frontend Foundation (Immediate)
+1.1 Create Realtime Manager
+Purpose: Centralize all WebSocket connections
+
+text
+frontend/
+├── lib/
+│   └── realtime/
+│       ├── manager.ts          # Main connection manager
+│       ├── channels.ts         # Channel definitions
+│       ├── events.ts           # Event handlers
+│       ├── presence.ts         # Presence management
+│       └── types.ts            # TypeScript types
+What it does:
+
+Manages all Supabase Realtime connections
+
+Handles authentication
+
+Auto-reconnects on failure
+
+Distributes events to components
+
+1.2 Create Realtime Context/Provider
+Purpose: Make Realtime available to all components
+
+text
+frontend/
+├── context/
+│   └── RealtimeContext.tsx    # React Context provider
+What it does:
+
+Wraps your app
+
+Provides Realtime manager to components
+
+Handles subscription/unsubscription
+
+1.3 Build Connection Flow
+javascript
+// Flow when user logs in
+1. User logs in → gets JWT
+2. Initialize Supabase client with JWT
+3. Connect to Realtime
+4. Subscribe to organization channel
+5. If staff, subscribe to staff channel
+6. If in chat, subscribe to conversation channels
+7. Start listening for events
+🎯 PRIORITY 2: Notification System (Week 1)
+2.1 What to Build
+Component	Purpose
+Notification Bell	Icon with badge count, dropdown list
+Notification Item	Single notification display
+Notification API	Mark as read, dismiss, clear all
+2.2 Realtime Integration
+javascript
+// Listen for new notifications
+channel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'notifications',
+    filter: `user_id=eq.${userId}`  // Only user's notifications
+}, (payload) => {
+    // Show notification badge
+    // Show toast notification
+    // Add to notification list
+});
+2.3 UI Outcomes
+✅ Red dot on bell for unread
+
+✅ Toast notification pops up
+
+✅ Notification list updates in real-time
+
+✅ Click notification → navigate to relevant page
+
+🎯 PRIORITY 3: Chat/Messaging System (Week 2)
+3.1 What to Build
+Component	Purpose
+Chat List	List of conversations
+Chat Window	Message thread with history
+Message Input	Send messages with attachments
+Typing Indicator	Show when someone is typing
+Read Receipts	Show who read the message
+3.2 Realtime Integration
+javascript
+// 1. Subscribe to conversation messages
+channel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'messages',
+    filter: `conversation_id=eq.${convId}`
+}, (payload) => {
+    // Append message to chat
+    // Mark as read
+    // Update unread count
+});
+
+// 2. Typing indicator (Broadcast)
+channel.send({
+    type: 'broadcast',
+    event: 'typing',
+    payload: { userId, isTyping: true }
+});
+
+// 3. Presence (Who's in the chat)
+channel.presence().on('sync', () => {
+    const state = channel.presenceState();
+    // Update online participants
+});
+3.3 UI Outcomes
+✅ Real-time message delivery
+
+✅ "X is typing..." indicator
+
+✅ Who's online in the chat
+
+✅ Unread message count
+
+✅ Read receipts
+
+🎯 PRIORITY 4: Live Document Status (Week 3)
+4.1 What to Build
+Component	Purpose
+Document List	List with live status updates
+Status Badge	Visual status indicator
+Progress Bar	Processing progress
+Document Detail	Live updates on detail page
+4.2 Realtime Integration
+javascript
+// Subscribe to document status changes
+channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_documents',
+    filter: `organization_id=eq.${orgId}`
+}, (payload) => {
+    // Update document status in list
+    // Update progress bar
+    // Show status change animation
+});
+4.3 UI Outcomes
+✅ Document status updates without refresh
+
+✅ Progress bar moves in real-time
+
+✅ Status badges change automatically
+
+✅ "Just updated" indicators
+
+🎯 PRIORITY 5: Staff Work Hub (Week 3-4)
+5.1 What to Build
+text
+┌─────────────────────────────────────────────────────────────┐
+│                      WORK HUB                              │
+├─────────────┬───────────────────────────────────────────────┤
+│             │                                               │
+│  SIDEBAR    │  MAIN CONTENT (Live Updates)                │
+│             │                                               │
+│  🔔 (18)   │  ┌─────────────────────────────────────┐     │
+│  📋 (5)    │  │  Recent Activity                   │     │
+│  💬 (2)    │  │  📄 Invoice #123 approved          │     │
+│  @ (4)     │  │  💬 Mary: "Looks good"             │     │
+│  ✓ (3)     │  │  ⏳ Processing: 12 files           │     │
+│  ⏳ (12)   │  └─────────────────────────────────────┘     │
+│             │                                               │
+│  ONLINE     │  ┌─────────────────────────────────────┐     │
+│  🟢 Mary   │  │  Queue Overview                    │     │
+│  🟢 John   │  │  Pending: 5  In Progress: 3        │     │
+│  🟡 David  │  │  Completed Today: 12               │     │
+│             │  └─────────────────────────────────────┘     │
+│             │                                               │
+│             │  ┌─────────────────────────────────────┐     │
+│             │  │  Staff Performance                  │     │
+│             │  │  Mary: 95%  John: 88%  David: 92%  │     │
+│             │  └─────────────────────────────────────┘     │
+└─────────────┴───────────────────────────────────────────────┘
+5.2 Realtime Integration
+javascript
+// Subscribe to all staff updates
+channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'manual_review_queue'
+}, updateQueue);
+
+channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'staff_workload'
+}, updateWorkload);
+
+channel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'activity_feed'
+}, updateActivityFeed);
+
+// Presence for staff online status
+channel.presence().on('sync', () => {
+    const state = channel.presenceState();
+    updateOnlineStaff(state);
+});
+5.3 UI Outcomes
+✅ Live queue updates
+
+✅ Real-time workload indicators
+
+✅ Activity feed updates instantly
+
+✅ See which staff are online
+
+✅ Auto-refresh dashboard metrics
+
+🎯 PRIORITY 6: Customer Dashboard (Week 4)
+6.1 What to Build
+Component	Purpose
+Document Status	Live document progress
+Emissions Overview	Real-time emissions data
+Notifications	Live customer alerts
+Activity Timeline	Real-time activity feed
+6.2 Realtime Integration
+javascript
+// Customer's live dashboard
+channel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_documents',
+    filter: `organization_id=eq.${orgId}`
+}, (payload) => {
+    updateDocumentStatus(payload.new);
+    updateEmissionsSummary(payload.new);
+    addToActivityFeed(payload.new);
+});
+6.3 UI Outcomes
+✅ See document progress in real-time
+
+✅ Emissions data updates instantly
+
+✅ Notifications pop up immediately
+
+✅ Activity feed shows live actions
+
+📋 COMPLETE CHECKLIST
+Week 1: Foundation & Notifications
+□ Create Realtime Manager
+□ Create Realtime Context
+□ Implement connection flow
+□ Build Notification Bell component
+□ Build Notification List component
+□ Implement mark as read
+□ Test notification delivery
+Week 2: Chat System
+□ Build Conversation List
+□ Build Chat Window
+□ Implement Message Input
+□ Add Typing Indicator (Broadcast)
+□ Add Presence (Who's online)
+□ Add Read Receipts
+□ Test message delivery
+Week 3: Document & Work Hub
+□ Build Document List with live updates
+□ Build Status Badge component
+□ Build Progress Bar
+□ Create Work Hub layout
+□ Add Queue Overview widget
+□ Add Staff Performance widget
+□ Add Activity Feed widget
+Week 4: Customer Dashboard & Polish
+□ Build Customer Dashboard
+□ Add live Emissions Overview
+□ Add Activity Timeline
+□ Implement error handling
+□ Add loading states
+□ Performance optimization
+□ End-to-end testing
+🛠️ TECHNICAL REQUIREMENTS
+Frontend Dependencies
+bash
+# Required packages
+npm install @supabase/supabase-js
+npm install @supabase/realtime-js  # Included in supabase-js
+
+# For React
+npm install react-hot-toast  # For toast notifications
+npm install @radix-ui/react-popover  # For notification dropdown
+Environment Variables
+env
+NEXT_PUBLIC_SUPABASE_URL=your_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
+📊 SUCCESS METRICS
+Metric	Target	Measurement
+Notification latency	<500ms	User perceives instant
+Chat message latency	<300ms	User perceives instant
+Document status update	<500ms	User perceives instant
+Connection uptime	>99.9%	Monitor errors
+User engagement	+50%	Daily active users
+🎯 IMMEDIATE FIRST STEP
+Start with the Realtime Manager:
+
+Create /lib/realtime/manager.ts
+
+Implement connection logic
+
+Test with a simple subscription
+
+Build the Context provider
+
+Wrap your app
+
+Then build Notification System:
+
+Create Notification Bell component
+
+Subscribe to notifications table
+
+Show toast notifications
+
+Mark as read functionality
+
+🚀 GET STARTED NOW!
+bash
+# 1. Install dependencies
+cd frontend
+npm install @supabase/supabase-js
+
+# 2. Create realtime directory
+mkdir -p lib/realtime
+
+# 3. Start building!
+You're ready to implement real-time features! Let me know which component you want to build first. 🎉
+
+✅ Realtime Configuration Complete!
+Your tables are now properly configured for Supabase Realtime. Here's what's enabled:
+
+📊 What's Currently Enabled
+Table	Enabled	Purpose
+manual_review_queue	✅	Live task/queue updates
+customer_review_log	✅	Live review updates
+staff_workload	✅	Live staff workload
+customer_documents	✅	Live document status
+conversations	✅	Live conversation updates
+messages	✅	Live chat messages
+notifications	✅	Live notifications
+customer_verifications	✅	Live verification status
+activity_feed	✅	Live activity feed
+🎯 What's Missing (But Optional)
+Table	Status	Why
+conversation_participants	❌ Not in list	Not needed unless tracking presence per conversation
+typing_status	❌ Not in list	Use Broadcast feature instead
+user_presence	❌ Not in list	Use Presence feature instead
+📋 Next Steps: Frontend Implementation
+1. User Channels to Subscribe
+Based on your current tables, here are the channels your frontend should subscribe to:
+
+For Organization Users (Customers & Staff)
+javascript
+// Organization-level channels
+const orgChannel = supabase.channel(`org:${orgId}`);
+
+// Subscribe to:
+orgChannel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'notifications'
+}, handleNotification);
+
+orgChannel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_documents'
+}, handleDocumentUpdate);
+
+orgChannel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'customer_verifications'
+}, handleVerificationUpdate);
+
+orgChannel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'activity_feed'
+}, handleActivityFeed);
+For Staff Users
+javascript
+// Staff-specific channels
+const staffChannel = supabase.channel(`staff:${staffId}`);
+
+staffChannel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'manual_review_queue'
+}, handleQueueUpdate);
+
+staffChannel.on('postgres_changes', {
+    event: 'UPDATE',
+    schema: 'public',
+    table: 'staff_workload'
+}, handleWorkloadUpdate);
+For Conversation/Chat
+javascript
+// Conversation channel
+const convChannel = supabase.channel(`conversation:${convId}`);
+
+convChannel.on('postgres_changes', {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'messages'
+}, handleNewMessage);
+2. Event Handlers to Implement
+Event	Source	Action
+Notification INSERT	notifications	Show notification badge/toast
+Document UPDATE	customer_documents	Refresh document list, update status badge
+Verification UPDATE	customer_verifications	Update verification status
+Activity Feed INSERT	activity_feed	Append to feed
+Queue UPDATE	manual_review_queue	Refresh queue, update counters
+Workload UPDATE	staff_workload	Update workload indicators
+Message INSERT	messages	Display new message
+3. Broadcast Features (Add On Top)
+Feature	Implementation	Channel
+Typing Indicator	channel.send()	conversation:${id}
+Read Receipts	channel.send()	conversation:${id}
+Staff Presence	channel.presence()	staff:online
+Customer Presence	channel.presence()	org:${id}:online
+4. Frontend Connection Strategy
+javascript
+// 1. Initialize Supabase client
+const supabase = createClient(url, key);
+
+// 2. Connect to channels (only after authentication)
+const channels = [];
+
+async function connectChannels(user) {
+    // Organization channel
+    const orgChan = createOrgChannel(user.organization_id);
+    channels.push(orgChan);
+    
+    // Staff channel (if user is staff)
+    if (user.isStaff) {
+        const staffChan = createStaffChannel(user.id);
+        channels.push(staffChan);
+    }
+    
+    // Conversation channels (for active chats)
+    const activeConversations = await getActiveConversations(user.id);
+    activeConversations.forEach(conv => {
+        const convChan = createConversationChannel(conv.id);
+        channels.push(convChan);
+    });
+    
+    // Subscribe all
+    await Promise.all(channels.map(c => c.subscribe()));
+}
+
+// 3. Cleanup on logout
+function disconnectChannels() {
+    channels.forEach(c => c.unsubscribe());
+    channels = [];
+}
+5. UI Update Strategy
+Update Type	Frequency	Approach
+Notification badge	Real-time	Increment counter
+Document status	Real-time	Refresh component
+Chat messages	Real-time	Append to chat
+Activity feed	Real-time	Prepend to feed
+Queue counters	Real-time	Update numbers
+Workload charts	Debounced (1s)	Update chart data
+Presence	Real-time	Update online list
+6. Error Handling & Reconnection
+javascript
+channel.on('system', { event: 'error' }, (payload) => {
+    console.error('Realtime error:', payload);
+    // Show error toast or fallback to polling
+});
+
+channel.on('system', { event: 'reconnect' }, () => {
+    console.log('Reconnected to Realtime');
+    // Refresh state
+});
+
+// Implement exponential backoff for reconnection
+const backoff = (attempt) => Math.min(1000 * Math.pow(2, attempt), 10000);
+📊 Summary
+What's Working Now
+✅ All core tables enabled for Realtime
+
+✅ RLS policies in place
+
+✅ Pub/Sub ready
+
+What to Build Next
+Frontend Connection Manager - Centralize Realtime connections
+
+Notification System - Live notifications in real-time
+
+Chat System - Live messaging using messages table
+
+Document Status Dashboard - Live updates from customer_documents
+
+Activity Feed - Live feed from activity_feed
+
+Presence - Who's online (using Presence feature)
+
+Estimated Effort
+Task	Effort
+Connection Manager	2-4 hours
+Notification System	4-6 hours
+Chat System	6-8 hours
+Document Status	4-6 hours
+Activity Feed	4-6 hours
+Presence & Typing	6-8 hours
+Testing & Polish	8-12 hours
+Total	34-50 hours
+🚀 Ready to Start
+Your Supabase Realtime is now fully configured! You can:
+
+Start implementing frontend subscriptions
+
+Build live notification system
+
+Add real-time chat
+
+Create live dashboards
+
+All database changes are reflected in real-time now! 🎉
+
+
+
+Realtime Implementation Guidelines (No Code)
+1. Understanding Supabase Realtime Features
+Three Core Realtime Features
+Feature	What It Does	Use Case
+Postgres Changes	Listen to INSERT/UPDATE/DELETE on tables	Notifications, document status, chat messages
+Broadcast	Send ephemeral messages to connected clients	Typing indicators, cursor positions
+Presence	Track connected users in a channel	Who's online, staff availability
+2. Channel Architecture Design
+2.1 Channel Types
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                        CHANNEL TYPES                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ● PUBLIC CHANNELS                                               │
+│    └── /global/announcements     (System-wide broadcasts)       │
+│                                                                  │
+│  ● ORGANIZATION CHANNELS                                         │
+│    └── /org/{org_id}             (Organization-specific)        │
+│        ├── /notifications         → NEW: notifications          │
+│        ├── /documents             → UPDATE: customer_documents  │
+│        ├── /verifications         → UPDATE: customer_verification│
+│        ├── /emissions             → UPDATE: emissions_logs      │
+│        └── /activity              → INSERT: activity_feed       │
+│                                                                  │
+│  ● STAFF CHANNELS                                                │
+│    └── /staff/{staff_id}          (Staff-specific)              │
+│        ├── /tasks                 → UPDATE: manual_review_queue │
+│        ├── /workload              → UPDATE: staff_workload      │
+│        └── /messages              → INSERT: messages           │
+│                                                                  │
+│  ● CONVERSATION CHANNELS                                         │
+│    └── /conversation/{conv_id}    (Thread-specific)             │
+│        ├── /messages              → INSERT: messages           │
+│        ├── /typing                → Broadcast: typing events   │
+│        ├── /presence              → Presence: participants     │
+│        └── /read                  → Broadcast: read receipts   │
+│                                                                  │
+│  ● CUSTOMER CHANNELS                                             │
+│    └── /customer/{customer_id}    (Customer-specific)           │
+│        ├── /dashboard             → LIVE: dashboard updates    │
+│        └── /support               → INSERT: support messages   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+3. Which Tables to Enable Realtime On
+3.1 Priority 1: Core Tables (Enable IMMEDIATELY)
+Table	Purpose	Listen For
+notifications	Live notifications	INSERT, UPDATE
+messages	Live chat	INSERT, UPDATE
+customer_documents	Document status	UPDATE (status field)
+customer_verifications	Verification status	UPDATE, INSERT
+manual_review_queue	Task updates	UPDATE, INSERT
+3.2 Priority 2: Secondary Tables (Enable NEXT)
+Table	Purpose	Listen For
+staff_workload	Live workload	UPDATE
+activity_feed	Live feed	INSERT
+conversations	Live conversation updates	UPDATE
+customer_review_log	Review updates	INSERT
+3.3 Priority 3: Watch Tables (Enable IF NEEDED)
+Table	Purpose	Listen For
+emissions_logs	Emissions approval	UPDATE
+draft_entries	Collaborative editing	UPDATE
+review_assignment_history	Assignment updates	INSERT
+4. Supabase Realtime Configuration Steps
+4.1 Enable Realtime on Tables
+sql
+-- STEP 1: Enable Realtime for each table
+ALTER TABLE notifications REPLICA IDENTITY FULL;
+ALTER TABLE messages REPLICA IDENTITY FULL;
+ALTER TABLE customer_documents REPLICA IDENTITY FULL;
+ALTER TABLE customer_verifications REPLICA IDENTITY FULL;
+ALTER TABLE manual_review_queue REPLICA IDENTITY FULL;
+ALTER TABLE staff_workload REPLICA IDENTITY FULL;
+ALTER TABLE activity_feed REPLICA IDENTITY FULL;
+ALTER TABLE conversations REPLICA IDENTITY FULL;
+ALTER TABLE customer_review_log REPLICA IDENTITY FULL;
+
+-- STEP 2: Add to publication
+BEGIN;
+  -- Add all tables to supabase_realtime publication
+  ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_documents;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_verifications;
+  ALTER PUBLICATION supabase_realtime ADD TABLE manual_review_queue;
+  ALTER PUBLICATION supabase_realtime ADD TABLE staff_workload;
+  ALTER PUBLICATION supabase_realtime ADD TABLE activity_feed;
+  ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+  ALTER PUBLICATION supabase_realtime ADD TABLE customer_review_log;
+COMMIT;
+
+-- STEP 3: Verify
+SELECT * FROM pg_publication_tables 
+WHERE pubname = 'supabase_realtime';
+4.2 Filter by Column (Optional)
+sql
+-- If you only want to listen to specific columns (e.g., status)
+-- You can create a PUBLICATION with filters
+-- Or handle filtering on the client side
+5. Client-Side Subscription Architecture
+5.1 How Frontend Connects
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                    FRONTEND ARCHITECTURE                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │   REALTIME MANAGER (Centralized)                         │  │
+│  │   ┌───────────────────────────────────────────────────┐  │  │
+│  │   │  Connection Manager (Supabase Client)             │  │  │
+│  │   └───────────────────────────────────────────────────┘  │  │
+│  │   ┌───────────────────────────────────────────────────┐  │  │
+│  │   │  Channel Manager (Subscribe/Unsubscribe)          │  │  │
+│  │   └───────────────────────────────────────────────────┘  │  │
+│  │   ┌───────────────────────────────────────────────────┐  │  │
+│  │   │  Event Dispatcher (Route events to components)    │  │  │
+│  │   └───────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │ Notification│  │   Chat      │  │  Document   │            │
+│  │  Component  │  │  Component  │  │  Component  │            │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│         │               │               │                       │
+│         └───────────────┼───────────────┘                       │
+│                         │                                       │
+│                   Event Dispatcher                              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+5.2 Subscription Strategy
+Component	Subscribed Channels	Events
+Notification Bell	/org/{org_id}/notifications	INSERT, UPDATE
+Chat Window	/conversation/{id}/messages	INSERT
+Document List	/org/{org_id}/documents	UPDATE (status)
+Staff Dashboard	/org/{org_id}/verifications	INSERT, UPDATE
+Work Hub	/org/{org_id}/activity	INSERT
+Staff Workload	/staff/{id}/workload	UPDATE
+6. Realtime Event Flow
+6.1 Document Approval Flow
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                 DOCUMENT APPROVAL FLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Staff                Supabase                Customer         │
+│   │                       │                       │             │
+│   │ 1. Click Approve     │                       │             │
+│   │─────────────────────>│                       │             │
+│   │                       │                       │             │
+│   │                       │ 2. UPDATE             │             │
+│   │                       │   customer_documents  │             │
+│   │                       │   status = 'approved' │             │
+│   │                       │                       │             │
+│   │                       │ 3. Postgres Trigger   │             │
+│   │                       │   → Realtime Event    │             │
+│   │                       │                       │             │
+│   │                       │ 4. Realtime           │             │
+│   │                       │   ──────────────────>│             │
+│   │                       │                       │             │
+│   │                       │                       │ 5. Auto     │
+│   │                       │                       │   Refresh   │
+│   │                       │                       │   UI        │
+│   │                       │                       │             │
+│  └─────────────────────────────────────────────────────────────────┘
+6.2 Chat Message Flow
+text
+┌─────────────────────────────────────────────────────────────────┐
+│                    CHAT MESSAGE FLOW                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Staff                Supabase                Customer         │
+│   │                       │                       │             │
+│   │ 1. Send "Approved"   │                       │             │
+│   │─────────────────────>│                       │             │
+│   │                       │                       │             │
+│   │                       │ 2. INSERT             │             │
+│   │                       │   messages            │             │
+│   │                       │                       │             │
+│   │                       │ 3. Realtime           │             │
+│   │                       │   ──────────────────>│             │
+│   │                       │                       │             │
+│   │                       │                       │ 4. Message  │
+│   │                       │                       │   Appears   │
+│   │                       │                       │   Instantly │
+│   │                       │                       │             │
+│  └─────────────────────────────────────────────────────────────────┘
+7. RLS Policies for Realtime
+7.1 Ensure RLS Policies Allow Realtime
+sql
+-- Notifications: User only sees own
+CREATE POLICY "Users can see own notifications" ON notifications
+    FOR SELECT USING (user_id = auth.uid());
+
+-- Messages: Only conversation participants
+CREATE POLICY "Can see messages in conversation" ON messages
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM conversation_participants 
+            WHERE conversation_id = messages.conversation_id 
+            AND user_id = auth.uid()
+        )
+    );
+
+-- Documents: Only organization members
+CREATE POLICY "Org members see documents" ON customer_documents
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM organization_members 
+            WHERE organization_id = customer_documents.organization_id 
+            AND user_id = auth.uid()
+        )
+    );
+8. Performance & Scalability Considerations
+8.1 Connection Management
+Factor	Recommendation
+Max connections	Monitor Supabase limits (default 200)
+Idle timeout	60 seconds (default)
+Reconnection	Exponential backoff: 1s, 2s, 4s, 8s, 16s...
+Rate limiting	Track frequency, throttle if needed
+8.2 Memory & Bandwidth
+Consideration	Strategy
+Large payloads	Only send changed fields (payload tuning)
+Frequent updates	Debounce/throttle UI updates
+Offline support	Store events in queue, replay on reconnect
+Mobile clients	Optimize battery, use less frequent sync
+8.3 Channel Limits
+Channel Type	Recommended	Max
+Per user	5-10	20
+Per organization	20-30	50
+System-wide	1-2	5
+Total per client	20-30	50
+9. Error Handling Strategy
+9.1 Connection Errors
+Error	Action
+Disconnected	Auto-reconnect with backoff
+Timeout	Retry with increasing delay
+Auth error	Force re-login
+Rate limit	Implement exponential backoff
+9.2 Event Processing
+Scenario	Action
+Processing failure	Queue event, retry later
+Stale state	Full refresh on reconnect
+Duplicate events	Deduplicate by event ID
+Missing events	Periodic state reconciliation
+10. Implementation Timeline
+Phase 1: Foundation (Week 1)
+✅ Enable Realtime on core tables
+
+Set up RLS policies
+
+Build Realtime manager in frontend
+
+Test connection and disconnection
+
+Phase 2: Notifications & Status (Week 2)
+Implement notification subscriptions
+
+Implement document status updates
+
+Build notification UI components
+
+Test with real data
+
+Phase 3: Chat & Presence (Week 3)
+Implement message subscriptions
+
+Add typing indicators
+
+Add presence/online status
+
+Build chat UI components
+
+Phase 4: Work Hub & Dashboard (Week 4)
+Implement activity feed
+
+Add live KPI updates
+
+Build work hub UI
+
+Full integration testing
+
+11. Success Metrics
+Metric	Target
+Notification latency	< 500ms
+Chat latency	< 300ms
+Status update latency	< 500ms
+Connection stability	99.9% uptime
+Browser resource usage	< 50MB memory
+User satisfaction	90% positive
+12. Next Steps (Your Action Plan)
+✅ Complete Now
+Fix the view query (remove org_id, use organization_id)
+
+Enable Realtime on core tables (Section 4.1)
+
+Create RLS policies (Section 7)
+
+Build Realtime manager on frontend
+
+Test with notification subscriptions
+
+🎯 Sprint 1
+Notification system (live alerts)
+
+Document status updates
+
+Verification updates
+
+🎯 Sprint 2
+Chat system
+
+Typing indicators
+
+Presence (who's online)
+
+🎯 Sprint 3
+Activity feed
+
+Work Hub dashboard
+
+Full integration
+
+13. Quick Fix for the View
+sql
+-- ✅ Fixed view (using organization_id, not org_id)
+CREATE OR REPLACE VIEW live_dashboard AS
+SELECT 
+    organization_id,
+    COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
+    COUNT(*) FILTER (WHERE status = 'processing') as processing_count,
+    COUNT(*) FILTER (WHERE status = 'extracted') as extracted_count,
+    COUNT(*) FILTER (WHERE status = 'organized') as organized_count,
+    COUNT(*) FILTER (WHERE status = 'approved') as approved_count,
+    COUNT(*) FILTER (WHERE status = 'rejected') as rejected_count,
+    MAX(updated_at) as last_activity
+FROM customer_documents
+GROUP BY organization_id;
+
+-- Grant access
+GRANT SELECT ON live_dashboard TO authenticated;
+Summary: You're ready to implement Realtime! Start with enabling tables, then build the frontend subscriptions. The architecture is clean and the benefits are significant. 🚀
+
+
+

@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally</title>
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <style>
+        /* ============================================
+           SPA-SPECIFIC STYLES
+           ============================================ */
+        .page-content {
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: hsl(var(--muted-foreground));
+        }
+        .loading-spinner .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid hsl(var(--muted));
+            border-top-color: hsl(var(--primary));
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #contentArea {
+            flex: 1;
+            padding: 0;
+            min-height: calc(100vh - 64px - 80px);
+            background: hsl(var(--background));
+        }
+        
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        
+        @media (max-width: 768px) {
+            #contentArea { padding: 0; }
+        }
+        
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .role-badge.admin { background: #10b981; color: white; }
+        .role-badge.manager { background: #3b82f6; color: white; }
+        .role-badge.analyst { background: #8b5cf6; color: white; }
+        .role-badge.staff { background: #f59e0b; color: white; }
+        .role-badge.viewer { background: #6b7280; color: white; }
+
+        /* ===== COLLAPSIBLE SIDEBAR GROUPS ===== */
+        .sidebar-group {
+            margin-bottom: 2px;
+        }
+        
+        .sidebar-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px 4px 12px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+            border-radius: var(--radius);
+        }
+        .sidebar-group-header:hover {
+            background: hsl(var(--accent));
+        }
+        .sidebar-group-header .group-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            opacity: 0.6;
+        }
+        .sidebar-group-header .group-toggle {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            opacity: 0.5;
+            transition: transform 0.2s ease;
+        }
+        .sidebar-group-header .group-toggle.collapsed {
+            transform: rotate(-90deg);
+        }
+        
+        .sidebar-group-items {
+            overflow: hidden;
+            max-height: 500px;
+            transition: max-height 0.3s ease, opacity 0.2s ease;
+            opacity: 1;
+        }
+        .sidebar-group-items.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        .sidebar-group-items .sidebar-item {
+            padding-left: 28px;
+        }
+        
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 12px 12px 4px 12px;
+            opacity: 0.6;
+        }
+        .sidebar-item .badge {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 1px 8px;
+        }
+    </style>
+        <!-- Corrected Scripts with Proper Defer Attributes -->
+    <script src="js/manual_data_entry.js" defer></script>
+    <script src="js/emissions_reports.js" defer></script>
+    
+    <link rel="stylesheet" href="css/messaging_chat.css" />
+    <script src="js/messaging_chat.js" defer></script>
+    
+    <link rel="stylesheet" href="css/notification_center.css" />
+    <script src="js/notification_center.js" defer></script>
+    <link rel="stylesheet" href="css/facility_dashboard.css" />
+    <script src="js/facility_dashboard.js" defer> </script>
+
+    <link rel="stylesheet" href="css/batch_management.css" />
+    <script src="js/batch_management.js" defer></script>
+
+    <link rel="stylesheet" href="css/extracted_data_management.css" />
+    <script src="js/extracted_data_management.js" defer></script>
+    
+    <link rel="stylesheet" href="css/activity_feed.css" />
+    <script src="js/activity_feed.js" defer></script>
+    
+    <link rel="stylesheet" href="css/export_history.css" />
+    <script src="js/export_history.js" defer></script>
+    
+    <!-- This was loading too early and causing the error -->
+    
+    <link rel="stylesheet" href="css/organization_metadata.css" />
+    <script src="js/organization_metadata.js" defer></script>
+    <link rel="stylesheet" href="css/manual_review_queue.css" />
+    <script src="js/manual_review_queue.js" defer></script>
+    
+    <link rel="stylesheet" href="css/team_management.css" />
+    <script src="js/team_management.js" defer></script>
+    
+    <link rel="stylesheet" href="css/reports_center.css" />
+    <script src="js/reports_center.js" defer></script>
+    
+    <link rel="stylesheet" href="css/secr_report.css" />
+    <script src="js/secr_report.js" defer></script>
+    
+    <link rel="stylesheet" href="css/settings.css" />
+    <script src="js/settings.js" defer></script>
+    
+    <link rel="stylesheet" href="css/document_man.css" />
+    <script src="js/document_man.js" defer></script>
+    
+    <link rel="stylesheet" href="css/user_profile.css" />
+    <script src="js/user_profile.js" defer></script>
+
+    <link rel="stylesheet" href="css/roles_permissions.css" />
+    <script src="js/roles_permissions.js" defer></script>
+    <link rel="stylesheet" href="css/integration_management.css" />
+    <script src="js/integration_management.js" defer></script>
+    <link rel="stylesheet" href="css/audit_logs.css" />
+    <script src="js/audit_logs.js" defer></script>
+
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Rendered by JS -->
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item" onclick="logout()">
+                    <span class="icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search modules..." id="globalSearch" />
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="user-info">
+                        <div class="avatar" id="userAvatar">U</div>
+                        <div>
+                            <div class="name" id="userName">User</div>
+                            <div class="role" id="userRole">Role</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ===== CONTENT AREA ===== -->
+            <div id="contentArea">
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            
+            <!-- ===== FOOTER ===== -->
+            <footer class="footer">
+                <div>© 2026 Shomon Robie · CarbonTally UI Demo. All rights reserved.</div>
+                <div class="footer-links">
+                    <!-- <a href="#" onclick="loadModule('privacy')">Privacy Policy</a>
+                    <a href="#" onclick="loadModule('cookies')">Cookie Policy</a>
+                    <a href="#" onclick="loadModule('terms')">Terms</a>
+                    <a href="#" onclick="loadModule('about')">About Us</a> -->
+                    <span style="opacity:0.5;font-size:12px;">Developed by Shomon Robie. This is a proprietary UI demo. Unauthorized copying, modification, or distribution is prohibited.</span>
+                </div>
+            </footer>
+
+        </div>
+    </div>
+
+    <!-- ===== THEME MODAL ===== -->
+    <div class="theme-modal-overlay" id="themeModal">
+        <div class="theme-modal">
+            <div class="theme-modal-header">
+                <div>
+                    <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                        Select a color scheme for your dashboard
+                    </div>
+                </div>
+                <button class="theme-modal-close" id="themeModalClose">✕</button>
+            </div>
+            <div class="theme-grid" id="themeGrid"></div>
+            <div class="theme-modal-footer">
+                <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                    <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <!-- ===== SHARED JAVASCRIPT ===== -->
+    <script src="js/dashboard.js"></script>
+    <script src="js/global-module-fixer.js"></script>  <!-- Add this -->
+
+
+    <!-- ===== SPA ENGINE ===== -->
+    <script>
+        // ============================================
+        // MODULE CONFIGURATION - INDUSTRY STANDARD GROUPING
+        // ============================================
+        // ============================================
+// GLOBAL DEBUGGER - Add this to your SPA
+// ============================================
+
+    var GlobalDebugger = {
+        enabled: true,
+        logLevel: 'verbose', // 'verbose', 'info', 'warn', 'error'
+        
+        log: function(module, message, level, data) {
+            if (!this.enabled) return;
+            
+            var levels = { verbose: 0, info: 1, warn: 2, error: 3 };
+            var currentLevel = levels[this.logLevel] || 0;
+            var msgLevel = levels[level] || 0;
+            
+            if (msgLevel < currentLevel) return;
+            
+            var timestamp = new Date().toISOString().split('T')[1].slice(0, 8);
+            var prefix = '🐛 [' + timestamp + ']';
+            var emoji = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : level === 'info' ? 'ℹ️' : '🔍';
+            
+            if (data) {
+                console.log(prefix, emoji, '[' + module + ']', message, data);
+            } else {
+                console.log(prefix, emoji, '[' + module + ']', message);
+            }
+        },
+        
+        info: function(module, message, data) {
+            this.log(module, message, 'info', data);
+        },
+        
+        warn: function(module, message, data) {
+            this.log(module, message, 'warn', data);
+        },
+        
+        error: function(module, message, data) {
+            this.log(module, message, 'error', data);
+        },
+        
+        verbose: function(module, message, data) {
+            this.log(module, message, 'verbose', data);
+        },
+        
+        // Check if module is loaded and initialized
+        checkModule: function(moduleId) {
+            var results = {
+                moduleId: moduleId,
+                htmlLoaded: false,
+                scriptsExecuted: false,
+                functionsAvailable: [],
+                dataRendered: false,
+                domElements: {},
+                errors: []
+            };
+            
+            // Check if HTML content is loaded
+            var contentArea = document.getElementById('contentArea');
+            if (contentArea) {
+                var hasContent = contentArea.innerHTML && contentArea.innerHTML.indexOf('loading-spinner') === -1;
+                results.htmlLoaded = hasContent;
+                results.htmlLength = contentArea.innerHTML.length;
+            }
+            
+            // Check for specific DOM elements based on module
+            var elementMap = {
+                'extracted': ['dataTableBody', 'totalRecords', 'filterCount'],
+                'documents': ['docGrid', 'docCount', 'statTotal'],
+                'team': ['memberList', 'teamStats', 'memberCount'],
+                'roles_permissions': ['rolesContainer', 'statTotalRoles'],
+                'facilities': ['facilityTableBody', 'statTotal', 'filterCount'],
+                'integrations': ['integrationsList', 'apiKeysList', 'webhooksList'],
+                'profile': ['profileSidebar', 'profileContent', 'statTotal'],
+                'audit': ['auditTableBody', 'statTotal', 'filterCount'],
+                'activity': ['activityList', 'feedStats', 'activityCount'],
+                'notifications': ['notificationList', 'notifStats', 'notifCount'],
+                'messaging': ['conversationList', 'messagesContainer', 'chatHeader'],
+                'exports': ['exportTableBody', 'exportCount', 'filterCount'],
+                'organization': ['summaryMetrics', 'customMetricsList'],
+                'settings': ['settingsNav', 'settingsSearch']
+            };
+            
+            var elements = elementMap[moduleId] || [];
+            for (var i = 0; i < elements.length; i++) {
+                var el = document.getElementById(elements[i]);
+                results.domElements[elements[i]] = !!el;
+            }
+            
+            // Check for available functions
+            var functionMap = {
+                'extracted': ['initModule', 'filterData', 'renderTable', 'renderStats'],
+                'documents': ['renderDocuments', 'updateStats', 'filterDocuments'],
+                'team': ['initModule', 'renderMembers', 'renderTeamStats'],
+                'roles_permissions': ['initModule', 'renderRoles', 'renderStats'],
+                'facilities': ['applyFilters', 'renderTable', 'renderStats'],
+                'integrations': ['initModule', 'renderIntegrations', 'renderApiKeys'],
+                'profile': ['renderProfile', 'renderProfileSidebar', 'renderProfileContent'],
+                'audit': ['applyFilters', 'renderTable', 'renderStats'],
+                'activity': ['renderActivities', 'renderStats', 'renderActivityFeed'],
+                'notifications': ['renderNotifications', 'renderStats', 'switchTab'],
+                'messaging': ['renderConversations', 'renderMessages', 'sendMessage'],
+                'exports': ['applyFilters', 'renderTable', 'renderStats'],
+                'organization': ['renderSummaryMetrics', 'renderCustomMetrics'],
+                'settings': ['switchSettings', 'saveSettings']
+            };
+            
+            var funcs = functionMap[moduleId] || [];
+            var available = [];
+            for (var j = 0; j < funcs.length; j++) {
+                if (typeof window[funcs[j]] === 'function') {
+                    available.push(funcs[j]);
+                }
+            }
+            results.functionsAvailable = available;
+            
+            // Check if data is rendered (look for table rows or cards)
+            if (moduleId === 'extracted' || moduleId === 'audit' || moduleId === 'exports') {
+                var tbody = document.getElementById('dataTableBody') || document.getElementById('auditTableBody') || document.getElementById('exportTableBody');
+                if (tbody) {
+                    results.dataRendered = tbody.children.length > 0 && tbody.children[0].innerHTML.indexOf('No entries') === -1;
+                    results.rowCount = tbody.children.length;
+                }
+            } else if (moduleId === 'documents') {
+                var grid = document.getElementById('docGrid');
+                if (grid) {
+                    results.dataRendered = grid.children.length > 0 && grid.children[0].innerHTML.indexOf('No documents') === -1;
+                    results.itemCount = grid.children.length;
+                }
+            } else if (moduleId === 'team') {
+                var members = document.getElementById('memberList');
+                if (members) {
+                    results.dataRendered = members.children.length > 0 && members.children[0].innerHTML.indexOf('No members') === -1;
+                    results.itemCount = members.children.length;
+                }
+            } else if (moduleId === 'facilities') {
+                var facilities = document.getElementById('facilityTableBody');
+                if (facilities) {
+                    results.dataRendered = facilities.children.length > 0 && facilities.children[0].innerHTML.indexOf('No facilities') === -1;
+                    results.rowCount = facilities.children.length;
+                }
+            } else if (moduleId === 'integrations') {
+                var integrations = document.getElementById('integrationsList');
+                if (integrations) {
+                    results.dataRendered = integrations.children.length > 0 && integrations.children[0].innerHTML.indexOf('No integrations') === -1;
+                    results.itemCount = integrations.children.length;
+                }
+            } else if (moduleId === 'profile') {
+                var sidebar = document.getElementById('profileSidebar');
+                var content = document.getElementById('profileContent');
+                results.dataRendered = sidebar && sidebar.children.length > 0 && content && content.children.length > 0;
+            } else if (moduleId === 'activity') {
+                var activities = document.getElementById('activityList');
+                if (activities) {
+                    results.dataRendered = activities.children.length > 0 && activities.children[0].innerHTML.indexOf('No activities') === -1;
+                    results.itemCount = activities.children.length;
+                }
+            }
+            
+            return results;
+        },
+        
+        // Debug a specific module
+        debugModule: function(moduleId) {
+            console.group('🐛 Debugging Module: ' + moduleId);
+            
+            var results = this.checkModule(moduleId);
+            
+            console.log('📄 HTML Loaded:', results.htmlLoaded);
+            console.log('📏 HTML Length:', results.htmlLength);
+            console.log('🧩 DOM Elements:', results.domElements);
+            console.log('🔧 Available Functions:', results.functionsAvailable);
+            console.log('📊 Data Rendered:', results.dataRendered);
+            
+            if (results.rowCount !== undefined) {
+                console.log('📊 Row Count:', results.rowCount);
+            }
+            if (results.itemCount !== undefined) {
+                console.log('📊 Item Count:', results.itemCount);
+            }
+            
+            // Check if init function was called
+            if (results.functionsAvailable.length === 0) {
+                console.warn('⚠️ No initialization functions found!');
+                console.warn('   Module may not have been loaded correctly.');
+                console.warn('   Check that the JS file is being loaded.');
+            }
+            
+            // Check if data should be rendered but isn't
+            if (results.htmlLoaded && results.functionsAvailable.length > 0 && !results.dataRendered) {
+                console.warn('⚠️ HTML is loaded and functions are available, but data is NOT rendered!');
+                console.warn('   Trying to force render...');
+                
+                // Try to force render
+                for (var i = 0; i < results.functionsAvailable.length; i++) {
+                    var fnName = results.functionsAvailable[i];
+                    console.log('   Attempting to call:', fnName);
+                    try {
+                        window[fnName]();
+                        console.log('   ✅ Called', fnName);
+                    } catch(e) {
+                        console.error('   ❌ Error calling', fnName, ':', e.message);
+                    }
+                }
+                
+                // Check again after forcing
+                var afterResults = this.checkModule(moduleId);
+                console.log('📊 After Force Render - Data Rendered:', afterResults.dataRendered);
+            }
+            
+            console.groupEnd();
+            
+            return results;
+        },
+        
+        // Debug all modules
+        debugAll: function() {
+            var modules = ['extracted', 'documents', 'team', 'roles_permissions', 'facilities', 
+                        'integrations', 'profile', 'audit', 'activity', 'notifications', 
+                        'messaging', 'exports', 'organization', 'settings'];
+            
+            console.group('🐛 Debugging All Modules');
+            for (var i = 0; i < modules.length; i++) {
+                this.debugModule(modules[i]);
+            }
+            console.groupEnd();
+        },
+        
+        // Check script loading
+        checkScripts: function() {
+            console.group('📦 Script Loading Status');
+            var scripts = document.querySelectorAll('script[src]');
+            var loaded = [];
+            var failed = [];
+            
+            for (var i = 0; i < scripts.length; i++) {
+                var script = scripts[i];
+                var src = script.src;
+                if (src) {
+                    // Check if script is loaded by looking for a function it should define
+                    var moduleName = src.split('/').pop().replace('.js', '');
+                    var hasFunction = false;
+                    
+                    // Map script file to expected function
+                    var functionMap = {
+                        'extracted_data_management': ['initModule', 'filterData'],
+                        'document_man': ['renderDocuments', 'updateStats'],
+                        'team_management': ['initModule', 'renderMembers'],
+                        'roles_permissions': ['initModule', 'renderRoles'],
+                        'facility_dashboard': ['applyFilters', 'renderTable'],
+                        'integration_management': ['initModule', 'renderIntegrations'],
+                        'user_profile': ['renderProfile', 'renderProfileSidebar'],
+                        'audit_logs': ['applyFilters', 'renderTable'],
+                        'activity_feed': ['renderActivities', 'renderStats'],
+                        'notification_center': ['renderNotifications', 'renderStats'],
+                        'messaging_chat': ['renderConversations', 'renderMessages'],
+                        'export_history': ['applyFilters', 'renderTable'],
+                        'organization_metadata': ['renderSummaryMetrics', 'renderCustomMetrics'],
+                        'settings': ['switchSettings', 'saveSettings']
+                    };
+                    
+                    var expectedFns = functionMap[moduleName] || [];
+                    for (var j = 0; j < expectedFns.length; j++) {
+                        if (typeof window[expectedFns[j]] === 'function') {
+                            hasFunction = true;
+                            break;
+                        }
+                    }
+                    
+                    loaded.push({ name: moduleName, loaded: hasFunction, url: src });
+                    if (!hasFunction) {
+                        failed.push(moduleName);
+                    }
+                }
+            }
+            
+            console.log('📊 Scripts found:', loaded.length);
+            console.log('✅ Loaded correctly:', loaded.filter(function(s) { return s.loaded; }).length);
+            console.log('❌ Failed to load:', loaded.filter(function(s) { return !s.loaded; }).length);
+            
+            if (failed.length > 0) {
+                console.warn('⚠️ Failed scripts:', failed.join(', '));
+                console.warn('   These modules may not work correctly.');
+            }
+            
+            console.groupEnd();
+            return { loaded: loaded, failed: failed };
+        },
+        
+        // Full diagnostic
+        fullDiagnostic: function(moduleId) {
+            console.log('🔬 Running full diagnostic...');
+            console.log('='.repeat(60));
+            
+            // Check scripts
+            var scriptStatus = this.checkScripts();
+            
+            // Check specific module
+            var moduleResults = null;
+            if (moduleId) {
+                moduleResults = this.debugModule(moduleId);
+            } else {
+                // Check current module
+                var currentHash = window.location.hash.replace('#', '') || 'dashboard';
+                moduleResults = this.debugModule(currentHash);
+            }
+            
+            // Check console for errors
+            console.log('📋 Check browser console for any red error messages.');
+            console.log('💡 If data is not showing, try:');
+            console.log('   1. Refresh the page (F5)');
+            console.log('   2. Clear cache and reload (Ctrl+Shift+R)');
+            console.log('   3. Check if the module JS file is being loaded');
+            console.log('   4. Check if the module HTML has the correct structure');
+            
+            console.log('='.repeat(60));
+            
+            return {
+                scriptStatus: scriptStatus,
+                moduleResults: moduleResults
+            };
+        }
+    };
+
+    // Make debugger available globally
+    window.GlobalDebugger = GlobalDebugger;
+
+    // Auto-run diagnostic on load
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            console.log('🔬 Auto-diagnostic running...');
+            var currentModule = window.location.hash.replace('#', '') || 'dashboard';
+            GlobalDebugger.fullDiagnostic(currentModule);
+        }, 2000);
+    });
+
+    // Helper function to quickly debug any module from console
+    window.debugModule = function(moduleId) {
+        GlobalDebugger.debugModule(moduleId);
+    };
+
+    window.debugAll = function() {
+        GlobalDebugger.debugAll();
+    };
+
+    window.fullDiagnostic = function(moduleId) {
+        GlobalDebugger.fullDiagnostic(moduleId);
+    };    
+        const moduleList = {
+            admin: [
+                // ===== OVERVIEW =====
+                { id: 'dashboard', icon: '🏠', label: 'Dashboard', group: 'overview' },
+                
+                // ===== DATA MANAGEMENT =====
+                { id: 'documents', icon: '📁', label: 'Documents', badge: '12', group: 'data' },
+                { id: 'uploads', icon: '📤', label: 'Upload Data', group: 'data' },
+                { id: 'manual_entry', icon: '✏️', label: 'Manual Entry', group: 'data' },
+                { id: 'extracted', icon: '📂', label: 'Extracted Data', group: 'data' },
+                { id: 'batches', icon: '📦', label: 'Batches', group: 'data' },
+                
+                // ===== ANALYSIS & REPORTING =====
+                { id: 'emissions', icon: '📈', label: 'Emissions', group: 'analytics' },
+                { id: 'reports', icon: '📊', label: 'Reports', group: 'analytics' },
+                { id: 'exports', icon: '📥', label: 'Export History', group: 'analytics' },
+                { id: 'compliance', icon: '📋', label: 'Compliance', group: 'analytics' },
+                { id: 'secr', icon: '📄', label: 'SECR Report', badge: 'PDF', group: 'analytics' },                            
+                
+                // ===== WORKFLOW =====
+                { id: 'validation', icon: '✅', label: 'Validation Queue', badge: '8', group: 'workflow' },
+                { id: 'activity', icon: '🔄', label: 'Activity', group: 'workflow' },
+                { id: 'notifications', icon: '🔔', label: 'Notifications', badge: '3', group: 'workflow' },
+                { id: 'messaging', icon: '💬', label: 'Messaging', badge: '2', group: 'workflow' },
+                
+                // ===== ADMINISTRATION =====
+                { id: 'team', icon: '👥', label: 'Team', group: 'admin' },
+                { id: 'roles_permissions', icon: '🔑', label: 'Roles & Permissions', group: 'admin' },
+                { id: 'facilities', icon: '🏢', label: 'Facilities', group: 'admin' },
+                { id: 'organization', icon: '📋', label: 'Organization', group: 'admin' },
+                { id: 'integrations', icon: '🔌', label: 'Integrations', group: 'admin' },
+                { id: 'settings', icon: '⚙️', label: 'Settings', group: 'admin' },
+                { id: 'audit', icon: '📋', label: 'Audit Logs', group: 'admin' },
+                
+                // ===== USER =====
+                { id: 'profile', icon: '👤', label: 'Profile', group: 'user' },
+                { id: 'feedback', icon: '💬', label: 'Feedback & Support', group: 'user' },
+            ],
+            manager: [
+                { id: 'dashboard', icon: '🏠', label: 'Dashboard', group: 'overview' },
+                { id: 'documents', icon: '📁', label: 'Documents', badge: '12', group: 'data' },
+                { id: 'uploads', icon: '📤', label: 'Upload Data', group: 'data' },
+                { id: 'manual_entry', icon: '✏️', label: 'Manual Entry', group: 'data' },
+                { id: 'extracted', icon: '📂', label: 'Extracted Data', group: 'data' },
+                { id: 'batches', icon: '📦', label: 'Batches', group: 'data' },
+                { id: 'emissions', icon: '📈', label: 'Emissions', group: 'analytics' },
+                { id: 'reports', icon: '📊', label: 'Reports', group: 'analytics' },                
+                { id: 'exports', icon: '📥', label: 'Export History', group: 'analytics' },
+                { id: 'compliance', icon: '📋', label: 'Compliance', group: 'analytics' },
+                { id: 'secr', icon: '📄', label: 'SECR Report', badge: 'PDF', group: 'analytics' },
+                { id: 'validation', icon: '✅', label: 'Validation Queue', badge: '8', group: 'workflow' },
+                { id: 'activity', icon: '🔄', label: 'Activity', group: 'workflow' },
+                { id: 'notifications', icon: '🔔', label: 'Notifications', badge: '3', group: 'workflow' },
+                { id: 'messaging', icon: '💬', label: 'Messaging', badge: '2', group: 'workflow' },
+                { id: 'team', icon: '👥', label: 'Team', group: 'admin' },
+                { id: 'facilities', icon: '🏢', label: 'Facilities', group: 'admin' },
+                { id: 'organization', icon: '📋', label: 'Organization', group: 'admin' },
+                { id: 'profile', icon: '👤', label: 'Profile', group: 'user' },
+                { id: 'feedback', icon: '💬', label: 'Feedback & Support', group: 'user' },
+            ],
+            analyst: [
+                { id: 'dashboard', icon: '🏠', label: 'Dashboard', group: 'overview' },
+                { id: 'documents', icon: '📁', label: 'Documents', badge: '12', group: 'data' },
+                { id: 'uploads', icon: '📤', label: 'Upload Data', group: 'data' },
+                { id: 'manual_entry', icon: '✏️', label: 'Manual Entry', group: 'data' },
+                { id: 'extracted', icon: '📂', label: 'Extracted Data', group: 'data' },
+                { id: 'batches', icon: '📦', label: 'Batches', group: 'data' },
+                { id: 'emissions', icon: '📈', label: 'Emissions', group: 'analytics' },
+                { id: 'reports', icon: '📊', label: 'Reports', group: 'analytics' },                
+                { id: 'exports', icon: '📥', label: 'Export History', group: 'analytics' },
+                { id: 'compliance', icon: '📋', label: 'Compliance', group: 'analytics' },
+                { id: 'secr', icon: '📄', label: 'SECR Report', badge: 'PDF', group: 'analytics' },
+                { id: 'validation', icon: '✅', label: 'Validation Queue', badge: '8', group: 'workflow' },
+                { id: 'activity', icon: '🔄', label: 'Activity', group: 'workflow' },
+                { id: 'notifications', icon: '🔔', label: 'Notifications', badge: '3', group: 'workflow' },
+                { id: 'messaging', icon: '💬', label: 'Messaging', badge: '2', group: 'workflow' },
+                { id: 'profile', icon: '👤', label: 'Profile', group: 'user' },
+                { id: 'feedback', icon: '💬', label: 'Feedback & Support', group: 'user' },
+                { id: 'audit', icon: '📋', label: 'Audit Logs', group: 'admin' },
+            ],
+            staff: [
+                { id: 'dashboard', icon: '🏠', label: 'Dashboard', group: 'overview' },
+                { id: 'documents', icon: '📁', label: 'Documents', badge: '12', group: 'data' },
+                { id: 'uploads', icon: '📤', label: 'Upload Data', group: 'data' },
+                { id: 'emissions', icon: '📈', label: 'Emissions', group: 'analytics' },
+                { id: 'reports', icon: '📊', label: 'Reports', group: 'analytics' },                
+                { id: 'compliance', icon: '📋', label: 'Compliance', group: 'analytics' },
+                { id: 'secr', icon: '📄', label: 'SECR Report', badge: 'PDF', group: 'analytics' },
+                { id: 'validation', icon: '✅', label: 'Validation Queue', badge: '8', group: 'workflow' },
+                { id: 'activity', icon: '🔄', label: 'Activity', group: 'workflow' },
+                { id: 'notifications', icon: '🔔', label: 'Notifications', badge: '3', group: 'workflow' },
+                { id: 'messaging', icon: '💬', label: 'Messaging', badge: '2', group: 'workflow' },
+                { id: 'profile', icon: '👤', label: 'Profile', group: 'user' },
+                { id: 'feedback', icon: '💬', label: 'Feedback & Support', group: 'user' },
+            ],
+            viewer: [
+                { id: 'dashboard', icon: '🏠', label: 'Dashboard', group: 'overview' },
+                { id: 'documents', icon: '📁', label: 'Documents', badge: '12', group: 'data' },
+                { id: 'emissions', icon: '📈', label: 'Emissions', group: 'analytics' },
+                { id: 'reports', icon: '📊', label: 'Reports', group: 'analytics' },                
+                { id: 'compliance', icon: '📋', label: 'Compliance', group: 'analytics' },
+                { id: 'secr', icon: '📄', label: 'SECR Report', badge: 'PDF', group: 'analytics' },
+                { id: 'activity', icon: '🔄', label: 'Activity', group: 'workflow' },
+                { id: 'notifications', icon: '🔔', label: 'Notifications', badge: '3', group: 'workflow' },
+                { id: 'profile', icon: '👤', label: 'Profile', group: 'user' },
+            ]
+        };
+
+        // Group labels for sidebar sections
+        const groupLabels = {
+            'overview': 'Overview',
+            'data': 'Data Management',
+            'analytics': 'Analytics & Reporting',
+            'workflow': 'Workflow',
+            'admin': 'Administration',
+            'user': 'User'
+        };
+
+        // Default collapsed state for groups
+        const defaultCollapsed = {
+            'overview': false,
+            'data': false,
+            'analytics': false,
+            'workflow': false,
+            'admin': false,
+            'user': false
+        };
+
+        const moduleFiles = {
+            'dashboard': 'modules/dashboard_content.html',
+            'documents': 'modules/document_man.html',
+            'uploads': 'modules/uploads_man.html',
+            'reports': 'modules/reports_center.html',            
+            'emissions': 'modules/emissions_reports.html',
+            'manual_entry': 'modules/manual_data_entry.html',
+            'validation': 'modules/manual_review_queue.html',
+            'extracted': 'modules/extracted_data_management.html',
+            'team': 'modules/team_management.html',
+            'organization': 'modules/organization_metadata.html',
+            'activity': 'modules/activity_feed.html',
+            'batches': 'modules/batch_management.html',
+            'notifications': 'modules/notification_center.html',
+            'messaging': 'modules/messaging_chat.html',
+            'compliance': 'modules/compliance_dashboard.html',
+            'secr': 'modules/secr_report.html',
+            'exports': 'modules/export_history.html',
+            'facilities': 'modules/facility_dashboard.html',
+            'profile': 'modules/user_profile.html',
+            'feedback': 'modules/feedback_and_support.html',
+            'audit': 'modules/audit_logs.html',
+            'integrations': 'modules/system_settings.html',
+            'roles_permissions': 'modules/roles_permissions.html',            
+            'settings': 'modules/settings.html',
+            'privacy': 'modules/privacy_policy.html',
+            'cookies': 'modules/cookie_policy.html',
+            'terms': 'modules/terms.html',
+            'about': 'modules/about_us.html'
+        };
+
+        // ============================================
+        // SPA ENGINE
+        // ============================================
+
+        let currentModule = 'dashboard';
+        let modulesCache = {};
+        let groupCollapsedState = {};
+
+        // Load collapsed state from localStorage
+        function loadCollapsedState() {
+            try {
+                const saved = localStorage.getItem('sidebarGroupState');
+                if (saved) {
+                    groupCollapsedState = JSON.parse(saved);
+                } else {
+                    groupCollapsedState = { ...defaultCollapsed };
+                }
+            } catch (e) {
+                groupCollapsedState = { ...defaultCollapsed };
+            }
+        }
+
+        // Save collapsed state to localStorage
+        function saveCollapsedState() {
+            try {
+                localStorage.setItem('sidebarGroupState', JSON.stringify(groupCollapsedState));
+            } catch (e) {
+                // Ignore
+            }
+        }
+
+        // Toggle group collapse
+        function toggleGroup(groupKey) {
+            groupCollapsedState[groupKey] = !groupCollapsedState[groupKey];
+            saveCollapsedState();
+            renderSidebar();
+        }
+
+        function getUserRole() {
+            const session = getUserSession();
+            return session?.role || 'analyst';
+        }
+
+        function getModulesForRole(role) {
+            return moduleList[role] || moduleList.analyst;
+        }
+
+        function renderSidebar() {
+            loadCollapsedState();
+            const role = getUserRole();
+            const sidebarNav = document.getElementById('sidebarNav');
+            const modules = getModulesForRole(role);
+
+            // Group modules by category
+            const grouped = {};
+            modules.forEach(mod => {
+                const group = mod.group || 'other';
+                if (!grouped[group]) grouped[group] = [];
+                grouped[group].push(mod);
+            });
+
+            sidebarNav.innerHTML = '';
+            const groupOrder = ['overview', 'data', 'analytics', 'workflow', 'admin', 'user'];
+
+            groupOrder.forEach(groupKey => {
+                if (grouped[groupKey] && grouped[groupKey].length > 0) {
+                    const isCollapsed = groupCollapsedState[groupKey] || false;
+                    
+                    const groupDiv = document.createElement('div');
+                    groupDiv.className = 'sidebar-group';
+                    
+                    // Group header (clickable to toggle)
+                    const header = document.createElement('div');
+                    header.className = 'sidebar-group-header';
+                    header.innerHTML = `
+                        <span class="group-title">${groupLabels[groupKey] || groupKey.charAt(0).toUpperCase() + groupKey.slice(1)}</span>
+                        <span class="group-toggle ${isCollapsed ? 'collapsed' : ''}">▼</span>
+                    `;
+                    header.onclick = function(e) {
+                        e.stopPropagation();
+                        toggleGroup(groupKey);
+                    };
+                    groupDiv.appendChild(header);
+                    
+                    // Group items container
+                    const itemsContainer = document.createElement('div');
+                    itemsContainer.className = `sidebar-group-items ${isCollapsed ? 'collapsed' : ''}`;
+                    
+                    grouped[groupKey].forEach(mod => {
+                        const isActive = mod.id === currentModule;
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.className = `sidebar-item ${isActive ? 'active' : ''}`;
+                        link.dataset.module = mod.id;
+                        link.innerHTML = `
+                            <span class="icon">${mod.icon}</span>
+                            ${mod.label}
+                            ${mod.badge ? `<span class="badge ${mod.badge === 'PDF' ? 'badge-success' : 'badge-destructive'}">${mod.badge}</span>` : ''}
+                        `;
+                        link.onclick = function(e) {
+                            e.preventDefault();
+                            loadModule(mod.id);
+                            if (window.innerWidth <= 992) {
+                                document.getElementById('sidebar').classList.remove('open');
+                            }
+                        };
+                        itemsContainer.appendChild(link);
+                    });
+                    
+                    groupDiv.appendChild(itemsContainer);
+                    sidebarNav.appendChild(groupDiv);
+                }
+            });
+        }
+    function loadModule(moduleId) {
+        const role = getUserRole();
+        const modules = getModulesForRole(role);
+        const module = modules.find(m => m.id === moduleId);
+
+        if (!module) {
+            showToast('⚠️ Module not available for your role', 'warning');
+            return;
+        }
+
+        currentModule = moduleId;
+
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.module === moduleId);
+        });
+
+        const contentArea = document.getElementById('contentArea');
+
+        if (modulesCache[moduleId]) {
+            contentArea.innerHTML = `<div class="page-content">${modulesCache[moduleId]}</div>`;
+            window.location.hash = moduleId;
+            showToast(`📂 Loaded: ${module.label} (cached)`, 'info');
+            
+            // Reinitialize the module after loading cached content
+            setTimeout(function() {
+                reinitializeModule(moduleId);
+            }, 150);
+            
+            // Extra retry for safety
+            setTimeout(function() {
+                reinitializeModule(moduleId);
+            }, 600);
+            return;
+        }
+
+        contentArea.innerHTML = `
+            <div class="loading-spinner">
+                <div class="spinner"></div>
+                <span>Loading ${module.label}...</span>
+            </div>
+        `;
+
+        const filePath = moduleFiles[moduleId];
+        if (!filePath) {
+            contentArea.innerHTML = `
+                <div style="text-align:center;padding:60px 20px;color:hsl(var(--muted-foreground));">
+                    <div style="font-size:48px;margin-bottom:16px;">📄</div>
+                    <div style="font-size:18px;font-weight:600;">Module Content</div>
+                    <div style="font-size:14px;margin-top:8px;">${module.label} module content will be loaded here.</div>
+                </div>
+            `;
+            window.location.hash = moduleId;
+            return;
+        }
+
+        fetch(filePath)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                return response.text();
+            })
+            .then(html => {
+                modulesCache[moduleId] = html;
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                let content = doc.querySelector('.main-body') || 
+                            doc.querySelector('.module-container') ||
+                            doc.querySelector('#moduleContent') ||
+                            doc.body;
+                
+                contentArea.innerHTML = `<div class="page-content">${content.innerHTML}</div>`;
+
+                const searchInput = document.querySelector('#globalSearch');
+                if (searchInput) {
+                    searchInput.placeholder = `Search ${module.label}...`;
+                }
+
+                window.location.hash = moduleId;
+                showToast(`📂 Loaded: ${module.label}`, 'info');
+                
+                // Reinitialize the module after content is loaded
+                setTimeout(function() {
+                    reinitializeModule(moduleId);
+                }, 200);
+                
+                // Extra retries for safety
+                setTimeout(function() {
+                    reinitializeModule(moduleId);
+                }, 700);
+                
+                setTimeout(function() {
+                    reinitializeModule(moduleId);
+                }, 1500);
+            })
+            .catch(error => {
+                console.error('Error loading module:', error);
+                contentArea.innerHTML = `
+                    <div style="text-align:center;padding:60px 20px;color:hsl(var(--muted-foreground));">
+                        <div style="font-size:48px;margin-bottom:16px;">❌</div>
+                        <div style="font-size:18px;font-weight:600;">Module Not Found</div>
+                        <div style="font-size:14px;margin-top:8px;">The module "${module.label}" could not be loaded.</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Error: ${error.message}
+                        </div>
+                        <button class="btn btn-primary" style="margin-top:16px;" onclick="loadModule('dashboard')">
+                            🏠 Go to Dashboard
+                        </button>
+                    </div>
+                `;
+            });
+    }
+
+        
+        
+        function reinitializeModule(moduleId) {
+            console.log(`🔄 Re-initializing module: ${moduleId}`);
+            
+            // Helper to execute module initialization
+            function tryInit(moduleId) {
+                // 1. Check for a module-specific init function
+                var moduleInitNames = [
+                    'initModule',
+                    'renderData',
+                    'renderAll', 
+                    'applyFilters',
+                    'renderTable',
+                    'renderList',
+                    'renderDocuments',
+                    'renderProfile',
+                    'renderMembers',
+                    'renderRoles',
+                    'renderStats',
+                    'renderOverview',
+                    'renderReports',
+                    'renderIntegrations',
+                    'renderApiKeys',
+                    'renderWebhooks',
+                    'renderFacilities',
+                    'renderBatches',
+                    'renderValidationSummary',
+                    'renderCustomMetrics',
+                    'renderSummaryMetrics',
+                    'renderTeamStats',
+                    'renderInvitations',
+                    'renderStaffMetrics',
+                    'renderNotifications',
+                    'renderEmailLogs',
+                    'renderDeliveryStatus',
+                    'renderQueue',
+                    'renderHistory',
+                    'renderActivityFeed'
+                ];
+                
+                // Try to find and call any render function
+                for (var i = 0; i < moduleInitNames.length; i++) {
+                    if (typeof window[moduleInitNames[i]] === 'function') {
+                        console.log(`✅ Found ${moduleInitNames[i]}, calling it...`);
+                        try {
+                            window[moduleInitNames[i]]();
+                            return true;
+                        } catch(e) {
+                            console.error(`Error calling ${moduleInitNames[i]}:`, e);
+                        }
+                    }
+                }
+                
+                // 2. Check for specific data render functions
+                var dataFunctions = [
+                    'renderData',
+                    'renderTable',
+                    'renderList',
+                    'renderCards',
+                    'renderGrid',
+                    'renderChart'
+                ];
+                
+                for (var j = 0; j < dataFunctions.length; j++) {
+                    if (typeof window[dataFunctions[j]] === 'function') {
+                        console.log(`✅ Found ${dataFunctions[j]}, calling it...`);
+                        try {
+                            window[dataFunctions[j]]();
+                            return true;
+                        } catch(e) {
+                            console.error(`Error calling ${dataFunctions[j]}:`, e);
+                        }
+                    }
+                }
+                
+                // 3. Check for filter functions
+                if (typeof window.filterData === 'function') {
+                    console.log('✅ Found filterData, calling it...');
+                    try {
+                        window.filterData();
+                        return true;
+                    } catch(e) {
+                        console.error('Error calling filterData:', e);
+                    }
+                }
+                
+                if (typeof window.applyFilters === 'function') {
+                    console.log('✅ Found applyFilters, calling it...');
+                    try {
+                        window.applyFilters();
+                        return true;
+                    } catch(e) {
+                        console.error('Error calling applyFilters:', e);
+                    }
+                }
+                
+                // 4. Try to find any function with "init" or "render" in the name
+                var functionNames = Object.keys(window);
+                for (var k = 0; k < functionNames.length; k++) {
+                    var name = functionNames[k];
+                    if (typeof window[name] === 'function') {
+                        var lowerName = name.toLowerCase();
+                        if ((lowerName.indexOf('init') === 0 || lowerName.indexOf('render') === 0) && 
+                            name !== 'initModule' && // Skip already checked
+                            !name.match(/^renderTheme/)) { // Skip theme render functions
+                            
+                            console.log(`✅ Found ${name}, attempting to call it...`);
+                            try {
+                                window[name]();
+                                return true;
+                            } catch(e) {
+                                // Silently continue
+                            }
+                        }
+                    }
+                }
+                
+                return false;
+            }
+            
+            // Try immediate
+            var success = tryInit(moduleId);
+            
+            if (success) {
+                console.log(`✅ Module ${moduleId} re-initialized successfully`);
+            } else {
+                console.log(`⚠️ No initialization function found for ${moduleId}, will retry...`);
+                
+                // Retry with delay
+                setTimeout(function() {
+                    var retrySuccess = tryInit(moduleId);
+                    if (retrySuccess) {
+                        console.log(`✅ Module ${moduleId} re-initialized on retry`);
+                    } else {
+                        console.log(`⚠️ Module ${moduleId} still not initialized after retry`);
+                    }
+                }, 300);
+                
+                // One more retry
+                setTimeout(function() {
+                    var retrySuccess2 = tryInit(moduleId);
+                    if (retrySuccess2) {
+                        console.log(`✅ Module ${moduleId} re-initialized on second retry`);
+                    }
+                }, 800);
+            }
+        }
+
+        function loadModuleFromHash() {
+            const hash = window.location.hash.replace('#', '');
+            if (hash) {
+                const role = getUserRole();
+                const modules = getModulesForRole(role);
+                const module = modules.find(m => m.id === hash);
+                if (module) {
+                    loadModule(hash);
+                    return;
+                }
+            }
+            loadModule('dashboard');
+        }
+
+        // ============================================
+        // GLOBAL SEARCH
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('globalSearch');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const term = this.value.toLowerCase().trim();
+                    const role = getUserRole();
+                    const modules = getModulesForRole(role);
+
+                    if (!term) {
+                        renderSidebar();
+                        return;
+                    }
+
+                    const filtered = modules.filter(m => 
+                        m.label.toLowerCase().includes(term) ||
+                        m.id.toLowerCase().includes(term)
+                    );
+
+                    const sidebarNav = document.getElementById('sidebarNav');
+                    sidebarNav.innerHTML = `
+                        <div class="sidebar-section-title">Search Results (${filtered.length})</div>
+                    `;
+
+                    filtered.forEach(mod => {
+                        const isActive = mod.id === currentModule;
+                        const link = document.createElement('a');
+                        link.href = '#';
+                        link.className = `sidebar-item ${isActive ? 'active' : ''}`;
+                        link.dataset.module = mod.id;
+                        link.innerHTML = `
+                            <span class="icon">${mod.icon}</span>
+                            ${mod.label}
+                            ${mod.badge ? `<span class="badge ${mod.badge === 'PDF' ? 'badge-success' : 'badge-destructive'}">${mod.badge}</span>` : ''}
+                        `;
+                        link.onclick = function(e) {
+                            e.preventDefault();
+                            loadModule(mod.id);
+                            searchInput.value = '';
+                            renderSidebar();
+                            if (window.innerWidth <= 992) {
+                                document.getElementById('sidebar').classList.remove('open');
+                            }
+                        };
+                        sidebarNav.appendChild(link);
+                    });
+
+                    if (filtered.length === 0) {
+                        sidebarNav.innerHTML += `
+                            <div style="padding:12px;color:hsl(var(--muted-foreground));font-size:13px;text-align:center;">
+                                No modules found matching "${term}"
+                            </div>
+                        `;
+                    }
+                });
+            }
+        });
+
+        // ============================================
+        // SIDEBAR MOBILE TOGGLE
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuBtn = document.getElementById('mobileMenuBtn');
+            const sidebar = document.getElementById('sidebar');
+            
+            if (menuBtn && sidebar) {
+                menuBtn.addEventListener('click', function() {
+                    sidebar.classList.toggle('open');
+                });
+
+                document.addEventListener('click', function(e) {
+                    if (window.innerWidth <= 992) {
+                        if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+                            sidebar.classList.remove('open');
+                        }
+                    }
+                });
+            }
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const session = getUserSession();
+            if (!session) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            updateUserUI();
+            
+            const roleEl = document.getElementById('userRole');
+            if (roleEl) {
+                const roleLabels = {
+                    admin: 'Admin',
+                    manager: 'Manager',
+                    analyst: 'Analyst',
+                    staff: 'Staff',
+                    viewer: 'Viewer'
+                };
+                roleEl.textContent = roleLabels[session.role] || session.role;
+            }
+
+            loadCollapsedState();
+            renderSidebar();
+            loadModuleFromHash();
+
+            window.addEventListener('hashchange', function() {
+                loadModuleFromHash();
+            });
+
+            console.log('🌱 CarbonTally SPA Loaded');
+            console.log('👤 User:', session.name, `(${session.role})`);
+            console.log('📦 Modules available:', getModulesForRole(session.role).length);
+            console.log('🔍 Use search to filter modules');
+            console.log('📂 Sidebar groups are collapsible - click group headers to toggle');
+            console.log('💾 Group state is saved in localStorage');
+            console.log('🎨 9 themes available');
+            console.log('⌨️  Arrow keys to cycle themes');
+        });
+    </script>
+
+</body>
+</html>

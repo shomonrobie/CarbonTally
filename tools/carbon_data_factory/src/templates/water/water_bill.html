@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Water Bill</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Water Bill</h1>
+  <p>Supplier: {{supplier_name}}</p>
+  <p>Customer: {{customer_name}}</p>
+  <p>Date: {{bill_date}}</p>
+  <table>
+    <tr><th>Usage (m³)</th><th>Rate (£/m³)</th><th>Total (£)</th></tr>
+    <tr><td>{{usage}}</td><td>{{rate}}</td><td>{{total}}</td></tr>
+  </table>
+</body>
+</html>

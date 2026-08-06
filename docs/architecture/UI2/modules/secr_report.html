@@ -1,0 +1,67 @@
+<!-- SECR Report Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>📄 SECR Report Generator</h1>
+            <p>Generate Streamlined Energy and Carbon Reporting (SECR) reports with full audit trail</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="generateReport()">
+                📄 Generate Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="printReport()">
+                🖨️ Print
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="exportReport()">
+                📤 Export PDF
+            </button>
+        </div>
+    </div>
+
+    <!-- Report Controls -->
+    <div class="filters-bar">
+        <div class="filter-group">
+            <label>📅 Reporting Year</label>
+            <select class="select" id="reportYear">
+                <option value="2025" selected>2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+                <option value="2022">2022</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>🏢 Company</label>
+            <select class="select" id="reportCompany">
+                <option value="XYZ (UK) Limited" selected>XYZ (UK) Limited</option>
+                <option value="ABC Trading Ltd">ABC Trading Ltd</option>
+                <option value="DEF Solutions Ltd">DEF Solutions Ltd</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>📋 Report Type</label>
+            <select class="select" id="reportType">
+                <option value="full" selected>Full Report</option>
+                <option value="summary">Summary Report</option>
+                <option value="executive">Executive Summary</option>
+            </select>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-primary btn-sm" onclick="generateReport()">📊 Generate</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetReport()">↺ Reset</button>
+        </div>
+    </div>
+
+    <!-- Report Preview -->
+    <div class="report-preview" id="reportPreview">
+        <div class="report-container" id="reportContainer">
+            <div class="report-loading">
+                <div class="spinner"></div>
+                <span>Generating SECR Report...</span>
+            </div>
+        </div>
+    </div>
+
+</div>

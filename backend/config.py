@@ -21,8 +21,8 @@ class Config:
     
     # CORS Configuration
     ALLOWED_ORIGINS = [
-        "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:3002",
         "https://carbontally.co.uk",
         "https://www.carbontally.co.uk",
         "https://admin.carbontally.co.uk",
@@ -30,6 +30,8 @@ class Config:
         "https://carbontally-admin.vercel.app",
         "https://carbontally-api.onrender.com",
         "https://www.carbontally.co.uk",
+        "https://*.onrender.com",  # ✅ Allow all onrender subdomains
+
     ]
     
     # ✅ ADD THESE CORS SETTINGS

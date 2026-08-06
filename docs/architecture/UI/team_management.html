@@ -1,0 +1,2304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Team Management</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            gap: 4px;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .avatar-sm {
+            width: 32px;
+            height: 32px;
+            font-size: 12px;
+        }
+        .avatar-lg {
+            width: 56px;
+            height: 56px;
+            font-size: 20px;
+        }
+
+        .input {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: hsl(var(--muted));
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            background: hsl(var(--primary));
+        }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           TEAM STATS
+           ============================================ */
+        .team-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .team-stat {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 14px 16px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .team-stat:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-2px);
+        }
+        .team-stat .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .team-stat .label {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .team-stat .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+        /* ============================================
+           MEMBER LIST
+           ============================================ */
+        .member-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            transition: all 0.15s ease;
+            margin-bottom: 8px;
+        }
+        .member-item:hover {
+            background: hsl(var(--accent));
+            box-shadow: var(--shadow);
+        }
+        .member-item .member-info { flex: 1; }
+        .member-item .member-info .name {
+            font-size: 14px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .member-item .member-info .email {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .member-item .member-info .meta {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .member-item .member-role { flex-shrink: 0; }
+        .member-item .member-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        /* ============================================
+           INVITE MODAL
+           ============================================ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 600px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .modal-body { margin: 16px 0; }
+        .modal-body .form-group {
+            margin-bottom: 16px;
+        }
+        .modal-body .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .modal-body .form-group .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+        .modal-body .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================
+           STAFF METRICS
+           ============================================ */
+        .staff-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .staff-metric-card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 12px 16px;
+            text-align: center;
+        }
+        .staff-metric-card .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .staff-metric-card .label {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1200px) {
+            .team-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+            .modal-body .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .team-stats {
+                grid-template-columns: 1fr 1fr;
+            }
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .member-item {
+                flex-wrap: wrap;
+            }
+            .member-item .member-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item active">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search team members..." id="searchInput" />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>👥 Team Management</h1>
+                        <p>Manage your organization members, roles, and permissions</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="showInviteModal()">
+                            📨 Invite Member
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="showToast('📋 Roles & permissions opened')">
+                            ⚙️ Roles
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Team Stats -->
+                <div class="team-stats" id="teamStats">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <!-- Tabs -->
+                <div style="margin-bottom:16px;">
+                    <div class="tabs">
+                        <button class="tab active" data-tab="members" onclick="switchTab('members')">
+                            👥 Members
+                        </button>
+                        <button class="tab" data-tab="invitations" onclick="switchTab('invitations')">
+                            📨 Invitations
+                            <span class="badge badge-warning" id="inviteBadge">3</span>
+                        </button>
+                        <button class="tab" data-tab="staff" onclick="switchTab('staff')">
+                            📊 Staff Performance
+                        </button>
+                        <button class="tab" data-tab="roles" onclick="switchTab('roles')">
+                            🔑 Roles
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===== MEMBERS TAB ===== -->
+                <div id="tab-members">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">👥 Team Members</div>
+                                <div class="card-description" id="memberCount">12 active members</div>
+                            </div>
+                            <div style="display:flex;gap:4px;">
+                                <button class="btn btn-ghost btn-sm" onclick="sortMembers('name')">Sort by Name</button>
+                                <button class="btn btn-ghost btn-sm" onclick="sortMembers('role')">Sort by Role</button>
+                            </div>
+                        </div>
+                        <div class="card-content" id="memberList">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== INVITATIONS TAB ===== -->
+                <div id="tab-invitations" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">📨 Pending Invitations</div>
+                                <div class="card-description">Invitations sent to new team members</div>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="showInviteModal()">
+                                📨 New Invite
+                            </button>
+                        </div>
+                        <div class="card-content" id="invitationList">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== STAFF PERFORMANCE TAB ===== -->
+                <div id="tab-staff" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">📊 Staff Performance Metrics</div>
+                                <div class="card-description">Review team performance and workload</div>
+                            </div>
+                            <button class="btn btn-outline btn-sm" onclick="showToast('📊 Exporting staff metrics...')">
+                                📊 Export
+                            </button>
+                        </div>
+                        <div class="card-content" id="staffMetrics">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== ROLES TAB ===== -->
+                <div id="tab-roles" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">🔑 Roles & Permissions</div>
+                                <div class="card-description">Define roles and assign permissions</div>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="showToast('🔑 Creating new role...')">
+                                ➕ New Role
+                            </button>
+                        </div>
+                        <div class="card-content" id="rolesList">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== INVITE MODAL ===== -->
+        <div class="modal-overlay" id="inviteModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title">📨 Invite Team Member</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Send an invitation to join your organization
+                        </div>
+                    </div>
+                    <button class="modal-close" id="inviteModalClose">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Email Address <span style="color:hsl(var(--destructive));">*</span></label>
+                        <input type="email" class="input" id="inviteEmail" placeholder="colleague@company.com" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Role <span style="color:hsl(var(--destructive));">*</span></label>
+                            <select class="select" id="inviteRole">
+                                <option value="admin">Admin</option>
+                                <option value="manager">Manager</option>
+                                <option value="analyst" selected>Analyst</option>
+                                <option value="viewer">Viewer</option>
+                                <option value="staff">Staff</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Department</label>
+                            <select class="select" id="inviteDepartment">
+                                <option value="sustainability">Sustainability</option>
+                                <option value="operations">Operations</option>
+                                <option value="finance">Finance</option>
+                                <option value="compliance">Compliance</option>
+                                <option value="it">IT</option>
+                                <option value="hr">HR</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Message (Optional)</label>
+                        <textarea class="input" id="inviteMessage" rows="2" placeholder="Welcome to CarbonTally! We're excited to have you join our team."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                            <input type="checkbox" id="inviteSendEmail" checked />
+                            Send email notification
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeInviteModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="sendInvite()">
+                        📨 Send Invitation
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== MEMBER DETAIL MODAL ===== -->
+        <div class="modal-overlay" id="memberDetailModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="memberDetailTitle">Member Details</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="memberDetailSubtitle">View member information</div>
+                    </div>
+                    <button class="modal-close" id="memberDetailClose">✕</button>
+                </div>
+                <div class="modal-body" id="memberDetailBody">
+                    <!-- Rendered by JS -->
+                </div>
+                <div class="modal-footer" id="memberDetailFooter">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // MOCK DATA - Based on Schema
+        // ============================================
+
+        const members = [{
+            id: 'mem_001',
+            name: 'John Doe',
+            email: 'john.doe@carbontally.com',
+            role: 'admin',
+            department: 'Sustainability',
+            status: 'active',
+            joined: '2025-01-15',
+            lastActive: '2026-12-15',
+            avatar: 'JD',
+            permissions: ['full_access'],
+            reviewsCompleted: 156,
+            accuracyRate: 98.5,
+            workload: 12
+        }, {
+            id: 'mem_002',
+            name: 'Sarah Johnson',
+            email: 'sarah.johnson@carbontally.com',
+            role: 'manager',
+            department: 'Operations',
+            status: 'active',
+            joined: '2025-03-10',
+            lastActive: '2026-12-14',
+            avatar: 'SJ',
+            permissions: ['view_all', 'edit_data', 'manage_team'],
+            reviewsCompleted: 89,
+            accuracyRate: 96.2,
+            workload: 8
+        }, {
+            id: 'mem_003',
+            name: 'Mike Roberts',
+            email: 'mike.roberts@carbontally.com',
+            role: 'analyst',
+            department: 'Compliance',
+            status: 'active',
+            joined: '2025-06-01',
+            lastActive: '2026-12-13',
+            avatar: 'MR',
+            permissions: ['view_all', 'edit_data'],
+            reviewsCompleted: 234,
+            accuracyRate: 97.8,
+            workload: 15
+        }, {
+            id: 'mem_004',
+            name: 'Anna Liu',
+            email: 'anna.liu@carbontally.com',
+            role: 'analyst',
+            department: 'Finance',
+            status: 'active',
+            joined: '2025-08-15',
+            lastActive: '2026-12-12',
+            avatar: 'AL',
+            permissions: ['view_all', 'edit_data'],
+            reviewsCompleted: 167,
+            accuracyRate: 95.4,
+            workload: 10
+        }, {
+            id: 'mem_005',
+            name: 'Tom Chen',
+            email: 'tom.chen@carbontally.com',
+            role: 'viewer',
+            department: 'IT',
+            status: 'active',
+            joined: '2025-09-01',
+            lastActive: '2026-12-11',
+            avatar: 'TC',
+            permissions: ['view_all'],
+            reviewsCompleted: 0,
+            accuracyRate: 0,
+            workload: 0
+        }, {
+            id: 'mem_006',
+            name: 'Emma Martinez',
+            email: 'emma.martinez@carbontally.com',
+            role: 'staff',
+            department: 'Sustainability',
+            status: 'active',
+            joined: '2025-10-20',
+            lastActive: '2026-12-14',
+            avatar: 'EM',
+            permissions: ['view_all', 'edit_data', 'upload_files'],
+            reviewsCompleted: 45,
+            accuracyRate: 92.1,
+            workload: 5
+        }, {
+            id: 'mem_007',
+            name: 'David Kim',
+            email: 'david.kim@carbontally.com',
+            role: 'admin',
+            department: 'Sustainability',
+            status: 'active',
+            joined: '2025-02-01',
+            lastActive: '2026-12-14',
+            avatar: 'DK',
+            permissions: ['full_access'],
+            reviewsCompleted: 312,
+            accuracyRate: 99.2,
+            workload: 18
+        }, {
+            id: 'mem_008',
+            name: 'Lisa Patel',
+            email: 'lisa.patel@carbontally.com',
+            role: 'manager',
+            department: 'Operations',
+            status: 'active',
+            joined: '2025-04-15',
+            lastActive: '2026-12-13',
+            avatar: 'LP',
+            permissions: ['view_all', 'edit_data', 'manage_team'],
+            reviewsCompleted: 78,
+            accuracyRate: 94.7,
+            workload: 7
+        }, {
+            id: 'mem_009',
+            name: 'James Wilson',
+            email: 'james.wilson@carbontally.com',
+            role: 'analyst',
+            department: 'Compliance',
+            status: 'active',
+            joined: '2025-07-01',
+            lastActive: '2026-12-12',
+            avatar: 'JW',
+            permissions: ['view_all', 'edit_data'],
+            reviewsCompleted: 198,
+            accuracyRate: 96.9,
+            workload: 13
+        }, {
+            id: 'mem_010',
+            name: 'Maria Garcia',
+            email: 'maria.garcia@carbontally.com',
+            role: 'analyst',
+            department: 'Finance',
+            status: 'active',
+            joined: '2025-09-15',
+            lastActive: '2026-12-11',
+            avatar: 'MG',
+            permissions: ['view_all', 'edit_data'],
+            reviewsCompleted: 123,
+            accuracyRate: 95.8,
+            workload: 9
+        }, {
+            id: 'mem_011',
+            name: 'Alex Turner',
+            email: 'alex.turner@carbontally.com',
+            role: 'viewer',
+            department: 'HR',
+            status: 'active',
+            joined: '2025-11-01',
+            lastActive: '2026-12-10',
+            avatar: 'AT',
+            permissions: ['view_all'],
+            reviewsCompleted: 0,
+            accuracyRate: 0,
+            workload: 0
+        }, {
+            id: 'mem_012',
+            name: 'Rachel Brown',
+            email: 'rachel.brown@carbontally.com',
+            role: 'staff',
+            department: 'Sustainability',
+            status: 'active',
+            joined: '2025-12-01',
+            lastActive: '2026-12-14',
+            avatar: 'RB',
+            permissions: ['view_all', 'edit_data', 'upload_files'],
+            reviewsCompleted: 34,
+            accuracyRate: 91.3,
+            workload: 4
+        }];
+
+        // Invitations
+        const invitations = [{
+            id: 'inv_001',
+            email: 'new.hire@company.com',
+            role: 'analyst',
+            department: 'Sustainability',
+            status: 'pending',
+            sent: '2026-12-10',
+            expires: '2027-01-10',
+            message: 'Welcome to CarbonTally! We\'re excited to have you join our team.'
+        }, {
+            id: 'inv_002',
+            email: 'consultant@firm.com',
+            role: 'viewer',
+            department: 'Compliance',
+            status: 'pending',
+            sent: '2026-12-12',
+            expires: '2027-01-12',
+            message: 'Please review our compliance data.'
+        }, {
+            id: 'inv_003',
+            email: 'partner@vendor.com',
+            role: 'staff',
+            department: 'Operations',
+            status: 'pending',
+            sent: '2026-12-13',
+            expires: '2027-01-13',
+            message: 'Let\'s collaborate on the upcoming project.'
+        }];
+
+        // Roles
+        const roles = [{
+            id: 'role_001',
+            name: 'Admin',
+            description: 'Full access to all features and settings',
+            permissions: ['full_access'],
+            members: 2,
+            color: '#10b981'
+        }, {
+            id: 'role_002',
+            name: 'Manager',
+            description: 'Can manage team and view all data',
+            permissions: ['view_all', 'edit_data', 'manage_team'],
+            members: 2,
+            color: '#3b82f6'
+        }, {
+            id: 'role_003',
+            name: 'Analyst',
+            description: 'Can view and edit emissions data',
+            permissions: ['view_all', 'edit_data'],
+            members: 4,
+            color: '#8b5cf6'
+        }, {
+            id: 'role_004',
+            name: 'Staff',
+            description: 'Can view data and upload files',
+            permissions: ['view_all', 'edit_data', 'upload_files'],
+            members: 2,
+            color: '#f59e0b'
+        }, {
+            id: 'role_005',
+            name: 'Viewer',
+            description: 'Read-only access to all data',
+            permissions: ['view_all'],
+            members: 2,
+            color: '#6b7280'
+        }];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let currentTab = 'members';
+        let sortField = 'name';
+        let sortDirection = 'asc';
+        let selectedMemberId = null;
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const inviteModal = document.getElementById('inviteModal');
+        const inviteModalClose = document.getElementById('inviteModalClose');
+        const memberDetailModal = document.getElementById('memberDetailModal');
+        const memberDetailClose = document.getElementById('memberDetailClose');
+
+        const memberList = document.getElementById('memberList');
+        const invitationList = document.getElementById('invitationList');
+        const staffMetrics = document.getElementById('staffMetrics');
+        const rolesList = document.getElementById('rolesList');
+        const searchInput = document.getElementById('searchInput');
+        const memberCount = document.getElementById('memberCount');
+        const inviteBadge = document.getElementById('inviteBadge');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // TAB FUNCTIONS
+        // ============================================
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === tab);
+            });
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.style.display = el.id === `tab-${tab}` ? 'block' : 'none';
+            });
+
+            // Refresh content
+            if (tab === 'members') renderMembers();
+            else if (tab === 'invitations') renderInvitations();
+            else if (tab === 'staff') renderStaffMetrics();
+            else if (tab === 'roles') renderRoles();
+        }
+
+        // ============================================
+        // MEMBER FUNCTIONS
+        // ============================================
+
+        function getRoleBadge(role) {
+            const badges = {
+                'admin': '<span class="badge badge-success">👑 Admin</span>',
+                'manager': '<span class="badge badge-primary">📋 Manager</span>',
+                'analyst': '<span class="badge badge-warning">📊 Analyst</span>',
+                'staff': '<span class="badge badge-muted">👤 Staff</span>',
+                'viewer': '<span class="badge badge-muted">👁️ Viewer</span>'
+            };
+            return badges[role] || badges.viewer;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'active': '<span class="badge badge-success">🟢 Active</span>',
+                'inactive': '<span class="badge badge-muted">⚪ Inactive</span>',
+                'pending': '<span class="badge badge-warning">🟡 Pending</span>',
+                'suspended': '<span class="badge badge-destructive">🔴 Suspended</span>'
+            };
+            return badges[status] || badges.active;
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+        }
+
+        function getRandomColor(name) {
+            const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) {
+                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return colors[Math.abs(hash) % colors.length];
+        }
+
+        function renderMembers() {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            let filtered = [...members];
+
+            if (searchTerm) {
+                filtered = filtered.filter(m =>
+                    m.name.toLowerCase().includes(searchTerm) ||
+                    m.email.toLowerCase().includes(searchTerm) ||
+                    m.department.toLowerCase().includes(searchTerm) ||
+                    m.role.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Sort
+            filtered.sort((a, b) => {
+                let valA = a[sortField] || '';
+                let valB = b[sortField] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            memberCount.textContent = `${filtered.length} active members`;
+
+            if (filtered.length === 0) {
+                memberList.innerHTML = `
+                    <div class="text-center text-muted" style="padding:40px 20px;">
+                        <div style="font-size:32px;margin-bottom:8px;">👤</div>
+                        <div>No members found</div>
+                        <div style="font-size:13px;">Try adjusting your search or invite new members</div>
+                    </div>
+                `;
+                return;
+            }
+
+            memberList.innerHTML = filtered.map(m => `
+                <div class="member-item" onclick="viewMemberDetail('${m.id}')">
+                    <div class="avatar" style="background:${getRandomColor(m.name)};">${m.avatar || getInitials(m.name)}</div>
+                    <div class="member-info">
+                        <div class="name">${m.name}</div>
+                        <div class="email">${m.email}</div>
+                        <div class="meta">
+                            <span>🏢 ${m.department}</span>
+                            <span>📅 Joined ${m.joined}</span>
+                            <span>📊 ${m.reviewsCompleted || 0} reviews</span>
+                            <span>🎯 ${m.accuracyRate || 0}% accuracy</span>
+                        </div>
+                    </div>
+                    <div class="member-role">
+                        ${getRoleBadge(m.role)}
+                        ${getStatusBadge(m.status)}
+                    </div>
+                    <div class="member-actions">
+                        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewMemberDetail('${m.id}')" title="View Details">👁️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editMember('${m.id}')" title="Edit">✏️</button>
+                        ${m.role !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();removeMember('${m.id}')" style="color:hsl(var(--destructive));" title="Remove">✕</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function sortMembers(field) {
+            if (sortField === field) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortField = field;
+                sortDirection = 'asc';
+            }
+            renderMembers();
+        }
+
+        function viewMemberDetail(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            selectedMemberId = id;
+            document.getElementById('memberDetailTitle').textContent = member.name;
+            document.getElementById('memberDetailSubtitle').textContent = `${member.role.toUpperCase()} • ${member.department}`;
+
+            document.getElementById('memberDetailBody').innerHTML = `
+                <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <div class="avatar avatar-lg" style="background:${getRandomColor(member.name)};font-size:24px;">${member.avatar || getInitials(member.name)}</div>
+                    <div>
+                        <div style="font-size:18px;font-weight:700;color:hsl(var(--foreground));">${member.name}</div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));">${member.email}</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Role</span>
+                        <span style="color:hsl(var(--foreground));">${getRoleBadge(member.role)}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Status</span>
+                        <span style="color:hsl(var(--foreground));">${getStatusBadge(member.status)}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Department</span>
+                        <span style="color:hsl(var(--foreground));">${member.department}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Joined</span>
+                        <span style="color:hsl(var(--foreground));">${member.joined}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Last Active</span>
+                        <span style="color:hsl(var(--foreground));">${member.lastActive}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Workload</span>
+                        <span style="color:hsl(var(--foreground));">${member.workload || 0} reviews</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Reviews Completed</span>
+                        <span style="color:hsl(var(--foreground));">${member.reviewsCompleted || 0}</span>
+                    </div>
+                    <div class="detail-row" style="display:flex;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                        <span style="font-weight:500;color:hsl(var(--muted-foreground));width:120px;flex-shrink:0;">Accuracy Rate</span>
+                        <span style="color:hsl(var(--foreground));">${member.accuracyRate || 0}%</span>
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <span style="font-weight:500;color:hsl(var(--muted-foreground));font-size:13px;">Permissions:</span>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                        ${member.permissions.map(p => `<span class="badge badge-muted">${p.replace('_', ' ').toUpperCase()}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('memberDetailFooter').innerHTML = `
+                <button class="btn btn-ghost btn-sm" onclick="closeMemberDetail()">Close</button>
+                <button class="btn btn-outline btn-sm" onclick="editMember('${member.id}');closeMemberDetail();">✏️ Edit</button>
+                ${member.role !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="removeMember('${member.id}');closeMemberDetail();">🗑️ Remove</button>` : ''}
+            `;
+
+            memberDetailModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeMemberDetail() {
+            memberDetailModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function editMember(id) {
+            const member = members.find(m => m.id === id);
+            if (member) {
+                showToast(`✏️ Editing ${member.name}`, 'info');
+                // In a real app, this would open an edit modal
+            }
+        }
+
+        function removeMember(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            if (member.role === 'admin') {
+                showToast('⚠️ Cannot remove admin user', 'warning');
+                return;
+            }
+
+            if (confirm(`Are you sure you want to remove ${member.name} from the team?`)) {
+                const index = members.findIndex(m => m.id === id);
+                if (index !== -1) {
+                    members.splice(index, 1);
+                    renderMembers();
+                    renderTeamStats();
+                    showToast(`🗑️ Removed ${member.name} from team`);
+                }
+            }
+        }
+
+        // ============================================
+        // INVITATION FUNCTIONS
+        // ============================================
+
+        function renderInvitations() {
+            if (invitations.length === 0) {
+                invitationList.innerHTML = `
+                    <div class="text-center text-muted" style="padding:40px 20px;">
+                        <div style="font-size:32px;margin-bottom:8px;">📨</div>
+                        <div>No pending invitations</div>
+                        <div style="font-size:13px;">Send invitations to new team members</div>
+                    </div>
+                `;
+                return;
+            }
+
+            invitationList.innerHTML = invitations.map(inv => `
+                <div class="member-item">
+                    <div style="display:flex;align-items:center;gap:12px;flex:1;">
+                        <div style="font-size:28px;">📨</div>
+                        <div class="member-info">
+                            <div class="name">${inv.email}</div>
+                            <div class="meta">
+                                <span>🎯 ${inv.role}</span>
+                                <span>🏢 ${inv.department}</span>
+                                <span>📅 Sent ${inv.sent}</span>
+                                <span>⏰ Expires ${inv.expires}</span>
+                            </div>
+                            <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px;">
+                                "${inv.message}"
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:4px;flex-shrink:0;">
+                        <span class="badge badge-warning">⏳ Pending</span>
+                        <button class="btn btn-ghost btn-sm" onclick="resendInvite('${inv.id}')" title="Resend">📤</button>
+                        <button class="btn btn-ghost btn-sm" onclick="cancelInvite('${inv.id}')" style="color:hsl(var(--destructive));" title="Cancel">✕</button>
+                    </div>
+                </div>
+            `).join('');
+
+            inviteBadge.textContent = invitations.length;
+        }
+
+        function resendInvite(id) {
+            const inv = invitations.find(i => i.id === id);
+            if (inv) {
+                showToast(`📨 Resent invitation to ${inv.email}`);
+            }
+        }
+
+        function cancelInvite(id) {
+            if (confirm('Cancel this invitation?')) {
+                const index = invitations.findIndex(i => i.id === id);
+                if (index !== -1) {
+                    const email = invitations[index].email;
+                    invitations.splice(index, 1);
+                    renderInvitations();
+                    showToast(`🗑️ Cancelled invitation to ${email}`);
+                }
+            }
+        }
+
+        function showInviteModal() {
+            inviteModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeInviteModal() {
+            inviteModal.classList.remove('show');
+            document.body.style.overflow = '';
+            document.getElementById('inviteEmail').value = '';
+            document.getElementById('inviteMessage').value = '';
+        }
+
+        function sendInvite() {
+            const email = document.getElementById('inviteEmail').value.trim();
+            const role = document.getElementById('inviteRole').value;
+            const department = document.getElementById('inviteDepartment').value;
+            const message = document.getElementById('inviteMessage').value.trim() || 'Welcome to CarbonTally!';
+
+            if (!email) {
+                showToast('⚠️ Please enter an email address', 'warning');
+                return;
+            }
+
+            if (!email.includes('@')) {
+                showToast('⚠️ Please enter a valid email address', 'warning');
+                return;
+            }
+
+            // Check if already invited
+            if (invitations.some(i => i.email === email)) {
+                showToast('⚠️ An invitation has already been sent to this email', 'warning');
+                return;
+            }
+
+            // Check if already a member
+            if (members.some(m => m.email === email)) {
+                showToast('⚠️ This email is already a team member', 'warning');
+                return;
+            }
+
+            const newInvite = {
+                id: `inv_${String(invitations.length + 1).padStart(3, '0')}`,
+                email: email,
+                role: role,
+                department: department,
+                status: 'pending',
+                sent: new Date().toISOString().split('T')[0],
+                expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                message: message
+            };
+
+            invitations.push(newInvite);
+            closeInviteModal();
+            renderInvitations();
+            renderTeamStats();
+            showToast(`📨 Invitation sent to ${email}`);
+        }
+
+        // ============================================
+        // STAFF METRICS
+        // ============================================
+
+        function renderStaffMetrics() {
+            const totalReviews = members.reduce((sum, m) => sum + (m.reviewsCompleted || 0), 0);
+            const avgAccuracy = members.reduce((sum, m) => sum + (m.accuracyRate || 0), 0) / members.length;
+            const avgWorkload = members.reduce((sum, m) => sum + (m.workload || 0), 0) / members.length;
+            const activeMembers = members.filter(m => m.status === 'active').length;
+
+            // Top performers
+            const topPerformers = [...members]
+                .filter(m => m.reviewsCompleted > 0)
+                .sort((a, b) => b.reviewsCompleted - a.reviewsCompleted)
+                .slice(0, 3);
+
+            staffMetrics.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div class="staff-metric-card">
+                        <div class="value">${totalReviews}</div>
+                        <div class="label">Total Reviews</div>
+                    </div>
+                    <div class="staff-metric-card">
+                        <div class="value">${avgAccuracy.toFixed(1)}%</div>
+                        <div class="label">Avg Accuracy</div>
+                    </div>
+                    <div class="staff-metric-card">
+                        <div class="value">${avgWorkload.toFixed(1)}</div>
+                        <div class="label">Avg Workload</div>
+                    </div>
+                    <div class="staff-metric-card">
+                        <div class="value">${activeMembers}</div>
+                        <div class="label">Active Members</div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">🏆 Top Performers</h4>
+                    ${topPerformers.map(m => `
+                        <div class="member-item" style="margin-bottom:4px;padding:8px 12px;">
+                            <div class="avatar avatar-sm" style="background:${getRandomColor(m.name)};">${m.avatar || getInitials(m.name)}</div>
+                            <div class="member-info">
+                                <div class="name">${m.name}</div>
+                                <div class="meta">${m.role} • ${m.department}</div>
+                            </div>
+                            <div style="display:flex;gap:16px;font-size:12px;">
+                                <span>📊 ${m.reviewsCompleted} reviews</span>
+                                <span>🎯 ${m.accuracyRate}% accuracy</span>
+                                <span>⏳ ${m.workload} workload</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div>
+                    <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">📊 Workload Distribution</h4>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">
+                        ${members.filter(m => m.status === 'active').map(m => `
+                            <div style="padding:8px 12px;border-radius:var(--radius);border:1px solid hsl(var(--border));">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <span style="font-size:13px;font-weight:500;">${m.name}</span>
+                                    <span style="font-size:12px;font-weight:600;">${m.workload || 0}</span>
+                                </div>
+                                <div class="progress-bar" style="margin-top:4px;">
+                                    <div class="fill" style="width:${Math.min((m.workload || 0) / 20 * 100, 100)}%;background:${m.workload > 15 ? 'hsl(var(--destructive))' : m.workload > 10 ? 'hsl(var(--warning))' : 'hsl(var(--success))'};"></div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // ROLES FUNCTIONS
+        // ============================================
+
+        function renderRoles() {
+            rolesList.innerHTML = roles.map(role => `
+                <div class="member-item">
+                    <div style="display:flex;align-items:center;gap:12px;flex:1;">
+                        <div style="width:4px;height:32px;border-radius:4px;background:${role.color};flex-shrink:0;"></div>
+                        <div class="member-info">
+                            <div class="name">${role.name}</div>
+                            <div class="meta">${role.description}</div>
+                            <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+                                ${role.permissions.map(p => `<span class="badge badge-muted">${p.replace('_', ' ').toUpperCase()}</span>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:12px;align-items:center;flex-shrink:0;">
+                        <span class="badge badge-muted">${role.members} members</span>
+                        <button class="btn btn-ghost btn-sm" onclick="editRole('${role.id}')" title="Edit Role">✏️</button>
+                        ${role.name !== 'Admin' ? `<button class="btn btn-ghost btn-sm" onclick="deleteRole('${role.id}')" style="color:hsl(var(--destructive));" title="Delete Role">✕</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function editRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (role) {
+                showToast(`✏️ Editing role: ${role.name}`, 'info');
+            }
+        }
+
+        function deleteRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (role && role.name !== 'Admin') {
+                if (confirm(`Delete role "${role.name}"?`)) {
+                    const index = roles.findIndex(r => r.id === id);
+                    if (index !== -1) {
+                        roles.splice(index, 1);
+                        renderRoles();
+                        showToast(`🗑️ Deleted role: ${role.name}`);
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // TEAM STATS
+        // ============================================
+
+        function renderTeamStats() {
+            const total = members.length;
+            const active = members.filter(m => m.status === 'active').length;
+            const admins = members.filter(m => m.role === 'admin').length;
+            const pending = invitations.length;
+
+            document.querySelectorAll('.team-stat')[0].innerHTML = `
+                <span class="icon">👥</span>
+                <div class="value">${total}</div>
+                <div class="label">Total Members</div>
+            `;
+            document.querySelectorAll('.team-stat')[1].innerHTML = `
+                <span class="icon">🟢</span>
+                <div class="value">${active}</div>
+                <div class="label">Active</div>
+            `;
+            document.querySelectorAll('.team-stat')[2].innerHTML = `
+                <span class="icon">👑</span>
+                <div class="value">${admins}</div>
+                <div class="label">Admins</div>
+            `;
+            document.querySelectorAll('.team-stat')[3].innerHTML = `
+                <span class="icon">📨</span>
+                <div class="value">${pending}</div>
+                <div class="label">Pending Invitations</div>
+            `;
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Invite Modal
+        inviteModalClose.addEventListener('click', closeInviteModal);
+        inviteModal.addEventListener('click', function(e) {
+            if (e.target === this) closeInviteModal();
+        });
+
+        // Member Detail Modal
+        memberDetailClose.addEventListener('click', closeMemberDetail);
+        memberDetailModal.addEventListener('click', function(e) {
+            if (e.target === this) closeMemberDetail();
+        });
+
+        // Search
+        searchInput.addEventListener('input', function() {
+            if (currentTab === 'members') renderMembers();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                if (inviteModal.classList.contains('show')) {
+                    closeInviteModal();
+                }
+                if (memberDetailModal.classList.contains('show')) {
+                    closeMemberDetail();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+
+            // Ctrl+I to open invite modal
+            if (e.key === 'i' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                showInviteModal();
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Render initial content
+        renderTeamStats();
+        renderMembers();
+        renderInvitations();
+        renderStaffMetrics();
+        renderRoles();
+
+        // Console
+        console.log('🌱 CarbonTally - Team Management');
+        console.log('👥 Based on schema: organization_members, staff_profiles, roles');
+        console.log('📊 4 tabs: Members, Invitations, Staff Performance, Roles');
+        console.log('📨 Invite members with role and department');
+        console.log('📊 Staff performance metrics and workload tracking');
+        console.log('🔑 Role-based access control');
+        console.log('⌨️  Ctrl+I to open invite modal');
+        console.log('🎨 9 themes available');
+    </script>
+
+</body>
+</html>

@@ -70,19 +70,19 @@ const ReviewAssignment = () => {
 
   // Fetch staff members
  const { data: staffMembers } = useQuery({
-  queryKey: ['staffMembers'],
-  queryFn: async () => {
-    // ✅ Remove the auth_users relation
-    const { data, error } = await supabase
-      .from('staff_profiles')
-      .select('*')  // Just select all columns, no relation
-      .eq('is_active', true)
-      .order('first_name', { ascending: true });
+    queryKey: ['staffMembers'],
+    queryFn: async () => {
+        // ✅ Remove the auth_users relation
+        const { data, error } = await supabase
+        .from('staff_profiles')
+        .select('*')  // Just select all columns, no relation
+        .eq('is_active', true)
+        .order('first_name', { ascending: true });
 
-    if (error) throw error;
-    return data || [];
-  },
-});
+        if (error) throw error;
+        return data || [];
+    },
+    });
 
   // Assign review mutation
   const assignMutation = useMutation({

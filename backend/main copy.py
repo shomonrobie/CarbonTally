@@ -275,31 +275,6 @@ async def get_waitlist_count():
 #     'Unknown Scope 3': 0.0,
 # }
 
-ACTIVITY_TYPE_MAPPING = {
-    # Fuel types
-    'Diesel': 'Diesel (DERV)',
-    'Petrol': 'Petrol (Unleaded)',
-    'AdBlue': 'AdBlue',
-    'LPG': 'LPG',
-    'CNG': 'CNG',
-    
-    # Utility types
-    'Electricity': 'UK Electricity Grid',
-    'Natural Gas': 'Natural Gas',
-    'Steam': 'Steam',
-    'Chilled Water': 'Chilled Water',
-    
-    # Scope 3 types (if you have them in DEFRA table)
-    'Flight (Short Haul)': 'Flight (Short Haul)',
-    'Flight (Long Haul)': 'Flight (Long Haul)',
-    'Rail (National)': 'Rail (National)',
-    'Hotel Stay': 'Hotel Stay',
-    'Mixed Waste': 'Mixed Waste',
-    'Recycled Waste': 'Recycled Waste',
-    'Taxi': 'Taxi',
-    'Bus': 'Bus',
-    'Freight': 'Freight',
-}
 
 def get_emission_factor(supabase_client, activity_type: str, reporting_year: int = None):
     """

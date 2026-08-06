@@ -1,0 +1,216 @@
+<!-- Facility Management Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span>🏭 Facilities</span>
+    </div>
+
+    <!-- Module Header -->
+    <div class="page-header">
+        <div>
+            <h1>🏭 Facility Management</h1>
+            <p>Manage facilities, assets, and locations across your organization</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="openFacilityModal()">
+                ➕ Add Facility
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="refreshData()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">🏭 Total Facilities</div>
+            <div class="stat-value" id="statTotal">0</div>
+            <div class="stat-sub">active locations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">✅ Active</div>
+            <div class="stat-value" id="statActive">0</div>
+            <div class="stat-sub">operational</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⏸️ Inactive</div>
+            <div class="stat-value" id="statInactive">0</div>
+            <div class="stat-sub">closed/maintenance</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">📐 Total Area</div>
+            <div class="stat-value" id="statArea">0</div>
+            <div class="stat-sub">sq ft</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">📍 Countries</div>
+            <div class="stat-value" id="statCountries">0</div>
+            <div class="stat-sub">locations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">🔧 Assets</div>
+            <div class="stat-value" id="statAssets">0</div>
+            <div class="stat-sub">equipment</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+        <select id="filterType">
+            <option value="all">All Types</option>
+            <option value="office">Office</option>
+            <option value="warehouse">Warehouse</option>
+            <option value="manufacturing">Manufacturing</option>
+            <option value="retail">Retail</option>
+            <option value="data_center">Data Center</option>
+            <option value="laboratory">Laboratory</option>
+        </select>
+        <select id="filterStatus">
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="maintenance">Maintenance</option>
+        </select>
+        <select id="filterCountry">
+            <option value="all">All Countries</option>
+            <option value="UK">United Kingdom</option>
+            <option value="US">United States</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="ES">Spain</option>
+            <option value="IT">Italy</option>
+            <option value="NL">Netherlands</option>
+            <option value="IE">Ireland</option>
+        </select>
+        <button class="btn btn-sm btn-primary" id="applyFiltersBtn">🔍 Apply</button>
+        <button class="btn btn-sm btn-ghost" id="clearFiltersBtn">✕ Clear</button>
+        <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 facilities</span>
+    </div>
+
+    <!-- Facility Table -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📋 Facilities List</div>
+            <span class="badge badge-primary" id="facilityCount">0</span>
+        </div>
+        <div class="card-content" style="padding:0 20px 20px 20px;">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortBy('name')" style="min-width:180px;cursor:pointer;">Facility <span class="sort-icon" id="sort-name">↕</span></th>
+                            <th onclick="sortBy('type')" style="min-width:120px;cursor:pointer;">Type <span class="sort-icon" id="sort-type">↕</span></th>
+                            <th onclick="sortBy('location')" style="min-width:150px;cursor:pointer;">Location <span class="sort-icon" id="sort-location">↕</span></th>
+                            <th onclick="sortBy('area')" style="min-width:100px;cursor:pointer;">Area <span class="sort-icon" id="sort-area">↕</span></th>
+                            <th onclick="sortBy('assets')" style="min-width:80px;cursor:pointer;">Assets <span class="sort-icon" id="sort-assets">↕</span></th>
+                            <th onclick="sortBy('status')" style="min-width:120px;cursor:pointer;">Status <span class="sort-icon" id="sort-status">↕</span></th>
+                            <th onclick="sortBy('createdAt')" style="min-width:150px;cursor:pointer;">Created <span class="sort-icon" id="sort-createdAt">↕</span></th>
+                            <th style="min-width:140px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facilityTableBody">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="pagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== ADD/EDIT FACILITY MODAL ===== -->
+<div class="modal-overlay" id="facilityModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="modalTitle">🏗️ Add Facility</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Add a new facility to your organization
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeFacilityModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Facility Name <span style="color:hsl(var(--destructive));">*</span></label>
+                <input type="text" id="facilityName" placeholder="Enter facility name" />
+            </div>
+            <div class="settings-group">
+                <label>Type <span style="color:hsl(var(--destructive));">*</span></label>
+                <select id="facilityType">
+                    <option value="office">Office</option>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="manufacturing">Manufacturing</option>
+                    <option value="retail">Retail</option>
+                    <option value="data_center">Data Center</option>
+                    <option value="laboratory">Laboratory</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Country <span style="color:hsl(var(--destructive));">*</span></label>
+                <select id="facilityCountry">
+                    <option value="UK">United Kingdom</option>
+                    <option value="US">United States</option>
+                    <option value="DE">Germany</option>
+                    <option value="FR">France</option>
+                    <option value="ES">Spain</option>
+                    <option value="IT">Italy</option>
+                    <option value="NL">Netherlands</option>
+                    <option value="IE">Ireland</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>City</label>
+                <input type="text" id="facilityCity" placeholder="Enter city" />
+            </div>
+            <div class="settings-group">
+                <label>Address</label>
+                <input type="text" id="facilityAddress" placeholder="Enter street address" />
+            </div>
+            <div class="settings-group">
+                <label>Area (sq ft)</label>
+                <input type="number" id="facilityArea" placeholder="Enter area in sq ft" />
+            </div>
+            <div class="settings-group">
+                <label>Status</label>
+                <select id="facilityStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeFacilityModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveFacility()">💾 Save Facility</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VIEW FACILITY MODAL ===== -->
+<div class="modal-overlay" id="viewModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="viewModalTitle">🏭 Facility Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Complete facility information
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeViewModal()">✕</button>
+        </div>
+        <div class="modal-body" id="viewModalBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeViewModal()">Close</button>
+            <button class="btn btn-primary" onclick="editFromView()">✏️ Edit</button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,111 @@
+<!-- Activity Feed Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>🔄 Activity Feed</h1>
+            <p>Real-time activity feed across your organization</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="markAllRead()">
+                ✅ Mark All Read
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="refreshFeed()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Activity Stats -->
+    <div class="feed-stats" id="feedStats">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label>📊 Type</label>
+            <select class="select" id="typeFilter" onchange="applyFilters()">
+                <option value="all">All Activities</option>
+                <option value="upload">📤 Uploads</option>
+                <option value="approved">✅ Approvals</option>
+                <option value="rejected">❌ Rejections</option>
+                <option value="emission">📈 Emissions</option>
+                <option value="report">📊 Reports</option>
+                <option value="team">👥 Team</option>
+                <option value="system">⚙️ System</option>
+                <option value="review">📝 Reviews</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>👤 User</label>
+            <select class="select" id="userFilter" onchange="applyFilters()">
+                <option value="all">All Users</option>
+                <option value="John Doe">John Doe</option>
+                <option value="Sarah Johnson">Sarah Johnson</option>
+                <option value="Mike Roberts">Mike Roberts</option>
+                <option value="Anna Liu">Anna Liu</option>
+                <option value="Tom Chen">Tom Chen</option>
+                <option value="Emma Martinez">Emma Martinez</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>📅 From</label>
+            <input type="date" class="input" id="dateFrom" onchange="applyFilters()" />
+        </div>
+        <div class="filter-group">
+            <label>To</label>
+            <input type="date" class="input" id="dateTo" onchange="applyFilters()" />
+        </div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+            <span class="badge badge-muted" id="activityCount">0 activities</span>
+        </div>
+    </div>
+
+    <!-- Activity Timeline -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title">📋 Activity Timeline</div>
+                <div class="card-description">Chronological feed of all activities</div>
+            </div>
+            <div style="display:flex;gap:4px;">
+                <button class="btn btn-ghost btn-sm" onclick="toggleLiveUpdates()" id="liveToggleBtn">
+                    🔴 Live
+                </button>
+            </div>
+        </div>
+        <div class="card-content">
+            <div class="activity-timeline" id="activityList">
+                <!-- Rendered by JS -->
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="pagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailTitle">Activity Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailSubtitle">View activity information</div>
+            </div>
+            <button class="modal-close" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

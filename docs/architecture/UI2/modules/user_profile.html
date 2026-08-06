@@ -1,0 +1,57 @@
+<!-- User Profile Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span>👤 Profile</span>
+    </div>
+
+    <!-- Module Header -->
+    <div class="page-header">
+        <div>
+            <h1>👤 User Profile</h1>
+            <p>Manage your profile, preferences, and activity history</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="openEditModal()">
+                ✏️ Edit Profile
+            </button>
+        </div>
+    </div>
+
+    <!-- Profile Content -->
+    <div class="profile-layout" id="profileLayout">
+        <!-- Left Column - Profile Card -->
+        <div class="profile-sidebar" id="profileSidebar">
+            <!-- Rendered by JS -->
+        </div>
+
+        <!-- Right Column - Content -->
+        <div id="profileContent">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== EDIT PROFILE MODAL ===== -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">✏️ Edit Profile</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Update your personal information
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeEditModal()">✕</button>
+        </div>
+        <div class="modal-body" id="editModalBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveProfile()">💾 Save Changes</button>
+        </div>
+    </div>
+</div>

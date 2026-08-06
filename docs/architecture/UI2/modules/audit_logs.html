@@ -1,0 +1,150 @@
+<!-- Audit & Compliance Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span>📋 Audit & Compliance</span>
+    </div>
+
+    <!-- Module Header -->
+    <div class="page-header">
+        <div>
+            <h1>📋 Audit & Compliance Center</h1>
+            <p>Complete audit trail with intelligent insights and compliance monitoring</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="exportData()">
+                📤 Export
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="openComplianceReport()">
+                📄 Compliance Report
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">📊 Total Events</div>
+            <div class="stat-value" id="statTotal">0 <span class="stat-trend">↑ 12%</span></div>
+            <div class="stat-sub">last 30 days</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">👤 Active Users</div>
+            <div class="stat-value" id="statUsers">0</div>
+            <div class="stat-sub">with activity</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⚠️ Critical Events</div>
+            <div class="stat-value" id="statCritical">0 <span class="stat-trend down">↑ 2</span></div>
+            <div class="stat-sub">requires attention</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">✅ Compliance Score</div>
+            <div class="stat-value" id="statCompliance">98%</div>
+            <div class="stat-sub">all regulations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">🔄 System Health</div>
+            <div class="stat-value" style="font-size:16px;"><span class="status-dot green"></span> Operational</div>
+            <div class="stat-sub">100% uptime</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">📱 Recent Activity</div>
+            <div class="stat-value" style="font-size:16px;" id="statRecent">Just now</div>
+            <div class="stat-sub">last event</div>
+        </div>
+    </div>
+
+    <!-- Quick Views -->
+    <div class="quick-views" id="quickViews">
+        <button class="quick-view active" data-range="today" onclick="setQuickView('today')">📅 Today</button>
+        <button class="quick-view" data-range="week" onclick="setQuickView('week')">📅 This Week</button>
+        <button class="quick-view" data-range="month" onclick="setQuickView('month')">📅 This Month</button>
+        <button class="quick-view" data-range="custom" onclick="setQuickView('custom')">📅 Custom</button>
+        <span style="flex:1;"></span>
+        <button class="quick-view" onclick="toggleAdvanced()"><span class="icon">⚙️</span> Advanced</button>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar" id="filtersBar">
+        <div class="filter-group">
+            <select id="filterAction">
+                <option value="all">All Actions</option>
+                <option value="CREATE">Create</option>
+                <option value="UPDATE">Update</option>
+                <option value="DELETE">Delete</option>
+                <option value="APPROVE">Approve</option>
+                <option value="REJECT">Reject</option>
+                <option value="LOGIN">Login</option>
+                <option value="LOGOUT">Logout</option>
+                <option value="VERIFY">Verify</option>
+            </select>
+            <select id="filterResource">
+                <option value="all">All Resources</option>
+                <option value="document">Document</option>
+                <option value="compliance">Compliance</option>
+                <option value="emissions">Emissions</option>
+                <option value="user">User</option>
+                <option value="message">Message</option>
+                <option value="system">System</option>
+            </select>
+            <select id="filterSeverity">
+                <option value="all">All Severity</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+        </div>
+        <div class="filter-group" id="advancedFilters" style="display:none;">
+            <input type="date" id="filterDateFrom" placeholder="From" />
+            <input type="date" id="filterDateTo" placeholder="To" />
+            <select id="filterUser">
+                <option value="all">All Users</option>
+                <option value="u1">John Doe</option>
+                <option value="u2">Sarah Johnson</option>
+                <option value="u3">Mike Chen</option>
+                <option value="u4">Emma Wilson</option>
+                <option value="u5">Alex Rivera</option>
+                <option value="u6">System</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-primary" id="applyFiltersBtn">🔍 Apply</button>
+            <button class="btn btn-sm btn-ghost" id="clearFiltersBtn">✕</button>
+            <span style="font-size:12px;color:hsl(var(--muted-foreground));margin-left:4px;" id="filterCount">0 events</span>
+        </div>
+    </div>
+
+    <!-- Event List -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📋 Activity Timeline</div>
+            <span class="badge badge-primary" id="rowCount">0</span>
+        </div>
+        <div class="card-content" style="padding:0 20px 20px 20px;">
+            <div class="event-list" id="eventList">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== DRAWER ===== -->
+<div class="drawer-overlay" id="drawerOverlay">
+    <div class="drawer" id="drawerContent">
+        <div class="drawer-header">
+            <div>
+                <div class="drawer-title" id="drawerTitle">Event Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;" id="drawerSubtitle">Audit log entry</div>
+            </div>
+            <button class="drawer-close" onclick="closeDrawer()">✕</button>
+        </div>
+        <div id="drawerBody">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

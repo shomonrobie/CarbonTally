@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - [Module Name]</title>
+    <!-- ===== SHARED CSS ===== -->
+    <link rel="stylesheet" href="../css/dashboard.css" />
+    <!-- ===== MODULE-SPECIFIC CSS (minimal) ===== -->
+    <style>
+        /* Module-specific overrides only */
+        .module-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px 32px 32px 32px;
+            min-height: calc(100vh - 64px - 80px);
+        }
+        /* All other styles come from dashboard.css */
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== NO SIDEBAR ===== -->
+
+        <!-- ===== TOP HEADER ===== -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="back-btn" onclick="goToDashboard()">
+                    <span>←</span> Dashboard
+                </button>
+                <div class="header-search">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" placeholder="Search [module]..." id="moduleSearch" />
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" id="themeToggle">
+                    <span>🎨</span>
+                    <span id="currentThemeName">Forest</span>
+                </button>
+                <div class="user-info">
+                    <div class="avatar" id="userAvatar">U</div>
+                    <div>
+                        <div class="name" id="userName">User</div>
+                        <div class="role" id="userRole">Role</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ===== MODULE CONTENT ===== -->
+        <div class="module-container">
+            <!-- Breadcrumb -->
+            <div class="breadcrumb">
+                <a href="#" onclick="goToDashboard(); return false;">Dashboard</a>
+                <span class="separator">/</span>
+                <span class="current">[Module Name]</span>
+            </div>
+
+            <!-- Module Header -->
+            <div class="module-header">
+                <div>
+                    <h1>[Module Icon] [Module Title]</h1>
+                    <p>[Module Description]</p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" onclick="showToast('Primary action')">
+                        ➕ Primary Action
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="showToast('Secondary action')">
+                        📤 Secondary Action
+                    </button>
+                </div>
+            </div>
+
+            <!-- Module Content Area -->
+            <div id="moduleContent">
+                <!-- Content rendered by JavaScript -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">[Module Content]</div>
+                            <div class="card-description">Module content goes here</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <p class="text-muted">Content will be rendered here.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===== FOOTER ===== -->
+        <footer class="module-footer">
+            <div>© 2026 CarbonTally (UK) Ltd. All rights reserved.</div>
+            <div class="module-footer-links">
+                <a href="../privacy_policy.html">Privacy Policy</a>
+                <a href="../cookie_policy.html">Cookie Policy</a>
+                <a href="../terms.html">Terms</a>
+                <a href="../about_us.html">About Us</a>
+            </div>
+        </footer>
+
+    </div>
+
+    <!-- ===== THEME MODAL ===== -->
+    <div class="theme-modal-overlay" id="themeModal">
+        <div class="theme-modal">
+            <div class="theme-modal-header">
+                <div>
+                    <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                        Select a color scheme for your dashboard
+                    </div>
+                </div>
+                <button class="theme-modal-close" id="themeModalClose">✕</button>
+            </div>
+            <div class="theme-grid" id="themeGrid"></div>
+            <div class="theme-modal-footer">
+                <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                    <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <!-- ===== SHARED JAVASCRIPT ===== -->
+    <script src="../js/dashboard.js"></script>
+
+</body>
+</html>

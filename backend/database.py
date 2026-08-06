@@ -17,6 +17,7 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 # ==========================================
 # SINGLETON CLIENT
@@ -124,6 +125,13 @@ def get_supabase_health() -> dict:
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+
+def get_supabase_admin() -> Client:
+    """Get Supabase client with service role key (admin)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # ==========================================
 # CLEANUP

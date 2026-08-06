@@ -85,8 +85,9 @@ def calculate_emissions_summary(records: List[Dict]) -> EmissionsSummary:
 # ENDPOINTS
 # ==========================================
 
-@router.get("/emissions", response_model=EmissionsResponse)
+@router.get("/{org_id}/emissions-data", response_model=EmissionsResponse)
 async def get_organization_emissions(
+    org_id: str,  # ✅ Keep this parameter
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     scope: Optional[str] = Query(None, description="Scope: 1, 2, or 3"),
@@ -100,11 +101,19 @@ async def get_organization_emissions(
     try:
         supabase = get_supabase_client()
         
-        org_id = current_user.organization_id
-        if not org_id:
+        # ✅ FIX: Use org_id from path, not current_user.organization_id
+        # Verify user has access to this organization
+        member_check = supabase.from_('organization_members') \
+            .select('id') \
+            .eq('organization_id', org_id) \
+            .eq('user_id', current_user.user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_check.data:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not associated with an organization"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User does not have access to this organization"
             )
         
         # Get organization name
@@ -136,7 +145,7 @@ async def get_organization_emissions(
                     reporting_year
                 )
             ''') \
-            .eq('organization_id', org_id)
+            .eq('organization_id', org_id)  # ✅ Use org_id from path
         
         # Apply filters
         if start_date:
@@ -159,40 +168,35 @@ async def get_organization_emissions(
             defra = record.get('defra_conversion_factors', {})
             asset = record.get('assets', {})
             
-            records.append(EmissionsRecord(
-                id=record['id'],
-                start_date=record['start_date'],
-                end_date=record.get('end_date'),
-                quantity=record.get('raw_quantity', 0),
-                kg_co2e=record.get('calculated_kg_co2e', 0),
-                tonnes_co2e=record.get('calculated_kg_co2e', 0) / 1000,
-                activity_type=defra.get('activity_type'),
-                asset=asset.get('name') if asset else None,
-                metadata=record.get('metadata', {})
-            ))
+            records.append({
+                'id': record['id'],
+                'start_date': record['start_date'],
+                'end_date': record.get('end_date'),
+                'quantity': record.get('raw_quantity', 0),
+                'kg_co2e': record.get('calculated_kg_co2e', 0),
+                'tonnes_co2e': record.get('calculated_kg_co2e', 0) / 1000,
+                'activity_type': defra.get('activity_type'),
+                'asset': asset.get('name') if asset else None,
+                'metadata': record.get('metadata', {})
+            })
         
-        # Calculate summary
-        summary = calculate_emissions_summary(result.data)
-        
-        return EmissionsResponse(
-            organization_id=org_id,
-            organization_name=org_name,
-            period_start=start_date,
-            period_end=end_date,
-            records=records,
-            summary=summary
-        )
+        return {
+            "records": records,
+            "total": len(records)
+        }
         
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error getting emissions: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get emissions: {str(e)}"
         )
 
-@router.get("/emissions/export")
+@router.get("/{org_id}/emissions/export-csv")
 async def export_emissions_csv(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
@@ -273,7 +277,7 @@ async def export_emissions_csv(
             detail=f"Failed to export emissions: {str(e)}"
         )
 
-@router.get("/assets")
+@router.get("/organizations/{org_id}/assets ")
 async def get_organization_assets(
     facility_id: Optional[str] = Query(None, description="Filter by facility"),
     current_user: AuthUser = Depends(require_org_member())
@@ -356,8 +360,9 @@ async def get_organization_assets(
             detail=f"Failed to get assets: {str(e)}"
         )
 
-@router.get("/defra-factors")
-async def get_defra_factors(
+@router.get("/{org_id}/defra-factors")
+async def get_organization_defra_factors(  # ✅ Renamed
+    org_id: str,
     reporting_year: Optional[int] = Query(None, description="Reporting year"),
     activity_type: Optional[str] = Query(None, description="Filter by activity type"),
     current_user: AuthUser = Depends(require_org_member())
@@ -368,8 +373,23 @@ async def get_defra_factors(
     try:
         supabase = get_supabase_client()
         
+        # Verify organization access
+        if not current_user.is_admin:
+            member = supabase.from_('organization_members') \
+                .select('id') \
+                .eq('organization_id', org_id) \
+                .eq('user_id', current_user.user_id) \
+                .maybe_single() \
+                .execute()
+            
+            if not member.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized for this organization"
+                )
+        
         query = supabase.from_('defra_conversion_factors') \
-            .select('id, activity_type, co2e_multiplier, reporting_year, unit')
+            .select('id, activity_type, co2e_multiplier, reporting_year')
         
         if reporting_year:
             query = query.eq('reporting_year', reporting_year)
@@ -379,15 +399,15 @@ async def get_defra_factors(
         result = query.order('reporting_year', desc=True).order('activity_type').execute()
         
         return {
-            "status": "success",
-            "factors": result.data,
+            "success": True,
+            "data": result.data,
             "total": len(result.data) if result.data else 0
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error getting DEFRA factors: {e}")
+        print(f"❌ Error getting organization DEFRA factors: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get DEFRA factors: {str(e)}"

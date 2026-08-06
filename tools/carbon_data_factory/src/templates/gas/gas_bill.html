@@ -1,0 +1,25 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Gas Bill</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Gas Bill</h1>
+  <p>Supplier: {{supplier_name}}</p>
+  <p>Customer: {{customer_name}}</p>
+  <p>Account Number: {{account_number}}</p>
+  <p>Billing Period: {{billing_start}} – {{billing_end}}</p>
+  <table>
+    <tr><th>Usage (kWh)</th><th>Rate (£/kWh)</th><th>Total (£)</th></tr>
+    <tr><td>{{usage}}</td><td>{{rate}}</td><td>{{total}}</td></tr>
+  </table>
+  <p>Grand Total: £{{grand_total}}</p>
+</body>
+</html>

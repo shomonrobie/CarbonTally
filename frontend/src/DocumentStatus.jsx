@@ -51,37 +51,32 @@ const DocumentStatus = ({ organization }) => {
 
   // Fetch documents with pagination, filter, search
   const fetchDocuments = async () => {
-    if (!organization?.id) return;
-    
-    setLoading(true);
-    const token = await getToken();
-    const queryString = buildQueryParams();
+  if (!organization?.id) return;
+  
+  try {
+    // ✅ Use Supabase directly
+    const { data, error } = await supabase
+      .from('organization_files')
+      .select('*')
+      .eq('organization_id', organization.id)
+      .eq('is_active', true)
+      .order('uploaded_at', { ascending: false })
+      .limit(10);
 
-    try {
-      const response = await fetch(
-        `${API_URL}/api/documents?${queryString}`,
-        {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setDocuments(data.documents || []);
-        setTotalItems(data.total || 0);
-        setTotalPages(data.total_pages || 1);
-        setStats(data.stats || {});
-      } else {
-        console.error('Failed to fetch documents:', response.status);
-        toast.error('Failed to load documents');
-      }
-    } catch (error) {
-      console.error('Error fetching documents:', error);
-      toast.error('Failed to load documents');
-    } finally {
-      setLoading(false);
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      throw new Error('Failed to fetch documents');
     }
-  };
+
+    setDocuments(data || []);
+    console.log(`✅ Documents fetched: ${data?.length || 0}`);
+    
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    setDocuments([]);
+  }
+};
+
 
   // Fetch stats only
   const fetchStats = async () => {
@@ -90,13 +85,19 @@ const DocumentStatus = ({ organization }) => {
     const token = await getToken();
 
     try {
-      const response = await fetch(`${API_URL}/api/documents/stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await fetch(`${API_URL}/api/customer-documents?organization_id=${organization.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      
+    // try {
+    //   const response = await fetch(`${API_URL}/api/documents/stats`, {
+    //     headers: { 'Authorization': `Bearer ${token}` }
+    //   });
 
       if (response.ok) {
         const data = await response.json();
         setStats(data.stats || {});
+        console.log(`✅ DocumentStatus fetched: ${data?.length || 0}`);
       }
     } catch (error) {
       console.error('Error fetching stats:', error);

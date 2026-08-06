@@ -1,0 +1,186 @@
+/* Manual Data Entry Module - SPA Compatible */
+
+/* Form styles */
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.form-grid .full-width {
+    grid-column: 1 / -1;
+}
+.form-grid .half-width {
+    grid-column: span 1;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.input-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+}
+.input-group .hint {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+}
+
+.input {
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    outline: none;
+    transition: all 0.15s ease;
+    width: 100%;
+}
+.input:focus {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+}
+
+.select {
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+    width: 100%;
+}
+.select:focus {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+}
+
+/* Calculation display */
+.calc-display {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    text-align: center;
+}
+.calc-display .label {
+    font-size: 12px;
+    color: hsl(var(--muted-foreground));
+}
+.calc-display .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: hsl(var(--primary));
+}
+.calc-display .value.high {
+    color: hsl(var(--destructive));
+}
+.calc-display .value.medium {
+    color: hsl(var(--warning));
+}
+.calc-display .value.low {
+    color: hsl(var(--success));
+}
+
+/* Entry row in queue */
+.entry-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr auto;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    align-items: center;
+    margin-bottom: 8px;
+}
+.entry-row:hover {
+    background: hsl(var(--accent));
+}
+.entry-row .entry-field {
+    font-size: 13px;
+}
+.entry-row .entry-field .label {
+    font-size: 10px;
+    color: hsl(var(--muted-foreground));
+    display: block;
+}
+.entry-row .entry-field .value {
+    font-weight: 500;
+    color: hsl(var(--foreground));
+}
+
+/* Table */
+.table-wrap {
+    overflow-x: auto;
+}
+.table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.table-wrap th {
+    text-align: left;
+    padding: 10px 12px;
+    background: hsl(var(--muted));
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    border-bottom: 2px solid hsl(var(--border));
+    white-space: nowrap;
+}
+.table-wrap td {
+    padding: 10px 12px;
+    border-bottom: 1px solid hsl(var(--border));
+    vertical-align: middle;
+}
+.table-wrap tr:hover td {
+    background: hsl(var(--accent));
+}
+
+.text-center {
+    text-align: center;
+}
+.text-muted {
+    color: hsl(var(--muted-foreground));
+}
+
+/* Animations */
+@keyframes slideIn {
+    from {
+        transform: translateX(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    .form-grid .half-width {
+        grid-column: 1 / -1;
+    }
+    .entry-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+    }
+}
+
+@media (max-width: 768px) {
+    .entry-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    .calc-display .value {
+        font-size: 18px;
+    }
+}

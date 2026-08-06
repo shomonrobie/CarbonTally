@@ -1,12 +1,12 @@
+// App.js - Refactored with API Endpoints
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Login from './Login';
-import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
-
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
@@ -21,8 +21,9 @@ import RecentProcessedData from './RecentProcessedData';
 import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
 import OnboardingWizard from './OnboardingWizard';
-import OnboardingWizard from './OnboardingWizard';
 
+// API Constants
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Constants
 const DEFRA_FACTORS = { 
@@ -76,7 +77,46 @@ const CATEGORY_OPTIONS = {
   fuel: ['Diesel', 'Petrol', 'AdBlue']
 };
 
-// Protected Route Component
+// ============================================
+// AUTH HELPERS
+// ============================================
+
+const getToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || localStorage.getItem('access_token');
+};
+
+const fetchWithAuth = async (endpoint, options = {}) => {
+  const token = await getToken();
+  
+  // Ensure endpoint starts with /api
+  let url = endpoint;
+  if (!url.startsWith('/api')) {
+    url = `/api${url.startsWith('/') ? url : '/' + url}`;
+  }
+  
+  const fullUrl = `${API_URL}${url}`;
+  
+  const response = await fetch(fullUrl, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  
+  if (!response.ok) {
+    console.error(`❌ API Error ${response.status}: ${fullUrl}`);
+  }
+  
+  return response;
+};
+
+// ============================================
+// PROTECTED ROUTE
+// ============================================
+
 function ProtectedRoute({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +158,10 @@ function DashboardLayout({ children }) {
   );
 }
 
-// Main Dashboard Component
+// ============================================
+// MAIN DASHBOARD COMPONENT
+// ============================================
+
 function Dashboard() {
   const navigate = useNavigate();
   
@@ -162,7 +205,10 @@ function Dashboard() {
   // Year selector state
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-  // Computed Data
+  // ============================================
+  // COMPUTED DATA
+  // ============================================
+
   const trendData = useMemo(() => {
     if (!historyData.length) return [];
     const grouped = {};
@@ -176,12 +222,9 @@ function Dashboard() {
     }));
   }, [historyData]);
 
-  // Get available years from history data
   const availableYears = useMemo(() => {
     if (!historyData || historyData.length === 0) {
-      // If no history data, check if we have dashboard stats
       if (dashboardStats.totalTransactions > 0) {
-        // If we have transactions but no history data, use current year
         return [new Date().getFullYear()];
       }
       return [];
@@ -198,76 +241,214 @@ function Dashboard() {
     return Array.from(years).sort((a, b) => b - a);
   }, [historyData]);
 
+  // ============================================
+  // API DATA FETCHING FUNCTIONS
+  // ============================================
 
-  // Update selected year when available years change
-  useEffect(() => {
-    if (availableYears.length > 0) {
-      setSelectedYear(availableYears[0]);
-    }
-  }, [availableYears]);
-
-  // Update clean/flagged data when data changes
-  useEffect(() => {
-    const flagged = data.filter(row => row.needs_review);
-    const clean = data.filter(row => !row.needs_review);
-    setFlaggedData(flagged);
-    setCleanData(clean);
-  }, [data]);
-
-  // Fetch organization and assets on mount
-  useEffect(() => {
-    const fetchOrgAndAssets = async (userId) => {
-      try {
-        // Fetch organization
-        const { data: orgData, error: orgError } = await supabase
-          .from('organization_members')
-          .select(`role, organization_id, organizations (id, name, company_number)`)
-          .eq('user_id', userId)
-          .single();
-
-        if (orgError) throw orgError;
-
-        if (orgData?.organizations) {
-          setOrganization(orgData.organizations);
-          setUserRole(orgData.role);
-          await fetchDashboardStats(orgData.organizations.id);
-          
-          // Fetch assets
-          const { data: assetData } = await supabase
-            .from('assets')
-            .select('id, name');
-          if (assetData) setAssets(assetData);
-        }
-
-        // Fetch facilities
-        const { data: facData, error: facError } = await supabase
-          .from('facilities')
-          .select('id, name');
+  // ✅ GET /api/organizations/{org_id}/assets/stats
+  const fetchDashboardStats = async (orgId) => {
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${orgId}/assets/stats`);
+      
+      if (!response.ok) {
+        // Fallback to facilities/stats
+        const fallbackResponse = await fetchWithAuth(`/api/organizations/${orgId}/facilities/stats`);
+        if (!fallbackResponse.ok) throw new Error('Failed to fetch stats');
         
-        if (facError) {
-          console.error("Error fetching facilities:", facError);
-        } else {
-          setFacilities(facData || []);
+        const data = await fallbackResponse.json();
+        setDashboardStats({
+          totalEmissions: data.data?.total_assets || 0,
+          totalTransactions: data.data?.active_assets || 0
+        });
+        return;
+      }
+      
+      const data = await response.json();
+      setDashboardStats({
+        totalEmissions: data.data?.total_assets || 0,
+        totalTransactions: data.data?.active_assets || 0
+      });
+    } catch (error) {
+      console.error('❌ Error fetching dashboard stats:', error);
+      setDashboardStats({ totalEmissions: 0, totalTransactions: 0 });
+    }
+  };
+
+  // ✅ GET /api/organizations/{org_id}/emissions-data
+  const fetchHistory = async () => {
+    if (!organization) {
+      console.log("⏳ Waiting for organization data...");
+      return;
+    }
+
+    console.log("🚀 Fetching history for org:", organization.id);
+    setLoadingHistory(true);
+    
+    try {
+      let response = await fetchWithAuth(`/api/organizations/${organization.id}/emissions-data?limit=10000`);
+      
+      if (!response.ok) {
+        // Fallback to /api/emissions
+        response = await fetchWithAuth(`/api/emissions?organization_id=${organization.id}&limit=10000`);
+      }
+      
+      if (!response.ok) throw new Error('Failed to fetch history');
+      
+      const data = await response.json();
+      setHistoryData(data.records || data.emissions || []);
+      console.log(`✅ History fetched: ${data.records?.length || 0} records`);
+    } catch (error) {
+      console.error("❌ Error fetching history:", error);
+      setHistoryData([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // ✅ GET /api/organizations/{org_id}/assets
+  const fetchAssets = async (orgId) => {
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${orgId}/assets?limit=1000`);
+      if (!response.ok) throw new Error('Failed to fetch assets');
+      
+      const data = await response.json();
+      setAssets(data.assets || []);
+      return data.assets || [];
+    } catch (error) {
+      console.error('❌ Error fetching assets:', error);
+      setAssets([]);
+      return [];
+    }
+  };
+
+  // ✅ GET /api/organizations/{org_id}/facilities
+  const fetchFacilities = async (orgId) => {
+    try {
+      const response = await fetchWithAuth(`/api/organizations/${orgId}/facilities?limit=1000`);
+      if (!response.ok) throw new Error('Failed to fetch facilities');
+      
+      const data = await response.json();
+      setFacilities(data.facilities || []);
+      return data.facilities || [];
+    } catch (error) {
+      console.error('❌ Error fetching facilities:', error);
+      setFacilities([]);
+      return [];
+    }
+  };
+
+  // ✅ GET /api/organizations/members/{user_id}
+  const fetchOrganization = async (userId) => {
+    try {
+      const response = await fetchWithAuth(`/api/organizations/members/${userId}`);
+      if (!response.ok) throw new Error('Failed to fetch organization');
+      
+      const data = await response.json();
+      
+      if (data?.organization) {
+        setOrganization(data.organization);
+        setUserRole(data.role);
+        return data.organization;
+      } else if (data?.organizations && data.organizations.length > 0) {
+        const org = data.organizations[0];
+        setOrganization(org);
+        setUserRole('admin');
+        return org;
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error fetching organization:', error);
+      return null;
+    }
+  };
+
+  // ✅ GET /api/defra-factors/{year}
+  const fetchDefraFactors = async (year) => {
+    try {
+      const response = await fetchWithAuth(`/api/defra-factors/${year}`);
+      if (!response.ok) {
+        // Try without year
+        const fallbackResponse = await fetchWithAuth(`/api/defra-factors`);
+        if (!fallbackResponse.ok) throw new Error('Failed to fetch DEFRA factors');
+        return await fallbackResponse.json();
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Error fetching DEFRA factors:', error);
+      return null;
+    }
+  };
+
+  // ✅ POST /api/emissions
+  const saveEmissions = async (records) => {
+    try {
+      const response = await fetchWithAuth('/api/emissions', {
+        method: 'POST',
+        body: JSON.stringify({
+          organization_id: organization.id,
+          records: records
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to save emissions');
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Error saving emissions:', error);
+      throw error;
+    }
+  };
+
+  // ============================================
+  // ORGANIZATION LOADING
+  // ============================================
+
+  const loadOrganizationData = async (org) => {
+    if (!org) return;
+    
+    try {
+      await Promise.all([
+        fetchDashboardStats(org.id),
+        fetchAssets(org.id),
+        fetchFacilities(org.id),
+        fetchHistory()
+      ]);
+    } catch (error) {
+      console.error('❌ Error loading organization data:', error);
+    }
+  };
+
+  // ============================================
+  // EFFECTS
+  // ============================================
+
+  useEffect(() => {
+    const initOrg = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      
+      if (session) {
+        const org = await fetchOrganization(session.user.id);
+        if (org) {
+          await loadOrganizationData(org);
         }
-      } catch (error) {
-        console.error("Error fetching organization:", error);
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchOrgAndAssets(session.user.id);
-    });
+    initOrg();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchOrgAndAssets(session.user.id);
+      if (session) {
+        fetchOrganization(session.user.id).then(org => {
+          if (org) loadOrganizationData(org);
+        });
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Check if onboarding is needed
+  // Check onboarding
   useEffect(() => {
     const checkOnboarding = async () => {
       if (!organization) {
@@ -275,18 +456,22 @@ function Dashboard() {
         return;
       }
 
-      const { data: facilities, error } = await supabase
-        .from('facilities')
-        .select('id')
-        .eq('organization_id', organization.id)
-        .limit(1);
+      try {
+        const response = await fetchWithAuth(`/api/organizations/${organization.id}/facilities?limit=1`);
+        if (!response.ok) throw new Error('Failed to check facilities');
+        
+        const data = await response.json();
+        const facilitiesList = data.facilities || [];
 
-      if (error) {
+        if (facilitiesList.length === 0) {
+          console.log('🚀 No facilities found - showing onboarding');
+          setShowOnboarding(true);
+        } else {
+          console.log('✅ Facilities found - skipping onboarding');
+          setShowOnboarding(false);
+        }
+      } catch (error) {
         console.error('Error checking facilities:', error);
-      }
-
-      if (!facilities || facilities.length === 0) {
-        setShowOnboarding(true);
       }
 
       setOnboardingChecked(true);
@@ -295,69 +480,25 @@ function Dashboard() {
     checkOnboarding();
   }, [organization]);
 
-  // --- Data Fetching Functions ---
-  const fetchDashboardStats = async (orgId) => {
-    const { data, error } = await supabase
-      .from('emissions_logs')
-      .select('calculated_kg_co2e')
-      .eq('organization_id', orgId);
+  // Update clean/flagged data
+  useEffect(() => {
+    const flagged = data.filter(row => row.needs_review);
+    const clean = data.filter(row => !row.needs_review);
+    setFlaggedData(flagged);
+    setCleanData(clean);
+  }, [data]);
 
-    if (data && !error) {
-      const total = data.reduce((sum, row) => sum + (parseFloat(row.calculated_kg_co2e) || 0), 0);
-      setDashboardStats({
-        totalEmissions: total,
-        totalTransactions: data.length
-      });
+  // Update selected year
+  useEffect(() => {
+    if (availableYears.length > 0) {
+      setSelectedYear(availableYears[0]);
     }
-  };
+  }, [availableYears]);
 
+  // ============================================
+  // FILE UPLOAD FUNCTIONS
+  // ============================================
 
-  const fetchHistory = async () => {
-    if (!organization) {
-      console.log("⏳ Waiting for organization data to load before fetching history...");
-      return; 
-    }
-
-    console.log("🚀 Fetching history for org:", organization.id);
-    setLoadingHistory(true);
-    
-    const { data, error } = await supabase
-      .from('emissions_logs')
-      .select(`
-        start_date, 
-        raw_quantity, 
-        calculated_kg_co2e, 
-        metadata,
-        asset_id,
-        defra_factor_id,
-        assets (
-          id,
-          name
-        ),
-        defra_conversion_factors (
-          id,
-          activity_type,
-          co2e_multiplier,
-          reporting_year
-        )
-      `)
-      .eq('organization_id', organization.id)
-      .order('start_date', { ascending: true });
-    
-    if (error) {
-      console.error("❌ History fetch error:", error);
-      setLoadingHistory(false); 
-    } else {
-      console.log("✅ History fetched successfully:", data?.length, "records");
-      const withAssets = data?.filter(row => row.assets).length || 0;
-      const withDefra = data?.filter(row => row.defra_conversion_factors).length || 0;
-      console.log(`📊 Records with assets: ${withAssets}, with DEFRA factors: ${withDefra}`);
-      setHistoryData(data || []);
-      setLoadingHistory(false);
-    }
-  };
-
-  // --- File Upload Functions ---
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
@@ -378,6 +519,7 @@ function Dashboard() {
     }
   };
 
+  // ✅ POST /api/upload-csv
   const handleUpload = async () => {
     if (!file) {
       setError('Please select a file first');
@@ -392,19 +534,33 @@ function Dashboard() {
     formData.append('data_type', uploadType);
 
     try {
-      const response = await axios.post('http://localhost:8000/upload-csv', formData, { 
-        headers: { 'Content-Type': 'multipart/form-data' } 
+      const token = await getToken();
+      
+      const response = await fetch(`${API_URL}/api/upload-csv`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
       });
-      setResult(response.data);
-      setData(response.data.data);
+      
+      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+      
+      const result = await response.json();
+      setResult(result);
+      setData(result.data);
+      toast.success('✅ CSV processed successfully!');
     } catch (err) {
-      setError('Error processing file: ' + (err.response?.data?.detail || err.message));
+      console.error('❌ Upload error:', err);
+      setError('Error processing file: ' + (err.message));
+      toast.error('❌ Failed to process CSV');
     } finally { 
       setLoading(false); 
     }
   };
 
-  // --- Data Processing Functions ---
+  // ============================================
+  // DATA PROCESSING FUNCTIONS
+  // ============================================
+
   const getFieldConfig = (type) => {
     return FIELD_CONFIGS[type] || FIELD_CONFIGS.fuel;
   };
@@ -465,6 +621,7 @@ function Dashboard() {
     setData(newData);
   };
 
+  // ✅ POST /api/emissions
   const handleSaveToDatabase = async () => {
     if (!organization || !session) {
       setError('You must be logged in to save data.');
@@ -478,19 +635,13 @@ function Dashboard() {
       const dataType = result?.data_type || 'fuel';
       const fieldConfig = getFieldConfig(dataType);
 
+      // Fetch DEFRA factors from API
       const currentYear = new Date().getFullYear();
-      const { data: defraFactors, error: defraError } = await supabase
-        .from('defra_conversion_factors')
-        .select('id, activity_type, co2e_multiplier')
-        .eq('reporting_year', currentYear);
-
-      if (defraError) {
-        console.error('Error fetching DEFRA factors:', defraError);
-      }
-
+      const defraData = await fetchDefraFactors(currentYear);
+      
       const defraMap = {};
-      if (defraFactors) {
-        defraFactors.forEach(f => {
+      if (defraData?.factors) {
+        defraData.factors.forEach(f => {
           defraMap[f.activity_type] = f.id;
         });
       }
@@ -525,11 +676,7 @@ function Dashboard() {
         };
       });
 
-      const { error: saveError } = await supabase
-        .from('emissions_logs')
-        .insert(recordsToSave);
-
-      if (saveError) throw saveError;
+      await saveEmissions(recordsToSave);
 
       toast.success(`✅ Successfully saved ${cleanData.length} records!`);
       
@@ -551,7 +698,10 @@ function Dashboard() {
     }
   };
 
-  // --- Export Functions ---
+  // ============================================
+  // EXPORT FUNCTIONS
+  // ============================================
+
   const exportSECRReport = () => {
     const wb = XLSX.utils.book_new();
     const summaryData = [
@@ -573,7 +723,10 @@ function Dashboard() {
     navigate('/');
   };
 
-  // --- Render Functions ---
+  // ============================================
+  // RENDER FUNCTIONS
+  // ============================================
+
   const renderFileUpload = () => (
     <div className="upload-section">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -782,7 +935,6 @@ function Dashboard() {
       <div className="dashboard-header">
         <h2>Executive Overview</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {/* Year Selector - Only show if years are available */}
           {availableYears.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label htmlFor="reportYear" style={{ fontWeight: '600', color: '#475569' }}>
@@ -809,53 +961,7 @@ function Dashboard() {
           )}
           
           <button 
-            onClick={async () => {
-              if (availableYears.length === 0) {
-                toast.error('No data available to generate a report. Please upload data first.');
-                return;
-              }
-              
-              try {
-                setLoading(true);
-                const response = await fetch(`${process.env.REACT_APP_API_URL}/generate-secr-report`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    organization_id: organization.id,
-                    reporting_year: selectedYear
-                  })
-                });
-                
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                  const binaryString = window.atob(result.pdf_base64);
-                  const bytes = new Uint8Array(binaryString.length);
-                  for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                  }
-                  
-                  const blob = new Blob([bytes], { type: 'application/pdf' });
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = result.filename || `SECR_Report_${selectedYear}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  document.body.removeChild(a);
-                  
-                  toast.success(`Report for ${selectedYear} downloaded successfully!`);
-                } else {
-                  toast.error('Failed to generate report');
-                }
-              } catch (error) {
-                console.error('Report generation error:', error);
-                toast.error('Failed to generate report');
-              } finally {
-                setLoading(false);
-              }
-            }}
+            onClick={exportSECRReport}
             disabled={loading || availableYears.length === 0}
             className="export-button"
             style={{
@@ -887,7 +993,6 @@ function Dashboard() {
         </div>
       </div>
       
-      {/* Show available years or a message */}
       {availableYears.length > 0 ? (
         <div style={{ 
           marginTop: '1rem', 
@@ -988,7 +1093,10 @@ function Dashboard() {
     </div>
   );
 
-  // --- Main Render ---
+  // ============================================
+  // MAIN RENDER
+  // ============================================
+
   return (
     <div className="App">
       <header className="App-header">
@@ -1111,7 +1219,10 @@ function Dashboard() {
   );
 }
 
-// Main App Component with Routing
+// ============================================
+// MAIN APP
+// ============================================
+
 export default function App() {
   const [loading, setLoading] = useState(true);
 

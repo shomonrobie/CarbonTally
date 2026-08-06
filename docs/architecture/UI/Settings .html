@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Settings</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            gap: 4px;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .input {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: hsl(var(--muted));
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        .switch input:checked + .slider {
+            background: hsl(var(--primary));
+        }
+        .switch input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           SETTINGS STYLES
+           ============================================ */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 24px;
+        }
+
+        .settings-nav {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 8px;
+            position: sticky;
+            top: 88px;
+            height: fit-content;
+        }
+
+        .settings-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .settings-nav-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .settings-nav-item.active {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .settings-nav-item .icon { font-size: 16px; width: 24px; text-align: center; }
+
+        .settings-section {
+            display: none;
+        }
+        .settings-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .setting-group {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .setting-group:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .setting-group .group-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .setting-group .group-desc {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+            margin-bottom: 12px;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 10px 0;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+
+        .setting-row .setting-info { flex: 1; }
+        .setting-row .setting-info .label {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .setting-row .setting-info .desc {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .setting-row .setting-control {
+            min-width: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .setting-row .setting-control .input,
+        .setting-row .setting-control .select {
+            min-width: 160px;
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1024px) {
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+            .settings-nav {
+                position: static;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                padding: 4px;
+            }
+            .settings-nav-item {
+                padding: 6px 12px;
+                font-size: 12px;
+                width: auto;
+                flex: 1;
+                min-width: 100px;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+        }
+
+        @media (max-width: 768px) {
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .setting-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .setting-row .setting-control {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            .setting-row .setting-control .input,
+            .setting-row .setting-control .select {
+                min-width: 100%;
+            }
+            .settings-nav-item {
+                font-size: 11px;
+                padding: 4px 8px;
+                min-width: 80px;
+            }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item active">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search settings..." id="settingsSearch" />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>⚙️ Settings</h1>
+                        <p>Configure your organization settings and preferences</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="resetSettings()">
+                            ↺ Reset to Defaults
+                        </button>
+                        <button class="btn btn-primary" onclick="saveSettings()">
+                            💾 Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Settings Layout -->
+                <div class="settings-grid">
+
+                    <!-- Settings Navigation -->
+                    <nav class="settings-nav" id="settingsNav">
+                        <button class="settings-nav-item active" data-section="general" onclick="switchSettings('general')">
+                            <span class="icon">🏢</span> General
+                        </button>
+                        <button class="settings-nav-item" data-section="organization" onclick="switchSettings('organization')">
+                            <span class="icon">📋</span> Organization
+                        </button>
+                        <button class="settings-nav-item" data-section="reporting" onclick="switchSettings('reporting')">
+                            <span class="icon">📊</span> Reporting
+                        </button>
+                        <button class="settings-nav-item" data-section="emissions" onclick="switchSettings('emissions')">
+                            <span class="icon">📈</span> Emissions
+                        </button>
+                        <button class="settings-nav-item" data-section="documents" onclick="switchSettings('documents')">
+                            <span class="icon">📁</span> Documents
+                        </button>
+                        <button class="settings-nav-item" data-section="security" onclick="switchSettings('security')">
+                            <span class="icon">🔒</span> Security
+                        </button>
+                        <button class="settings-nav-item" data-section="integrations" onclick="switchSettings('integrations')">
+                            <span class="icon">🔌</span> Integrations
+                        </button>
+                        <button class="settings-nav-item" data-section="notifications" onclick="switchSettings('notifications')">
+                            <span class="icon">🔔</span> Notifications
+                        </button>
+                        <button class="settings-nav-item" data-section="billing" onclick="switchSettings('billing')">
+                            <span class="icon">💳</span> Billing
+                        </button>
+                        <button class="settings-nav-item" data-section="users" onclick="switchSettings('users')">
+                            <span class="icon">👤</span> User Preferences
+                        </button>
+                    </nav>
+
+                    <!-- Settings Content -->
+                    <div class="settings-content">
+
+                        <!-- ===== GENERAL SETTINGS ===== -->
+                        <div class="settings-section active" id="section-general">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">🏢 General Settings</div>
+                                        <div class="card-description">Basic organization information and preferences</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Organization Information</div>
+                                        <div class="group-desc">Basic details about your organization</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Organization Name</div>
+                                                <div class="desc">Your organization's legal name</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="orgName" value="CarbonTally Ltd" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Company Number</div>
+                                                <div class="desc">Registered company number</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="companyNumber" value="12345678" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">VAT Number</div>
+                                                <div class="desc">VAT registration number</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="vatNumber" value="GB123456789" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Industry Sector</div>
+                                                <div class="desc">Primary industry classification</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="industrySector">
+                                                    <option value="technology">Technology</option>
+                                                    <option value="manufacturing">Manufacturing</option>
+                                                    <option value="finance" selected>Finance</option>
+                                                    <option value="healthcare">Healthcare</option>
+                                                    <option value="retail">Retail</option>
+                                                    <option value="energy">Energy</option>
+                                                    <option value="consulting">Consulting</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Contact Information</div>
+                                        <div class="group-desc">Primary and billing contacts</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Primary Contact Name</div>
+                                                <div class="desc">Main point of contact</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="primaryContact" value="John Doe" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Primary Contact Email</div>
+                                                <div class="desc">Contact email address</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="email" class="input" id="primaryEmail" value="john.doe@carbontally.com" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Billing Contact Name</div>
+                                                <div class="desc">Billing point of contact</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="billingContact" value="Sarah Johnson" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Billing Contact Email</div>
+                                                <div class="desc">Billing email address</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="email" class="input" id="billingEmail" value="billing@carbontally.com" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Location & Timezone</div>
+                                        <div class="group-desc">Organization location and timezone</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Country</div>
+                                                <div class="desc">Primary country of operation</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="country">
+                                                    <option value="UK" selected>United Kingdom</option>
+                                                    <option value="US">United States</option>
+                                                    <option value="EU">European Union</option>
+                                                    <option value="AU">Australia</option>
+                                                    <option value="CA">Canada</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Timezone</div>
+                                                <div class="desc">Organization timezone</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="timezone">
+                                                    <option value="GMT" selected>GMT (UTC+0)</option>
+                                                    <option value="BST">BST (UTC+1)</option>
+                                                    <option value="EST">EST (UTC-5)</option>
+                                                    <option value="CST">CST (UTC-6)</option>
+                                                    <option value="PST">PST (UTC-8)</option>
+                                                    <option value="AEST">AEST (UTC+10)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Currency</div>
+                                                <div class="desc">Reporting currency</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="currency">
+                                                    <option value="GBP" selected>GBP (£)</option>
+                                                    <option value="USD">USD ($)</option>
+                                                    <option value="EUR">EUR (€)</option>
+                                                    <option value="AUD">AUD ($)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== ORGANIZATION SETTINGS ===== -->
+                        <div class="settings-section" id="section-organization">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">📋 Organization Settings</div>
+                                        <div class="card-description">Organization metadata and preferences</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Business Information</div>
+                                        <div class="group-desc">Detailed business information</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Company Size</div>
+                                                <div class="desc">Number of employees</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="companySize">
+                                                    <option value="1-10">1-10</option>
+                                                    <option value="11-50">11-50</option>
+                                                    <option value="51-200" selected>51-200</option>
+                                                    <option value="201-500">201-500</option>
+                                                    <option value="501-1000">501-1000</option>
+                                                    <option value="1000+">1000+</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Website</div>
+                                                <div class="desc">Organization website</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="url" class="input" id="website" value="https://carbontally.com" />
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Registered Address</div>
+                                                <div class="desc">Official registered address</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="registeredAddress" value="123 Business Street, London, UK" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Subscription & Billing</div>
+                                        <div class="group-desc">Subscription status and billing information</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Subscription Status</div>
+                                                <div class="desc">Current subscription status</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <span class="badge badge-success">🟢 Active</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Subscription Tier</div>
+                                                <div class="desc">Current plan</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="subscriptionTier">
+                                                    <option value="starter">Starter</option>
+                                                    <option value="professional" selected>Professional</option>
+                                                    <option value="enterprise">Enterprise</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Trial Period</div>
+                                                <div class="desc">Trial start and end dates</div>
+                                            </div>
+                                            <div class="setting-control" style="flex-direction:column;align-items:stretch;gap:4px;">
+                                                <div style="display:flex;gap:8px;">
+                                                    <input type="date" class="input" id="trialStart" value="2025-01-15" style="min-width:140px;" />
+                                                    <span style="align-self:center;color:hsl(var(--muted-foreground));">to</span>
+                                                    <input type="date" class="input" id="trialEnd" value="2025-02-15" style="min-width:140px;" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Tax Rate</div>
+                                                <div class="desc">Applicable tax rate (%)</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="number" class="input" id="taxRate" value="20" style="min-width:100px;" />
+                                                <span>%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== REPORTING SETTINGS ===== -->
+                        <div class="settings-section" id="section-reporting">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">📊 Reporting Settings</div>
+                                        <div class="card-description">Configure reporting standards and preferences</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Reporting Standards</div>
+                                        <div class="group-desc">Select which reporting frameworks to use</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">SECR Reporting</div>
+                                                <div class="desc">Streamlined Energy and Carbon Reporting</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="secrEnabled" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">ESRS / CSRD Reporting</div>
+                                                <div class="desc">European Sustainability Reporting Standards</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="esrsEnabled" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">ISSB Reporting</div>
+                                                <div class="desc">International Sustainability Standards Board</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="issbEnabled" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">GHG Protocol</div>
+                                                <div class="desc">Greenhouse Gas Protocol reporting</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="ghgEnabled" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">TCFD Reporting</div>
+                                                <div class="desc">Task Force on Climate-related Financial Disclosures</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="tcfdEnabled" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Financial Year</div>
+                                        <div class="group-desc">Organization financial year settings</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Financial Year End</div>
+                                                <div class="desc">End date of financial year</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="financialYearEnd">
+                                                    <option value="12-31">December 31</option>
+                                                    <option value="03-31">March 31</option>
+                                                    <option value="06-30">June 30</option>
+                                                    <option value="09-30" selected>September 30</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Default Reporting Year</div>
+                                                <div class="desc">Default year for reports</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="defaultReportingYear">
+                                                    <option value="2026">2026</option>
+                                                    <option value="2025" selected>2025</option>
+                                                    <option value="2024">2024</option>
+                                                    <option value="2023">2023</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">DEFRA Factors</div>
+                                        <div class="group-desc">Default DEFRA conversion factor version</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Default DEFRA Version</div>
+                                                <div class="desc">Which DEFRA factor version to use</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="defraVersion">
+                                                    <option value="2025">2025</option>
+                                                    <option value="2024" selected>2024</option>
+                                                    <option value="2023">2023</option>
+                                                    <option value="2022">2022</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Preferred Units</div>
+                                                <div class="desc">Default measurement units</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="preferredUnits">
+                                                    <option value="metric" selected>Metric (kg, tonnes)</option>
+                                                    <option value="imperial">Imperial (lbs, tons)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== EMISSIONS SETTINGS ===== -->
+                        <div class="settings-section" id="section-emissions">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">📈 Emissions Settings</div>
+                                        <div class="card-description">Configure emissions calculation and data settings</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Calculation Settings</div>
+                                        <div class="group-desc">How emissions are calculated</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Auto-Calculation</div>
+                                                <div class="desc">Automatically calculate emissions on data entry</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="autoCalculate" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Include Biogenic CO₂</div>
+                                                <div class="desc">Include biogenic carbon emissions in calculations</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="includeBiogenic" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Allocate Scope 3</div>
+                                                <div class="desc">Enable Scope 3 allocation and tracking</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="allocateScope3" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Data Quality</div>
+                                        <div class="group-desc">Data validation and quality settings</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Auto-Validation</div>
+                                                <div class="desc">Automatically validate data on import</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="autoValidate" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Auto-Repair</div>
+                                                <div class="desc">Attempt to automatically repair invalid data</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="autoRepair" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Quality Threshold</div>
+                                                <div class="desc">Minimum data quality score required</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="qualityThreshold">
+                                                    <option value="100">100% (Strict)</option>
+                                                    <option value="90" selected>90% (Standard)</option>
+                                                    <option value="80">80% (Relaxed)</option>
+                                                    <option value="70">70% (Lax)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Net Zero Targets</div>
+                                        <div class="group-desc">Net zero target settings</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Target Year</div>
+                                                <div class="desc">Net zero target year</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="netZeroTarget">
+                                                    <option value="2030">2030</option>
+                                                    <option value="2040">2040</option>
+                                                    <option value="2050" selected>2050</option>
+                                                    <option value="2060">2060</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Baseline Year</div>
+                                                <div class="desc">Baseline year for target tracking</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="baselineYear">
+                                                    <option value="2023">2023</option>
+                                                    <option value="2024">2024</option>
+                                                    <option value="2025" selected>2025</option>
+                                                    <option value="2026">2026</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== DOCUMENTS SETTINGS ===== -->
+                        <div class="settings-section" id="section-documents">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">📁 Document Settings</div>
+                                        <div class="card-description">Configure document management and storage</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">File Upload Limits</div>
+                                        <div class="group-desc">File size and type restrictions</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Max File Size</div>
+                                                <div class="desc">Maximum allowed file size per upload</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="maxFileSize">
+                                                    <option value="10">10 MB</option>
+                                                    <option value="25">25 MB</option>
+                                                    <option value="50" selected>50 MB</option>
+                                                    <option value="100">100 MB</option>
+                                                    <option value="200">200 MB</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Max Batch Files</div>
+                                                <div class="desc">Maximum files per batch upload</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="maxBatchFiles">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50" selected>50</option>
+                                                    <option value="100">100</option>
+                                                    <option value="500">500</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Allowed File Types</div>
+                                                <div class="desc">Accepted file extensions</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="allowedFileTypes" multiple style="height:auto;min-height:60px;">
+                                                    <option value="csv" selected>CSV</option>
+                                                    <option value="xlsx" selected>XLSX</option>
+                                                    <option value="xls" selected>XLS</option>
+                                                    <option value="pdf" selected>PDF</option>
+                                                    <option value="jpg" selected>JPG</option>
+                                                    <option value="jpeg" selected>JPEG</option>
+                                                    <option value="png" selected>PNG</option>
+                                                    <option value="doc" selected>DOC</option>
+                                                    <option value="docx" selected>DOCX</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Processing Settings</div>
+                                        <div class="group-desc">Document processing configuration</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Auto-Process</div>
+                                                <div class="desc">Automatically process uploaded documents</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="autoProcess" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Retention Period</div>
+                                                <div class="desc">How long to retain documents</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="retentionPeriod">
+                                                    <option value="90">90 Days</option>
+                                                    <option value="180">180 Days</option>
+                                                    <option value="365" selected>1 Year</option>
+                                                    <option value="730">2 Years</option>
+                                                    <option value="0">Indefinite</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Auto-Archive</div>
+                                                <div class="desc">Automatically archive old documents</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="autoArchive" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== SECURITY SETTINGS ===== -->
+                        <div class="settings-section" id="section-security">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">🔒 Security Settings</div>
+                                        <div class="card-description">Security and authentication settings</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Authentication</div>
+                                        <div class="group-desc">Login and session security</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Require 2FA</div>
+                                                <div class="desc">Two-factor authentication requirement</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="require2fa" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Session Timeout</div>
+                                                <div class="desc">Inactive session timeout</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="sessionTimeout">
+                                                    <option value="15">15 Minutes</option>
+                                                    <option value="30">30 Minutes</option>
+                                                    <option value="60" selected>60 Minutes</option>
+                                                    <option value="120">2 Hours</option>
+                                                    <option value="480">8 Hours</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Max Login Attempts</div>
+                                                <div class="desc">Failed login attempts before lockout</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="maxLoginAttempts">
+                                                    <option value="3">3</option>
+                                                    <option value="5" selected>5</option>
+                                                    <option value="10">10</option>
+                                                    <option value="0">Unlimited</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Data Security</div>
+                                        <div class="group-desc">Data protection and privacy</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Data Encryption</div>
+                                                <div class="desc">Encrypt sensitive data at rest</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="dataEncryption" checked disabled />
+                                                    <span class="slider"></span>
+                                                </label>
+                                                <span class="badge badge-muted" style="font-size:10px;">Enforced</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Audit Logging</div>
+                                                <div class="desc">Enable detailed audit logging</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="auditLogging" checked disabled />
+                                                    <span class="slider"></span>
+                                                </label>
+                                                <span class="badge badge-muted" style="font-size:10px;">Enforced</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">IP Restriction</div>
+                                                <div class="desc">Restrict access to specific IPs</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="ipRestriction" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== INTEGRATIONS SETTINGS ===== -->
+                        <div class="settings-section" id="section-integrations">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">🔌 Integrations</div>
+                                        <div class="card-description">Configure external integrations</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">API Settings</div>
+                                        <div class="group-desc">API configuration and access</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">API Enabled</div>
+                                                <div class="desc">Enable REST API access</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="apiEnabled" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">API Key</div>
+                                                <div class="desc">Your API access key</div>
+                                            </div>
+                                            <div class="setting-control" style="flex-direction:column;align-items:stretch;gap:4px;">
+                                                <div style="display:flex;gap:8px;">
+                                                    <input type="text" class="input" id="apiKey" value="ct_sk_live_xxxxxxxxxxxx" disabled style="min-width:200px;" />
+                                                    <button class="btn btn-outline btn-sm" onclick="regenerateApiKey()">🔄 Regenerate</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Third-Party Integrations</div>
+                                        <div class="group-desc">Connect with external services</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Carbon Accounting</div>
+                                                <div class="desc">Connect to external carbon accounting platforms</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="carbonIntegration">
+                                                    <option value="none">None</option>
+                                                    <option value="persefoni">Persefoni</option>
+                                                    <option value="watershed" selected>Watershed</option>
+                                                    <option value="sap">SAP</option>
+                                                    <option value="salesforce">Salesforce</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">ERP Integration</div>
+                                                <div class="desc">Connect to ERP systems</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="erpIntegration">
+                                                    <option value="none">None</option>
+                                                    <option value="sap">SAP</option>
+                                                    <option value="oracle">Oracle</option>
+                                                    <option value="ms_dynamics">Microsoft Dynamics</option>
+                                                    <option value="netsuite">NetSuite</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Data Export</div>
+                                                <div class="desc">Automated data export schedule</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="dataExport">
+                                                    <option value="none">None</option>
+                                                    <option value="daily">Daily</option>
+                                                    <option value="weekly" selected>Weekly</option>
+                                                    <option value="monthly">Monthly</option>
+                                                    <option value="quarterly">Quarterly</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== NOTIFICATIONS SETTINGS ===== -->
+                        <div class="settings-section" id="section-notifications">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">🔔 Notification Settings</div>
+                                        <div class="card-description">Configure notification preferences</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Email Notifications</div>
+                                        <div class="group-desc">Manage email notification preferences</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Report Ready</div>
+                                                <div class="desc">Notify when reports are ready</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notifyReportReady" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Data Validation Required</div>
+                                                <div class="desc">Notify when data needs validation</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notifyValidation" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Approval Required</div>
+                                                <div class="desc">Notify when approvals are needed</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notifyApproval" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Upcoming Deadlines</div>
+                                                <div class="desc">Notify about approaching deadlines</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notifyDeadlines" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Team Updates</div>
+                                                <div class="desc">Notify about team changes</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notifyTeam" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">In-App Notifications</div>
+                                        <div class="group-desc">Manage in-app notification preferences</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Browser Notifications</div>
+                                                <div class="desc">Enable browser push notifications</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="browserNotifications" checked />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Notification Sounds</div>
+                                                <div class="desc">Play sound for notifications</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="notificationSounds" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== BILLING SETTINGS ===== -->
+                        <div class="settings-section" id="section-billing">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">💳 Billing Settings</div>
+                                        <div class="card-description">Manage billing information and subscription</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Subscription Plan</div>
+                                        <div class="group-desc">Your current subscription plan</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Current Plan</div>
+                                                <div class="desc">Active subscription tier</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <span class="badge badge-success" style="font-size:14px;padding:6px 16px;">⭐ Professional</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Billing Cycle</div>
+                                                <div class="desc">Subscription billing frequency</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="billingCycle">
+                                                    <option value="monthly" selected>Monthly</option>
+                                                    <option value="quarterly">Quarterly</option>
+                                                    <option value="annual">Annual (Save 20%)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Next Billing Date</div>
+                                                <div class="desc">Upcoming billing date</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="date" class="input" id="nextBillingDate" value="2026-01-15" style="min-width:160px;" disabled />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Payment Method</div>
+                                        <div class="group-desc">Manage your payment information</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Card on File</div>
+                                                <div class="desc">Current payment method</div>
+                                            </div>
+                                            <div class="setting-control" style="flex-direction:column;align-items:stretch;gap:4px;">
+                                                <div style="display:flex;gap:8px;align-items:center;">
+                                                    <span style="font-size:20px;">💳</span>
+                                                    <span>•••• 4242</span>
+                                                    <span class="badge badge-muted">Expires 12/27</span>
+                                                    <button class="btn btn-outline btn-sm" onclick="showToast('✏️ Edit payment method')">✏️ Edit</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Billing Address</div>
+                                                <div class="desc">Billing address for invoices</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <input type="text" class="input" id="billingAddress" value="123 Business Street, London, UK" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Invoices</div>
+                                        <div class="group-desc">View and manage invoices</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Recent Invoices</div>
+                                                <div class="desc">View your billing history</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <button class="btn btn-outline btn-sm" onclick="showToast('📄 Viewing invoices...')">📄 View All</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ===== USER PREFERENCES ===== -->
+                        <div class="settings-section" id="section-users">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div>
+                                        <div class="card-title">👤 User Preferences</div>
+                                        <div class="card-description">Personalize your experience</div>
+                                    </div>
+                                </div>
+                                <div class="card-content">
+                                    <div class="setting-group">
+                                        <div class="group-title">Display Settings</div>
+                                        <div class="group-desc">Customize how the dashboard looks</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Dark Mode</div>
+                                                <div class="desc">Switch between light and dark themes</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="darkMode">
+                                                    <option value="light">☀️ Light</option>
+                                                    <option value="dark">🌙 Dark</option>
+                                                    <option value="system" selected>💻 System</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Compact Mode</div>
+                                                <div class="desc">Use compact layout for denser information</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <label class="switch">
+                                                    <input type="checkbox" id="compactMode" />
+                                                    <span class="slider"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Default Dashboard</div>
+                                                <div class="desc">Default view when logging in</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="defaultDashboard">
+                                                    <option value="dashboard">📊 Dashboard</option>
+                                                    <option value="emissions">📈 Emissions</option>
+                                                    <option value="reports">📄 Reports</option>
+                                                    <option value="documents">📁 Documents</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Language & Region</div>
+                                        <div class="group-desc">Language and region settings</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Language</div>
+                                                <div class="desc">Interface language</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="language">
+                                                    <option value="en" selected>English</option>
+                                                    <option value="fr">Français</option>
+                                                    <option value="de">Deutsch</option>
+                                                    <option value="es">Español</option>
+                                                    <option value="zh">中文</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Date Format</div>
+                                                <div class="desc">Preferred date display format</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="dateFormat">
+                                                    <option value="dd/mm/yyyy" selected>DD/MM/YYYY</option>
+                                                    <option value="mm/dd/yyyy">MM/DD/YYYY</option>
+                                                    <option value="yyyy-mm-dd">YYYY-MM-DD</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Number Format</div>
+                                                <div class="desc">Preferred number formatting</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <select class="select" id="numberFormat">
+                                                    <option value="1,000.00" selected>1,000.00</option>
+                                                    <option value="1.000,00">1.000,00</option>
+                                                    <option value="1 000.00">1 000.00</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-group">
+                                        <div class="group-title">Account</div>
+                                        <div class="group-desc">Account management</div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Account Type</div>
+                                                <div class="desc">Your account role</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <span class="badge badge-primary">👑 Administrator</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row">
+                                            <div class="setting-info">
+                                                <div class="label">Last Login</div>
+                                                <div class="desc">When you last logged in</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <span style="font-size:14px;">2026-12-15 14:30 GMT</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="setting-row" style="border-bottom:none;">
+                                            <div class="setting-info">
+                                                <div class="label">Danger Zone</div>
+                                                <div class="desc">Account deletion and data management</div>
+                                            </div>
+                                            <div class="setting-control">
+                                                <button class="btn btn-danger btn-sm" onclick="confirmAccountDeletion()">
+                                                    🗑️ Delete Account
+                                                </button>
+                                                <button class="btn btn-outline btn-sm" onclick="showToast('📤 Exporting data...')">
+                                                    📤 Export Data
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const settingsSearch = document.getElementById('settingsSearch');
+        const settingsNav = document.getElementById('settingsNav');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // SETTINGS NAVIGATION
+        // ============================================
+
+        function switchSettings(section) {
+            // Update nav
+            document.querySelectorAll('.settings-nav-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.section === section);
+            });
+
+            // Update sections
+            document.querySelectorAll('.settings-section').forEach(s => {
+                s.classList.toggle('active', s.id === `section-${section}`);
+            });
+        }
+
+        // ============================================
+        // SETTINGS SEARCH
+        // ============================================
+
+        settingsSearch.addEventListener('input', function() {
+            const query = this.value.toLowerCase().trim();
+            if (!query) {
+                document.querySelectorAll('.setting-row').forEach(row => row.style.display = '');
+                document.querySelectorAll('.setting-group').forEach(group => group.style.display = '');
+                return;
+            }
+
+            document.querySelectorAll('.setting-row').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+
+            document.querySelectorAll('.setting-group').forEach(group => {
+                const visibleRows = group.querySelectorAll('.setting-row[style*="display: none"]');
+                const allRows = group.querySelectorAll('.setting-row');
+                group.style.display = visibleRows.length === allRows.length ? 'none' : '';
+            });
+        });
+
+        // ============================================
+        // SETTINGS ACTIONS
+        // ============================================
+
+        function saveSettings() {
+            showToast('💾 Settings saved successfully!');
+            // In a real app, this would save all settings
+        }
+
+        function resetSettings() {
+            if (confirm('Reset all settings to default values?')) {
+                // Reset all inputs to default values
+                document.querySelectorAll('.input, .select').forEach(el => {
+                    if (el.type === 'checkbox') {
+                        el.checked = el.defaultChecked;
+                    } else {
+                        el.value = el.defaultValue || '';
+                    }
+                });
+                showToast('↺ Settings reset to defaults');
+            }
+        }
+
+        function regenerateApiKey() {
+            showToast('🔄 API key regenerated successfully!');
+        }
+
+        function confirmAccountDeletion() {
+            if (confirm('⚠️ Are you sure you want to delete your account? This action cannot be undone.')) {
+                if (confirm('This will permanently delete all your data. Continue?')) {
+                    showToast('🗑️ Account deletion requested. You will receive an email confirmation.', 'warning');
+                }
+            }
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+
+            // Ctrl+S to save settings
+            if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveSettings();
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Console
+        console.log('⚙️ CarbonTally - Settings');
+        console.log('📋 Based on schema: organizations, organization_metadata, system_settings');
+        console.log('🏢 10 settings sections: General, Organization, Reporting, Emissions, Documents, Security, Integrations, Notifications, Billing, User Preferences');
+        console.log('💾 Settings saved to localStorage');
+        console.log('⌨️  Ctrl+S to save settings');
+        console.log('🎨 9 themes available');
+    </script>
+
+</body>
+</html>

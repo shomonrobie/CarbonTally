@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Roles & Permissions</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            gap: 4px;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .input {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           ROLES & PERMISSIONS STYLES
+           ============================================ */
+        .role-card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 16px 20px;
+            transition: all 0.2s ease;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+        .role-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        .role-card .role-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .role-card .role-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .role-card .role-name .color-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .role-card .role-desc {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+        .role-card .role-meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            flex-wrap: wrap;
+        }
+        .role-card .role-permissions {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .role-card .role-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        /* ============================================
+           PERMISSION GRID
+           ============================================ */
+        .permission-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 12px 0;
+        }
+
+        .permission-group {
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 16px;
+        }
+        .permission-group .group-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .permission-group .group-title .icon { font-size: 16px; }
+
+        .permission-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0;
+            cursor: pointer;
+        }
+        .permission-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: hsl(var(--primary));
+            cursor: pointer;
+        }
+        .permission-item label {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            flex: 1;
+        }
+        .permission-item .desc {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           MODAL STYLES
+           ============================================ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 800px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .modal-body { margin: 16px 0; }
+        .modal-body .form-group {
+            margin-bottom: 16px;
+        }
+        .modal-body .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .modal-body .form-group .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+        .modal-body .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+            .modal-body .form-row {
+                grid-template-columns: 1fr;
+            }
+            .permission-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .modal { padding: 16px; }
+            .role-card .role-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item active">
+                    <span class="icon">🔑</span> Roles & Permissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search team members..." id="searchInput" />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>🔑 Roles & Permissions</h1>
+                        <p>Define roles and manage access permissions for your organization</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="showCreateRoleModal()">
+                            ➕ Create Role
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="showToast('📋 Role audit log opened')">
+                            📋 Audit Log
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Roles Grid -->
+                <div id="rolesContainer">
+                    <!-- Rendered by JS -->
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== CREATE/EDIT ROLE MODAL ===== -->
+        <div class="modal-overlay" id="roleModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="roleModalTitle">🔑 Create Role</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;" id="roleModalSubtitle">
+                            Define a new role and its permissions
+                        </div>
+                    </div>
+                    <button class="modal-close" id="roleModalClose">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Role Name <span style="color:hsl(var(--destructive));">*</span></label>
+                            <input type="text" class="input" id="roleName" placeholder="e.g., Data Analyst" />
+                        </div>
+                        <div class="form-group">
+                            <label>Color</label>
+                            <input type="color" class="input" id="roleColor" value="#3b82f6" style="padding:4px;height:42px;" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Description <span style="color:hsl(var(--destructive));">*</span></label>
+                        <textarea class="input" id="roleDescription" rows="2" placeholder="Describe the role's purpose and responsibilities"></textarea>
+                    </div>
+
+                    <div style="margin-top:16px;border-top:1px solid hsl(var(--border));padding-top:16px;">
+                        <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">
+                            🛡️ Permissions
+                        </h4>
+                        <p style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px;">
+                            Select the permissions this role should have
+                        </p>
+
+                        <div class="permission-grid" id="permissionGrid">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:12px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                            <input type="checkbox" id="roleIsDefault" />
+                            Set as default role for new members
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeRoleModal()">Cancel</button>
+                    <button class="btn btn-primary" id="roleSaveBtn" onclick="saveRole()">
+                        💾 Save Role
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== ROLE DETAIL MODAL ===== -->
+        <div class="modal-overlay" id="roleDetailModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="roleDetailTitle">Role Details</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="roleDetailSubtitle">View role information</div>
+                    </div>
+                    <button class="modal-close" id="roleDetailClose">✕</button>
+                </div>
+                <div class="modal-body" id="roleDetailBody">
+                    <!-- Rendered by JS -->
+                </div>
+                <div class="modal-footer" id="roleDetailFooter">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // MOCK DATA - Roles & Permissions
+        // ============================================
+
+        const permissionDefinitions = [{
+            id: 'view_dashboard',
+            label: 'View Dashboard',
+            description: 'Access to view the main dashboard',
+            category: 'dashboard',
+            icon: '📊'
+        }, {
+            id: 'view_reports',
+            label: 'View Reports',
+            description: 'Access to view and export reports',
+            category: 'reports',
+            icon: '📄'
+        }, {
+            id: 'generate_reports',
+            label: 'Generate Reports',
+            description: 'Create and generate new reports',
+            category: 'reports',
+            icon: '📊'
+        }, {
+            id: 'view_emissions',
+            label: 'View Emissions Data',
+            description: 'Access to view emissions data',
+            category: 'emissions',
+            icon: '📈'
+        }, {
+            id: 'edit_emissions',
+            label: 'Edit Emissions Data',
+            description: 'Add, edit, and delete emissions records',
+            category: 'emissions',
+            icon: '✏️'
+        }, {
+            id: 'upload_documents',
+            label: 'Upload Documents',
+            description: 'Upload and manage documents',
+            category: 'documents',
+            icon: '📤'
+        }, {
+            id: 'view_documents',
+            label: 'View Documents',
+            description: 'Access to view all documents',
+            category: 'documents',
+            icon: '📁'
+        }, {
+            id: 'manage_team',
+            label: 'Manage Team',
+            description: 'Add, remove, and manage team members',
+            category: 'team',
+            icon: '👥'
+        }, {
+            id: 'manage_roles',
+            label: 'Manage Roles',
+            description: 'Create, edit, and delete roles',
+            category: 'team',
+            icon: '🔑'
+        }, {
+            id: 'manage_facilities',
+            label: 'Manage Facilities',
+            description: 'Add, edit, and delete facilities',
+            category: 'facilities',
+            icon: '🏢'
+        }, {
+            id: 'manage_assets',
+            label: 'Manage Assets',
+            description: 'Add, edit, and delete assets',
+            category: 'assets',
+            icon: '🚗'
+        }, {
+            id: 'view_settings',
+            label: 'View Settings',
+            description: 'Access to view organization settings',
+            category: 'settings',
+            icon: '⚙️'
+        }, {
+            id: 'edit_settings',
+            label: 'Edit Settings',
+            description: 'Modify organization settings',
+            category: 'settings',
+            icon: '🔧'
+        }, {
+            id: 'view_audit_log',
+            label: 'View Audit Log',
+            description: 'Access to view audit logs',
+            category: 'audit',
+            icon: '📋'
+        }, {
+            id: 'manage_integrations',
+            label: 'Manage Integrations',
+            description: 'Configure and manage integrations',
+            category: 'integrations',
+            icon: '🔌'
+        }, {
+            id: 'export_data',
+            label: 'Export Data',
+            description: 'Export data from the system',
+            category: 'data',
+            icon: '📥'
+        }];
+
+        const roles = [{
+            id: 'role_001',
+            name: 'Admin',
+            description: 'Full access to all features and settings. Can manage users, roles, and all data.',
+            color: '#10b981',
+            permissions: permissionDefinitions.map(p => p.id),
+            members: 2,
+            isDefault: false,
+            createdAt: '2025-01-15',
+            createdBy: 'System'
+        }, {
+            id: 'role_002',
+            name: 'Manager',
+            description: 'Can manage team members, view all data, and generate reports. Cannot manage roles or settings.',
+            color: '#3b82f6',
+            permissions: ['view_dashboard', 'view_reports', 'generate_reports', 'view_emissions', 'edit_emissions',
+                'view_documents', 'upload_documents', 'manage_team', 'manage_facilities', 'manage_assets',
+                'export_data'
+            ],
+            members: 2,
+            isDefault: false,
+            createdAt: '2025-02-01',
+            createdBy: 'Admin'
+        }, {
+            id: 'role_003',
+            name: 'Analyst',
+            description: 'Can view and edit emissions data, generate reports, and upload documents. Cannot manage team.',
+            color: '#8b5cf6',
+            permissions: ['view_dashboard', 'view_reports', 'generate_reports', 'view_emissions', 'edit_emissions',
+                'view_documents', 'upload_documents', 'export_data'
+            ],
+            members: 4,
+            isDefault: true,
+            createdAt: '2025-03-01',
+            createdBy: 'Admin'
+        }, {
+            id: 'role_004',
+            name: 'Staff',
+            description: 'Can view data, upload documents, and manage assigned tasks. Limited edit capabilities.',
+            color: '#f59e0b',
+            permissions: ['view_dashboard', 'view_emissions', 'view_documents', 'upload_documents', 'view_reports'],
+            members: 2,
+            isDefault: false,
+            createdAt: '2025-04-01',
+            createdBy: 'Admin'
+        }, {
+            id: 'role_005',
+            name: 'Viewer',
+            description: 'Read-only access to all data. Cannot edit, upload, or manage anything.',
+            color: '#6b7280',
+            permissions: ['view_dashboard', 'view_reports', 'view_emissions', 'view_documents', 'view_settings'],
+            members: 2,
+            isDefault: false,
+            createdAt: '2025-05-01',
+            createdBy: 'Admin'
+        }, {
+            id: 'role_006',
+            name: 'Compliance Officer',
+            description: 'Focus on compliance reporting and regulatory requirements. Full access to compliance data.',
+            color: '#ec4899',
+            permissions: ['view_dashboard', 'view_reports', 'generate_reports', 'view_emissions', 'edit_emissions',
+                'view_documents', 'upload_documents', 'view_audit_log', 'export_data'
+            ],
+            members: 0,
+            isDefault: false,
+            createdAt: '2025-06-01',
+            createdBy: 'Admin'
+        }, {
+            id: 'role_007',
+            name: 'Sustainability Lead',
+            description: 'Oversee sustainability initiatives and reporting. Full access to emissions and reporting.',
+            color: '#14b8a6',
+            permissions: ['view_dashboard', 'view_reports', 'generate_reports', 'view_emissions', 'edit_emissions',
+                'view_documents', 'upload_documents', 'manage_facilities', 'manage_assets', 'export_data'
+            ],
+            members: 0,
+            isDefault: false,
+            createdAt: '2025-07-01',
+            createdBy: 'Admin'
+        }];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let editingRoleId = null;
+        let viewingRoleId = null;
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const roleModal = document.getElementById('roleModal');
+        const roleModalClose = document.getElementById('roleModalClose');
+        const roleDetailModal = document.getElementById('roleDetailModal');
+        const roleDetailClose = document.getElementById('roleDetailClose');
+
+        const rolesContainer = document.getElementById('rolesContainer');
+        const permissionGrid = document.getElementById('permissionGrid');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // PERMISSION FUNCTIONS
+        // ============================================
+
+        function getPermissionGroups() {
+            const groups = {};
+            permissionDefinitions.forEach(p => {
+                if (!groups[p.category]) {
+                    groups[p.category] = [];
+                }
+                groups[p.category].push(p);
+            });
+            return groups;
+        }
+
+        function renderPermissionGrid(selectedPermissions = []) {
+            const groups = getPermissionGroups();
+            const groupNames = {
+                dashboard: 'Dashboard',
+                reports: 'Reports',
+                emissions: 'Emissions',
+                documents: 'Documents',
+                team: 'Team Management',
+                facilities: 'Facilities',
+                assets: 'Assets',
+                settings: 'Settings',
+                audit: 'Audit',
+                integrations: 'Integrations',
+                data: 'Data'
+            };
+
+            permissionGrid.innerHTML = Object.entries(groups).map(([key, perms]) => `
+                <div class="permission-group">
+                    <div class="group-title">
+                        <span class="icon">${perms[0]?.icon || '📌'}</span>
+                        ${groupNames[key] || key.charAt(0).toUpperCase() + key.slice(1)}
+                    </div>
+                    ${perms.map(p => `
+                        <div class="permission-item">
+                            <input type="checkbox" id="perm_${p.id}" value="${p.id}" 
+                                   ${selectedPermissions.includes(p.id) ? 'checked' : ''} />
+                            <label for="perm_${p.id}">
+                                ${p.label}
+                                <span class="desc">${p.description}</span>
+                            </label>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+        }
+
+        function getSelectedPermissions() {
+            const checkboxes = permissionGrid.querySelectorAll('input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        // ============================================
+        // ROLES FUNCTIONS
+        // ============================================
+
+        function renderRoles() {
+            const searchTerm = document.getElementById('searchInput')?.value?.toLowerCase().trim() || '';
+            let filtered = [...roles];
+
+            if (searchTerm) {
+                filtered = filtered.filter(r =>
+                    r.name.toLowerCase().includes(searchTerm) ||
+                    r.description.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            if (filtered.length === 0) {
+                rolesContainer.innerHTML = `
+                    <div class="text-center text-muted" style="padding:60px 20px;">
+                        <div style="font-size:48px;margin-bottom:16px;">🔑</div>
+                        <div style="font-size:18px;font-weight:600;">No roles found</div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:8px;">
+                            Create your first role to get started
+                        </div>
+                        <button class="btn btn-primary" style="margin-top:16px;" onclick="showCreateRoleModal()">
+                            ➕ Create Role
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            rolesContainer.innerHTML = filtered.map(role => `
+                <div class="role-card" onclick="viewRoleDetail('${role.id}')">
+                    <div class="role-header">
+                        <div class="role-name">
+                            <span class="color-dot" style="background:${role.color};"></span>
+                            ${role.name}
+                            ${role.isDefault ? '<span class="badge badge-muted">⭐ Default</span>' : ''}
+                            <span class="badge badge-muted">${role.members} members</span>
+                        </div>
+                        <div class="role-actions">
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();viewRoleDetail('${role.id}')" title="View Details">
+                                👁️
+                            </button>
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editRole('${role.id}')" title="Edit Role">
+                                ✏️
+                            </button>
+                            ${role.name !== 'Admin' ? `
+                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteRole('${role.id}')" style="color:hsl(var(--destructive));" title="Delete Role">
+                                    🗑️
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="role-desc">${role.description}</div>
+                    <div class="role-meta">
+                        <span>📅 Created ${role.createdAt}</span>
+                        <span>👤 By ${role.createdBy}</span>
+                        <span>🔑 ${role.permissions.length} permissions</span>
+                    </div>
+                    <div class="role-permissions">
+                        ${role.permissions.slice(0, 6).map(permId => {
+                            const perm = permissionDefinitions.find(p => p.id === permId);
+                            return perm ? `<span class="badge badge-muted">${perm.label}</span>` : '';
+                        }).join('')}
+                        ${role.permissions.length > 6 ? `<span class="badge badge-muted">+${role.permissions.length - 6} more</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showCreateRoleModal() {
+            editingRoleId = null;
+            document.getElementById('roleModalTitle').textContent = '🔑 Create Role';
+            document.getElementById('roleModalSubtitle').textContent = 'Define a new role and its permissions';
+            document.getElementById('roleName').value = '';
+            document.getElementById('roleColor').value = '#3b82f6';
+            document.getElementById('roleDescription').value = '';
+            document.getElementById('roleIsDefault').checked = false;
+            document.getElementById('roleSaveBtn').textContent = '💾 Create Role';
+            renderPermissionGrid([]);
+            roleModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function editRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (!role) return;
+
+            editingRoleId = id;
+            document.getElementById('roleModalTitle').textContent = `✏️ Edit Role: ${role.name}`;
+            document.getElementById('roleModalSubtitle').textContent = 'Modify role details and permissions';
+            document.getElementById('roleName').value = role.name;
+            document.getElementById('roleColor').value = role.color;
+            document.getElementById('roleDescription').value = role.description;
+            document.getElementById('roleIsDefault').checked = role.isDefault || false;
+            document.getElementById('roleSaveBtn').textContent = '💾 Update Role';
+            renderPermissionGrid(role.permissions);
+            roleModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeRoleModal() {
+            roleModal.classList.remove('show');
+            document.body.style.overflow = '';
+            editingRoleId = null;
+        }
+
+        function saveRole() {
+            const name = document.getElementById('roleName').value.trim();
+            const color = document.getElementById('roleColor').value;
+            const description = document.getElementById('roleDescription').value.trim();
+            const isDefault = document.getElementById('roleIsDefault').checked;
+            const permissions = getSelectedPermissions();
+
+            if (!name) {
+                showToast('⚠️ Please enter a role name', 'warning');
+                return;
+            }
+
+            if (!description) {
+                showToast('⚠️ Please enter a role description', 'warning');
+                return;
+            }
+
+            if (permissions.length === 0) {
+                showToast('⚠️ Please select at least one permission', 'warning');
+                return;
+            }
+
+            if (editingRoleId) {
+                // Edit existing role
+                const index = roles.findIndex(r => r.id === editingRoleId);
+                if (index !== -1) {
+                    const oldName = roles[index].name;
+                    roles[index] = {
+                        ...roles[index],
+                        name: name,
+                        color: color,
+                        description: description,
+                        permissions: permissions,
+                        isDefault: isDefault,
+                        updatedAt: new Date().toISOString().split('T')[0]
+                    };
+
+                    // If this role is set as default, unset others
+                    if (isDefault) {
+                        roles.forEach((r, i) => {
+                            if (i !== index) r.isDefault = false;
+                        });
+                    }
+
+                    closeRoleModal();
+                    renderRoles();
+                    showToast(`✅ Updated role: ${name}`);
+                }
+            } else {
+                // Create new role
+                const newRole = {
+                    id: `role_${String(roles.length + 1).padStart(3, '0')}`,
+                    name: name,
+                    color: color,
+                    description: description,
+                    permissions: permissions,
+                    members: 0,
+                    isDefault: isDefault,
+                    createdAt: new Date().toISOString().split('T')[0],
+                    createdBy: 'Current User'
+                };
+
+                // If this role is set as default, unset others
+                if (isDefault) {
+                    roles.forEach(r => r.isDefault = false);
+                }
+
+                roles.push(newRole);
+                closeRoleModal();
+                renderRoles();
+                showToast(`✅ Created role: ${name}`);
+            }
+        }
+
+        function viewRoleDetail(id) {
+            const role = roles.find(r => r.id === id);
+            if (!role) return;
+
+            viewingRoleId = id;
+            document.getElementById('roleDetailTitle').textContent = role.name;
+            document.getElementById('roleDetailSubtitle').textContent = `${role.permissions.length} permissions • ${role.members} members`;
+
+            document.getElementById('roleDetailBody').innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                    <div style="width:4px;height:48px;border-radius:4px;background:${role.color};"></div>
+                    <div>
+                        <div style="font-size:18px;font-weight:700;color:hsl(var(--foreground));">
+                            ${role.name}
+                            ${role.isDefault ? '<span class="badge badge-muted">⭐ Default</span>' : ''}
+                        </div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));">${role.description}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+                    <div style="padding:12px;border-radius:var(--radius);border:1px solid hsl(var(--border));text-align:center;">
+                        <div style="font-size:20px;font-weight:700;color:hsl(var(--foreground));">${role.members}</div>
+                        <div style="font-size:12px;color:hsl(var(--muted-foreground));">Members</div>
+                    </div>
+                    <div style="padding:12px;border-radius:var(--radius);border:1px solid hsl(var(--border));text-align:center;">
+                        <div style="font-size:20px;font-weight:700;color:hsl(var(--foreground));">${role.permissions.length}</div>
+                        <div style="font-size:12px;color:hsl(var(--muted-foreground));">Permissions</div>
+                    </div>
+                    <div style="padding:12px;border-radius:var(--radius);border:1px solid hsl(var(--border));text-align:center;">
+                        <div style="font-size:20px;font-weight:700;color:hsl(var(--foreground));">${role.createdAt}</div>
+                        <div style="font-size:12px;color:hsl(var(--muted-foreground));">Created</div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">🛡️ Permissions</h4>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        ${role.permissions.map(permId => {
+                            const perm = permissionDefinitions.find(p => p.id === permId);
+                            return perm ? `<span class="badge badge-primary">${perm.icon} ${perm.label}</span>` : '';
+                        }).join('')}
+                    </div>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">👥 Members with this role</h4>
+                    ${role.members > 0 ? `
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            ${Array.from({length: role.members}, (_, i) => `
+                                <div style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius);border:1px solid hsl(var(--border));">
+                                    <div class="avatar avatar-sm" style="background:${['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899'][i % 5]};">
+                                        ${['JD','SJ','MR','AL','TC'][i % 5]}
+                                    </div>
+                                    <span style="font-size:13px;">${['John Doe','Sarah Johnson','Mike Roberts','Anna Liu','Tom Chen'][i % 5]}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="text-muted" style="font-size:13px;">No members currently assigned to this role</div>
+                    `}
+                </div>
+            `;
+
+            document.getElementById('roleDetailFooter').innerHTML = `
+                <button class="btn btn-ghost btn-sm" onclick="closeRoleDetail()">Close</button>
+                <button class="btn btn-outline btn-sm" onclick="editRole('${role.id}');closeRoleDetail();">✏️ Edit Role</button>
+                ${role.name !== 'Admin' ? `
+                    <button class="btn btn-danger btn-sm" onclick="deleteRole('${role.id}');closeRoleDetail();">🗑️ Delete Role</button>
+                ` : ''}
+            `;
+
+            roleDetailModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeRoleDetail() {
+            roleDetailModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function deleteRole(id) {
+            const role = roles.find(r => r.id === id);
+            if (!role) return;
+
+            if (role.name === 'Admin') {
+                showToast('⚠️ Cannot delete the Admin role', 'warning');
+                return;
+            }
+
+            if (role.members > 0) {
+                showToast(`⚠️ Cannot delete role with ${role.members} members assigned`, 'warning');
+                return;
+            }
+
+            if (confirm(`Are you sure you want to delete the role "${role.name}"?`)) {
+                const index = roles.findIndex(r => r.id === id);
+                if (index !== -1) {
+                    roles.splice(index, 1);
+                    renderRoles();
+                    showToast(`🗑️ Deleted role: ${role.name}`);
+                }
+            }
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Role Modal
+        roleModalClose.addEventListener('click', closeRoleModal);
+        roleModal.addEventListener('click', function(e) {
+            if (e.target === this) closeRoleModal();
+        });
+
+        // Role Detail Modal
+        roleDetailClose.addEventListener('click', closeRoleDetail);
+        roleDetailModal.addEventListener('click', function(e) {
+            if (e.target === this) closeRoleDetail();
+        });
+
+        // Search
+        document.getElementById('searchInput').addEventListener('input', renderRoles);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                if (roleModal.classList.contains('show')) {
+                    closeRoleModal();
+                }
+                if (roleDetailModal.classList.contains('show')) {
+                    closeRoleDetail();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+
+            // Ctrl+R to create role
+            if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                showCreateRoleModal();
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Render roles
+        renderRoles();
+
+        // Console
+        console.log('🔑 CarbonTally - Roles & Permissions');
+        console.log('📊 Based on schema: roles, staff_profiles, organization_members');
+        console.log('👥 7 predefined roles with permissions');
+        console.log('🛡️ 16 permission definitions across 11 categories');
+        console.log('📝 Create, edit, view, and delete roles');
+        console.log('⭐ Default role for new members');
+        console.log('⌨️  Ctrl+R to create a new role');
+        console.log('🎨 9 themes available');
+    </script>
+
+</body>
+</html>

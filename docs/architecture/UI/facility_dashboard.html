@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally · Facility Management</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        /* ===== THEME SYSTEM ===== */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --sidebar-width: 240px;
+            --sidebar-bg: 0, 0%, 100%;
+            --sidebar-border: 220, 15%, 90%;
+            --sidebar-item-hover: 150, 30%, 96%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+
+        [data-theme="forest"] { --primary: 150, 50%, 28%; --accent: 150, 30%, 92%; }
+        [data-theme="emerald"] { --primary: 160, 84%, 39%; --accent: 160, 70%, 92%; }
+        [data-theme="teal"] { --primary: 175, 60%, 25%; --accent: 175, 50%, 90%; }
+        [data-theme="navy"] { --primary: 222, 47%, 31%; --accent: 222, 40%, 90%; }
+        [data-theme="slate"] { --primary: 220, 20%, 18%; --accent: 220, 20%, 92%; }
+        [data-theme="warm-grey"] { --primary: 30, 15%, 25%; --accent: 30, 20%, 92%; }
+        [data-theme="purple"] { --primary: 260, 50%, 35%; --accent: 260, 40%, 90%; }
+        [data-theme="rose"] { --primary: 340, 60%, 35%; --accent: 340, 50%, 92%; }
+        [data-theme="carbon"] { --primary: 0, 0%, 15%; --accent: 0, 0%, 92%; }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+            border: none; cursor: pointer; transition: all 0.15s ease;
+        }
+        .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .btn-primary:hover { opacity:0.9; box-shadow: 0 4px 12px hsla(var(--primary),0.3); transform:translateY(-1px); }
+        .btn-outline { background:transparent; color:hsl(var(--primary)); border:2px solid hsl(var(--primary)); }
+        .btn-outline:hover { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+        .btn-ghost { background:transparent; color:hsl(var(--foreground)); }
+        .btn-ghost:hover { background:hsl(var(--accent)); }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-success { background:hsl(var(--success)); color:#fff; }
+        .btn-danger { background:hsl(var(--destructive)); color:#fff; }
+        .btn-secondary { background:hsl(var(--secondary)); color:#fff; }
+
+        .card {
+            background: hsl(var(--card)); border-radius: var(--radius); border:1px solid hsl(var(--border));
+            box-shadow: var(--shadow); transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header { padding: 16px 20px 8px 20px; display:flex; justify-content:space-between; align-items:center; }
+        .card-title { font-size:14px; font-weight:600; }
+        .card-description { font-size:12px; color:hsl(var(--muted-foreground)); }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px;
+            font-size:11px; font-weight:500;
+        }
+        .badge-success { background:hsl(var(--success)); color:#fff; }
+        .badge-warning { background:hsl(var(--warning)); color:#fff; }
+        .badge-primary { background:hsl(var(--primary)); color:#fff; }
+        .badge-muted { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+        .badge-destructive { background:hsl(var(--destructive)); color:#fff; }
+        .badge-secondary { background:hsl(var(--secondary)); color:#fff; }
+
+        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; background:hsl(var(--primary)); color:#fff; flex-shrink:0; }
+        .avatar-sm { width:28px; height:28px; font-size:11px; }
+
+        .app { display:flex; min-height:100vh; }
+        .sidebar {
+            width: var(--sidebar-width); background:hsl(var(--sidebar-bg)); border-right:1px solid hsl(var(--sidebar-border));
+            display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100;
+            transition:all 0.3s ease; overflow-y:auto;
+        }
+        .sidebar-logo { padding:20px 20px 16px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid hsl(var(--sidebar-border)); }
+        .sidebar-logo .logo-icon { width:32px; height:32px; background:hsl(var(--primary)); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+        .sidebar-logo .logo-text { font-size:18px; font-weight:700; }
+        .sidebar-nav { flex:1; padding:16px 12px; overflow-y:auto; }
+        .sidebar-section-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:hsl(var(--muted-foreground)); padding:8px 12px 4px 12px; opacity:0.6; }
+        .sidebar-item {
+            display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:var(--radius);
+            color:hsl(var(--muted-foreground)); cursor:pointer; transition:all 0.15s ease; font-size:14px; font-weight:500;
+            border:none; background:transparent; width:100%; text-align:left;
+        }
+        .sidebar-item:hover { background:hsl(var(--sidebar-item-hover)); color:hsl(var(--foreground)); }
+        .sidebar-item.active { background:hsl(var(--sidebar-item-active)); color:#fff; }
+        .sidebar-item .icon { font-size:18px; width:24px; text-align:center; flex-shrink:0; }
+        .sidebar-item .badge { margin-left:auto; }
+
+        .main-content { margin-left:var(--sidebar-width); flex:1; min-height:100vh; display:flex; flex-direction:column; }
+        .top-header {
+            background:hsl(var(--card)); border-bottom:1px solid hsl(var(--border)); padding:0 32px; height:64px;
+            display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50;
+        }
+        .header-left { display:flex; align-items:center; gap:24px; flex:1; }
+        .header-search { flex:1; max-width:400px; position:relative; margin:0 24px; }
+        .header-search input { width:100%; padding:8px 12px 8px 36px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .header-search input:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+        .header-search .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:hsl(var(--muted-foreground)); }
+        .header-right { display:flex; align-items:center; gap:16px; }
+        .header-user { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 8px 4px 4px; border-radius:var(--radius); }
+        .header-user:hover { background:hsl(var(--accent)); }
+        .header-user .user-name { font-size:13px; font-weight:500; }
+        .header-user .user-role { font-size:11px; color:hsl(var(--muted-foreground)); }
+        .mobile-menu-btn { display:none; background:none; border:none; font-size:24px; cursor:pointer; }
+
+        .main-body { padding:24px 32px; flex:1; }
+        .page-header { margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+        .page-header h1 { font-size:24px; font-weight:700; }
+        .page-header p { font-size:14px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .stats-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:12px; margin-bottom:24px; }
+        .stat-card { background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border)); padding:14px 16px; }
+        .stat-card .stat-label { font-size:11px; font-weight:500; color:hsl(var(--muted-foreground)); text-transform:uppercase; letter-spacing:0.3px; }
+        .stat-card .stat-value { font-size:20px; font-weight:700; margin-top:4px; }
+        .stat-card .stat-sub { font-size:11px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .filters-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; background:hsl(var(--card)); padding:12px 16px; border-radius:var(--radius); border:1px solid hsl(var(--border)); }
+        .filters-bar select, .filters-bar input { padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .filters-bar select:focus, .filters-bar input:focus { border-color:hsl(var(--ring)); }
+
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; padding:10px 12px; background:hsl(var(--muted)); font-weight:600; color:hsl(var(--muted-foreground)); border-bottom:2px solid hsl(var(--border)); cursor:pointer; user-select:none; }
+        th:hover { background:hsl(var(--accent)); }
+        th .sort-icon { margin-left:4px; font-size:11px; }
+        td { padding:10px 12px; border-bottom:1px solid hsl(var(--border)); vertical-align:middle; }
+        tr:hover td { background:hsl(var(--accent)); }
+
+        .theme-btn { padding:4px 10px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); cursor:pointer; font-size:12px; display:flex; align-items:center; gap:4px; }
+
+        .pagination {
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+            padding:12px 0 0 0; border-top:1px solid hsl(var(--border)); margin-top:12px;
+        }
+        .pagination .page-info { font-size:13px; color:hsl(var(--muted-foreground)); }
+        .pagination .page-buttons { display:flex; gap:4px; flex-wrap:wrap; }
+        .pagination .page-btn {
+            padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border));
+            background:hsl(var(--background)); cursor:pointer; font-size:13px; transition:all 0.15s ease;
+            color:hsl(var(--foreground)); min-width:36px; text-align:center;
+        }
+        .pagination .page-btn:hover { background:hsl(var(--accent)); border-color:hsl(var(--ring)); }
+        .pagination .page-btn.active { background:hsl(var(--primary)); color:#fff; border-color:hsl(var(--primary)); }
+        .pagination .page-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+        .app-footer {
+            margin-top: auto;
+            padding: 16px 32px;
+            border-top: 1px solid hsl(var(--border));
+            background: hsl(var(--card));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .app-footer .footer-links { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+        .app-footer .footer-links a { color:hsl(var(--muted-foreground)); text-decoration:none; transition:color 0.15s ease; cursor:pointer; }
+        .app-footer .footer-links a:hover { color:hsl(var(--foreground)); }
+
+        .modal-overlay {
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
+            z-index:1000; align-items:center; justify-content:center;
+        }
+        .modal-overlay.show { display:flex; }
+        .modal-box {
+            background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border));
+            box-shadow:var(--shadow-lg); max-width:600px; width:95%; max-height:85vh; overflow-y:auto;
+            padding:24px; animation:slideUp 0.2s ease;
+        }
+        .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+        .modal-title { font-size:20px; font-weight:700; }
+        .modal-close { background:none; border:none; font-size:24px; cursor:pointer; color:hsl(var(--muted-foreground)); }
+        .modal-footer { display:flex; justify-content:flex-end; gap:8px; padding-top:16px; border-top:1px solid hsl(var(--border)); margin-top:16px; }
+
+        .settings-group { margin-bottom:16px; }
+        .settings-group label { display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+        .settings-group input, .settings-group select, .settings-group textarea { width:100%; padding:8px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; font-family:inherit; }
+        .settings-group input:focus, .settings-group select:focus, .settings-group textarea:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+
+        /* Facility specific */
+        .facility-type-icon { font-size:20px; width:32px; text-align:center; }
+
+        @media (max-width:1400px) { .stats-grid { grid-template-columns:repeat(4,1fr); } }
+        @media (max-width:992px) {
+            .sidebar { transform:translateX(-100%); width:280px; }
+            .sidebar.open { transform:translateX(0); }
+            .main-content { margin-left:0; }
+            .top-header { padding:0 16px; }
+            .main-body { padding:16px; }
+            .header-search { display:none; }
+            .mobile-menu-btn { display:flex !important; }
+            .app-footer { flex-direction:column; text-align:center; padding:16px; }
+            .app-footer .footer-links { justify-content:center; }
+        }
+        @media (max-width:768px) {
+            .stats-grid { grid-template-columns:repeat(2,1fr); }
+            .pagination { flex-direction:column; align-items:stretch; }
+            .pagination .page-buttons { justify-content:center; }
+            .filters-bar { flex-direction:column; align-items:stretch; }
+        }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">🌱</div><span class="logo-text">CarbonTally</span></div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-section-title">Main</div>
+            <button class="sidebar-item"><span class="icon">🏠</span> Dashboard</button>
+            <button class="sidebar-item"><span class="icon">📁</span> Documents</button>
+            <button class="sidebar-item"><span class="icon">📦</span> Batch Management</button>
+            <button class="sidebar-item"><span class="icon">👤</span> Profile</button>
+            <button class="sidebar-item"><span class="icon">📊</span> Export History</button>
+            <button class="sidebar-item active"><span class="icon">🏭</span> Facilities</button>
+            <button class="sidebar-item"><span class="icon">💬</span> Feedback</button>
+            <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+            <button class="sidebar-item"><span class="icon">📋</span> Audit Logs</button>
+            <button class="sidebar-item"><span class="icon">⚙️</span> Settings</button>
+        </nav>
+        <div style="padding:16px 20px; border-top:1px solid hsl(var(--sidebar-border));">
+            <button class="sidebar-item"><span class="icon">❓</span> Help</button>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                <div class="header-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search facilities..." id="globalSearch" /></div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" id="themeToggle"><i class="fas fa-palette"></i> <span id="currentThemeName">Forest</span></button>
+                <div class="header-user"><div class="avatar">JD</div><div><div class="user-name">John Doe</div><div class="user-role">Admin</div></div></div>
+            </div>
+        </header>
+
+        <div class="main-body">
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+                <div><h1>🏭 Facility Management</h1><p>Manage facilities, assets, and locations across your organization.</p></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" onclick="openFacilityModal()"><i class="fas fa-plus"></i> Add Facility</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+            </div>
+
+            <!-- STATS -->
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">🏭 Total Facilities</div><div class="stat-value" id="totalFacilities">0</div><div class="stat-sub">active locations</div></div>
+                <div class="stat-card"><div class="stat-label">✅ Active</div><div class="stat-value" id="activeFacilities">0</div><div class="stat-sub">operational</div></div>
+                <div class="stat-card"><div class="stat-label">⏸️ Inactive</div><div class="stat-value" id="inactiveFacilities">0</div><div class="stat-sub">closed/maintenance</div></div>
+                <div class="stat-card"><div class="stat-label">📐 Total Area</div><div class="stat-value" id="totalArea">0</div><div class="stat-sub">sq ft</div></div>
+                <div class="stat-card"><div class="stat-label">📍 Countries</div><div class="stat-value" id="countryCount">0</div><div class="stat-sub">locations</div></div>
+                <div class="stat-card"><div class="stat-label">🔧 Assets</div><div class="stat-value" id="totalAssets">0</div><div class="stat-sub">equipment</div></div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="filters-bar">
+                <select id="typeFilter">
+                    <option value="all">All Types</option>
+                    <option value="office">Office</option>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="manufacturing">Manufacturing</option>
+                    <option value="retail">Retail</option>
+                    <option value="data_center">Data Center</option>
+                    <option value="laboratory">Laboratory</option>
+                </select>
+                <select id="statusFilter">
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+                <select id="countryFilter">
+                    <option value="all">All Countries</option>
+                    <option value="UK">United Kingdom</option>
+                    <option value="US">United States</option>
+                    <option value="DE">Germany</option>
+                    <option value="FR">France</option>
+                    <option value="ES">Spain</option>
+                    <option value="IT">Italy</option>
+                    <option value="NL">Netherlands</option>
+                </select>
+                <button class="btn btn-sm btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply</button>
+                <button class="btn btn-sm btn-ghost" onclick="clearFilters()"><i class="fas fa-times"></i> Clear</button>
+                <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 facilities</span>
+            </div>
+
+            <!-- FACILITY TABLE -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📋 Facilities List</div>
+                    <span class="badge badge-primary" id="facilityCount">0</span>
+                </div>
+                <div class="card-content" style="padding:0 20px 20px 20px;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th onclick="sortBy('name')" style="min-width:180px;">Facility <span class="sort-icon" id="sort-name">↕</span></th>
+                                    <th onclick="sortBy('type')" style="min-width:120px;">Type <span class="sort-icon" id="sort-type">↕</span></th>
+                                    <th onclick="sortBy('location')" style="min-width:150px;">Location <span class="sort-icon" id="sort-location">↕</span></th>
+                                    <th onclick="sortBy('area')" style="min-width:100px;">Area <span class="sort-icon" id="sort-area">↕</span></th>
+                                    <th onclick="sortBy('assets')" style="min-width:80px;">Assets <span class="sort-icon" id="sort-assets">↕</span></th>
+                                    <th onclick="sortBy('status')" style="min-width:120px;">Status <span class="sort-icon" id="sort-status">↕</span></th>
+                                    <th onclick="sortBy('createdAt')" style="min-width:150px;">Created <span class="sort-icon" id="sort-createdAt">↕</span></th>
+                                    <th style="min-width:100px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="facilityTableBody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination" id="pagination">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- FOOTER -->
+        <footer class="app-footer">
+            <div>
+                <span>© 2026 CarbonTally Ltd. All rights reserved.</span>
+            </div>
+            <div class="footer-links">
+                <a href="#" onclick="showToast('📄 Privacy Policy')">Privacy Policy</a>
+                <a href="#" onclick="showToast('📄 Terms of Service')">Terms of Service</a>
+                <a href="#" onclick="showToast('📄 Cookie Policy')">Cookie Policy</a>
+                <a href="#" onclick="showToast('📧 support@carbontally.com')">Support</a>
+                <span>v3.2.1</span>
+            </div>
+        </footer>
+    </div>
+</div>
+
+<!-- ===== FACILITY MODAL ===== -->
+<div class="modal-overlay" id="facilityModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-building"></i> <span id="modalTitle">Add Facility</span></div>
+            <button class="modal-close" onclick="closeFacilityModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Facility Name *</label>
+                <input type="text" id="facilityName" placeholder="Enter facility name" />
+            </div>
+            <div class="settings-group">
+                <label>Type *</label>
+                <select id="facilityType">
+                    <option value="office">Office</option>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="manufacturing">Manufacturing</option>
+                    <option value="retail">Retail</option>
+                    <option value="data_center">Data Center</option>
+                    <option value="laboratory">Laboratory</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Country *</label>
+                <select id="facilityCountry">
+                    <option value="UK">United Kingdom</option>
+                    <option value="US">United States</option>
+                    <option value="DE">Germany</option>
+                    <option value="FR">France</option>
+                    <option value="ES">Spain</option>
+                    <option value="IT">Italy</option>
+                    <option value="NL">Netherlands</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>City</label>
+                <input type="text" id="facilityCity" placeholder="Enter city" />
+            </div>
+            <div class="settings-group">
+                <label>Address</label>
+                <input type="text" id="facilityAddress" placeholder="Enter street address" />
+            </div>
+            <div class="settings-group">
+                <label>Area (sq ft)</label>
+                <input type="number" id="facilityArea" placeholder="Enter area in sq ft" />
+            </div>
+            <div class="settings-group">
+                <label>Status</label>
+                <select id="facilityStatus">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeFacilityModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveFacility()"><i class="fas fa-save"></i> Save Facility</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        "use strict";
+
+        // ===== THEMES =====
+        const themes = [
+            { id: 'forest', name: 'Forest Green' },
+            { id: 'emerald', name: 'Emerald' },
+            { id: 'teal', name: 'Teal' },
+            { id: 'navy', name: 'Navy' },
+            { id: 'slate', name: 'Slate' },
+            { id: 'warm-grey', name: 'Warm Grey' },
+            { id: 'purple', name: 'Purple' },
+            { id: 'rose', name: 'Rose' },
+            { id: 'carbon', name: 'Carbon' }
+        ];
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+
+        function setTheme(id) {
+            currentTheme = id;
+            document.documentElement.setAttribute('data-theme', id);
+            localStorage.setItem('carbontally-theme', id);
+            const t = themes.find(th => th.id === id);
+            if (t) document.getElementById('currentThemeName').textContent = t.name;
+        }
+        setTheme(currentTheme);
+
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const idx = themes.findIndex(t => t.id === currentTheme);
+            const next = (idx + 1) % themes.length;
+            setTheme(themes[next].id);
+        });
+
+        // ===== MOCK DATA =====
+
+        const typeIcons = {
+            'office': '🏢',
+            'warehouse': '🏗️',
+            'manufacturing': '🏭',
+            'retail': '🛍️',
+            'data_center': '💻',
+            'laboratory': '🔬'
+        };
+
+        const typeLabels = {
+            'office': 'Office',
+            'warehouse': 'Warehouse',
+            'manufacturing': 'Manufacturing',
+            'retail': 'Retail',
+            'data_center': 'Data Center',
+            'laboratory': 'Laboratory'
+        };
+
+        let facilities = [
+            {
+                id: 'f1',
+                name: 'London Headquarters',
+                type: 'office',
+                location: 'London, UK',
+                city: 'London',
+                country: 'UK',
+                address: '123 Oxford Street',
+                area: 45000,
+                assets: 12,
+                status: 'active',
+                createdAt: '2024-01-15',
+                updatedAt: '2026-01-15'
+            },
+            {
+                id: 'f2',
+                name: 'Manchester Distribution Center',
+                type: 'warehouse',
+                location: 'Manchester, UK',
+                city: 'Manchester',
+                country: 'UK',
+                address: '456 Industrial Estate',
+                area: 120000,
+                assets: 8,
+                status: 'active',
+                createdAt: '2024-03-20',
+                updatedAt: '2026-01-14'
+            },
+            {
+                id: 'f3',
+                name: 'Berlin Manufacturing Plant',
+                type: 'manufacturing',
+                location: 'Berlin, DE',
+                city: 'Berlin',
+                country: 'DE',
+                address: '789 Production Strasse',
+                area: 85000,
+                assets: 45,
+                status: 'active',
+                createdAt: '2024-06-10',
+                updatedAt: '2026-01-13'
+            },
+            {
+                id: 'f4',
+                name: 'Paris Retail Store',
+                type: 'retail',
+                location: 'Paris, FR',
+                city: 'Paris',
+                country: 'FR',
+                address: '321 Champs-Élysées',
+                area: 2500,
+                assets: 3,
+                status: 'active',
+                createdAt: '2024-08-01',
+                updatedAt: '2026-01-12'
+            },
+            {
+                id: 'f5',
+                name: 'Amsterdam Data Center',
+                type: 'data_center',
+                location: 'Amsterdam, NL',
+                city: 'Amsterdam',
+                country: 'NL',
+                address: '654 Cloud Boulevard',
+                area: 32000,
+                assets: 78,
+                status: 'active',
+                createdAt: '2024-09-15',
+                updatedAt: '2026-01-11'
+            },
+            {
+                id: 'f6',
+                name: 'Birmingham Office',
+                type: 'office',
+                location: 'Birmingham, UK',
+                city: 'Birmingham',
+                country: 'UK',
+                address: '987 Business Park',
+                area: 18000,
+                assets: 6,
+                status: 'maintenance',
+                createdAt: '2024-10-20',
+                updatedAt: '2026-01-10'
+            },
+            {
+                id: 'f7',
+                name: 'Madrid Research Lab',
+                type: 'laboratory',
+                location: 'Madrid, ES',
+                city: 'Madrid',
+                country: 'ES',
+                address: '147 Calle de la Ciencia',
+                area: 15000,
+                assets: 34,
+                status: 'active',
+                createdAt: '2024-11-05',
+                updatedAt: '2026-01-09'
+            },
+            {
+                id: 'f8',
+                name: 'Milan Warehouse',
+                type: 'warehouse',
+                location: 'Milan, IT',
+                city: 'Milan',
+                country: 'IT',
+                address: '258 Via Logistico',
+                area: 95000,
+                assets: 15,
+                status: 'inactive',
+                createdAt: '2024-12-01',
+                updatedAt: '2025-12-01'
+            },
+            {
+                id: 'f9',
+                name: 'Frankfurt Data Center',
+                type: 'data_center',
+                location: 'Frankfurt, DE',
+                city: 'Frankfurt',
+                country: 'DE',
+                address: '369 Server Strasse',
+                area: 28000,
+                assets: 56,
+                status: 'active',
+                createdAt: '2025-01-15',
+                updatedAt: '2026-01-08'
+            },
+            {
+                id: 'f10',
+                name: 'Glasgow Office',
+                type: 'office',
+                location: 'Glasgow, UK',
+                city: 'Glasgow',
+                country: 'UK',
+                address: '741 Finance Street',
+                area: 12000,
+                assets: 4,
+                status: 'active',
+                createdAt: '2025-02-20',
+                updatedAt: '2026-01-07'
+            },
+            {
+                id: 'f11',
+                name: 'Barcelona Innovation Hub',
+                type: 'office',
+                location: 'Barcelona, ES',
+                city: 'Barcelona',
+                country: 'ES',
+                address: '852 Innovation Avenue',
+                area: 22000,
+                assets: 9,
+                status: 'maintenance',
+                createdAt: '2025-03-10',
+                updatedAt: '2026-01-06'
+            },
+            {
+                id: 'f12',
+                name: 'Rotterdam Port Facility',
+                type: 'warehouse',
+                location: 'Rotterdam, NL',
+                city: 'Rotterdam',
+                country: 'NL',
+                address: '963 Harbor Road',
+                area: 150000,
+                assets: 22,
+                status: 'active',
+                createdAt: '2025-04-01',
+                updatedAt: '2026-01-05'
+            },
+            {
+                id: 'f13',
+                name: 'Lyon Manufacturing',
+                type: 'manufacturing',
+                location: 'Lyon, FR',
+                city: 'Lyon',
+                country: 'FR',
+                address: '147 Industrial Zone',
+                area: 62000,
+                assets: 38,
+                status: 'active',
+                createdAt: '2025-05-15',
+                updatedAt: '2026-01-04'
+            },
+            {
+                id: 'f14',
+                name: 'Dublin Tech Hub',
+                type: 'office',
+                location: 'Dublin, IE',
+                city: 'Dublin',
+                country: 'IE',
+                address: '258 Tech Park',
+                area: 16000,
+                assets: 5,
+                status: 'active',
+                createdAt: '2025-06-20',
+                updatedAt: '2026-01-03'
+            },
+            {
+                id: 'f15',
+                name: 'Rome Retail Store',
+                type: 'retail',
+                location: 'Rome, IT',
+                city: 'Rome',
+                country: 'IT',
+                address: '369 Via del Corso',
+                area: 1800,
+                assets: 2,
+                status: 'inactive',
+                createdAt: '2025-07-10',
+                updatedAt: '2025-12-10'
+            }
+        ];
+
+        // ===== STATE =====
+        let filteredFacilities = [...facilities];
+        let currentPage = 1;
+        let perPage = 10;
+        let currentSort = { field: 'name', direction: 'asc' };
+        let editingId = null;
+
+        // ===== DOM REFS =====
+        const tableBody = document.getElementById('facilityTableBody');
+        const facilityCount = document.getElementById('facilityCount');
+        const filterCount = document.getElementById('filterCount');
+        const pagination = document.getElementById('pagination');
+        const totalFacilities = document.getElementById('totalFacilities');
+        const activeFacilities = document.getElementById('activeFacilities');
+        const inactiveFacilities = document.getElementById('inactiveFacilities');
+        const totalArea = document.getElementById('totalArea');
+        const countryCount = document.getElementById('countryCount');
+        const totalAssets = document.getElementById('totalAssets');
+
+        // ===== RENDER FUNCTIONS =====
+
+        function getStatusBadge(status) {
+            const map = {
+                'active': '<span class="badge badge-success"><i class="fas fa-circle"></i> Active</span>',
+                'inactive': '<span class="badge badge-muted"><i class="fas fa-circle"></i> Inactive</span>',
+                'maintenance': '<span class="badge badge-warning"><i class="fas fa-tools"></i> Maintenance</span>'
+            };
+            return map[status] || status;
+        }
+
+        function getTypeIcon(type) {
+            return typeIcons[type] || '🏢';
+        }
+
+        function getTypeLabel(type) {
+            return typeLabels[type] || type;
+        }
+
+        function renderStats(data) {
+            const total = data.length;
+            const active = data.filter(f => f.status === 'active').length;
+            const inactive = data.filter(f => f.status === 'inactive').length;
+            const area = data.reduce((sum, f) => sum + (f.area || 0), 0);
+            const countries = new Set(data.map(f => f.country)).size;
+            const assets = data.reduce((sum, f) => sum + (f.assets || 0), 0);
+
+            totalFacilities.textContent = total;
+            activeFacilities.textContent = active;
+            inactiveFacilities.textContent = inactive;
+            totalArea.textContent = area.toLocaleString();
+            countryCount.textContent = countries;
+            totalAssets.textContent = assets;
+        }
+
+        function sortData(data, field, direction) {
+            const sorted = [...data];
+            sorted.sort((a, b) => {
+                let aVal = a[field];
+                let bVal = b[field];
+                
+                if (field === 'area' || field === 'assets') {
+                    aVal = aVal || 0;
+                    bVal = bVal || 0;
+                }
+                
+                if (typeof aVal === 'string') {
+                    return direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            });
+            return sorted;
+        }
+
+        function applyFilters() {
+            const type = document.getElementById('typeFilter').value;
+            const status = document.getElementById('statusFilter').value;
+            const country = document.getElementById('countryFilter').value;
+            const search = document.getElementById('globalSearch').value.toLowerCase().trim();
+
+            let filtered = [...facilities];
+
+            if (type !== 'all') {
+                filtered = filtered.filter(f => f.type === type);
+            }
+
+            if (status !== 'all') {
+                filtered = filtered.filter(f => f.status === status);
+            }
+
+            if (country !== 'all') {
+                filtered = filtered.filter(f => f.country === country);
+            }
+
+            if (search) {
+                filtered = filtered.filter(f => 
+                    f.name.toLowerCase().includes(search) ||
+                    f.location.toLowerCase().includes(search) ||
+                    f.city.toLowerCase().includes(search) ||
+                    f.address.toLowerCase().includes(search)
+                );
+            }
+
+            filtered = sortData(filtered, currentSort.field, currentSort.direction);
+            filteredFacilities = filtered;
+            currentPage = 1;
+            
+            renderStats(facilities);
+            renderTable(filtered);
+            renderPagination(filtered.length);
+        }
+
+        function renderTable(data) {
+            const start = (currentPage - 1) * perPage;
+            const end = Math.min(start + perPage, data.length);
+            const pageItems = data.slice(start, end);
+
+            if (!pageItems || pageItems.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:hsl(var(--muted-foreground));">
+                    <i class="fas fa-building" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px;"></i>
+                    No facilities found
+                </td></tr>`;
+                facilityCount.textContent = '0';
+                filterCount.textContent = '0 facilities';
+                return;
+            }
+
+            const html = pageItems.map(f => {
+                return `
+                    <tr>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <span class="facility-type-icon">${getTypeIcon(f.type)}</span>
+                                <div>
+                                    <div style="font-weight:500;">${f.name}</div>
+                                    <div style="font-size:11px;color:hsl(var(--muted-foreground));">${f.address}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge badge-secondary">${getTypeLabel(f.type)}</span></td>
+                        <td>
+                            <div>${f.city}</div>
+                            <div style="font-size:11px;color:hsl(var(--muted-foreground));">${f.country}</div>
+                        </td>
+                        <td style="text-align:right;">${(f.area || 0).toLocaleString()}</td>
+                        <td style="text-align:center;">${f.assets || 0}</td>
+                        <td>${getStatusBadge(f.status)}</td>
+                        <td style="font-size:12px;color:hsl(var(--muted-foreground));">${f.createdAt}</td>
+                        <td>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                <button class="btn btn-sm btn-ghost" onclick="editFacility('${f.id}')"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-sm btn-ghost" onclick="viewFacility('${f.id}')"><i class="fas fa-info-circle"></i></button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteFacility('${f.id}')"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            tableBody.innerHTML = html;
+            facilityCount.textContent = data.length;
+            filterCount.textContent = data.length + ' facilities';
+        }
+
+        function renderPagination(total) {
+            const totalPages = Math.ceil(total / perPage);
+            const start = (currentPage - 1) * perPage + 1;
+            const end = Math.min(currentPage * perPage, total);
+
+            if (totalPages <= 1) {
+                pagination.innerHTML = `
+                    <div class="page-info">Showing ${total} facilities</div>
+                    <div class="page-buttons"></div>
+                `;
+                return;
+            }
+
+            let buttons = '';
+            buttons += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>&laquo;</button>`;
+            
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, currentPage + 2);
+            
+            if (startPage > 1) {
+                buttons += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+                if (startPage > 2) buttons += `<span style="padding:0 4px;">...</span>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                buttons += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) buttons += `<span style="padding:0 4px;">...</span>`;
+                buttons += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            }
+            
+            buttons += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>&raquo;</button>`;
+
+            pagination.innerHTML = `
+                <div class="page-info">Showing ${start}-${end} of ${total} facilities</div>
+                <div class="page-buttons">${buttons}</div>
+            `;
+        }
+
+        // ===== SORTING =====
+        window.sortBy = function(field) {
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = field === 'createdAt' ? 'desc' : 'asc';
+            }
+            currentPage = 1;
+            
+            document.querySelectorAll('.sort-icon').forEach(el => {
+                el.textContent = '↕';
+            });
+            const icon = document.getElementById(`sort-${field}`);
+            if (icon) {
+                icon.textContent = currentSort.direction === 'asc' ? '↑' : '↓';
+            }
+            
+            applyFilters();
+        };
+
+        // ===== PAGINATION =====
+        window.goToPage = function(page) {
+            const totalPages = Math.ceil(filteredFacilities.length / perPage);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            applyFilters();
+            document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        // ===== FACILITY CRUD =====
+        window.openFacilityModal = function(facilityId) {
+            editingId = facilityId || null;
+            const modal = document.getElementById('facilityModal');
+            const title = document.getElementById('modalTitle');
+            
+            if (editingId) {
+                const facility = facilities.find(f => f.id === editingId);
+                if (facility) {
+                    title.textContent = 'Edit Facility';
+                    document.getElementById('facilityName').value = facility.name;
+                    document.getElementById('facilityType').value = facility.type;
+                    document.getElementById('facilityCountry').value = facility.country;
+                    document.getElementById('facilityCity').value = facility.city;
+                    document.getElementById('facilityAddress').value = facility.address;
+                    document.getElementById('facilityArea').value = facility.area || '';
+                    document.getElementById('facilityStatus').value = facility.status;
+                }
+            } else {
+                title.textContent = 'Add Facility';
+                document.getElementById('facilityName').value = '';
+                document.getElementById('facilityType').value = 'office';
+                document.getElementById('facilityCountry').value = 'UK';
+                document.getElementById('facilityCity').value = '';
+                document.getElementById('facilityAddress').value = '';
+                document.getElementById('facilityArea').value = '';
+                document.getElementById('facilityStatus').value = 'active';
+            }
+            modal.classList.add('show');
+        };
+
+        window.closeFacilityModal = function() {
+            document.getElementById('facilityModal').classList.remove('show');
+            editingId = null;
+        };
+
+        window.saveFacility = function() {
+            const name = document.getElementById('facilityName').value.trim();
+            const type = document.getElementById('facilityType').value;
+            const country = document.getElementById('facilityCountry').value;
+            const city = document.getElementById('facilityCity').value.trim();
+            const address = document.getElementById('facilityAddress').value.trim();
+            const area = parseInt(document.getElementById('facilityArea').value) || 0;
+            const status = document.getElementById('facilityStatus').value;
+
+            if (!name) {
+                alert('⚠️ Please enter a facility name.');
+                return;
+            }
+
+            if (editingId) {
+                const facility = facilities.find(f => f.id === editingId);
+                if (facility) {
+                    facility.name = name;
+                    facility.type = type;
+                    facility.country = country;
+                    facility.city = city || facility.city;
+                    facility.address = address || facility.address;
+                    facility.area = area;
+                    facility.status = status;
+                    facility.location = `${city || facility.city}, ${country}`;
+                    facility.updatedAt = new Date().toISOString().slice(0,10);
+                    showToast('✅ Facility updated successfully!');
+                }
+            } else {
+                const newFacility = {
+                    id: 'f' + (facilities.length + 1),
+                    name: name,
+                    type: type,
+                    country: country,
+                    city: city || 'Unknown',
+                    address: address || 'N/A',
+                    area: area,
+                    assets: 0,
+                    status: status,
+                    location: `${city || 'Unknown'}, ${country}`,
+                    createdAt: new Date().toISOString().slice(0,10),
+                    updatedAt: new Date().toISOString().slice(0,10)
+                };
+                facilities.unshift(newFacility);
+                showToast('✅ Facility added successfully!');
+            }
+
+            closeFacilityModal();
+            applyFilters();
+        };
+
+        window.editFacility = function(id) {
+            openFacilityModal(id);
+        };
+
+        window.viewFacility = function(id) {
+            const facility = facilities.find(f => f.id === id);
+            if (!facility) return;
+
+            alert(
+                `🏭 Facility Details\n\n` +
+                `Name: ${facility.name}\n` +
+                `Type: ${getTypeLabel(facility.type)}\n` +
+                `Location: ${facility.location}\n` +
+                `Address: ${facility.address}\n` +
+                `Area: ${(facility.area || 0).toLocaleString()} sq ft\n` +
+                `Assets: ${facility.assets || 0}\n` +
+                `Status: ${facility.status}\n` +
+                `Created: ${facility.createdAt}\n` +
+                `Last Updated: ${facility.updatedAt}`
+            );
+        };
+
+        window.deleteFacility = function(id) {
+            const facility = facilities.find(f => f.id === id);
+            if (!facility) return;
+
+            if (confirm(`Are you sure you want to delete "${facility.name}"?`)) {
+                facilities = facilities.filter(f => f.id !== id);
+                applyFilters();
+                showToast('🗑️ Facility deleted successfully!');
+            }
+        };
+
+        // ===== FILTERS =====
+        window.applyFilters = function() {
+            applyFilters();
+        };
+
+        window.clearFilters = function() {
+            document.getElementById('typeFilter').value = 'all';
+            document.getElementById('statusFilter').value = 'all';
+            document.getElementById('countryFilter').value = 'all';
+            document.getElementById('globalSearch').value = '';
+            currentPage = 1;
+            applyFilters();
+        };
+
+        window.refreshData = function() {
+            showToast('🔄 Refreshing facility data...');
+            setTimeout(() => {
+                applyFilters();
+                showToast('✅ Data refreshed successfully!');
+            }, 500);
+        };
+
+        // ===== TOAST =====
+        window.showToast = function(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed; bottom: 80px; right: 24px; 
+                background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+                border-radius: var(--radius); padding: 12px 20px;
+                box-shadow: var(--shadow-lg); z-index: 2000;
+                font-size: 14px; color: hsl(var(--foreground));
+                animation: slideUp 0.3s ease;
+                max-width: 400px;
+            `;
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+
+        // ===== EVENT LISTENERS =====
+
+        document.getElementById('globalSearch').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                currentPage = 1;
+                applyFilters();
+            }
+        });
+
+        // Modal close
+        document.querySelectorAll('.modal-close').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.closest('.modal-overlay').classList.remove('show');
+            });
+        });
+
+        document.getElementById('facilityModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('show');
+            }
+        });
+
+        // Mobile menu
+        document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
+
+        // ===== INIT =====
+        applyFilters();
+
+        console.log('🏭 CarbonTally - Facility Management Module Loaded');
+        console.log('📊 ' + facilities.length + ' facilities tracked');
+        console.log('📍 ' + new Set(facilities.map(f => f.country)).size + ' countries');
+
+    })();
+</script>
+</body>
+</html>

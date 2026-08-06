@@ -1,4 +1,4 @@
-// OrganizationMetadata.jsx - Complete with Backend API
+// OrganizationMetadata.jsx - Updated with Individual Endpoints
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
@@ -6,33 +6,55 @@ import './css/OrganizationMetadata.css';
 import toast from 'react-hot-toast';
 
 function OrganizationMetadata({ organization, userRole }) {
-  const [metadata, setMetadata] = useState({
+  // State for all metadata sections
+  const [orgData, setOrgData] = useState({
+    name: '',
+    company_number: '',
+    country: 'UK',
+    timezone: 'Europe/London',
+    currency: 'GBP',
+    reporting_standard: 'SECR',
+    website: '',
+  });
+
+  const [employeeData, setEmployeeData] = useState({
     total_employees: 0,
     full_time_employees: 0,
     part_time_employees: 0,
     contract_employees: 0,
     average_employees: 0,
+  });
+
+  const [financialData, setFinancialData] = useState({
     annual_revenue: 0,
     ebitda: 0,
     total_assets: 0,
-    total_facilities: 0,
-    total_floor_area_sqft: 0,
-    occupied_floor_area_sqft: 0,
+    fiscal_year_start: '',
+    fiscal_year_end: '',
+  });
+
+  const [sustainabilityData, setSustainabilityData] = useState({
     renewable_energy_percentage: 0,
     carbon_offset_percentage: 0,
     energy_intensity: 0,
     reporting_standard: 'SECR',
-    fiscal_year_start: '',
-    fiscal_year_end: '',
+  });
+
+  const [contactData, setContactData] = useState({
     primary_contact_name: '',
     primary_contact_email: '',
     primary_contact_phone: '',
     sustainability_officer_name: '',
     sustainability_officer_email: '',
+  });
+
+  const [industryData, setIndustryData] = useState({
     industry_sector: '',
     naics_code: '',
     sic_code: '',
   });
+
+  const [customMetrics, setCustomMetrics] = useState({});
   
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -46,14 +68,25 @@ function OrganizationMetadata({ organization, userRole }) {
     return session?.access_token || localStorage.getItem('access_token');
   };
 
+  // ============================================
+  // FETCH ALL METADATA SECTIONS
+  // ============================================
   const fetchMetadata = async () => {
+    if (!organization?.id) {
+      console.log('⏳ Waiting for organization...');
+      setFetching(false);
+      return;
+    }
+
     try {
       setFetching(true);
       setError(null);
       const token = await getToken();
-      
-      const response = await fetch(
-        `${API_URL}/organizations/${organization.id}/metadata`,
+      const orgId = organization.id;
+
+      // Fetch organization data
+      const orgResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -62,22 +95,88 @@ function OrganizationMetadata({ organization, userRole }) {
         }
       );
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.data) {
-          setMetadata({
-            ...metadata,
-            ...result.data,
-            fiscal_year_start: result.data.fiscal_year_start || '',
-            fiscal_year_end: result.data.fiscal_year_end || '',
-          });
-        }
-      } else if (response.status === 401) {
-        toast.error('Session expired. Please refresh the page.');
-      } else {
-        console.error('Failed to fetch metadata:', response.status);
-        setError('Failed to load organization data');
+      if (orgResponse.ok) {
+        const data = await orgResponse.json();
+        setOrgData({
+          name: data.name || '',
+          company_number: data.company_number || '',
+          country: data.country || 'UK',
+          timezone: data.timezone || 'Europe/London',
+          currency: data.currency || 'GBP',
+          reporting_standard: data.reporting_standard || 'SECR',
+          website: data.website || '',
+        });
       }
+
+      // Fetch all metadata sections in parallel
+      const [employeeRes, financialRes, sustainabilityRes, contactRes, industryRes, customRes] = await Promise.all([
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/employees`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/financials`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/sustainability`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/contacts`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/industry`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/api/organizations/${orgId}/metadata/custom-metrics`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+      ]);
+
+      // Process employee data
+      if (employeeRes.ok) {
+        const data = await employeeRes.json();
+        setEmployeeData(data.data || {});
+      }
+
+      // Process financial data
+      if (financialRes.ok) {
+        const data = await financialRes.json();
+        setFinancialData({
+          annual_revenue: data.data?.annual_revenue || 0,
+          ebitda: data.data?.ebitda || 0,
+          total_assets: data.data?.total_assets || 0,
+          fiscal_year_start: data.data?.fiscal_year_start || '',
+          fiscal_year_end: data.data?.fiscal_year_end || '',
+        });
+      }
+
+      // Process sustainability data
+      if (sustainabilityRes.ok) {
+        const data = await sustainabilityRes.json();
+        setSustainabilityData({
+          renewable_energy_percentage: data.data?.renewable_energy_percentage || 0,
+          carbon_offset_percentage: data.data?.carbon_offset_percentage || 0,
+          energy_intensity: data.data?.energy_intensity || 0,
+          reporting_standard: data.data?.reporting_standard || 'SECR',
+        });
+      }
+
+      // Process contact data
+      if (contactRes.ok) {
+        const data = await contactRes.json();
+        setContactData(data.data || {});
+      }
+
+      // Process industry data
+      if (industryRes.ok) {
+        const data = await industryRes.json();
+        setIndustryData(data.data || {});
+      }
+
+      // Process custom metrics
+      if (customRes.ok) {
+        const data = await customRes.json();
+        setCustomMetrics(data.data || {});
+      }
+
     } catch (error) {
       console.error('Error fetching metadata:', error);
       setError('Failed to load organization data');
@@ -89,56 +188,191 @@ function OrganizationMetadata({ organization, userRole }) {
   useEffect(() => {
     if (organization?.id) {
       fetchMetadata();
+    } else {
+      setFetching(false);
     }
   }, [organization?.id]);
 
-  const handleInputChange = (field, value) => {
-    setMetadata(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  // ============================================
+  // HANDLE CHANGES
+  // ============================================
+  const handleOrgChange = (field, value) => {
+    setOrgData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleNumberChange = (field, value) => {
-    const numValue = parseFloat(value) || 0;
-    setMetadata(prev => ({
-      ...prev,
-      [field]: numValue
-    }));
+  const handleEmployeeChange = (field, value) => {
+    const numValue = value === '' ? 0 : parseFloat(value) || 0;
+    setEmployeeData(prev => ({ ...prev, [field]: numValue }));
   };
 
+  const handleFinancialChange = (field, value) => {
+    const numValue = value === '' ? 0 : parseFloat(value) || 0;
+    setFinancialData(prev => ({ ...prev, [field]: numValue }));
+  };
+
+  const handleSustainabilityChange = (field, value) => {
+    const numValue = value === '' ? 0 : parseFloat(value) || 0;
+    setSustainabilityData(prev => ({ ...prev, [field]: numValue }));
+  };
+
+  const handleContactChange = (field, value) => {
+    setContactData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleIndustryChange = (field, value) => {
+    setIndustryData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // ============================================
+  // SAVE ALL METADATA SECTIONS
+  // ============================================
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!organization?.id) {
+      toast.error('No organization found. Please set up your organization first.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const token = await getToken();
-      
-      const response = await fetch(
-        `${API_URL}/organizations/${organization.id}/metadata`,
+      const orgId = organization.id;
+      let hasError = false;
+
+      // Step 1: Update organization
+      const orgPayload = {
+        name: orgData.name,
+        company_number: orgData.company_number || null,
+        country: orgData.country || 'UK',
+        timezone: orgData.timezone || 'Europe/London',
+        currency: orgData.currency || 'GBP',
+        reporting_standard: orgData.reporting_standard || 'SECR',
+        website: orgData.website || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const orgResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}`,
         {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify(metadata),
+          body: JSON.stringify(orgPayload),
         }
       );
 
-      if (response.ok) {
-        const result = await response.json();
-        toast.success('✅ Organization data saved successfully!');
-        if (result.data) {
-          setMetadata({ ...metadata, ...result.data });
-        }
-      } else if (response.status === 401) {
-        toast.error('Session expired. Please refresh the page.');
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.detail || 'Failed to save organization data');
+      if (!orgResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update organization details');
       }
+
+      // Step 2: Update employee metadata
+      const employeePayload = { ...employeeData };
+      const empResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}/metadata/employees`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(employeePayload),
+        }
+      );
+
+      if (!empResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update employee data');
+      }
+
+      // Step 3: Update financial metadata
+      const financialPayload = { ...financialData };
+      const finResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}/metadata/financials`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(financialPayload),
+        }
+      );
+
+      if (!finResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update financial data');
+      }
+
+      // Step 4: Update sustainability metadata
+      const sustainPayload = { ...sustainabilityData };
+      const susResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}/metadata/sustainability`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(sustainPayload),
+        }
+      );
+
+      if (!susResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update sustainability data');
+      }
+
+      // Step 5: Update contact metadata
+      const contactPayload = { ...contactData };
+      const contResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}/metadata/contacts`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(contactPayload),
+        }
+      );
+
+      if (!contResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update contact data');
+      }
+
+      // Step 6: Update industry metadata
+      const industryPayload = { ...industryData };
+      const indResponse = await fetch(
+        `${API_URL}/api/organizations/${orgId}/metadata/industry`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(industryPayload),
+        }
+      );
+
+      if (!indResponse.ok) {
+        hasError = true;
+        toast.error('Failed to update industry data');
+      }
+
+      if (!hasError) {
+        toast.success('✅ Organization data saved successfully!');
+        await fetchMetadata(); // Refresh data
+      } else {
+        toast.warning('Some sections failed to save. Please review and try again.');
+      }
+
     } catch (error) {
       console.error('Error saving metadata:', error);
       toast.error('Failed to save organization data');
@@ -179,6 +413,101 @@ function OrganizationMetadata({ organization, userRole }) {
       )}
 
       <form onSubmit={handleSubmit} className="metadata-form">
+        {/* ========== COMPANY INFORMATION ========== */}
+        <div className="form-section">
+          <h3>🏢 Company Information</h3>
+          <p className="section-hint">Basic company details used for report headers and compliance</p>
+          
+          <div className="form-grid">
+            <div className="form-group full-width">
+              <label htmlFor="name">Company Name *</label>
+              <input
+                id="name"
+                type="text"
+                value={orgData.name || ''}
+                onChange={(e) => handleOrgChange('name', e.target.value)}
+                disabled={!isAdmin}
+                placeholder="e.g., Babui Limited"
+                required
+              />
+              <small>This will appear on all reports and documents</small>
+            </div>
+            
+            <div className="form-group">
+              <label htmlFor="company_number">Company Registration Number</label>
+              <input
+                id="company_number"
+                type="text"
+                value={orgData.company_number || ''}
+                onChange={(e) => handleOrgChange('company_number', e.target.value)}
+                disabled={!isAdmin}
+                placeholder="e.g., 12345678"
+              />
+            </div>
+            
+            <div className="form-group">
+              <label htmlFor="website">Website</label>
+              <input
+                id="website"
+                type="url"
+                value={orgData.website || ''}
+                onChange={(e) => handleOrgChange('website', e.target.value)}
+                disabled={!isAdmin}
+                placeholder="https://www.company.com"
+              />
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <div className="form-group">
+              <label htmlFor="country">Country</label>
+              <select
+                id="country"
+                value={orgData.country || 'UK'}
+                onChange={(e) => handleOrgChange('country', e.target.value)}
+                disabled={!isAdmin}
+              >
+                <option value="UK">🇬🇧 United Kingdom</option>
+                <option value="US">🇺🇸 United States</option>
+                <option value="EU">🇪🇺 Europe</option>
+                <option value="Other">🌍 Other</option>
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label htmlFor="currency">Currency</label>
+              <select
+                id="currency"
+                value={orgData.currency || 'GBP'}
+                onChange={(e) => handleOrgChange('currency', e.target.value)}
+                disabled={!isAdmin}
+              >
+                <option value="GBP">💷 GBP (£)</option>
+                <option value="USD">💵 USD ($)</option>
+                <option value="EUR">💶 EUR (€)</option>
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label htmlFor="timezone">Timezone</label>
+              <select
+                id="timezone"
+                value={orgData.timezone || 'Europe/London'}
+                onChange={(e) => handleOrgChange('timezone', e.target.value)}
+                disabled={!isAdmin}
+              >
+                <option value="Europe/London">🇬🇧 London (GMT/BST)</option>
+                <option value="Europe/Paris">🇫🇷 Paris (CET)</option>
+                <option value="America/New_York">🇺🇸 New York (EST/EDT)</option>
+                <option value="America/Los_Angeles">🇺🇸 Los Angeles (PST/PDT)</option>
+                <option value="Asia/Dubai">🇦🇪 Dubai (GST)</option>
+                <option value="Asia/Singapore">🇸🇬 Singapore (SGT)</option>
+                <option value="Australia/Sydney">🇦🇺 Sydney (AEST/AEDT)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* ========== EMPLOYEE DATA ========== */}
         <div className="form-section">
           <h3>👥 Workforce Data</h3>
@@ -192,8 +521,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1"
-                value={metadata.total_employees || ''}
-                onChange={(e) => handleNumberChange('total_employees', e.target.value)}
+                value={employeeData.total_employees || ''}
+                onChange={(e) => handleEmployeeChange('total_employees', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 150"
                 required
@@ -208,8 +537,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1"
-                value={metadata.full_time_employees || ''}
-                onChange={(e) => handleNumberChange('full_time_employees', e.target.value)}
+                value={employeeData.full_time_employees || ''}
+                onChange={(e) => handleEmployeeChange('full_time_employees', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 120"
               />
@@ -222,8 +551,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1"
-                value={metadata.part_time_employees || ''}
-                onChange={(e) => handleNumberChange('part_time_employees', e.target.value)}
+                value={employeeData.part_time_employees || ''}
+                onChange={(e) => handleEmployeeChange('part_time_employees', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 30"
               />
@@ -236,8 +565,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1"
-                value={metadata.average_employees || ''}
-                onChange={(e) => handleNumberChange('average_employees', e.target.value)}
+                value={employeeData.average_employees || ''}
+                onChange={(e) => handleEmployeeChange('average_employees', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 145"
               />
@@ -259,8 +588,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1000"
-                value={metadata.annual_revenue || ''}
-                onChange={(e) => handleNumberChange('annual_revenue', e.target.value)}
+                value={financialData.annual_revenue || ''}
+                onChange={(e) => handleFinancialChange('annual_revenue', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 5000000"
               />
@@ -274,8 +603,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1000"
-                value={metadata.ebitda || ''}
-                onChange={(e) => handleNumberChange('ebitda', e.target.value)}
+                value={financialData.ebitda || ''}
+                onChange={(e) => handleFinancialChange('ebitda', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 750000"
               />
@@ -289,63 +618,35 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="1000"
-                value={metadata.total_assets || ''}
-                onChange={(e) => handleNumberChange('total_assets', e.target.value)}
+                value={financialData.total_assets || ''}
+                onChange={(e) => handleFinancialChange('total_assets', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 12500000"
               />
             </div>
           </div>
-        </div>
 
-        {/* ========== FACILITY DATA ========== */}
-        <div className="form-section">
-          <h3>🏭 Facility & Operational Data</h3>
-          <p className="section-hint">Used for facility efficiency metrics (tonnes CO2e per sqft or per facility)</p>
-          
           <div className="form-grid">
             <div className="form-group">
-              <label htmlFor="total_facilities">Total Facilities</label>
+              <label htmlFor="fiscal_year_start">Fiscal Year Start</label>
               <input
-                id="total_facilities"
-                type="number"
-                min="0"
-                step="1"
-                value={metadata.total_facilities || ''}
-                onChange={(e) => handleNumberChange('total_facilities', e.target.value)}
+                id="fiscal_year_start"
+                type="date"
+                value={financialData.fiscal_year_start || ''}
+                onChange={(e) => handleFinancialChange('fiscal_year_start', e.target.value)}
                 disabled={!isAdmin}
-                placeholder="e.g., 5"
               />
             </div>
             
             <div className="form-group">
-              <label htmlFor="total_floor_area_sqft">Total Floor Area (sq ft)</label>
+              <label htmlFor="fiscal_year_end">Fiscal Year End</label>
               <input
-                id="total_floor_area_sqft"
-                type="number"
-                min="0"
-                step="100"
-                value={metadata.total_floor_area_sqft || ''}
-                onChange={(e) => handleNumberChange('total_floor_area_sqft', e.target.value)}
+                id="fiscal_year_end"
+                type="date"
+                value={financialData.fiscal_year_end || ''}
+                onChange={(e) => handleFinancialChange('fiscal_year_end', e.target.value)}
                 disabled={!isAdmin}
-                placeholder="e.g., 50000"
               />
-              <small>Total square footage across all facilities</small>
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="occupied_floor_area_sqft">Occupied Floor Area (sq ft)</label>
-              <input
-                id="occupied_floor_area_sqft"
-                type="number"
-                min="0"
-                step="100"
-                value={metadata.occupied_floor_area_sqft || ''}
-                onChange={(e) => handleNumberChange('occupied_floor_area_sqft', e.target.value)}
-                disabled={!isAdmin}
-                placeholder="e.g., 45000"
-              />
-              <small>Floor area currently in use/occupied</small>
             </div>
           </div>
         </div>
@@ -363,8 +664,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 min="0"
                 max="100"
                 step="0.5"
-                value={metadata.renewable_energy_percentage || ''}
-                onChange={(e) => handleNumberChange('renewable_energy_percentage', e.target.value)}
+                value={sustainabilityData.renewable_energy_percentage || ''}
+                onChange={(e) => handleSustainabilityChange('renewable_energy_percentage', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 45"
               />
@@ -379,8 +680,8 @@ function OrganizationMetadata({ organization, userRole }) {
                 min="0"
                 max="100"
                 step="0.5"
-                value={metadata.carbon_offset_percentage || ''}
-                onChange={(e) => handleNumberChange('carbon_offset_percentage', e.target.value)}
+                value={sustainabilityData.carbon_offset_percentage || ''}
+                onChange={(e) => handleSustainabilityChange('carbon_offset_percentage', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 20"
               />
@@ -393,55 +694,12 @@ function OrganizationMetadata({ organization, userRole }) {
                 type="number"
                 min="0"
                 step="100"
-                value={metadata.energy_intensity || ''}
-                onChange={(e) => handleNumberChange('energy_intensity', e.target.value)}
+                value={sustainabilityData.energy_intensity || ''}
+                onChange={(e) => handleSustainabilityChange('energy_intensity', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 15000"
               />
               <small>kWh per employee or kWh per sqft</small>
-            </div>
-          </div>
-        </div>
-
-        {/* ========== REPORTING PREFERENCES ========== */}
-        <div className="form-section">
-          <h3>📊 Reporting & Compliance</h3>
-          
-          <div className="form-grid">
-            <div className="form-group">
-              <label htmlFor="reporting_standard">Reporting Standard</label>
-              <select
-                id="reporting_standard"
-                value={metadata.reporting_standard || 'SECR'}
-                onChange={(e) => handleInputChange('reporting_standard', e.target.value)}
-                disabled={!isAdmin}
-              >
-                <option value="SECR">SECR (UK)</option>
-                <option value="CSRD">CSRD (EU)</option>
-                <option value="ISSB">ISSB (International)</option>
-              </select>
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="fiscal_year_start">Fiscal Year Start</label>
-              <input
-                id="fiscal_year_start"
-                type="date"
-                value={metadata.fiscal_year_start || ''}
-                onChange={(e) => handleInputChange('fiscal_year_start', e.target.value)}
-                disabled={!isAdmin}
-              />
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="fiscal_year_end">Fiscal Year End</label>
-              <input
-                id="fiscal_year_end"
-                type="date"
-                value={metadata.fiscal_year_end || ''}
-                onChange={(e) => handleInputChange('fiscal_year_end', e.target.value)}
-                disabled={!isAdmin}
-              />
             </div>
           </div>
         </div>
@@ -456,8 +714,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="primary_contact_name"
                 type="text"
-                value={metadata.primary_contact_name || ''}
-                onChange={(e) => handleInputChange('primary_contact_name', e.target.value)}
+                value={contactData.primary_contact_name || ''}
+                onChange={(e) => handleContactChange('primary_contact_name', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="John Doe"
               />
@@ -468,8 +726,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="primary_contact_email"
                 type="email"
-                value={metadata.primary_contact_email || ''}
-                onChange={(e) => handleInputChange('primary_contact_email', e.target.value)}
+                value={contactData.primary_contact_email || ''}
+                onChange={(e) => handleContactChange('primary_contact_email', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="john@company.com"
               />
@@ -480,8 +738,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="primary_contact_phone"
                 type="tel"
-                value={metadata.primary_contact_phone || ''}
-                onChange={(e) => handleInputChange('primary_contact_phone', e.target.value)}
+                value={contactData.primary_contact_phone || ''}
+                onChange={(e) => handleContactChange('primary_contact_phone', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="+44 123 456 7890"
               />
@@ -492,8 +750,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="sustainability_officer_name"
                 type="text"
-                value={metadata.sustainability_officer_name || ''}
-                onChange={(e) => handleInputChange('sustainability_officer_name', e.target.value)}
+                value={contactData.sustainability_officer_name || ''}
+                onChange={(e) => handleContactChange('sustainability_officer_name', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="Jane Smith"
               />
@@ -504,8 +762,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="sustainability_officer_email"
                 type="email"
-                value={metadata.sustainability_officer_email || ''}
-                onChange={(e) => handleInputChange('sustainability_officer_email', e.target.value)}
+                value={contactData.sustainability_officer_email || ''}
+                onChange={(e) => handleContactChange('sustainability_officer_email', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="jane@company.com"
               />
@@ -523,8 +781,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="industry_sector"
                 type="text"
-                value={metadata.industry_sector || ''}
-                onChange={(e) => handleInputChange('industry_sector', e.target.value)}
+                value={industryData.industry_sector || ''}
+                onChange={(e) => handleIndustryChange('industry_sector', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., Technology, Manufacturing, Retail"
               />
@@ -535,8 +793,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="naics_code"
                 type="text"
-                value={metadata.naics_code || ''}
-                onChange={(e) => handleInputChange('naics_code', e.target.value)}
+                value={industryData.naics_code || ''}
+                onChange={(e) => handleIndustryChange('naics_code', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 541512"
               />
@@ -548,8 +806,8 @@ function OrganizationMetadata({ organization, userRole }) {
               <input
                 id="sic_code"
                 type="text"
-                value={metadata.sic_code || ''}
-                onChange={(e) => handleInputChange('sic_code', e.target.value)}
+                value={industryData.sic_code || ''}
+                onChange={(e) => handleIndustryChange('sic_code', e.target.value)}
                 disabled={!isAdmin}
                 placeholder="e.g., 7371"
               />

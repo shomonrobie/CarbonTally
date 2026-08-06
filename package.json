@@ -4,5 +4,44 @@
   "private": true,
   "scripts": {
     "build": "cd frontend && npm install && npm run build && cd ../admin && npm install && npm run build && cd .. && mkdir -p public/admin && cp -r frontend/build/* public/ && cp -r admin/build/* public/admin/"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.5.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@radix-ui/react-popover": "^1.1.23",
+    "@snaplet/seed": "^0.98.0",
+    "@supabase/realtime-js": "^2.111.0",
+    "@supabase/supabase-js": "^2.111.0",
+    "pg": "^8.22.0",
+    "prisma": "^7.9.1",
+    "react-hot-toast": "^2.6.0",
+    "tsx": "^4.23.5"
+  },
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shomonrobie/CarbonTally.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shomonrobie/CarbonTally/issues"
+  },
+  "homepage": "https://github.com/shomonrobie/CarbonTally#readme",
+  "devDependencies": {
+    "@prisma/client": "^7.9.1",
+    "@snaplet/copycat": "^6.0.0",
+    "@types/pg": "^8.20.3"
+  },
+  "allowScripts": {
+    "@snaplet/seed@0.98.0": true,
+    "prisma@7.9.1": true,
+    "@prisma/engines@5.14.0-dev.34": true,
+    "@prisma/engines@7.9.1": true,
+    "esbuild@0.28.1": true
   }
 }

@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally · Audit Logs</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        /* ===== THEME SYSTEM ===== */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --sidebar-width: 240px;
+            --sidebar-bg: 0, 0%, 100%;
+            --sidebar-border: 220, 15%, 90%;
+            --sidebar-item-hover: 150, 30%, 96%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+
+        [data-theme="forest"] { --primary: 150, 50%, 28%; --accent: 150, 30%, 92%; }
+        [data-theme="emerald"] { --primary: 160, 84%, 39%; --accent: 160, 70%, 92%; }
+        [data-theme="teal"] { --primary: 175, 60%, 25%; --accent: 175, 50%, 90%; }
+        [data-theme="navy"] { --primary: 222, 47%, 31%; --accent: 222, 40%, 90%; }
+        [data-theme="slate"] { --primary: 220, 20%, 18%; --accent: 220, 20%, 92%; }
+        [data-theme="warm-grey"] { --primary: 30, 15%, 25%; --accent: 30, 20%, 92%; }
+        [data-theme="purple"] { --primary: 260, 50%, 35%; --accent: 260, 40%, 90%; }
+        [data-theme="rose"] { --primary: 340, 60%, 35%; --accent: 340, 50%, 92%; }
+        [data-theme="carbon"] { --primary: 0, 0%, 15%; --accent: 0, 0%, 92%; }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+            border: none; cursor: pointer; transition: all 0.15s ease;
+        }
+        .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .btn-primary:hover { opacity:0.9; box-shadow: 0 4px 12px hsla(var(--primary),0.3); transform:translateY(-1px); }
+        .btn-outline { background:transparent; color:hsl(var(--primary)); border:2px solid hsl(var(--primary)); }
+        .btn-outline:hover { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+        .btn-ghost { background:transparent; color:hsl(var(--foreground)); }
+        .btn-ghost:hover { background:hsl(var(--accent)); }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-success { background:hsl(var(--success)); color:#fff; }
+        .btn-danger { background:hsl(var(--destructive)); color:#fff; }
+
+        .card {
+            background: hsl(var(--card)); border-radius: var(--radius); border:1px solid hsl(var(--border));
+            box-shadow: var(--shadow); transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header { padding: 16px 20px 8px 20px; display:flex; justify-content:space-between; align-items:center; }
+        .card-title { font-size:14px; font-weight:600; }
+        .card-description { font-size:12px; color:hsl(var(--muted-foreground)); }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px;
+            font-size:11px; font-weight:500;
+        }
+        .badge-success { background:hsl(var(--success)); color:#fff; }
+        .badge-warning { background:hsl(var(--warning)); color:#fff; }
+        .badge-primary { background:hsl(var(--primary)); color:#fff; }
+        .badge-muted { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+        .badge-destructive { background:hsl(var(--destructive)); color:#fff; }
+        .badge-secondary { background:hsl(var(--secondary)); color:#fff; }
+
+        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; background:hsl(var(--primary)); color:#fff; flex-shrink:0; }
+
+        .app { display:flex; min-height:100vh; }
+        .sidebar {
+            width: var(--sidebar-width); background:hsl(var(--sidebar-bg)); border-right:1px solid hsl(var(--sidebar-border));
+            display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100;
+            transition:all 0.3s ease; overflow-y:auto;
+        }
+        .sidebar-logo { padding:20px 20px 16px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid hsl(var(--sidebar-border)); }
+        .sidebar-logo .logo-icon { width:32px; height:32px; background:hsl(var(--primary)); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+        .sidebar-logo .logo-text { font-size:18px; font-weight:700; }
+        .sidebar-nav { flex:1; padding:16px 12px; overflow-y:auto; }
+        .sidebar-section-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:hsl(var(--muted-foreground)); padding:8px 12px 4px 12px; opacity:0.6; }
+        .sidebar-item {
+            display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:var(--radius);
+            color:hsl(var(--muted-foreground)); cursor:pointer; transition:all 0.15s ease; font-size:14px; font-weight:500;
+            border:none; background:transparent; width:100%; text-align:left;
+        }
+        .sidebar-item:hover { background:hsl(var(--sidebar-item-hover)); color:hsl(var(--foreground)); }
+        .sidebar-item.active { background:hsl(var(--sidebar-item-active)); color:#fff; }
+        .sidebar-item .icon { font-size:18px; width:24px; text-align:center; flex-shrink:0; }
+        .sidebar-item .badge { margin-left:auto; }
+
+        .main-content { margin-left:var(--sidebar-width); flex:1; min-height:100vh; display:flex; flex-direction:column; }
+        .top-header {
+            background:hsl(var(--card)); border-bottom:1px solid hsl(var(--border)); padding:0 32px; height:64px;
+            display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50;
+        }
+        .header-left { display:flex; align-items:center; gap:24px; flex:1; }
+        .header-search { flex:1; max-width:400px; position:relative; margin:0 24px; }
+        .header-search input { width:100%; padding:8px 12px 8px 36px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .header-search input:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+        .header-search .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:hsl(var(--muted-foreground)); }
+        .header-right { display:flex; align-items:center; gap:16px; }
+        .header-user { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 8px 4px 4px; border-radius:var(--radius); }
+        .header-user:hover { background:hsl(var(--accent)); }
+        .header-user .user-name { font-size:13px; font-weight:500; }
+        .header-user .user-role { font-size:11px; color:hsl(var(--muted-foreground)); }
+        .mobile-menu-btn { display:none; background:none; border:none; font-size:24px; cursor:pointer; }
+
+        .main-body { padding:24px 32px; flex:1; }
+        .page-header { margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+        .page-header h1 { font-size:24px; font-weight:700; }
+        .page-header p { font-size:14px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .stats-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:12px; margin-bottom:24px; }
+        .stat-card { background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border)); padding:14px 16px; }
+        .stat-card .stat-label { font-size:11px; font-weight:500; color:hsl(var(--muted-foreground)); text-transform:uppercase; letter-spacing:0.3px; }
+        .stat-card .stat-value { font-size:20px; font-weight:700; margin-top:4px; }
+        .stat-card .stat-sub { font-size:11px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .filters-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; background:hsl(var(--card)); padding:12px 16px; border-radius:var(--radius); border:1px solid hsl(var(--border)); }
+        .filters-bar select, .filters-bar input { padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .filters-bar select:focus, .filters-bar input:focus { border-color:hsl(var(--ring)); }
+
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; padding:10px 12px; background:hsl(var(--muted)); font-weight:600; color:hsl(var(--muted-foreground)); border-bottom:2px solid hsl(var(--border)); }
+        td { padding:10px 12px; border-bottom:1px solid hsl(var(--border)); vertical-align:middle; }
+        tr:hover td { background:hsl(var(--accent)); }
+
+        .theme-btn { padding:4px 10px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); cursor:pointer; font-size:12px; display:flex; align-items:center; gap:4px; }
+
+        /* Detail modal */
+        .modal-overlay {
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
+            z-index:1000; align-items:center; justify-content:center;
+        }
+        .modal-overlay.show { display:flex; }
+        .modal-box {
+            background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border));
+            box-shadow:var(--shadow-lg); max-width:700px; width:95%; max-height:85vh; overflow-y:auto;
+            padding:24px; animation:slideUp 0.2s ease;
+        }
+        .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+        .modal-title { font-size:20px; font-weight:700; }
+        .modal-close { background:none; border:none; font-size:24px; cursor:pointer; color:hsl(var(--muted-foreground)); }
+        .modal-body .detail-row { display:flex; padding:8px 0; border-bottom:1px solid hsl(var(--border)); }
+        .modal-body .detail-row .label { font-weight:600; min-width:120px; color:hsl(var(--muted-foreground)); }
+        .modal-body .detail-row .value { flex:1; }
+
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+
+        @media (max-width:1400px) { .stats-grid { grid-template-columns:repeat(4,1fr); } }
+        @media (max-width:992px) {
+            .sidebar { transform:translateX(-100%); width:280px; }
+            .sidebar.open { transform:translateX(0); }
+            .main-content { margin-left:0; }
+            .top-header { padding:0 16px; }
+            .main-body { padding:16px; }
+            .header-search { display:none; }
+            .mobile-menu-btn { display:flex !important; }
+        }
+        @media (max-width:768px) { .stats-grid { grid-template-columns:repeat(2,1fr); } }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">🌱</div><span class="logo-text">CarbonTally</span></div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-section-title">Main</div>
+            <button class="sidebar-item"><span class="icon">🏠</span> Dashboard</button>
+            <button class="sidebar-item"><span class="icon">📁</span> Documents</button>
+            <button class="sidebar-item"><span class="icon">📤</span> Upload Data</button>
+            <button class="sidebar-item active"><span class="icon">📋</span> Audit Logs</button>
+            <button class="sidebar-item"><span class="icon">📊</span> Compliance</button>
+            <button class="sidebar-item"><span class="icon">💬</span> Messaging</button>
+            <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+            <button class="sidebar-item"><span class="icon">👥</span> Users</button>
+            <button class="sidebar-item"><span class="icon">⚙️</span> Settings</button>
+        </nav>
+        <div style="padding:16px 20px; border-top:1px solid hsl(var(--sidebar-border));">
+            <button class="sidebar-item"><span class="icon">❓</span> Help</button>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                <div class="header-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search audit logs..." id="globalSearch" /></div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" id="themeToggle"><i class="fas fa-palette"></i> <span id="currentThemeName">Forest</span></button>
+                <div class="header-user"><div class="avatar">JD</div><div><div class="user-name">John Doe</div><div class="user-role">Admin</div></div></div>
+            </div>
+        </header>
+
+        <div class="main-body">
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+                <div><h1>📋 Audit Logs</h1><p>Complete audit trail of all user actions, resource changes, and system events.</p></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-file-export"></i> Export</button>
+                    <button class="btn btn-outline btn-sm"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+            </div>
+
+            <!-- STATS -->
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">📊 Total Events</div><div class="stat-value" id="totalEvents">0</div><div class="stat-sub">last 30 days</div></div>
+                <div class="stat-card"><div class="stat-label">👤 User Actions</div><div class="stat-value" id="userActions">0</div><div class="stat-sub">by staff members</div></div>
+                <div class="stat-card"><div class="stat-label">🔄 Changes</div><div class="stat-value" id="changes">0</div><div class="stat-sub">resource updates</div></div>
+                <div class="stat-card"><div class="stat-label">⚠️ Critical</div><div class="stat-value" id="criticalEvents">0</div><div class="stat-sub">high severity</div></div>
+                <div class="stat-card"><div class="stat-label">✅ Verifications</div><div class="stat-value" id="verifications">0</div><div class="stat-sub">review actions</div></div>
+                <div class="stat-card"><div class="stat-label">📱 Messages</div><div class="stat-value" id="messagesCount">0</div><div class="stat-sub">chat activity</div></div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="filters-bar">
+                <select id="actionFilter"><option value="all">All Actions</option><option value="CREATE">Create</option><option value="UPDATE">Update</option><option value="DELETE">Delete</option><option value="APPROVE">Approve</option><option value="REJECT">Reject</option><option value="LOGIN">Login</option><option value="LOGOUT">Logout</option><option value="VERIFY">Verify</option></select>
+                <select id="resourceFilter"><option value="all">All Resources</option><option value="document">Document</option><option value="compliance">Compliance</option><option value="emissions">Emissions</option><option value="user">User</option><option value="message">Message</option></select>
+                <select id="severityFilter"><option value="all">All Severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+                <input type="date" id="dateFrom" /> <span style="color:hsl(var(--muted-foreground));font-size:12px;">to</span> <input type="date" id="dateTo" />
+                <button class="btn btn-sm btn-primary" id="applyFilters"><i class="fas fa-filter"></i> Apply</button>
+                <button class="btn btn-sm btn-ghost" id="clearFilters"><i class="fas fa-times"></i> Clear</button>
+                <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 events</span>
+            </div>
+
+            <!-- AUDIT LOG TABLE -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📋 Audit Log Entries</div>
+                    <span class="badge badge-primary" id="rowCount">0</span>
+                </div>
+                <div class="card-content" style="padding:0 20px 20px 20px;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Resource</th>
+                                    <th>Details</th>
+                                    <th>Severity</th>
+                                    <th style="width:80px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditTableBody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-info-circle"></i> Audit Log Details</div>
+            <button class="modal-close" id="modalCloseBtn">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+            <button class="btn btn-ghost" id="modalCloseBtn2">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        "use strict";
+
+        // ===== THEMES =====
+        const themes = [
+            { id: 'forest', name: 'Forest Green' },
+            { id: 'emerald', name: 'Emerald' },
+            { id: 'teal', name: 'Teal' },
+            { id: 'navy', name: 'Navy' },
+            { id: 'slate', name: 'Slate' },
+            { id: 'warm-grey', name: 'Warm Grey' },
+            { id: 'purple', name: 'Purple' },
+            { id: 'rose', name: 'Rose' },
+            { id: 'carbon', name: 'Carbon' }
+        ];
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+
+        function setTheme(id) {
+            currentTheme = id;
+            document.documentElement.setAttribute('data-theme', id);
+            localStorage.setItem('carbontally-theme', id);
+            const t = themes.find(th => th.id === id);
+            if (t) document.getElementById('currentThemeName').textContent = t.name;
+        }
+        setTheme(currentTheme);
+
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const idx = themes.findIndex(t => t.id === currentTheme);
+            const next = (idx + 1) % themes.length;
+            setTheme(themes[next].id);
+        });
+
+        // ===== MOCK DATA =====
+
+        const users = [
+            { id: 'u1', name: 'John Doe', avatar: 'JD', role: 'Admin' },
+            { id: 'u2', name: 'Sarah Johnson', avatar: 'SJ', role: 'Sustainability Officer' },
+            { id: 'u3', name: 'Mike Chen', avatar: 'MC', role: 'Data Analyst' },
+            { id: 'u4', name: 'Emma Wilson', avatar: 'EW', role: 'Compliance Manager' },
+            { id: 'u5', name: 'Alex Rivera', avatar: 'AR', role: 'Analyst' },
+            { id: 'u6', name: 'System', avatar: '🤖', role: 'System' },
+        ];
+
+        const auditLogs = [
+            { id: 'a1', userId: 'u2', action: 'APPROVE', resource: 'document', resourceId: 'doc-123', details: 'SECR Report Q4 2026', severity: 'low', time: '2 min ago', changes: { status: 'pending', newStatus: 'approved' } },
+            { id: 'a2', userId: 'u3', action: 'UPDATE', resource: 'emissions', resourceId: 'em-456', details: 'Updated Scope 2 emissions data', severity: 'medium', time: '15 min ago', changes: { consumption: '4500', newConsumption: '4800' } },
+            { id: 'a3', userId: 'u1', action: 'LOGIN', resource: 'user', resourceId: 'u1', details: 'User login from IP 192.168.1.1', severity: 'low', time: '1 hour ago', changes: {} },
+            { id: 'a4', userId: 'u4', action: 'VERIFY', resource: 'compliance', resourceId: 'csrd-789', details: 'CSRD data validation completed', severity: 'high', time: '2 hours ago', changes: { status: 'pending', newStatus: 'validated' } },
+            { id: 'a5', userId: 'u5', action: 'CREATE', resource: 'document', resourceId: 'doc-124', details: 'Uploaded new utility bill', severity: 'low', time: '3 hours ago', changes: {} },
+            { id: 'a6', userId: 'u2', action: 'REJECT', resource: 'document', resourceId: 'doc-125', details: 'Rejected incomplete invoice', severity: 'medium', time: '4 hours ago', changes: { reason: 'Missing VAT number' } },
+            { id: 'a7', userId: 'u6', action: 'UPDATE', resource: 'system', resourceId: 'sys-001', details: 'DEFRA 2026 emission factors imported', severity: 'high', time: '5 hours ago', changes: { version: '2025', newVersion: '2026' } },
+            { id: 'a8', userId: 'u3', action: 'DELETE', resource: 'message', resourceId: 'msg-789', details: 'Deleted spam message', severity: 'low', time: '6 hours ago', changes: {} },
+            { id: 'a9', userId: 'u1', action: 'APPROVE', resource: 'user', resourceId: 'u7', details: 'Approved new team member invitation', severity: 'medium', time: '8 hours ago', changes: { status: 'pending', newStatus: 'approved' } },
+            { id: 'a10', userId: 'u4', action: 'UPDATE', resource: 'compliance', resourceId: 'issb-456', details: 'Updated ISSB disclosure metrics', severity: 'high', time: '10 hours ago', changes: { score: '68', newScore: '71' } },
+            { id: 'a11', userId: 'u5', action: 'CREATE', resource: 'emissions', resourceId: 'em-457', details: 'Added new Scope 3 category data', severity: 'medium', time: '12 hours ago', changes: {} },
+            { id: 'a12', userId: 'u2', action: 'LOGOUT', resource: 'user', resourceId: 'u2', details: 'User logged out', severity: 'low', time: '14 hours ago', changes: {} },
+            { id: 'a13', userId: 'u6', action: 'VERIFY', resource: 'document', resourceId: 'doc-126', details: 'Auto-verified document OCR extraction', severity: 'medium', time: '16 hours ago', changes: { confidence: '85', newConfidence: '92' } },
+            { id: 'a14', userId: 'u1', action: 'UPDATE', resource: 'system', resourceId: 'sys-002', details: 'Updated system retention policy', severity: 'critical', time: '18 hours ago', changes: { days: '30', newDays: '45' } },
+            { id: 'a15', userId: 'u3', action: 'CREATE', resource: 'message', resourceId: 'msg-790', details: 'Sent message in Compliance Team chat', severity: 'low', time: '20 hours ago', changes: {} },
+            { id: 'a16', userId: 'u4', action: 'REJECT', resource: 'compliance', resourceId: 'secr-234', details: 'Rejected SECR submission for review', severity: 'high', time: '22 hours ago', changes: { reason: 'Incomplete Scope 3 data' } },
+            { id: 'a17', userId: 'u5', action: 'UPDATE', resource: 'document', resourceId: 'doc-127', details: 'Updated document metadata', severity: 'low', time: '1 day ago', changes: { category: 'Utility', newCategory: 'Fuel' } },
+            { id: 'a18', userId: 'u1', action: 'VERIFY', resource: 'user', resourceId: 'u8', details: 'Verified user account', severity: 'medium', time: '1 day ago', changes: { status: 'pending', newStatus: 'verified' } },
+            { id: 'a19', userId: 'u6', action: 'UPDATE', resource: 'system', resourceId: 'sys-003', details: 'Backup completed successfully', severity: 'low', time: '1 day ago', changes: {} },
+            { id: 'a20', userId: 'u2', action: 'CREATE', resource: 'document', resourceId: 'doc-128', details: 'Created new compliance report', severity: 'medium', time: '1 day ago', changes: {} },
+            { id: 'a21', userId: 'u3', action: 'UPDATE', resource: 'emissions', resourceId: 'em-458', details: 'Corrected fuel conversion factors', severity: 'critical', time: '2 days ago', changes: { factor: '2.5', newFactor: '2.8' } },
+            { id: 'a22', userId: 'u4', action: 'APPROVE', resource: 'document', resourceId: 'doc-129', details: 'Approved GHG Protocol inventory', severity: 'high', time: '2 days ago', changes: { status: 'draft', newStatus: 'approved' } },
+            { id: 'a23', userId: 'u5', action: 'LOGIN', resource: 'user', resourceId: 'u5', details: 'User login from mobile device', severity: 'low', time: '2 days ago', changes: {} },
+            { id: 'a24', userId: 'u1', action: 'UPDATE', resource: 'user', resourceId: 'u3', details: 'Updated user role to Senior Analyst', severity: 'medium', time: '2 days ago', changes: { role: 'Analyst', newRole: 'Senior Analyst' } },
+            { id: 'a25', userId: 'u6', action: 'VERIFY', resource: 'system', resourceId: 'sys-004', details: 'System health check completed', severity: 'low', time: '2 days ago', changes: {} },
+        ];
+
+        // ===== STATE =====
+        let filteredLogs = [...auditLogs];
+
+        // ===== DOM REFS =====
+        const tbody = document.getElementById('auditTableBody');
+        const rowCount = document.getElementById('rowCount');
+        const filterCount = document.getElementById('filterCount');
+        const totalEvents = document.getElementById('totalEvents');
+        const userActions = document.getElementById('userActions');
+        const changes = document.getElementById('changes');
+        const criticalEvents = document.getElementById('criticalEvents');
+        const verifications = document.getElementById('verifications');
+        const messagesCount = document.getElementById('messagesCount');
+
+        const actionFilter = document.getElementById('actionFilter');
+        const resourceFilter = document.getElementById('resourceFilter');
+        const severityFilter = document.getElementById('severityFilter');
+        const dateFrom = document.getElementById('dateFrom');
+        const dateTo = document.getElementById('dateTo');
+        const globalSearch = document.getElementById('globalSearch');
+
+        // Modal
+        const modal = document.getElementById('detailModal');
+        const modalBody = document.getElementById('modalBody');
+
+        // ===== RENDER FUNCTIONS =====
+
+        function getUser(id) {
+            return users.find(u => u.id === id) || { name: 'Unknown', avatar: '??', role: 'Unknown' };
+        }
+
+        function getSeverityBadge(severity) {
+            const map = {
+                'critical': '<span class="badge badge-destructive"><i class="fas fa-exclamation-circle"></i> Critical</span>',
+                'high': '<span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> High</span>',
+                'medium': '<span class="badge badge-secondary"><i class="fas fa-circle"></i> Medium</span>',
+                'low': '<span class="badge badge-muted"><i class="fas fa-circle"></i> Low</span>'
+            };
+            return map[severity] || severity;
+        }
+
+        function getActionIcon(action) {
+            const map = {
+                'CREATE': '<i class="fas fa-plus-circle" style="color:hsl(var(--success));"></i>',
+                'UPDATE': '<i class="fas fa-pen" style="color:hsl(var(--warning));"></i>',
+                'DELETE': '<i class="fas fa-trash" style="color:hsl(var(--destructive));"></i>',
+                'APPROVE': '<i class="fas fa-check-circle" style="color:hsl(var(--success));"></i>',
+                'REJECT': '<i class="fas fa-times-circle" style="color:hsl(var(--destructive));"></i>',
+                'LOGIN': '<i class="fas fa-sign-in-alt" style="color:hsl(var(--primary));"></i>',
+                'LOGOUT': '<i class="fas fa-sign-out-alt" style="color:hsl(var(--muted-foreground));"></i>',
+                'VERIFY': '<i class="fas fa-check-double" style="color:hsl(var(--primary));"></i>'
+            };
+            return map[action] || '<i class="fas fa-circle"></i>';
+        }
+
+        function renderStats(data) {
+            const total = data.length;
+            const actions = data.filter(d => d.action !== 'LOGIN' && d.action !== 'LOGOUT').length;
+            const changesCount = data.filter(d => d.action === 'UPDATE' || d.action === 'CREATE' || d.action === 'DELETE').length;
+            const critical = data.filter(d => d.severity === 'critical').length;
+            const verify = data.filter(d => d.action === 'VERIFY' || d.action === 'APPROVE' || d.action === 'REJECT').length;
+            const messages = data.filter(d => d.resource === 'message').length;
+
+            totalEvents.textContent = total;
+            userActions.textContent = actions;
+            changes.textContent = changesCount;
+            criticalEvents.textContent = critical;
+            verifications.textContent = verify;
+            messagesCount.textContent = messages;
+        }
+
+        function renderTable(data) {
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:hsl(var(--muted-foreground));">No audit log entries match filters</td></tr>`;
+                rowCount.textContent = '0';
+                filterCount.textContent = '0 events';
+                return;
+            }
+
+            const rows = data.map(log => {
+                const user = getUser(log.userId);
+                return `
+                    <tr>
+                        <td style="font-size:12px;color:hsl(var(--muted-foreground));">${log.time}</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <div class="avatar" style="width:28px;height:28px;font-size:11px;">${user.avatar}</div>
+                                <div>
+                                    <div style="font-weight:500;font-size:13px;">${user.name}</div>
+                                    <div style="font-size:10px;color:hsl(var(--muted-foreground));">${user.role}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                ${getActionIcon(log.action)}
+                                <span style="font-weight:500;">${log.action}</span>
+                            </div>
+                        </td>
+                        <td><span class="badge badge-muted">${log.resource}</span></td>
+                        <td>
+                            <div style="font-size:13px;">${log.details}</div>
+                            ${log.changes && Object.keys(log.changes).length > 0 ? `<div style="font-size:11px;color:hsl(var(--muted-foreground));">${Object.keys(log.changes).join(', ')}</div>` : ''}
+                        </td>
+                        <td>${getSeverityBadge(log.severity)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost view-detail" data-id="${log.id}"><i class="fas fa-eye"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            tbody.innerHTML = rows;
+            rowCount.textContent = data.length;
+            filterCount.textContent = data.length + ' events';
+
+            // Attach detail handlers
+            document.querySelectorAll('.view-detail').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    const log = auditLogs.find(l => l.id === id);
+                    if (log) showDetail(log);
+                });
+            });
+        }
+
+        function showDetail(log) {
+            const user = getUser(log.userId);
+            const changesHtml = log.changes && Object.keys(log.changes).length > 0
+                ? Object.entries(log.changes).map(([key, value]) => `
+                    <div class="detail-row">
+                        <div class="label">${key}</div>
+                        <div class="value"><code>${typeof value === 'object' ? JSON.stringify(value) : value}</code></div>
+                    </div>
+                `).join('')
+                : '<div class="detail-row"><div class="label">Changes</div><div class="value">No changes recorded</div></div>';
+
+            modalBody.innerHTML = `
+                <div class="detail-row"><div class="label">Event ID</div><div class="value"><code>${log.id}</code></div></div>
+                <div class="detail-row"><div class="label">Time</div><div class="value">${log.time}</div></div>
+                <div class="detail-row"><div class="label">User</div><div class="value">${user.name} (${user.role})</div></div>
+                <div class="detail-row"><div class="label">Action</div><div class="value"><strong>${log.action}</strong></div></div>
+                <div class="detail-row"><div class="label">Resource</div><div class="value">${log.resource} <span class="badge badge-muted">${log.resourceId}</span></div></div>
+                <div class="detail-row"><div class="label">Severity</div><div class="value">${getSeverityBadge(log.severity)}</div></div>
+                <div class="detail-row"><div class="label">Details</div><div class="value">${log.details}</div></div>
+                <div style="margin-top:12px;font-weight:600;color:hsl(var(--foreground));">Changes</div>
+                ${changesHtml}
+            `;
+            modal.classList.add('show');
+        }
+
+        // ===== FILTER =====
+        function filterData() {
+            const action = actionFilter.value;
+            const resource = resourceFilter.value;
+            const severity = severityFilter.value;
+            const search = globalSearch.value.toLowerCase().trim();
+            const from = dateFrom.value;
+            const to = dateTo.value;
+
+            filteredLogs = auditLogs.filter(log => {
+                if (action !== 'all' && log.action !== action) return false;
+                if (resource !== 'all' && log.resource !== resource) return false;
+                if (severity !== 'all' && log.severity !== severity) return false;
+                if (search) {
+                    const searchable = `${log.details} ${log.action} ${log.resource} ${log.id}`.toLowerCase();
+                    if (!searchable.includes(search)) return false;
+                }
+                if (from && log.time < from) return false;
+                if (to && log.time > to) return false;
+                return true;
+            });
+
+            renderStats(filteredLogs);
+            renderTable(filteredLogs);
+        }
+
+        // ===== EVENT LISTENERS =====
+
+        document.getElementById('applyFilters').addEventListener('click', filterData);
+        document.getElementById('clearFilters').addEventListener('click', function() {
+            actionFilter.value = 'all';
+            resourceFilter.value = 'all';
+            severityFilter.value = 'all';
+            globalSearch.value = '';
+            dateFrom.value = '';
+            dateTo.value = '';
+            filterData();
+        });
+
+        globalSearch.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') filterData();
+        });
+
+        // Modal close
+        document.getElementById('modalCloseBtn').addEventListener('click', function() {
+            modal.classList.remove('show');
+        });
+        document.getElementById('modalCloseBtn2').addEventListener('click', function() {
+            modal.classList.remove('show');
+        });
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) modal.classList.remove('show');
+        });
+
+        // Mobile menu
+        document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
+
+        // ===== INIT =====
+        renderStats(auditLogs);
+        renderTable(auditLogs);
+
+        console.log('📋 CarbonTally - Audit Logs Module Loaded');
+        console.log('📊 Tracking ' + auditLogs.length + ' audit events');
+        console.log('🔍 Filter by action, resource, severity, date range');
+
+    })();
+</script>
+</body>
+</html>

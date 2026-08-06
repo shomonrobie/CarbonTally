@@ -11,9 +11,8 @@ router = APIRouter(prefix="/api/admin/defra", tags=["Admin - DEFRA Factor Manage
 # ==========================================
 # PYDANTIC MODELS
 # ==========================================
-
-class DEFRAFactorCreate(BaseModel):
-    """Request model for creating a DEFRA factor."""
+class DEFRAFactorBase(BaseModel):
+    """Base DEFRA factor model with common fields and validations."""
     reporting_year: int = Field(..., ge=2000, le=2100, description="Reporting year")
     activity_type: str = Field(..., min_length=1, max_length=150, description="Activity type (e.g., Diesel (DERV))")
     co2e_multiplier: float = Field(..., gt=0, description="CO2e multiplier (kg CO2e per unit)")
@@ -32,14 +31,19 @@ class DEFRAFactorCreate(BaseModel):
             }
         }
 
+class DEFRAFactorCreate(DEFRAFactorBase):
+    """Request model for creating a DEFRA factor."""
+    pass  # All fields are required (inherited)
+
 class DEFRAFactorUpdate(BaseModel):
     """Request model for updating a DEFRA factor."""
+    reporting_year: Optional[int] = Field(None, ge=2000, le=2100)
     activity_type: Optional[str] = Field(None, min_length=1, max_length=150)
     co2e_multiplier: Optional[float] = Field(None, gt=0)
-    reporting_year: Optional[int] = Field(None, ge=2000, le=2100)
     
     @validator('activity_type')
     def validate_activity_type(cls, v):
+        """Ensure activity type is properly formatted."""
         if v:
             return v.strip()
         return v
@@ -51,6 +55,7 @@ class DEFRAFactorUpdate(BaseModel):
                 "co2e_multiplier": 2.75
             }
         }
+
 
 class DEFRAFactorBulkCreate(BaseModel):
     """Request model for bulk creating DEFRA factors."""
@@ -135,75 +140,61 @@ async def get_available_activities(supabase_client) -> List[str]:
 # ==========================================
 # ENDPOINTS
 # ==========================================
-
-@router.get("/factors", response_model=DEFRAFactorListResponse)
-async def get_defra_factors(
-    reporting_year: Optional[int] = Query(None, description="Filter by reporting year"),
-    activity_type: Optional[str] = Query(None, description="Filter by activity type"),
-    search: Optional[str] = Query(None, description="Search in activity type"),
+@router.get("/factors")
+async def get_admin_defra_factors(
+    year: Optional[int] = Query(None, description="Filter by reporting year"),
+    activity: Optional[str] = Query(None, description="Filter by activity type"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    current_user: AuthUser = Depends(require_role(["admin", "data_approver"]))
+    current_user: AuthUser = Depends(require_role(["admin"]))
 ):
-    """
-    Get all DEFRA factors with optional filters.
-    Available to admins and data approvers.
-    """
+    """Get all DEFRA factors with filters."""
     try:
         supabase = get_supabase_client()
         
-        # Build query
+        # ✅ Build the query
         query = supabase.from_('defra_conversion_factors') \
-            .select('id, reporting_year, activity_type, co2e_multiplier, created_at')
+            .select('*')
         
-        if reporting_year:
-            query = query.eq('reporting_year', reporting_year)
-        if activity_type:
-            query = query.eq('activity_type', activity_type)
-        if search:
-            query = query.ilike('activity_type', f'%{search}%')
+        if year:
+            query = query.eq('reporting_year', year)
+        if activity:
+            query = query.ilike('activity_type', f'%{activity}%')
         
-        # Get total count
-        count_query = query.clone()
-        count_result = count_query.select('id', count='exact').execute()
+        # ✅ Get count separately (no .clone())
+        count_query = supabase.from_('defra_conversion_factors') \
+            .select('id', count='exact')
+        
+        if year:
+            count_query = count_query.eq('reporting_year', year)
+        if activity:
+            count_query = count_query.ilike('activity_type', f'%{activity}%')
+        
+        count_result = count_query.execute()
         total = count_result.count or 0
         
         # Get paginated results
         result = query.order('reporting_year', desc=True) \
-            .order('activity_type') \
             .range(offset, offset + limit - 1) \
             .execute()
         
-        # Transform data
-        factors = []
-        for factor in result.data:
-            factors.append(DEFRAFactorResponse(
-                id=factor['id'],
-                reporting_year=factor['reporting_year'],
-                activity_type=factor['activity_type'],
-                co2e_multiplier=float(factor['co2e_multiplier']),
-                created_at=factor['created_at']
-            ))
+        return {
+            "success": True,
+            "data": result.data or [],
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
         
-        # Get available years and activities
-        years = await get_available_years(supabase)
-        activities = await get_available_activities(supabase)
-        
-        return DEFRAFactorListResponse(
-            factors=factors,
-            total=total,
-            years_available=years,
-            activities_available=activities
-        )
-        
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"❌ Error getting DEFRA factors: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get DEFRA factors: {str(e)}"
         )
+
 
 @router.get("/factors/{factor_id}", response_model=DEFRAFactorResponse)
 async def get_defra_factor(

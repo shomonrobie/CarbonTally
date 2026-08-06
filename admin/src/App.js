@@ -1,8 +1,8 @@
-// src/App.js - Add the assignment route import and path
-
+// admin/src/App.js
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { RealtimeProvider } from './context/RealtimeContext'; // ✅ Add this
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 
@@ -22,7 +22,8 @@ import GlossaryManagement from './pages/admin/GlossaryManagement';
 import ManualReviewQueue from './pages/admin/ManualReviewQueue';
 import StaffReviewQueue from './components/StaffReviewQueue';
 import LogViewer from './components/LogViewer';
-import AdminAssignment from './components/AdminAssignment'; // ✅ Add this import
+import AdminAssignment from './components/AdminAssignment';
+import WorkHub from './pages/admin/WorkHub';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -42,12 +43,10 @@ const AdminProtectedLayout = () => {
     );
   }
 
-  // If unauthorized, redirect cleanly back to the absolute sub-login path
   if (!user || !isStaff) {
     return <Navigate to="/admin/login" replace />;
   }
 
-  // Authorized: Wrap the nested pages inside your application sidebar container
   return (
     <Layout>
       <Outlet />
@@ -56,12 +55,12 @@ const AdminProtectedLayout = () => {
 };
 
 const AppRoutes = () => {
+  const { user } = useAuth();
+
   return (
     <Routes>
-      {/* 1. Public Auth Route (Always retains complete structural pathing) */}
       <Route path="/admin/login" element={<Login />} />
 
-      {/* 2. Fully Shielded Subdirectory Portal Route Group */}
       <Route element={<AdminProtectedLayout />}>
         <Route path="/admin" element={<Dashboard />} />
         <Route path="/admin/reviews" element={<Reviews />} />
@@ -75,29 +74,31 @@ const AppRoutes = () => {
         <Route path="/admin/manual-review-queue" element={<ManualReviewQueue />} />
         <Route path="/admin/errors" element={<ExtractionErrorReview />} />
         <Route path="/admin/beta-management" element={<BetaManagement />} />
-        
         <Route path="/admin/glossary-management" element={<GlossaryManagement />} />
         <Route path="/staff-dashboard" element={<StaffDashboard />} />
         <Route path="/admin/reviews-queue" element={<StaffReviewQueue />} />
         <Route path="/admin/log-viewer" element={<LogViewer />} />
-        <Route path="/admin/assignments" element={<AdminAssignment />} /> {/* ✅ Add this */}
+        <Route path="/admin/assignments" element={<AdminAssignment />} />
+        <Route path="/admin/work-hub" element={<WorkHub />} />
+
       </Route>
 
-      {/* Catch-all global route fallback */}
       <Route path="*" element={<Navigate to="/admin/login" replace />} />
     </Routes>
   );
 };
 
-// Clean Mount Instantiation without buggy configuration variables
 function App() {
   console.log('🚀 Admin System Booted!');
 
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      {/* ✅ Wrap with RealtimeProvider */}
+      <RealtimeProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </RealtimeProvider>
     </AuthProvider>
   );
 }

@@ -1,4 +1,4 @@
-// AssetManager.jsx - Improved Layout with Cards
+// AssetManager.jsx - Fixed API Endpoints
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
@@ -41,28 +41,39 @@ function AssetManager({ organization }) {
   };
 
   const fetchData = async () => {
+    if (!organization?.id) {
+      console.log('⏳ Waiting for organization ID...');
+      return;
+    }
+
     setLoading(true);
     const token = await getToken();
     
     try {
-      // Fetch facilities
-      const facResponse = await fetch(`${API_URL}/api/organizations/assets/facilities?limit=1000`, {
+      // ✅ FIX: Include organization ID in the path
+      // GET /api/organizations/{org_id}/facilities
+      const facResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities?limit=1000`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (facResponse.ok) {
         const data = await facResponse.json();
         setFacilities(data.facilities || []);
         console.log('✅ Facilities loaded:', data.facilities?.length || 0);
+      } else {
+        console.error('❌ Failed to fetch facilities:', facResponse.status);
       }
 
-      // Fetch assets
-      const assetResponse = await fetch(`${API_URL}/api/organizations/assets/?limit=1000`, {
+      // ✅ FIX: Include organization ID in the path
+      // GET /api/organizations/{org_id}/assets
+      const assetResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/assets?limit=1000`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (assetResponse.ok) {
         const data = await assetResponse.json();
         setAssets(data.assets || []);
         console.log('✅ Assets loaded:', data.assets?.length || 0);
+      } else {
+        console.error('❌ Failed to fetch assets:', assetResponse.status);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -102,13 +113,23 @@ function AssetManager({ organization }) {
     const token = await getToken();
 
     try {
-      const response = await fetch(`${API_URL}/api/organizations/assets/facilities`, {
+      // ✅ FIX: POST /api/organizations/{org_id}/facilities
+      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(newFacility)
+        body: JSON.stringify({
+          name: newFacility.name,
+          address_line1: newFacility.address_line1 || null,
+          address_line2: newFacility.address_line2 || null,
+          city: newFacility.city || null,
+          county: newFacility.county || null,
+          postcode: newFacility.postcode,
+          country: newFacility.country || 'United Kingdom',
+          type: newFacility.type || 'office'
+        })
       });
 
       if (response.ok) {
@@ -153,7 +174,8 @@ function AssetManager({ organization }) {
     const token = await getToken();
 
     try {
-      const response = await fetch(`${API_URL}/api/organizations/assets/`, {
+      // ✅ FIX: POST /api/organizations/{org_id}/assets
+      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/assets`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -194,7 +216,8 @@ function AssetManager({ organization }) {
     const token = await getToken();
 
     try {
-      const response = await fetch(`${API_URL}/api/organizations/assets/facilities/${facilityId}?permanent=false`, {
+      // ✅ FIX: DELETE /api/organizations/{org_id}/facilities/{facility_id}
+      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities/${facilityId}?permanent=false`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -218,7 +241,8 @@ function AssetManager({ organization }) {
     const token = await getToken();
 
     try {
-      const response = await fetch(`${API_URL}/api/organizations/assets/${assetId}?permanent=false`, {
+      // ✅ FIX: DELETE /api/organizations/{org_id}/assets/{asset_id}
+      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/assets/${assetId}?permanent=false`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -259,6 +283,17 @@ function AssetManager({ organization }) {
         <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
         <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
         <div className="skeleton skeleton-box" style={{ height: '60px', marginBottom: '1rem' }}></div>
+      </div>
+    );
+  }
+
+  if (!organization?.id) {
+    return (
+      <div className="view-section">
+        <div className="empty-state">
+          <p className="empty-msg">No organization selected.</p>
+          <p className="empty-hint">Please select an organization to manage assets.</p>
+        </div>
       </div>
     );
   }
@@ -424,8 +459,8 @@ function AssetManager({ organization }) {
                   <div className="facility-card-header">
                     <div className="facility-name-section">
                       <h4>{fac.name}</h4>
-                      <span className={`status-badge ${fac.is_active ? 'active' : 'inactive'}`}>
-                        {fac.is_active ? '● Active' : '● Inactive'}
+                      <span className={`status-badge ${fac.is_active !== false ? 'active' : 'inactive'}`}>
+                        {fac.is_active !== false ? '● Active' : '● Inactive'}
                       </span>
                     </div>
                     <button 
@@ -510,7 +545,7 @@ function AssetManager({ organization }) {
                     required
                   >
                     <option value="">Select a Facility...</option>
-                    {facilities.filter(f => f.is_active).map(f => (
+                    {facilities.filter(f => f.is_active !== false).map(f => (
                       <option key={f.id} value={f.id}>
                         {f.name} {f.city ? `(${f.city})` : ''}
                       </option>
@@ -576,8 +611,8 @@ function AssetManager({ organization }) {
                   <div className="asset-card-header">
                     <div className="asset-name-section">
                       <h4>{asset.name}</h4>
-                      <span className={`status-badge ${asset.is_active ? 'active' : 'inactive'}`}>
-                        {asset.is_active ? '● Active' : '● Inactive'}
+                      <span className={`status-badge ${asset.is_active !== false ? 'active' : 'inactive'}`}>
+                        {asset.is_active !== false ? '● Active' : '● Inactive'}
                       </span>
                     </div>
                     <button 

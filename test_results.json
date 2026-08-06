@@ -1,0 +1,159 @@
+{
+  "passed": 16,
+  "failed": 12,
+  "total": 28,
+  "details": [
+    {
+      "name": "Root endpoint",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Health check",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Create waitlist entry",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get waitlist entries",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get user profile",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Update user profile",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get all organizations",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get staff list",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get staff performance",
+      "status": "FAILED",
+      "code": 500,
+      "response": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get staff member: {'message': \\\"Could not find a relationship between 'staff_profiles' and 'organizations' in the schema cache\\\", 'code': 'PGR"
+    },
+    {
+      "name": "Get staff workload",
+      "status": "FAILED",
+      "code": 500,
+      "response": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get staff member: {'message': \\\"Could not find a relationship between 'staff_profiles' and 'organizations' in the schema cache\\\", 'code': 'PGR"
+    },
+    {
+      "name": "Get queue settings",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get queue stats",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get beta codes",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get beta users",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get audit logs",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get email logs",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get processing logs",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get system health",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Get email templates",
+      "status": "FAILED",
+      "code": 500,
+      "response": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to get email templates: {'message': \\\"Could not find the table 'public.email_templates' in the schema cache\\\", 'code': 'PGRST205', 'hint': \\\"Perh"
+    },
+    {
+      "name": "Get settings history",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "User accessing admin (should fail)",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Org viewer accessing admin (should fail)",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Create glossary term",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get glossary",
+      "status": "FAILED",
+      "code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    },
+    {
+      "name": "Get glossary categories",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Search glossary",
+      "status": "PASSED",
+      "code": 200
+    },
+    {
+      "name": "Submit feedback",
+      "status": "FAILED",
+      "code": 500,
+      "response": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"Failed to submit feedback: 'AuthUser' object has no attribute 'id'\",\"timestamp\":\"2026-07-28T06:48:11.461734\",\"path\":\"/api/feedback\"}}"
+    },
+    {
+      "name": "Get user feedback",
+      "status": "FAILED",
+      "code": 500,
+      "response": "{\"success\":false,\"error\":{\"code\":500,\"message\":\"'NoneType' object has no attribute 'HTTP_500_INTERNAL_SERVER_ERROR'\",\"timestamp\":\"2026-07-28T06:48:17.164411\",\"path\":\"/api/feedback\"}}"
+    }
+  ]
+}

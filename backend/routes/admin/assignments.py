@@ -1,10 +1,11 @@
 # backend/routes/admin/assignments.py
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException,  status as http_status, Query
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from auth import AuthUser, require_role
 from database import get_supabase_client
+from utils import get_staff_workload  # ✅ Import from utils
 
 router = APIRouter(prefix="/api/admin/assignments", tags=["Admin - Assignments"])
 
@@ -23,46 +24,8 @@ class BatchAssignRequest(BaseModel):
     deadline: Optional[str] = None
 
 # ==========================================
-# HELPER FUNCTIONS
-# ==========================================
-
-async def get_staff_workload(supabase, staff_id: str) -> Dict:
-    """Get staff workload statistics."""
-    try:
-        # Get assigned and in-progress reviews
-        result = supabase.from_('manual_review_queue') \
-            .select('status, count', count='exact') \
-            .eq('assigned_to', staff_id) \
-            .in_('status', ['assigned', 'in_progress']) \
-            .group_by('status') \
-            .execute()
-        
-        workload = {'assigned': 0, 'in_progress': 0}
-        for item in result.data:
-            status_val = item.get('status', 'assigned')
-            if status_val in workload:
-                workload[status_val] = item.get('count', 0)
-        
-        workload['total'] = workload['assigned'] + workload['in_progress']
-        
-        # Get completed count
-        completed_result = supabase.from_('manual_review_queue') \
-            .select('id', count='exact') \
-            .eq('assigned_to', staff_id) \
-            .eq('status', 'completed') \
-            .execute()
-        workload['completed'] = completed_result.count or 0
-        
-        return workload
-        
-    except Exception as e:
-        print(f"⚠️ Error getting staff workload: {e}")
-        return {'assigned': 0, 'in_progress': 0, 'completed': 0, 'total': 0}
-
-# ==========================================
 # ENDPOINTS
 # ==========================================
-
 @router.get("/available")
 async def get_available_reviews(
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -78,7 +41,7 @@ async def get_available_reviews(
     try:
         supabase = get_supabase_client()
         
-        # Build query for pending and unassigned reviews
+        # ✅ Build query for pending and unassigned reviews
         query = supabase.from_('manual_review_queue') \
             .select('''
                 *,
@@ -102,22 +65,30 @@ async def get_available_reviews(
         if search:
             query = query.ilike('file_name', f'%{search}%')
         
-        # Get total count
-        count_query = query.clone()
-        count_result = count_query.select('id', count='exact').execute()
+        # ✅ Get total count (separate query - no .clone())
+        count_query = supabase.from_('manual_review_queue') \
+            .select('id', count='exact') \
+            .eq('status', 'pending') \
+            .is_('assigned_to', 'null')
+        
+        if priority is not None:
+            count_query = count_query.eq('priority', priority)
+        if search:
+            count_query = count_query.ilike('file_name', f'%{search}%')
+        
+        count_result = count_query.execute()
         total = count_result.count or 0
         
         # Get paginated results
         offset = (page - 1) * limit
         result = query.order('priority', desc=True) \
-            .order('created_at', asc=True) \
+            .order('created_at') \
             .range(offset, offset + limit - 1) \
             .execute()
         
-        # Get queue stats
+        # ✅ Get queue stats (group in Python instead of using group_by)
         stats_result = supabase.from_('manual_review_queue') \
-            .select('status, count', count='exact') \
-            .group_by('status') \
+            .select('status') \
             .execute()
         
         stats = {
@@ -127,13 +98,14 @@ async def get_available_reviews(
             'completed': 0,
             'rejected': 0
         }
-        for item in stats_result.data:
+        
+        for item in (stats_result.data or []):
             status_val = item.get('status', 'pending')
             if status_val in stats:
-                stats[status_val] = item.get('count', 0)
+                stats[status_val] += 1
         
         items = []
-        for item in result.data:
+        for item in (result.data or []):
             # Get batch progress
             batch_progress = None
             if item.get('batch_id'):
@@ -152,18 +124,28 @@ async def get_available_reviews(
                         'percentage': round((processed_files / total_files * 100) if total_files > 0 else 0, 1)
                     }
             
+            # Get organization name
+            org_name = None
+            if item.get('organization'):
+                org_name = item.get('organization', {}).get('name')
+            
+            # Get batch name
+            batch_name = None
+            if item.get('batch'):
+                batch_name = item.get('batch', {}).get('batch_name')
+            
             items.append({
                 'id': item['id'],
-                'file_name': item['file_name'],
-                'file_type': item['file_type'],
-                'file_url': item['file_url'],
-                'data_type': item['data_type'],
-                'status': item['status'],
+                'file_name': item.get('file_name', ''),
+                'file_type': item.get('file_type'),
+                'file_url': item.get('file_url'),
+                'data_type': item.get('data_type'),
+                'status': item.get('status', 'pending'),
                 'priority': item.get('priority', 0),
                 'organization_id': item.get('organization_id'),
-                'organization_name': item.get('organization', {}).get('name'),
+                'organization_name': org_name,
                 'batch_id': item.get('batch_id'),
-                'batch_name': item.get('batch', {}).get('batch_name'),
+                'batch_name': batch_name,
                 'batch_progress': batch_progress,
                 'customer_notes': item.get('customer_notes'),
                 'created_at': item.get('created_at')
@@ -182,11 +164,12 @@ async def get_available_reviews(
         raise
     except Exception as e:
         print(f"❌ Error getting available reviews: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get available reviews: {str(e)}"
         )
-
 @router.get("/staff")
 async def get_staff_list(
     current_user: AuthUser = Depends(require_role(["admin"]))
@@ -240,130 +223,8 @@ async def get_staff_list(
     except Exception as e:
         print(f"❌ Error getting staff list: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get staff list: {str(e)}"
-        )
-
-@router.post("/{review_id}/assign")
-async def assign_review(
-    review_id: str,
-    assign_data: AssignRequest,
-    current_user: AuthUser = Depends(require_role(["admin"]))
-):
-    """
-    Assign a review to a staff member.
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        # Check if review exists
-        review_result = supabase.from_('manual_review_queue') \
-            .select('*') \
-            .eq('id', review_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not review_result.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Review item not found"
-            )
-        
-        review = review_result.data
-        
-        # Check if staff exists
-        staff_result = supabase.from_('staff_profiles') \
-            .select('user_id, first_name, last_name, email') \
-            .eq('user_id', assign_data.staff_user_id) \
-            .eq('is_active', True) \
-            .maybe_single() \
-            .execute()
-        
-        if not staff_result.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Staff member not found or inactive"
-            )
-        
-        now = datetime.now().isoformat()
-        
-        # Update review
-        update_data = {
-            'assigned_to': assign_data.staff_user_id,
-            'assigned_by': current_user.user_id,
-            'status': 'assigned',
-            'assigned_at': now,
-            'staff_notes': assign_data.note,
-            'priority': review.get('priority', 0)
-        }
-        
-        # Set SLA deadline (24 hours by default)
-        if assign_data.deadline:
-            update_data['sla_deadline'] = assign_data.deadline
-        elif not review.get('sla_deadline'):
-            update_data['sla_deadline'] = (datetime.now() + timedelta(hours=24)).isoformat()
-        
-        # Log assignment history
-        supabase.from_('review_assignment_history') \
-            .insert({
-                'review_id': review_id,
-                'assigned_by': current_user.user_id,
-                'assigned_to': assign_data.staff_user_id,
-                'previous_assigned_to': None,
-                'action': 'assign',
-                'note': assign_data.note or "Initial assignment",
-                'created_at': now
-            }) \
-            .execute()
-        
-        # Update review
-        result = supabase.from_('manual_review_queue') \
-            .update(update_data) \
-            .eq('id', review_id) \
-            .execute()
-        
-        # Update document status
-        if review.get('file_id'):
-            supabase.from_('organization_files') \
-                .update({
-                    'status': 'staff_review',
-                    'status_updated_at': now,
-                    'reviewed_by': assign_data.staff_user_id
-                }) \
-                .eq('id', review['file_id']) \
-                .execute()
-        
-        # Log activity
-        supabase.from_('document_activity_log') \
-            .insert({
-                'file_id': review.get('file_id'),
-                'organization_id': review.get('organization_id'),
-                'user_id': current_user.user_id,
-                'action': 'assigned_to_staff',
-                'details': {
-                    'assigned_to': assign_data.staff_user_id,
-                    'assigned_by': current_user.user_id,
-                    'note': assign_data.note,
-                    'staff_name': f"{staff_result.data.get('first_name', '')} {staff_result.data.get('last_name', '')}".strip()
-                },
-                'created_at': now
-            }) \
-            .execute()
-        
-        return {
-            "success": True,
-            "message": f"Review assigned to {staff_result.data.get('first_name', '')} {staff_result.data.get('last_name', '')}",
-            "review_id": review_id,
-            "assigned_to": assign_data.staff_user_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error assigning review: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to assign review: {str(e)}"
         )
 
 @router.post("/batch/{batch_id}/assign")
@@ -387,7 +248,7 @@ async def assign_batch(
         
         if not batch_result.data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Batch not found"
             )
         
@@ -401,7 +262,7 @@ async def assign_batch(
         
         if not staff_result.data:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Staff member not found or inactive"
             )
         
@@ -415,7 +276,7 @@ async def assign_batch(
         
         if not pending_reviews.data:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="No pending reviews found in this batch"
             )
         
@@ -507,11 +368,10 @@ async def assign_batch(
     except Exception as e:
         print(f"❌ Error assigning batch: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to assign batch: {str(e)}"
         )
-
-@router.get("/stats")
+@router.get("/assignment-stats")
 async def get_assignment_stats(
     current_user: AuthUser = Depends(require_role(["admin"]))
 ):
@@ -521,12 +381,12 @@ async def get_assignment_stats(
     try:
         supabase = get_supabase_client()
         
-        # Get overall stats
-        stats_result = supabase.from_('manual_review_queue') \
-            .select('status, count', count='exact') \
-            .group_by('status') \
+        # ✅ Get all review queue data without group_by
+        queue_result = supabase.from_('manual_review_queue') \
+            .select('status') \
             .execute()
         
+        # ✅ Group in Python
         stats = {
             'pending': 0,
             'assigned': 0,
@@ -534,27 +394,52 @@ async def get_assignment_stats(
             'completed': 0,
             'rejected': 0
         }
-        for item in stats_result.data:
+        
+        for item in (queue_result.data or []):
             status_val = item.get('status', 'pending')
             if status_val in stats:
-                stats[status_val] = item.get('count', 0)
+                stats[status_val] += 1
         
         # Get staff workload summary
         staff_summary = []
         staff_result = supabase.from_('staff_profiles') \
-            .select('user_id, first_name, last_name, email') \
+            .select('id, first_name, last_name, email') \
             .eq('is_active', True) \
             .execute()
         
-        for staff in staff_result.data:
-            workload = await get_staff_workload(supabase, staff['user_id'])
+        for staff in (staff_result.data or []):
+            # Get assigned reviews count
+            assigned_result = supabase.from_('manual_review_queue') \
+                .select('id', count='exact') \
+                .eq('assigned_to', staff['id']) \
+                .in_('status', ['assigned', 'pending']) \
+                .execute()
+            
+            # Get in-progress reviews count
+            in_progress_result = supabase.from_('manual_review_queue') \
+                .select('id', count='exact') \
+                .eq('assigned_to', staff['id']) \
+                .eq('status', 'in_progress') \
+                .execute()
+            
+            # Get completed reviews count
+            completed_result = supabase.from_('manual_review_queue') \
+                .select('id', count='exact') \
+                .eq('assigned_to', staff['id']) \
+                .eq('status', 'completed') \
+                .execute()
+            
+            assigned = assigned_result.count or 0
+            in_progress = in_progress_result.count or 0
+            completed = completed_result.count or 0
+            
             staff_summary.append({
-                'id': staff['user_id'],
+                'id': staff['id'],
                 'name': f"{staff.get('first_name', '')} {staff.get('last_name', '')}".strip() or staff.get('email', 'Unknown'),
-                'assigned': workload['assigned'],
-                'in_progress': workload['in_progress'],
-                'completed': workload['completed'],
-                'total': workload['total']
+                'assigned': assigned,
+                'in_progress': in_progress,
+                'completed': completed,
+                'total': assigned + in_progress + completed
             })
         
         return {
@@ -567,7 +452,9 @@ async def get_assignment_stats(
         raise
     except Exception as e:
         print(f"❌ Error getting assignment stats: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get assignment stats: {str(e)}"
         )

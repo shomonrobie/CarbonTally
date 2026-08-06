@@ -679,7 +679,7 @@ tr:hover {
   padding-top: 1.5rem;
   font-size: 0.875rem;
 }
-/* 
+
 .footer-bottom-dashboard {
   background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
   animation: gradientShift 8s ease infinite;
@@ -698,7 +698,7 @@ tr:hover {
     background-position: 0% 50%;
     opacity: 1;
   }
-} */
+}
 
 /* Add a subtle glow effect */
 .footer-bottom-dashboard::before {
@@ -1208,7 +1208,7 @@ tr:hover {
   background-clip: text;
 }
 
-.landing-nav {
+.main-nav {
   display: flex;
   align-items: center;
 }
@@ -1458,20 +1458,20 @@ tr:hover {
 .footer-bottom {
   padding-top: 1.5rem;
 }
-/* 
+
 .footer-bottom-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 1rem;
-} */
+}
 
 .footer-bottom-content p {
   font-size: 0.85rem;
   color: #6a6a82;
 }
-/* 
+
 .footer-legal-links {
   display: flex;
   gap: 1.5rem;
@@ -1486,7 +1486,7 @@ tr:hover {
 
 .footer-legal-links a:hover {
   color: #c8c8d4;
-} */
+}
 
 /* Footer responsive */
 @media (max-width: 992px) {
@@ -1523,10 +1523,10 @@ tr:hover {
     text-align: center;
   }
 
-  /* .footer-legal-links {
+  .footer-legal-links {
     flex-wrap: wrap;
     justify-content: center;
-  } */
+  }
 }
 
 /* ========== HERO SECTION ADJUSTMENTS ========== */

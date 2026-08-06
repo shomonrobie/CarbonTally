@@ -80,17 +80,26 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
     }
 
     try {
+      // ✅ FIX: Use organization.id instead of organizationId
+      const orgId = organization.id;
+      
       // Fetch fuel types, units, and facilities in parallel
       const [fuelResponse, unitResponse, facilitiesResponse] = await Promise.all([
         fetch(`${API_URL}/api/reference/fuel-types`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
+        
         fetch(`${API_URL}/api/reference/units`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch(`${API_URL}/api/organizations/assets/facilities?limit=1000`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+        
+        // ✅ FIX: Use orgId variable
+        fetch(
+          `${API_URL}/api/organizations/${orgId}/facilities?limit=1000`,
+          {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }
+        )
       ]);
 
       // Process fuel types
@@ -112,13 +121,6 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
         const data = await facilitiesResponse.json();
         setFacilities(data.facilities || []);
         console.log('✅ Facilities loaded:', data.facilities?.length || 0);
-        
-        // If there are facilities, fetch assets for the first one (or all)
-        if (data.facilities && data.facilities.length > 0) {
-          // Optionally select first facility by default
-          // setSelectedFacilityId(data.facilities[0].id);
-          // fetchAssetsForFacility(data.facilities[0].id);
-        }
       }
 
     } catch (error) {
@@ -129,9 +131,9 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
     }
   };
 
-  // ✅ Fix: Fetch assets for a specific facility
+  // ✅ FIX: Fetch assets for a specific facility with org ID
   const fetchAssetsForFacility = async (facilityId) => {
-    if (!facilityId) {
+    if (!facilityId || !organization?.id) {
       setAssets([]);
       return;
     }
@@ -142,9 +144,9 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
     try {
       const token = await getToken();
       
-      // ✅ Correct endpoint: fetch assets by facility_id
+      // ✅ FIX: Include organization ID in the path
       const response = await fetch(
-        `${API_URL}/api/organizations/assets/?facility_id=${facilityId}&limit=1000`,
+        `${API_URL}/api/organizations/${organization.id}/assets?facility_id=${facilityId}&limit=1000`,
         {
           headers: { 'Authorization': `Bearer ${token}` }
         }
@@ -193,7 +195,6 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
   };
 
   const handleSubmit = async () => {
-    // ... (same as before)
     if (!formData.billing_start) {
       toast.error('Please enter billing period start date');
       return;
@@ -240,11 +241,11 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
 
       // Get asset ID
       let assetId = null;
-      if (formData.asset_name) {
+      if (formData.asset_name && selectedFacilityId) {
         try {
-          // Try to find the asset by name
+          // ✅ FIX: Include organization ID in the path
           const assetResponse = await fetch(
-            `${API_URL}/api/organizations/assets/?facility_id=${selectedFacilityId}`,
+            `${API_URL}/api/organizations/${organization.id}/assets?facility_id=${selectedFacilityId}&limit=1000`,
             { headers: { 'Authorization': `Bearer ${token}` } }
           );
           

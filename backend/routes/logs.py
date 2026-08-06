@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
-from auth import AuthUser, require_org_member, require_role
+from auth import AuthUser, require_auth, require_org_admin, require_org_member, require_permission, require_role
 from database import get_supabase_client
 
 router = APIRouter(prefix="/api/logs", tags=["Logs"])
@@ -38,6 +38,17 @@ async def create_log(
         
         now = datetime.now().isoformat()
         
+        # ✅ Fix: Build metadata dict properly
+        metadata = {
+            'user_email': current_user.email,
+            'user_role': current_user.role,
+            'timestamp': now
+        }
+        
+        # Add any additional metadata from request
+        if log_data.metadata:
+            metadata.update(log_data.metadata)
+        
         # Prepare log entry
         entry = {
             'user_id': current_user.user_id,
@@ -46,12 +57,7 @@ async def create_log(
             'resource_type': log_data.resource_type,
             'resource_id': log_data.resource_id,
             'details': log_data.details or {},
-            'metadata': {
-                **log_data.metadata or {},
-                'user_email': current_user.email,
-                'user_role': current_user.role,
-                'timestamp': now
-            },
+            'metadata': metadata,
             'created_at': now
         }
         
@@ -74,13 +80,13 @@ async def create_log(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create log: {str(e)}"
         )
-
 @router.get("/")
 async def get_logs(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     action: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     current_user: AuthUser = Depends(require_role(["admin", "staff"]))
 ):
     """
@@ -89,10 +95,11 @@ async def get_logs(
     try:
         supabase = get_supabase_client()
         
+        # ✅ Build base query
         query = supabase.from_('activity_logs') \
-            .select('*') \
-            .order('created_at', desc=True)
+            .select('*')
         
+        # Apply filters
         if current_user.role != 'admin':
             # Staff can only see logs for their organization
             query = query.eq('organization_id', current_user.organization_id)
@@ -101,14 +108,39 @@ async def get_logs(
             query = query.eq('action', action)
         if resource_type:
             query = query.eq('resource_type', resource_type)
+        if search:
+            query = query.or_(
+                f"details->>file_name.ilike.%{search}%,"
+                f"details->>action.ilike.%{search}%,"
+                f"metadata->>user_email.ilike.%{search}%"
+            )
         
-        # Get total count
-        count_query = query.clone()
-        count_result = count_query.select('id', count='exact').execute()
+        # ✅ Get total count (separate query - no .clone())
+        count_query = supabase.from_('activity_logs') \
+            .select('id', count='exact')
+        
+        # Apply the same filters to count_query
+        if current_user.role != 'admin':
+            count_query = count_query.eq('organization_id', current_user.organization_id)
+        
+        if action:
+            count_query = count_query.eq('action', action)
+        if resource_type:
+            count_query = count_query.eq('resource_type', resource_type)
+        if search:
+            count_query = count_query.or_(
+                f"details->>file_name.ilike.%{search}%,"
+                f"details->>action.ilike.%{search}%,"
+                f"metadata->>user_email.ilike.%{search}%"
+            )
+        
+        count_result = count_query.execute()
         total = count_result.count or 0
         
-        # Get paginated results
-        result = query.range(offset, offset + limit - 1).execute()
+        # ✅ Get paginated results
+        result = query.order('created_at', desc=True) \
+            .range(offset, offset + limit - 1) \
+            .execute()
         
         return {
             "success": True,
@@ -122,11 +154,13 @@ async def get_logs(
         raise
     except Exception as e:
         print(f"❌ Error getting logs: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get logs: {str(e)}"
         )
-
+    
 @router.get("/documents/{file_id}")
 async def get_document_logs(
     file_id: str,
@@ -162,7 +196,6 @@ async def get_document_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get document logs: {str(e)}"
         )
-# backend/routes/logs.py - Add these new endpoints
 
 @router.get("/analytics/stats")
 async def get_log_stats(
@@ -275,7 +308,6 @@ async def get_error_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get error logs: {str(e)}"
         )
-
 @router.get("/analytics/users")
 async def get_user_activity(
     current_user: AuthUser = Depends(require_role(["admin"]))
@@ -286,44 +318,70 @@ async def get_user_activity(
     try:
         supabase = get_supabase_client()
         
-        result = supabase.from_('activity_logs') \
-            .select('user_id, action, count', count='exact') \
+        # ✅ Get unique user_ids with activity
+        users_result = supabase.from_('activity_logs') \
+            .select('user_id') \
             .eq('organization_id', current_user.organization_id) \
-            .group_by('user_id, action') \
             .execute()
         
-        # Get user emails
-        user_summary = {}
-        for item in result.data:
-            user_id = item.get('user_id')
-            action = item.get('action')
-            count = item.get('count', 0)
+        # Get unique user IDs
+        user_ids = set()
+        for item in (users_result.data or []):
+            if item.get('user_id'):
+                user_ids.add(item['user_id'])
+        
+        user_summary = []
+        for user_id in user_ids:
+            # Get actions for this user
+            actions_result = supabase.from_('activity_logs') \
+                .select('action') \
+                .eq('organization_id', current_user.organization_id) \
+                .eq('user_id', user_id) \
+                .execute()
             
-            if user_id not in user_summary:
-                # Get user email
+            # Count actions in Python
+            actions = {}
+            for item in (actions_result.data or []):
+                action = item.get('action')
+                if action:
+                    if action not in actions:
+                        actions[action] = 0
+                    actions[action] += 1
+            
+            # Get user email
+            email = user_id
+            try:
                 user_result = supabase.from_('auth.users') \
                     .select('email') \
                     .eq('id', user_id) \
                     .maybe_single() \
                     .execute()
-                email = user_result.data.get('email') if user_result.data else user_id
-                user_summary[user_id] = {
-                    'user_id': user_id,
-                    'email': email,
-                    'actions': {}
-                }
+                if user_result and user_result.data:
+                    email = user_result.data.get('email', user_id)
+            except Exception:
+                pass
             
-            user_summary[user_id]['actions'][action] = count
+            user_summary.append({
+                'user_id': user_id,
+                'email': email,
+                'actions': actions,
+                'total_actions': sum(actions.values())
+            })
+        
+        # Sort by total actions
+        user_summary.sort(key=lambda x: x['total_actions'], reverse=True)
         
         return {
             "success": True,
-            "users": list(user_summary.values())
+            "users": user_summary
         }
         
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error getting user activity: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get user activity: {str(e)}"
