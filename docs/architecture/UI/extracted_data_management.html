@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally · Extracted Data Management</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        /* ===== THEME SYSTEM (exact CarbonTally) ===== */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --sidebar-width: 240px;
+            --sidebar-bg: 0, 0%, 100%;
+            --sidebar-border: 220, 15%, 90%;
+            --sidebar-item-hover: 150, 30%, 96%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+
+        /* Theme presets (9 themes) */
+        [data-theme="forest"] { --primary: 150, 50%, 28%; --accent: 150, 30%, 92%; }
+        [data-theme="emerald"] { --primary: 160, 84%, 39%; --accent: 160, 70%, 92%; }
+        [data-theme="teal"] { --primary: 175, 60%, 25%; --accent: 175, 50%, 90%; }
+        [data-theme="navy"] { --primary: 222, 47%, 31%; --accent: 222, 40%, 90%; }
+        [data-theme="slate"] { --primary: 220, 20%, 18%; --accent: 220, 20%, 92%; }
+        [data-theme="warm-grey"] { --primary: 30, 15%, 25%; --accent: 30, 20%, 92%; }
+        [data-theme="purple"] { --primary: 260, 50%, 35%; --accent: 260, 40%, 90%; }
+        [data-theme="rose"] { --primary: 340, 60%, 35%; --accent: 340, 50%, 92%; }
+        [data-theme="carbon"] { --primary: 0, 0%, 15%; --accent: 0, 0%, 92%; }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        /* shadcn/ui components */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+            border: none; cursor: pointer; transition: all 0.15s ease;
+        }
+        .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .btn-primary:hover { opacity:0.9; box-shadow: 0 4px 12px hsla(var(--primary),0.3); transform:translateY(-1px); }
+        .btn-outline { background:transparent; color:hsl(var(--primary)); border:2px solid hsl(var(--primary)); }
+        .btn-outline:hover { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+        .btn-ghost { background:transparent; color:hsl(var(--foreground)); }
+        .btn-ghost:hover { background:hsl(var(--accent)); }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-success { background:hsl(var(--success)); color:#fff; }
+        .btn-danger { background:hsl(var(--destructive)); color:#fff; }
+
+        .card {
+            background: hsl(var(--card)); border-radius: var(--radius); border:1px solid hsl(var(--border));
+            box-shadow: var(--shadow); transition: all 0.2s ease;
+        }
+        .card-header { padding: 16px 20px 8px 20px; display:flex; justify-content:space-between; align-items:center; }
+        .card-title { font-size:14px; font-weight:600; }
+        .card-description { font-size:12px; color:hsl(var(--muted-foreground)); }
+        .card-content { padding: 12px 20px 20px 20px; }
+        .badge {
+            display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px;
+            font-size:11px; font-weight:500;
+        }
+        .badge-success { background:hsl(var(--success)); color:#fff; }
+        .badge-warning { background:hsl(var(--warning)); color:#fff; }
+        .badge-primary { background:hsl(var(--primary)); color:#fff; }
+        .badge-muted { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+        .badge-destructive { background:hsl(var(--destructive)); color:#fff; }
+
+        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; background:hsl(var(--primary)); color:#fff; }
+        .progress-bar { width:100%; height:6px; background:hsl(var(--muted)); border-radius:6px; overflow:hidden; margin-top:6px; }
+        .progress-bar .fill { height:100%; border-radius:6px; transition: width 0.6s ease; background:hsl(var(--primary)); }
+
+        /* LAYOUT */
+        .app { display:flex; min-height:100vh; }
+        .sidebar {
+            width: var(--sidebar-width); background:hsl(var(--sidebar-bg)); border-right:1px solid hsl(var(--sidebar-border));
+            display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100;
+            transition:all 0.3s ease; overflow-y:auto;
+        }
+        .sidebar-logo { padding:20px 20px 16px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid hsl(var(--sidebar-border)); }
+        .sidebar-logo .logo-icon { width:32px; height:32px; background:hsl(var(--primary)); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+        .sidebar-logo .logo-text { font-size:18px; font-weight:700; }
+        .sidebar-nav { flex:1; padding:16px 12px; overflow-y:auto; }
+        .sidebar-section-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:hsl(var(--muted-foreground)); padding:8px 12px 4px 12px; opacity:0.6; }
+        .sidebar-item {
+            display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:var(--radius);
+            color:hsl(var(--muted-foreground)); cursor:pointer; transition:all 0.15s ease; font-size:14px; font-weight:500;
+            border:none; background:transparent; width:100%; text-align:left;
+        }
+        .sidebar-item:hover { background:hsl(var(--sidebar-item-hover)); color:hsl(var(--foreground)); }
+        .sidebar-item.active { background:hsl(var(--sidebar-item-active)); color:#fff; }
+        .sidebar-item .icon { font-size:18px; width:24px; text-align:center; flex-shrink:0; }
+
+        .main-content { margin-left:var(--sidebar-width); flex:1; min-height:100vh; display:flex; flex-direction:column; }
+        .top-header {
+            background:hsl(var(--card)); border-bottom:1px solid hsl(var(--border)); padding:0 32px; height:64px;
+            display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50;
+        }
+        .header-left { display:flex; align-items:center; gap:24px; flex:1; }
+        .header-search { flex:1; max-width:400px; position:relative; margin:0 24px; }
+        .header-search input { width:100%; padding:8px 12px 8px 36px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .header-search input:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+        .header-search .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:hsl(var(--muted-foreground)); }
+        .header-right { display:flex; align-items:center; gap:16px; }
+        .header-user { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 8px 4px 4px; border-radius:var(--radius); }
+        .header-user:hover { background:hsl(var(--accent)); }
+        .header-user .user-name { font-size:13px; font-weight:500; }
+        .header-user .user-role { font-size:11px; color:hsl(var(--muted-foreground)); }
+        .mobile-menu-btn { display:none; background:none; border:none; font-size:24px; cursor:pointer; }
+
+        .main-body { padding:24px 32px; flex:1; }
+        .page-header { margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+        .page-header h1 { font-size:24px; font-weight:700; }
+        .page-header p { font-size:14px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        /* stats grid */
+        .stats-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:12px; margin-bottom:24px; }
+        .stat-card { background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border)); padding:14px 16px; }
+        .stat-card .stat-label { font-size:11px; font-weight:500; color:hsl(var(--muted-foreground)); text-transform:uppercase; letter-spacing:0.3px; }
+        .stat-card .stat-value { font-size:20px; font-weight:700; margin-top:4px; }
+        .stat-card .stat-sub { font-size:11px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .filters-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; background:hsl(var(--card)); padding:12px 16px; border-radius:var(--radius); border:1px solid hsl(var(--border)); }
+        .filters-bar select, .filters-bar input { padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .filters-bar select:focus, .filters-bar input:focus { border-color:hsl(var(--ring)); }
+
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; padding:10px 12px; background:hsl(var(--muted)); font-weight:600; color:hsl(var(--muted-foreground)); border-bottom:2px solid hsl(var(--border)); }
+        td { padding:10px 12px; border-bottom:1px solid hsl(var(--border)); vertical-align:middle; }
+        tr:hover td { background:hsl(var(--accent)); }
+
+        /* MODAL */
+        .modal-overlay {
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
+            z-index:1000; align-items:center; justify-content:center;
+        }
+        .modal-overlay.show { display:flex; }
+        .modal-box {
+            background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border));
+            box-shadow:var(--shadow-lg); max-width:600px; width:95%; max-height:85vh; overflow-y:auto;
+            padding:24px; animation:slideUp 0.2s ease;
+        }
+        .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+        .modal-title { font-size:20px; font-weight:700; }
+        .modal-close { background:none; border:none; font-size:24px; cursor:pointer; color:hsl(var(--muted-foreground)); }
+        .modal-body { margin-bottom:20px; }
+        .modal-body .field { margin-bottom:12px; }
+        .modal-body label { font-size:13px; font-weight:500; display:block; margin-bottom:2px; color:hsl(var(--foreground)); }
+        .modal-body input, .modal-body select, .modal-body textarea { width:100%; padding:8px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; }
+        .modal-footer { display:flex; justify-content:flex-end; gap:8px; padding-top:12px; border-top:1px solid hsl(var(--border)); }
+
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+
+        /* theme selector button */
+        .theme-btn { padding:4px 10px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); cursor:pointer; font-size:12px; display:flex; align-items:center; gap:4px; }
+
+        /* responsive */
+        @media (max-width:1400px) { .stats-grid { grid-template-columns:repeat(4,1fr); } }
+        @media (max-width:992px) {
+            .sidebar { transform:translateX(-100%); width:280px; }
+            .sidebar.open { transform:translateX(0); }
+            .main-content { margin-left:0; }
+            .top-header { padding:0 16px; }
+            .main-body { padding:16px; }
+            .header-search { display:none; }
+            .mobile-menu-btn { display:flex !important; }
+        }
+        @media (max-width:768px) { .stats-grid { grid-template-columns:repeat(2,1fr); } }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">🌱</div><span class="logo-text">CarbonTally</span></div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-section-title">Main</div>
+            <button class="sidebar-item"><span class="icon">🏠</span> Dashboard</button>
+            <button class="sidebar-item"><span class="icon">📁</span> Documents</button>
+            <button class="sidebar-item"><span class="icon">📤</span> Upload Data</button>
+            <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+            <button class="sidebar-item active"><span class="icon">📂</span> Extracted Data</button>
+            <button class="sidebar-item"><span class="icon">✅</span> Validation Queue <span class="badge badge-destructive" style="margin-left:auto;">8</span></button>
+            <button class="sidebar-item"><span class="icon">📦</span> Batches</button>
+        </nav>
+        <div style="padding:16px 20px; border-top:1px solid hsl(var(--sidebar-border));">
+            <button class="sidebar-item"><span class="icon">⚙️</span> Settings</button>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                <div class="header-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search extracted data..." id="globalSearch" /></div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" id="themeToggle"><i class="fas fa-palette"></i> <span id="currentThemeName">Forest</span></button>
+                <div class="header-user"><div class="avatar">JD</div><div><div class="user-name">John Doe</div><div class="user-role">Admin</div></div></div>
+            </div>
+        </header>
+
+        <div class="main-body">
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+                <div><h1>📂 Extracted Data Management</h1><p>Browse, edit, validate and export all extracted emissions data.</p></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" id="exportBtn"><i class="fas fa-file-export"></i> Export</button>
+                    <button class="btn btn-outline btn-sm" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+            </div>
+
+            <!-- STATS -->
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card"><div class="stat-label">📄 Total Records</div><div class="stat-value" id="totalRecords">0</div><div class="stat-sub">draft entries</div></div>
+                <div class="stat-card"><div class="stat-label">✅ Completed</div><div class="stat-value" id="completedCount">0</div><div class="stat-sub">100% progress</div></div>
+                <div class="stat-card"><div class="stat-label">⏳ In Progress</div><div class="stat-value" id="inProgressCount">0</div><div class="stat-sub">1-99%</div></div>
+                <div class="stat-card"><div class="stat-label">📦 Batches</div><div class="stat-value" id="batchCount">0</div><div class="stat-sub">upload batches</div></div>
+                <div class="stat-card"><div class="stat-label">🔍 Validation Pending</div><div class="stat-value" id="validationPending">0</div><div class="stat-sub">needs review</div></div>
+                <div class="stat-card"><div class="stat-label">✅ Validated</div><div class="stat-value" id="validatedCount">0</div><div class="stat-sub">verified</div></div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="filters-bar">
+                <select id="statusFilter"><option value="all">All Status</option><option value="draft">Draft</option><option value="in-progress">In Progress</option><option value="completed">Completed</option><option value="validated">Validated</option></select>
+                <select id="typeFilter"><option value="all">All Types</option><option value="fuel">Fuel</option><option value="utility">Utility</option><option value="scope3">Scope 3</option><option value="document">Document</option></select>
+                <input type="date" id="dateFrom" /> <span style="color:hsl(var(--muted-foreground));font-size:12px;">to</span> <input type="date" id="dateTo" />
+                <button class="btn btn-sm btn-primary" id="applyFilters"><i class="fas fa-filter"></i> Apply</button>
+                <button class="btn btn-sm btn-ghost" id="clearFilters"><i class="fas fa-times"></i> Clear</button>
+                <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 entries</span>
+            </div>
+
+            <!-- DATA TABLE -->
+            <div class="card">
+                <div class="card-header"><div class="card-title">📋 Extracted Entries</div><span class="badge badge-primary" id="rowCount">0</span></div>
+                <div class="card-content" style="padding:0 20px 20px 20px;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Type</th><th>Data</th><th>Progress</th><th>Status</th><th>Batch</th><th>Last Updated</th><th style="width:140px;">Actions</th></tr>
+                            </thead>
+                            <tbody id="dataTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BATCH + VALIDATION -->
+            <div style="margin-top:24px; display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                <div class="card"><div class="card-header"><div class="card-title">📦 Batch Groups</div></div><div class="card-content" id="batchList" style="max-height:200px; overflow-y:auto;"></div></div>
+                <div class="card"><div class="card-header"><div class="card-title">📈 Validation Status</div></div><div class="card-content" id="validationSummary" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ===== EDIT MODAL ===== -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-edit"></i> Edit Entry <span id="modalEntryId"></span></div>
+            <button class="modal-close" id="modalCloseBtn">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <!-- dynamic fields rendered by JS -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" id="modalCancelBtn">Cancel</button>
+            <button class="btn btn-primary" id="modalSaveBtn"><i class="fas fa-save"></i> Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== THEME SELECTOR (simple dropdown) ===== -->
+<div style="display:none;" id="themeSelectorContainer">
+    <select id="themeSelector"></select>
+</div>
+
+<script>
+    (function() {
+        "use strict";
+
+        // ===== THEMES =====
+        const themes = [
+            { id: 'forest', name: 'Forest Green' },
+            { id: 'emerald', name: 'Emerald' },
+            { id: 'teal', name: 'Teal' },
+            { id: 'navy', name: 'Navy' },
+            { id: 'slate', name: 'Slate' },
+            { id: 'warm-grey', name: 'Warm Grey' },
+            { id: 'purple', name: 'Purple' },
+            { id: 'rose', name: 'Rose' },
+            { id: 'carbon', name: 'Carbon' }
+        ];
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+
+        function setTheme(id) {
+            currentTheme = id;
+            document.documentElement.setAttribute('data-theme', id);
+            localStorage.setItem('carbontally-theme', id);
+            const t = themes.find(th => th.id === id);
+            if (t) document.getElementById('currentThemeName').textContent = t.name;
+        }
+        setTheme(currentTheme);
+
+        // Theme toggle: cycle themes
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const idx = themes.findIndex(t => t.id === currentTheme);
+            const next = (idx + 1) % themes.length;
+            setTheme(themes[next].id);
+        });
+
+        // ===== MOCK DATA =====
+        const now = new Date();
+        const makeDate = (daysAgo) => { const d = new Date(now); d.setDate(d.getDate() - daysAgo); return d.toISOString().slice(0,10); };
+
+        const mockEntries = [
+            { id: 'e1', type: 'fuel', data: { fuel_type: 'Diesel', quantity: 12450, unit: 'litres', co2e: 32.4 }, progress: 100, status: 'validated', batch: 'BATCH-2026-01', lastUpdated: makeDate(1) },
+            { id: 'e2', type: 'utility', data: { utility: 'Electricity', consumption: 4500, unit: 'kWh', co2e: 1.8 }, progress: 100, status: 'completed', batch: 'BATCH-2026-01', lastUpdated: makeDate(2) },
+            { id: 'e3', type: 'scope3', data: { category: 'Business Travel', distance: 1200, unit: 'km', co2e: 0.6 }, progress: 45, status: 'in-progress', batch: 'BATCH-2026-02', lastUpdated: makeDate(3) },
+            { id: 'e4', type: 'document', data: { document: 'Invoice #234', amount: 1200, currency: 'GBP' }, progress: 20, status: 'draft', batch: null, lastUpdated: makeDate(5) },
+            { id: 'e5', type: 'fuel', data: { fuel_type: 'Petrol', quantity: 8700, unit: 'litres', co2e: 19.2 }, progress: 100, status: 'validated', batch: 'BATCH-2026-01', lastUpdated: makeDate(1) },
+            { id: 'e6', type: 'utility', data: { utility: 'Natural Gas', consumption: 3200, unit: 'therms', co2e: 16.8 }, progress: 70, status: 'in-progress', batch: 'BATCH-2026-02', lastUpdated: makeDate(2) },
+            { id: 'e7', type: 'scope3', data: { category: 'Purchased Goods', value: 45000, currency: 'GBP', co2e: 8.2 }, progress: 100, status: 'validated', batch: 'BATCH-2026-03', lastUpdated: makeDate(4) },
+            { id: 'e8', type: 'document', data: { document: 'Utility Statement', period: 'Q4 2026' }, progress: 10, status: 'draft', batch: null, lastUpdated: makeDate(6) },
+            { id: 'e9', type: 'fuel', data: { fuel_type: 'Jet Fuel', quantity: 5600, unit: 'litres', co2e: 14.6 }, progress: 100, status: 'completed', batch: 'BATCH-2026-02', lastUpdated: makeDate(3) },
+            { id: 'e10', type: 'utility', data: { utility: 'Water', consumption: 2200, unit: 'm³', co2e: 1.2 }, progress: 60, status: 'in-progress', batch: 'BATCH-2026-03', lastUpdated: makeDate(5) },
+            { id: 'e11', type: 'scope3', data: { category: 'Waste Disposal', tonnes: 12, co2e: 4.5 }, progress: 100, status: 'validated', batch: 'BATCH-2026-01', lastUpdated: makeDate(2) },
+            { id: 'e12', type: 'document', data: { document: 'Fleet Report', vehicle_count: 25 }, progress: 50, status: 'in-progress', batch: 'BATCH-2026-03', lastUpdated: makeDate(4) },
+            { id: 'e13', type: 'fuel', data: { fuel_type: 'CNG', quantity: 3200, unit: 'kg', co2e: 8.9 }, progress: 100, status: 'validated', batch: 'BATCH-2026-02', lastUpdated: makeDate(2) },
+            { id: 'e14', type: 'utility', data: { utility: 'Electricity', consumption: 7800, unit: 'kWh', co2e: 3.1 }, progress: 30, status: 'draft', batch: null, lastUpdated: makeDate(7) },
+            { id: 'e15', type: 'scope3', data: { category: 'Employee Commuting', trips: 340, co2e: 2.2 }, progress: 100, status: 'completed', batch: 'BATCH-2026-01', lastUpdated: makeDate(3) },
+            { id: 'e16', type: 'document', data: { document: 'Supplier Invoice', amount: 6800, currency: 'GBP' }, progress: 80, status: 'in-progress', batch: 'BATCH-2026-03', lastUpdated: makeDate(1) },
+            { id: 'e17', type: 'fuel', data: { fuel_type: 'Biofuel', quantity: 2100, unit: 'litres', co2e: 1.1 }, progress: 100, status: 'validated', batch: 'BATCH-2026-02', lastUpdated: makeDate(2) },
+            { id: 'e18', type: 'utility', data: { utility: 'District Heating', consumption: 1500, unit: 'MWh', co2e: 5.6 }, progress: 40, status: 'in-progress', batch: null, lastUpdated: makeDate(6) },
+            { id: 'e19', type: 'scope3', data: { category: 'Downstream Transport', distance: 800, unit: 'km', co2e: 2.8 }, progress: 100, status: 'validated', batch: 'BATCH-2026-03', lastUpdated: makeDate(3) },
+            { id: 'e20', type: 'document', data: { document: 'Asset Register', asset_count: 42 }, progress: 15, status: 'draft', batch: null, lastUpdated: makeDate(8) },
+        ];
+
+        // Batch summary
+        const batchMap = {};
+        mockEntries.forEach(e => { if (e.batch) { batchMap[e.batch] = (batchMap[e.batch] || 0) + 1; } });
+        const batchList = Object.keys(batchMap).map(name => ({ name, count: batchMap[name] }));
+
+        // ===== STATE =====
+        let entries = [...mockEntries];
+        let filteredEntries = [...entries];
+        let currentEditId = null;
+
+        // ===== DOM REFS =====
+        const tbody = document.getElementById('dataTableBody');
+        const rowCount = document.getElementById('rowCount');
+        const filterCount = document.getElementById('filterCount');
+        const totalRecords = document.getElementById('totalRecords');
+        const completedCount = document.getElementById('completedCount');
+        const inProgressCount = document.getElementById('inProgressCount');
+        const batchCount = document.getElementById('batchCount');
+        const validationPending = document.getElementById('validationPending');
+        const validatedCount = document.getElementById('validatedCount');
+        const batchListEl = document.getElementById('batchList');
+        const validationSummaryEl = document.getElementById('validationSummary');
+
+        const statusFilter = document.getElementById('statusFilter');
+        const typeFilter = document.getElementById('typeFilter');
+        const dateFrom = document.getElementById('dateFrom');
+        const dateTo = document.getElementById('dateTo');
+        const globalSearch = document.getElementById('globalSearch');
+
+        // Modal
+        const modal = document.getElementById('editModal');
+        const modalBody = document.getElementById('modalBody');
+        const modalEntryId = document.getElementById('modalEntryId');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+        const modalCancelBtn = document.getElementById('modalCancelBtn');
+        const modalSaveBtn = document.getElementById('modalSaveBtn');
+
+        // ===== RENDER FUNCTIONS =====
+        function renderStats() {
+            const total = entries.length;
+            const completed = entries.filter(e => e.progress === 100).length;
+            const inProgress = entries.filter(e => e.progress > 0 && e.progress < 100).length;
+            const validated = entries.filter(e => e.status === 'validated').length;
+            const pending = entries.filter(e => e.status !== 'validated' && e.status !== 'completed').length;
+            const batches = Object.keys(batchMap).length;
+            totalRecords.textContent = total;
+            completedCount.textContent = completed;
+            inProgressCount.textContent = inProgress;
+            batchCount.textContent = batches;
+            validationPending.textContent = pending;
+            validatedCount.textContent = validated;
+        }
+
+        function renderTable(data) {
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:hsl(var(--muted-foreground));">No entries match filters</td></tr>`;
+                rowCount.textContent = '0';
+                filterCount.textContent = '0 entries';
+                return;
+            }
+            const rows = data.map(e => {
+                const statusBadge = {
+                    'draft': '<span class="badge badge-muted">Draft</span>',
+                    'in-progress': '<span class="badge badge-warning">In Progress</span>',
+                    'completed': '<span class="badge badge-success">Completed</span>',
+                    'validated': '<span class="badge badge-primary">Validated</span>',
+                }[e.status] || e.status;
+
+                const progressColor = e.progress === 100 ? 'var(--success)' : e.progress > 50 ? 'var(--warning)' : 'var(--destructive)';
+                const typeIcon = { fuel:'⛽', utility:'⚡', scope3:'🌍', document:'📄' }[e.type] || '📄';
+
+                let dataPreview = '';
+                if (e.type === 'fuel') dataPreview = `${e.data.fuel_type || ''} ${e.data.quantity || ''} ${e.data.unit || ''}`;
+                else if (e.type === 'utility') dataPreview = `${e.data.utility || ''} ${e.data.consumption || ''} ${e.data.unit || ''}`;
+                else if (e.type === 'scope3') dataPreview = `${e.data.category || ''} ${e.data.co2e || ''} tCO2e`;
+                else dataPreview = e.data.document || 'Document';
+                dataPreview = dataPreview.trim() || '—';
+
+                return `<tr>
+                    <td><span style="font-size:16px;">${typeIcon}</span> ${e.type}</td>
+                    <td><strong>${dataPreview}</strong><br><span style="font-size:11px;color:hsl(var(--muted-foreground));">${e.data.co2e ? e.data.co2e + ' tCO₂e' : ''}</span></td>
+                    <td><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;font-weight:500;">${e.progress}%</span><div class="progress-bar" style="flex:1;max-width:80px;"><div class="fill" style="width:${e.progress}%;background:${progressColor};"></div></div></div></td>
+                    <td>${statusBadge}</td>
+                    <td>${e.batch || '—'}</td>
+                    <td style="font-size:12px;color:hsl(var(--muted-foreground));">${e.lastUpdated}</td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost edit-btn" data-id="${e.id}"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-ghost" onclick="alert('Preview document for ${e.id}')"><i class="fas fa-file-pdf"></i></button>
+                        <button class="btn btn-sm btn-ghost" onclick="alert('Validate ${e.id}')"><i class="fas fa-check-circle"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+            tbody.innerHTML = rows;
+            rowCount.textContent = data.length;
+            filterCount.textContent = data.length + ' entries';
+
+            // Attach edit handlers
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    const entry = entries.find(e => e.id === id);
+                    if (entry) openEditModal(entry);
+                });
+            });
+        }
+
+        function renderBatches() {
+            if (batchList.length === 0) {
+                batchListEl.innerHTML = '<div style="color:hsl(var(--muted-foreground));font-size:13px;">No batches</div>';
+                return;
+            }
+            batchListEl.innerHTML = batchList.map(b => `
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid hsl(var(--border));">
+                    <span><i class="fas fa-box" style="color:hsl(var(--primary));"></i> ${b.name}</span>
+                    <span class="badge badge-muted">${b.count} files</span>
+                </div>
+            `).join('');
+        }
+
+        function renderValidationSummary() {
+            const groups = { draft:0, 'in-progress':0, completed:0, validated:0 };
+            entries.forEach(e => { if (groups[e.status] !== undefined) groups[e.status]++; });
+            const total = entries.length;
+            validationSummaryEl.innerHTML = `
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span>Draft</span><span class="badge badge-muted">${groups.draft}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span>In Progress</span><span class="badge badge-warning">${groups['in-progress']}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span>Completed</span><span class="badge badge-success">${groups.completed}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span>Validated</span><span class="badge badge-primary">${groups.validated}</span></div>
+                <div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground));">Total: ${total}</div>
+            `;
+        }
+
+        // ===== FILTER =====
+        function filterData() {
+            const status = statusFilter.value;
+            const type = typeFilter.value;
+            const search = globalSearch.value.toLowerCase().trim();
+            const from = dateFrom.value;
+            const to = dateTo.value;
+
+            filteredEntries = entries.filter(e => {
+                if (status !== 'all' && e.status !== status) return false;
+                if (type !== 'all' && e.type !== type) return false;
+                if (search) {
+                    const searchable = `${e.type} ${e.id} ${e.batch || ''} ${JSON.stringify(e.data)} ${e.status}`.toLowerCase();
+                    if (!searchable.includes(search)) return false;
+                }
+                if (from && e.lastUpdated < from) return false;
+                if (to && e.lastUpdated > to) return false;
+                return true;
+            });
+            renderTable(filteredEntries);
+            renderStats();
+            renderBatches();
+            renderValidationSummary();
+        }
+
+        // ===== EDIT MODAL =====
+        function openEditModal(entry) {
+            currentEditId = entry.id;
+            modalEntryId.textContent = `#${entry.id}`;
+            // Build form fields based on entry type
+            let fields = '';
+            const d = entry.data;
+            // common fields: status, progress
+            fields += `
+                <div class="field"><label>Status</label>
+                    <select id="editStatus">
+                        <option value="draft" ${entry.status==='draft'?'selected':''}>Draft</option>
+                        <option value="in-progress" ${entry.status==='in-progress'?'selected':''}>In Progress</option>
+                        <option value="completed" ${entry.status==='completed'?'selected':''}>Completed</option>
+                        <option value="validated" ${entry.status==='validated'?'selected':''}>Validated</option>
+                    </select>
+                </div>
+                <div class="field"><label>Progress (%)</label><input type="number" id="editProgress" value="${entry.progress}" min="0" max="100" /></div>
+                <div class="field"><label>Batch</label><input type="text" id="editBatch" value="${entry.batch || ''}" placeholder="e.g. BATCH-2026-01" /></div>
+            `;
+            // type-specific fields
+            if (entry.type === 'fuel') {
+                fields += `
+                    <div class="field"><label>Fuel Type</label><input type="text" id="editFuelType" value="${d.fuel_type || ''}" /></div>
+                    <div class="field"><label>Quantity</label><input type="number" id="editQuantity" value="${d.quantity || ''}" /></div>
+                    <div class="field"><label>Unit</label><input type="text" id="editUnit" value="${d.unit || ''}" /></div>
+                    <div class="field"><label>CO₂e (t)</label><input type="number" step="0.01" id="editCo2e" value="${d.co2e || ''}" /></div>
+                `;
+            } else if (entry.type === 'utility') {
+                fields += `
+                    <div class="field"><label>Utility Type</label><input type="text" id="editUtility" value="${d.utility || ''}" /></div>
+                    <div class="field"><label>Consumption</label><input type="number" id="editConsumption" value="${d.consumption || ''}" /></div>
+                    <div class="field"><label>Unit</label><input type="text" id="editUnit" value="${d.unit || ''}" /></div>
+                    <div class="field"><label>CO₂e (t)</label><input type="number" step="0.01" id="editCo2e" value="${d.co2e || ''}" /></div>
+                `;
+            } else if (entry.type === 'scope3') {
+                fields += `
+                    <div class="field"><label>Category</label><input type="text" id="editCategory" value="${d.category || ''}" /></div>
+                    <div class="field"><label>Value</label><input type="text" id="editScopeValue" value="${d.value || d.distance || d.tonnes || ''}" /></div>
+                    <div class="field"><label>Unit</label><input type="text" id="editUnit" value="${d.unit || ''}" /></div>
+                    <div class="field"><label>CO₂e (t)</label><input type="number" step="0.01" id="editCo2e" value="${d.co2e || ''}" /></div>
+                `;
+            } else { // document
+                fields += `
+                    <div class="field"><label>Document Name</label><input type="text" id="editDocument" value="${d.document || ''}" /></div>
+                    <div class="field"><label>Amount</label><input type="number" id="editAmount" value="${d.amount || ''}" /></div>
+                    <div class="field"><label>Currency</label><input type="text" id="editCurrency" value="${d.currency || 'GBP'}" /></div>
+                `;
+            }
+            modalBody.innerHTML = fields;
+            modal.classList.add('show');
+        }
+
+        function closeModal() {
+            modal.classList.remove('show');
+            currentEditId = null;
+        }
+
+        function saveModal() {
+            if (!currentEditId) return;
+            const entry = entries.find(e => e.id === currentEditId);
+            if (!entry) return;
+
+            // Update common fields
+            entry.status = document.getElementById('editStatus').value;
+            entry.progress = parseInt(document.getElementById('editProgress').value) || 0;
+            entry.batch = document.getElementById('editBatch').value || null;
+
+            // Update type-specific fields
+            const d = entry.data;
+            if (entry.type === 'fuel') {
+                d.fuel_type = document.getElementById('editFuelType').value;
+                d.quantity = parseFloat(document.getElementById('editQuantity').value) || 0;
+                d.unit = document.getElementById('editUnit').value;
+                d.co2e = parseFloat(document.getElementById('editCo2e').value) || 0;
+            } else if (entry.type === 'utility') {
+                d.utility = document.getElementById('editUtility').value;
+                d.consumption = parseFloat(document.getElementById('editConsumption').value) || 0;
+                d.unit = document.getElementById('editUnit').value;
+                d.co2e = parseFloat(document.getElementById('editCo2e').value) || 0;
+            } else if (entry.type === 'scope3') {
+                d.category = document.getElementById('editCategory').value;
+                const val = document.getElementById('editScopeValue').value;
+                if (val) d.value = val;
+                d.unit = document.getElementById('editUnit').value;
+                d.co2e = parseFloat(document.getElementById('editCo2e').value) || 0;
+            } else {
+                d.document = document.getElementById('editDocument').value;
+                d.amount = parseFloat(document.getElementById('editAmount').value) || 0;
+                d.currency = document.getElementById('editCurrency').value || 'GBP';
+            }
+
+            // Update lastUpdated
+            entry.lastUpdated = new Date().toISOString().slice(0,10);
+
+            closeModal();
+            filterData(); // re-render
+        }
+
+        // Modal events
+        modalCloseBtn.addEventListener('click', closeModal);
+        modalCancelBtn.addEventListener('click', closeModal);
+        modalSaveBtn.addEventListener('click', saveModal);
+        modal.addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+        // ===== INIT =====
+        function init() {
+            renderStats();
+            renderTable(entries);
+            renderBatches();
+            renderValidationSummary();
+
+            document.getElementById('applyFilters').addEventListener('click', filterData);
+            document.getElementById('clearFilters').addEventListener('click', function() {
+                statusFilter.value = 'all';
+                typeFilter.value = 'all';
+                globalSearch.value = '';
+                dateFrom.value = '';
+                dateTo.value = '';
+                filterData();
+            });
+            globalSearch.addEventListener('keyup', (e) => { if (e.key === 'Enter') filterData(); });
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                entries = [...mockEntries];
+                filterData();
+            });
+            document.getElementById('exportBtn').addEventListener('click', function() {
+                alert('📊 Export to CSV/Excel (mock) – ' + filteredEntries.length + ' entries');
+            });
+            document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+                document.getElementById('sidebar').classList.toggle('open');
+            });
+        }
+
+        init();
+    })();
+</script>
+</body>
+</html>

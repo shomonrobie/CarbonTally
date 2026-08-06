@@ -1,0 +1,578 @@
+# CarbonTally v1.0 Database Production Readiness Review
+## DO NOT MODIFY THE DATABASE
+## ANALYZE FIRST. RECOMMEND FIRST.
+
+You are acting as a team of:
+
+- Principal PostgreSQL Database Architect
+- Enterprise SaaS Architect
+- Supabase Expert
+- Carbon Accounting Domain Expert
+- UK Business Systems Expert
+- Ireland Business Systems Expert
+- Data Governance Specialist
+- Security Architect
+- Performance Engineer
+- UX Data Architect
+
+------------------------------------------------------------
+
+## IMPORTANT
+
+I already have:
+
+- Complete database schema
+- Supabase migrations
+- Relationships
+- RLS
+- ADRs (Architecture Decision Records)
+
+The ADRs are considered APPROVED.
+
+DO NOT redesign the database.
+
+DO NOT generate migration SQL.
+
+DO NOT modify anything.
+
+ONLY perform a production readiness review.
+
+------------------------------------------------------------
+
+## PRODUCT
+
+CarbonTally
+
+AI-powered Carbon Accounting Platform
+
+Initial Markets:
+
+✅ United Kingdom
+
+✅ Republic of Ireland
+
+Future EU expansion later.
+
+------------------------------------------------------------
+
+## YOUR TASK
+
+Perform a COMPLETE DATABASE AUDIT.
+
+Pretend this database is about to go live with paying enterprise customers.
+
+Your goal is to identify weaknesses BEFORE implementation.
+
+------------------------------------------------------------
+
+# REVIEW AREAS
+
+Review EVERY TABLE.
+
+Review EVERY COLUMN.
+
+Review EVERY RELATIONSHIP.
+
+Review EVERY FOREIGN KEY.
+
+Review EVERY UNIQUE CONSTRAINT.
+
+Review EVERY INDEX.
+
+Review EVERY ENUM.
+
+Review EVERY JSONB FIELD.
+
+Review EVERY RLS POLICY.
+
+Review EVERY DOMAIN.
+
+Review EVERY WORKSPACE.
+
+Review EVERY USER ROLE.
+
+Review EVERY ENTITY.
+
+------------------------------------------------------------
+
+# SPECIFIC THINGS TO LOOK FOR
+
+## 1. Missing Fields
+
+Identify fields that are missing.
+
+Examples:
+
+phone
+
+mobile
+
+country_code
+
+timezone
+
+currency
+
+language
+
+website
+
+linkedin
+
+company_number
+
+vat_number
+
+registration_number
+
+industry_codes
+
+legal_entity_type
+
+invoice_number
+
+purchase_order
+
+supplier_reference
+
+payment_terms
+
+credit_limit
+
+etc.
+
+Explain WHY each missing field is important.
+
+------------------------------------------------------------
+
+## 2. UK Validation
+
+Review all UK-specific business data.
+
+Examples:
+
+Postcode
+
+Company Number
+
+VAT Number
+
+SIC Code
+
+Companies House compatibility
+
+Address format
+
+Telephone format
+
+Currency
+
+Time zone
+
+Regional data
+
+County
+
+Nation
+
+------------------------------------------------------------
+
+## 3. Ireland Validation
+
+Review all Ireland-specific fields.
+
+Examples:
+
+Eircode
+
+VAT Number
+
+CRO Number
+
+County
+
+Telephone format
+
+Currency
+
+Timezone
+
+------------------------------------------------------------
+
+## 4. Address Architecture
+
+Review address storage.
+
+Recommend whether addresses support:
+
+Address Line 1
+
+Address Line 2
+
+Town
+
+City
+
+County
+
+Postcode / Eircode
+
+Country
+
+Latitude
+
+Longitude
+
+Formatted Address
+
+Validation Status
+
+Geocoding Ready
+
+Future Google Maps compatibility
+
+Future Address Lookup compatibility
+
+------------------------------------------------------------
+
+## 5. Validation Rules
+
+Identify fields requiring validation.
+
+Examples:
+
+Email
+
+Phone
+
+Mobile
+
+Website
+
+VAT
+
+Company Number
+
+Postcode
+
+Eircode
+
+Invoice Number
+
+Currency
+
+Units
+
+Emission Values
+
+Percentages
+
+URLs
+
+File Types
+
+Mime Types
+
+File Sizes
+
+------------------------------------------------------------
+
+## 6. Business Rules
+
+Review whether business rules are enforceable.
+
+Examples:
+
+Inactive supplier
+
+Archived organization
+
+Deleted documents
+
+Duplicate suppliers
+
+Duplicate invoices
+
+Duplicate uploads
+
+Duplicate reports
+
+Multiple consultants
+
+Ownership rules
+
+Document approval
+
+Review workflow
+
+------------------------------------------------------------
+
+## 7. Search Readiness
+
+Can users efficiently search?
+
+Organizations
+
+Suppliers
+
+Facilities
+
+Documents
+
+Reports
+
+Invoices
+
+Contacts
+
+Users
+
+Messages
+
+Tasks
+
+Support Tickets
+
+Activity Logs
+
+Audit Logs
+
+------------------------------------------------------------
+
+## 8. Reporting Readiness
+
+Can this schema support:
+
+SECR
+
+Carbon Reports
+
+Supplier Reports
+
+Facility Reports
+
+Activity Reports
+
+Audit Reports
+
+Compliance Reports
+
+Without major redesign?
+
+------------------------------------------------------------
+
+## 9. Performance
+
+Review:
+
+Indexes
+
+Composite indexes
+
+Partial indexes
+
+JSONB indexes
+
+Large table strategy
+
+Storage growth
+
+Query optimisation
+
+------------------------------------------------------------
+
+## 10. Security
+
+Review:
+
+RLS
+
+Tenant isolation
+
+Organization isolation
+
+Consultant isolation
+
+Workspace isolation
+
+Audit logging
+
+Soft delete
+
+------------------------------------------------------------
+
+## 11. UX Impact
+
+Review whether the schema supports excellent UX.
+
+Examples:
+
+Address autocomplete
+
+Postcode lookup
+
+Eircode lookup
+
+Phone formatting
+
+Duplicate detection
+
+Auto-complete
+
+Fast search
+
+Quick filters
+
+Recent activity
+
+Notifications
+
+------------------------------------------------------------
+
+## 12. Future Compatibility
+
+Review compatibility with future versions.
+
+Examples:
+
+Supplier Portal
+
+White Label
+
+Billing
+
+API
+
+Integrations
+
+Microsoft
+
+Xero
+
+QuickBooks
+
+ERP systems
+
+------------------------------------------------------------
+
+# VERY IMPORTANT
+
+DO NOT recommend changes that violate my approved ADRs.
+
+If a recommendation conflicts with an ADR,
+
+state:
+
+"NOT RECOMMENDED because it conflicts with ADR-XXX."
+
+------------------------------------------------------------
+
+# CLASSIFY EVERY ISSUE
+
+For every recommendation provide:
+
+Severity:
+
+🔴 Critical
+
+🟠 High
+
+🟡 Medium
+
+🟢 Low
+
+Implementation Effort:
+
+Small
+
+Medium
+
+Large
+
+Migration Risk:
+
+Low
+
+Medium
+
+High
+
+Should Implement:
+
+v1.0
+
+v1.1
+
+v2.0
+
+Never
+
+------------------------------------------------------------
+
+# SCORING
+
+Score the database:
+
+Architecture
+
+Performance
+
+Security
+
+Scalability
+
+Maintainability
+
+Compliance
+
+Data Integrity
+
+Developer Experience
+
+Supabase Compatibility
+
+Overall Production Readiness
+
+Score each from 1–100.
+
+------------------------------------------------------------
+
+# FINAL DELIVERABLE
+
+Produce ONE professional report containing:
+
+1. Executive Summary
+
+2. Overall Readiness Score
+
+3. Architecture Assessment
+
+4. UK Readiness Assessment
+
+5. Ireland Readiness Assessment
+
+6. Missing Fields
+
+7. Validation Improvements
+
+8. Performance Improvements
+
+9. Security Improvements
+
+10. UX Improvements
+
+11. Future Expansion Readiness
+
+12. Recommended Changes
+
+13. Changes NOT Recommended (because they conflict with ADRs)
+
+14. Final Production Readiness Verdict
+
+DO NOT generate SQL.
+
+DO NOT generate migrations.
+
+DO NOT redesign the schema.
+
+ONLY REVIEW AND RECOMMEND.

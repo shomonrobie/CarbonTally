@@ -1,0 +1,228 @@
+<!-- Team Management Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>👥 Team Management</h1>
+            <p>Manage your organization members, roles, and permissions</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="showInviteModal()">
+                📨 Invite Member
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="navigateToRoles()">
+                🔑 Roles
+            </button>
+        </div>
+    </div>
+
+    <!-- Team Stats -->
+    <div class="team-stats" id="teamStats">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Tabs -->
+    <div style="margin-bottom:16px;">
+        <div class="tabs">
+            <button class="tab active" data-tab="members" onclick="switchTab('members')">
+                👥 Members
+            </button>
+            <button class="tab" data-tab="invitations" onclick="switchTab('invitations')">
+                📨 Invitations
+                <span class="badge badge-warning" id="inviteBadge">0</span>
+            </button>
+            <button class="tab" data-tab="staff" onclick="switchTab('staff')">
+                📊 Staff Performance
+            </button>
+            <button class="tab" data-tab="roles" onclick="switchTab('roles')">
+                🔑 Roles
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== MEMBERS TAB ===== -->
+    <div id="tab-members">
+        <!-- Filter Bar -->
+        <div class="filters-bar">
+            <select id="roleFilter" onchange="renderMembers()">
+                <option value="all">All Roles</option>
+                <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="analyst">Analyst</option>
+                <option value="staff">Staff</option>
+                <option value="viewer">Viewer</option>
+            </select>
+            <select id="statusFilter" onchange="renderMembers()">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="pending">Pending</option>
+            </select>
+            <select id="deptFilter" onchange="renderMembers()">
+                <option value="all">All Departments</option>
+                <option value="Sustainability">Sustainability</option>
+                <option value="Operations">Operations</option>
+                <option value="Finance">Finance</option>
+                <option value="Compliance">Compliance</option>
+                <option value="IT">IT</option>
+                <option value="HR">HR</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Search members..." onkeyup="renderMembers()" />
+            <button class="btn btn-sm btn-ghost" onclick="clearMemberFilters()">✕ Clear</button>
+            <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="memberCount">0 members</span>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">👥 Team Members</div>
+                    <div class="card-description">Manage your team members and their roles</div>
+                </div>
+                <div style="display:flex;gap:4px;">
+                    <button class="btn btn-ghost btn-sm" onclick="sortMembers('name')">Sort by Name</button>
+                    <button class="btn btn-ghost btn-sm" onclick="sortMembers('role')">Sort by Role</button>
+                </div>
+            </div>
+            <div class="card-content" id="memberList">
+                <!-- Rendered by JS -->
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="memberPagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== INVITATIONS TAB ===== -->
+    <div id="tab-invitations" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">📨 Pending Invitations</div>
+                    <div class="card-description">Invitations sent to new team members</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="showInviteModal()">
+                    📨 New Invite
+                </button>
+            </div>
+            <div class="card-content" id="invitationList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== STAFF PERFORMANCE TAB ===== -->
+    <div id="tab-staff" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">📊 Staff Performance Metrics</div>
+                    <div class="card-description">Review team performance and workload</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="showToast('📊 Exporting staff metrics...')">
+                    📊 Export
+                </button>
+            </div>
+            <div class="card-content" id="staffMetrics">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ROLES TAB ===== -->
+    <div id="tab-roles" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">🔑 Roles & Permissions</div>
+                    <div class="card-description">Define roles and assign permissions</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="navigateToRoles()">
+                    ➕ Manage Roles
+                </button>
+            </div>
+            <div class="card-content" id="rolesList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== INVITE MODAL ===== -->
+<div class="modal-overlay" id="inviteModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">📨 Invite Team Member</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Send an invitation to join your organization
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeInviteModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Email Address <span style="color:hsl(var(--destructive));">*</span></label>
+                <input type="email" id="inviteEmail" placeholder="colleague@company.com" />
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>Role <span style="color:hsl(var(--destructive));">*</span></label>
+                    <select id="inviteRole">
+                        <option value="admin">Admin</option>
+                        <option value="manager">Manager</option>
+                        <option value="analyst" selected>Analyst</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="staff">Staff</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Department</label>
+                    <select id="inviteDepartment">
+                        <option value="Sustainability">Sustainability</option>
+                        <option value="Operations">Operations</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Compliance">Compliance</option>
+                        <option value="IT">IT</option>
+                        <option value="HR">HR</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Message (Optional)</label>
+                <textarea id="inviteMessage" rows="2" placeholder="Welcome to CarbonTally! We're excited to have you join our team."></textarea>
+            </div>
+            <div class="settings-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                    <input type="checkbox" id="inviteSendEmail" checked /> Send email notification
+                </label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeInviteModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="sendInvite()">📨 Send Invitation</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MEMBER DETAIL MODAL ===== -->
+<div class="modal-overlay" id="memberDetailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="memberDetailTitle">Member Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="memberDetailSubtitle">View member information</div>
+            </div>
+            <button class="modal-close" onclick="closeMemberDetail()">✕</button>
+        </div>
+        <div class="modal-body" id="memberDetailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="memberDetailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

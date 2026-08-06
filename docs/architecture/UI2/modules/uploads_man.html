@@ -1,0 +1,140 @@
+<!-- Upload Data Module - SPA Compatible -->
+<div class="main-body">
+
+    <div class="page-header">
+        <div>
+            <h1>📤 Upload Data</h1>
+            <p>Upload single or multiple files for carbon emissions processing</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="downloadTemplate()">
+                📋 Download Template
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="loadMockData()">
+                🧪 Load Mock Data
+            </button>
+        </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+        <div class="upload-mode-toggle">
+            <button class="upload-mode-btn active" data-mode="single" onclick="switchMode('single')">
+                📄 Single File
+            </button>
+            <button class="upload-mode-btn" data-mode="batch" onclick="switchMode('batch')">
+                📚 Batch Upload
+            </button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span class="text-muted" style="font-size:13px;">Status:</span>
+            <span class="badge badge-success" id="connectionStatus">🟢 Connected</span>
+        </div>
+    </div>
+
+    <div class="upload-stats" id="uploadStats">
+        <div class="upload-stat">
+            <div class="value" id="totalFiles">0</div>
+            <div class="label">Total Files</div>
+        </div>
+        <div class="upload-stat">
+            <div class="value" id="totalSize">0 MB</div>
+            <div class="label">Total Size</div>
+        </div>
+        <div class="upload-stat">
+            <div class="value" id="processedFiles">0</div>
+            <div class="label">Processed</div>
+        </div>
+        <div class="upload-stat">
+            <div class="value" id="pendingFiles">0</div>
+            <div class="label">Pending</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-content">
+
+            <div id="singleUploadArea">
+                <div class="drop-zone" id="dropZone">
+                    <div class="icon">📤</div>
+                    <div class="title">Drop your file here</div>
+                    <div class="sub">or click to browse</div>
+                    <div class="supported">Supported: CSV, XLSX, PDF, JPEG, PNG • Max 50MB</div>
+                </div>
+                <input type="file" id="fileInput" style="display:none;" accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png" />
+
+                <div style="margin-top:16px;" id="fileListContainer"></div>
+            </div>
+
+            <div id="batchUploadArea" style="display:none;">
+                <div class="drop-zone" id="batchDropZone">
+                    <div class="icon">📚</div>
+                    <div class="title">Drop multiple files here</div>
+                    <div class="sub">or click to browse</div>
+                    <div class="supported">Supported: CSV, XLSX, PDF, JPEG, PNG • Max 50MB each</div>
+                </div>
+                <input type="file" id="batchFileInput" style="display:none;" accept=".csv,.xlsx,.pdf,.jpg,.jpeg,.png" multiple />
+
+                <div style="margin-top:16px;" id="batchFileListContainer"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;border-top:1px solid hsl(var(--border));padding-top:16px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select class="select" id="dataTypeSelect" style="min-width:140px;padding:6px 10px;font-size:13px;">
+                        <option value="fuel">⛽ Fuel</option>
+                        <option value="utility">💡 Utility</option>
+                        <option value="scope3">🌍 Scope 3</option>
+                        <option value="document">📄 Document</option>
+                    </select>
+                    <select class="select" id="batchSelect" style="min-width:140px;padding:6px 10px;font-size:13px;">
+                        <option value="new">📁 New Batch</option>
+                        <option value="existing">📂 Existing Batch</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="clearAllFiles()">
+                        🗑️ Clear All
+                    </button>
+                    <button class="btn btn-primary" id="uploadBtn" onclick="startUpload()">
+                        ⬆️ Upload Files
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:24px;">
+        <div class="card-header">
+            <div>
+                <div class="card-title">📋 Upload History</div>
+                <div class="card-description">Recent uploads and their status</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="refreshHistory()">🔄 Refresh</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearHistory()">🗑️ Clear</button>
+            </div>
+        </div>
+        <div class="card-content">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Status</th>
+                            <th>Progress</th>
+                            <th>Uploaded</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="historyPagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>

@@ -1,0 +1,514 @@
+I think this is the right approach. However, I'd make one improvement.
+
+Instead of writing four unrelated prompts, treat the work as one continuous architecture project. Each phase should explicitly build on the previous one and should not redesign decisions that were already approved. That gives AI much better continuity.
+
+I would also establish one architectural principle at the beginning:
+
+CarbonTally is a single multi-tenant SaaS application with role-based workspaces. Every user logs into the same application. The workspace, menus, permissions, and accessible data are determined entirely by role and organization assignments.
+
+That one sentence will keep the AI from creating separate applications for customers, consultants, and staff.
+
+Overall project vision
+
+Before Phase 1, I'd give the AI this context:
+
+# CARBONTALLY PLATFORM ARCHITECTURE
+
+CarbonTally is NOT a collection of separate applications.
+
+It is ONE multi-tenant SaaS platform.
+
+Every authenticated user logs into the same application.
+
+The interface changes based on role.
+
+Platform
+│
+├── Platform Workspace
+│   ├── Super Admin
+│   ├── Carbon Analyst
+│   ├── Senior Validator
+│   ├── Support
+│   ├── Sales
+│   └── Compliance
+│
+├── Consultant Workspace
+│   ├── Client Portfolio
+│   ├── Organization Switcher
+│   ├── Supplier Management
+│   ├── Upload Management
+│   ├── Reports
+│   └── Analytics
+│
+└── Organization Workspace
+    ├── Dashboard
+    ├── Documents
+    ├── Uploads
+    ├── Suppliers
+    ├── Reports
+    ├── Team
+    ├── Compliance
+    └── Settings
+
+Suppliers are owned by organizations.
+
+Suppliers do NOT login in v1.0.
+
+Consultants manage multiple organizations.
+
+Platform staff manage the entire platform.
+
+The architecture must support future additions without redesigning the database.
+
+Do not create separate applications.
+
+Everything must use role-based workspaces.
+PHASE 1 — Database Architecture Audit
+# PHASE 1
+
+You are the Chief Database Architect for CarbonTally.
+
+This is Phase 1 of a multi-phase architecture project.
+
+DO NOT generate SQL.
+
+DO NOT modify tables.
+
+DO NOT redesign from scratch.
+
+Your task is ONLY to audit the existing Supabase database.
+
+You will receive the complete database schema.
+
+Your objectives are:
+
+1. Review every table.
+
+2. Explain the purpose of every table.
+
+3. Identify duplicated data.
+
+4. Identify denormalized structures.
+
+5. Identify missing foreign keys.
+
+6. Identify missing indexes.
+
+7. Review naming consistency.
+
+8. Review scalability.
+
+9. Review tenant isolation.
+
+10. Review security implications.
+
+11. Review reporting capabilities.
+
+12. Review document relationships.
+
+13. Review uploads.
+
+14. Review OCR workflow.
+
+15. Review AI extraction workflow.
+
+16. Review audit logging.
+
+17. Identify missing entities.
+
+18. Identify missing relationships.
+
+19. Evaluate whether the schema supports:
+
+- Consultants
+- Multiple organizations
+- Supplier management
+- Future supplier portal
+- Corporate groups
+- White label
+- API integrations
+
+20. Produce an improved ERD.
+
+DO NOT generate SQL.
+
+Return only architecture recommendations.
+
+At the end produce:
+
+Architecture Score (/100)
+
+Scalability Score
+
+Maintainability Score
+
+Future Readiness Score
+
+List every recommended change with reasons.
+
+These recommendations will be used in Phase 2.
+PHASE 2 — Migration Design
+# PHASE 2
+
+Use ONLY the approved recommendations from Phase 1.
+
+Do not redesign architecture again.
+
+Your task is to generate production-ready Supabase migrations.
+
+Requirements:
+
+Preserve all existing data.
+
+Never require rebuilding the database.
+
+Maintain backward compatibility.
+
+Generate:
+
+• ALTER TABLE statements
+
+• CREATE TABLE statements
+
+• Foreign Keys
+
+• Junction Tables
+
+• Views
+
+• Materialized Views
+
+• Triggers
+
+• Functions
+
+• RLS Policies
+
+• Indexes
+
+• Storage Policies
+
+Add support for:
+
+Consultants
+
+Organizations
+
+Suppliers
+
+Facilities
+
+Departments
+
+Document ownership
+
+Consultant organization assignments
+
+Supplier contacts
+
+Supplier categories
+
+Supplier documents
+
+Supplier emission history
+
+Supplier spend history
+
+Supplier notes
+
+Organization switcher
+
+Role-based workspaces
+
+Future support for:
+
+Supplier Portal
+
+Corporate Groups
+
+White Label
+
+Marketplace
+
+Return:
+
+Migration Plan
+
+Migration Order
+
+Rollback Strategy
+
+Validation Checklist
+
+Production-ready SQL.
+PHASE 3 — Demo Data Generator
+# PHASE 3
+
+Using the finalized schema from Phase 2, design realistic enterprise demo data.
+
+The objective is to make CarbonTally appear like a mature SaaS platform.
+
+Generate:
+
+10 Consultants
+
+100 Organizations
+
+Each organization should contain:
+
+Departments
+
+Facilities
+
+Teams
+
+Users
+
+Suppliers
+
+Uploads
+
+Reports
+
+Audit Logs
+
+Notifications
+
+Tasks
+
+Generate approximately:
+
+5,000 Suppliers
+
+50,000 Invoices
+
+25,000 Utility Bills
+
+15,000 Waste Records
+
+10,000 Travel Records
+
+5,000 Manual Entries
+
+3,000 OCR Jobs
+
+10,000 AI Mapping Results
+
+2,000 Validation Tasks
+
+5,000 Notifications
+
+2,000 Reports
+
+Generate realistic:
+
+UK companies
+
+Irish companies
+
+EU companies
+
+Currencies
+
+DEFRA categories
+
+Emission values
+
+Supplier names
+
+Addresses
+
+Contacts
+
+Spend values
+
+Emission factors
+
+Relationships
+
+Every organization should look active.
+
+Every dashboard should contain meaningful information.
+
+Return:
+
+Seed Strategy
+
+Data Relationships
+
+Generation Order
+
+Production-ready SQL seed scripts.
+PHASE 4 — UI/UX Architecture
+# PHASE 4
+
+The database architecture is now finalized.
+
+Design the UI using the finalized schema.
+
+Do not redesign the database.
+
+Design ONE application.
+
+Do NOT design separate applications.
+
+Design role-based workspaces.
+
+Produce a complete UX architecture.
+
+Users:
+
+Platform Staff
+
+Consultants
+
+Organization Users
+
+Design:
+
+Navigation
+
+Information Architecture
+
+Menus
+
+Permissions
+
+Page hierarchy
+
+Wireframes
+
+User journeys
+
+Responsive layout
+
+Dark mode
+
+Accessibility
+
+Create detailed UX for:
+
+1.
+
+Platform Workspace
+
+Administrator
+
+Analyst
+
+Validator
+
+Support
+
+2.
+
+Consultant Workspace
+
+Portfolio Dashboard
+
+Organization Switcher
+
+Client Dashboard
+
+Client Reports
+
+Supplier Management
+
+Uploads
+
+Tasks
+
+Analytics
+
+3.
+
+Organization Workspace
+
+Executive Dashboard
+
+Upload Center
+
+Supplier Directory
+
+Supplier Details
+
+Supplier Analytics
+
+Documents
+
+Reports
+
+Compliance
+
+Notifications
+
+Support Center
+
+Settings
+
+For every page include:
+
+Purpose
+
+Primary users
+
+Widgets
+
+Tables
+
+Filters
+
+Charts
+
+Actions
+
+KPIs
+
+Navigation
+
+Required API endpoints
+
+Required database tables
+
+Required permissions
+
+Design reusable components:
+
+Cards
+
+Tables
+
+Drawers
+
+Dialogs
+
+Forms
+
+Charts
+
+Badges
+
+Timeline
+
+Notifications
+
+Produce text wireframes for every page.
+
+Do not generate HTML yet.
+
+Return a complete UX specification suitable for handing to a frontend development team.
+One extra phase I strongly recommend
+
+I would add Phase 5 – Backend API & Permissions before you start coding the UI.
+
+That phase would define:
+
+Every API endpoint.
+Every Supabase RPC function.
+Every storage bucket.
+Every Row Level Security policy.
+Every permission matrix.
+Every role's capabilities.
+Every workflow between Platform Staff, Consultants, and Organization users.
+
+Once that's complete, your frontend AI agent can build screens against a stable backend contract instead of guessing how the application should behave. That usually leads to faster development and fewer architectural changes later.

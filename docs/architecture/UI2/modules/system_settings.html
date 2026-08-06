@@ -1,0 +1,280 @@
+<!-- Integration Management Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>🔌 Integration Management</h1>
+            <p>Manage API keys, webhooks, and third-party integrations</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="showApiKeyModal()">
+                🔑 Generate API Key
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showWebhookModal()">
+                🔗 Add Webhook
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:24px;">
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--primary));" id="statIntegrations">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Active Integrations</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--success));" id="statApiKeys">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">API Keys</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--warning));" id="statWebhooks">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Webhooks</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--destructive));" id="statFailed">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Failed Syncs</div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="margin-bottom:16px;">
+        <div class="tabs">
+            <button class="tab active" data-tab="integrations" onclick="switchTab('integrations')">
+                🔌 Integrations
+            </button>
+            <button class="tab" data-tab="api-keys" onclick="switchTab('api-keys')">
+                🔑 API Keys
+            </button>
+            <button class="tab" data-tab="webhooks" onclick="switchTab('webhooks')">
+                🔗 Webhooks
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filters-bar" id="filterBar">
+        <select id="statusFilter" onchange="applyFilters()">
+            <option value="all">All Status</option>
+            <option value="connected">Connected</option>
+            <option value="disconnected">Disconnected</option>
+            <option value="error">Error</option>
+        </select>
+        <select id="typeFilter" onchange="applyFilters()">
+            <option value="all">All Types</option>
+            <option value="Carbon Accounting">Carbon Accounting</option>
+            <option value="ERP">ERP</option>
+            <option value="CRM">CRM</option>
+        </select>
+        <input type="text" id="searchFilter" placeholder="Search..." onkeyup="applyFilters()" />
+        <button class="btn btn-sm btn-primary" onclick="applyFilters()">🔍 Apply</button>
+        <button class="btn btn-sm btn-ghost" onclick="clearFilters()">✕ Clear</button>
+        <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 items</span>
+    </div>
+
+    <!-- ===== INTEGRATIONS TAB ===== -->
+    <div id="tab-integrations">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">🔌 Third-Party Integrations</div>
+                    <div class="card-description">Connect with external services and platforms</div>
+                </div>
+                <span class="badge badge-primary" id="integrationCount">0</span>
+            </div>
+            <div class="card-content">
+                <div class="integration-grid" id="integrationsList">
+                    <!-- Rendered by JS -->
+                </div>
+                <!-- Pagination -->
+                <div class="pagination" id="integrationPagination">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== API KEYS TAB ===== -->
+    <div id="tab-api-keys" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">🔑 API Keys</div>
+                    <div class="card-description">Manage API keys for programmatic access</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="showApiKeyModal()">➕ Generate New</button>
+            </div>
+            <div class="card-content" id="apiKeysList">
+                <!-- Rendered by JS -->
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="apiKeyPagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== WEBHOOKS TAB ===== -->
+    <div id="tab-webhooks" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">🔗 Webhooks</div>
+                    <div class="card-description">Configure webhooks for real-time event notifications</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="showWebhookModal()">➕ Add Webhook</button>
+            </div>
+            <div class="card-content" id="webhooksList">
+                <!-- Rendered by JS -->
+            </div>
+            <!-- Pagination -->
+            <div class="pagination" id="webhookPagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== API KEY MODAL ===== -->
+<div class="modal-overlay" id="apiKeyModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">🔑 Generate API Key</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Create a new API key for programmatic access
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeApiKeyModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Key Name <span style="color:hsl(var(--destructive));">*</span></label>
+                <input type="text" id="apiKeyName" placeholder="e.g., Production API Key" />
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>Expiration</label>
+                    <select id="apiKeyExpiry">
+                        <option value="never">Never</option>
+                        <option value="30">30 Days</option>
+                        <option value="90" selected>90 Days</option>
+                        <option value="180">180 Days</option>
+                        <option value="365">1 Year</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Scope</label>
+                    <select id="apiKeyScope">
+                        <option value="read">Read Only</option>
+                        <option value="write" selected>Read & Write</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                    <input type="checkbox" id="apiKeyRestrictIps" onchange="toggleIpRestriction()" />
+                    Restrict to specific IP addresses
+                </label>
+            </div>
+            <div class="settings-group" id="apiKeyIpsGroup" style="display:none;">
+                <label>Allowed IP Addresses</label>
+                <input type="text" id="apiKeyIps" placeholder="e.g., 192.168.1.1, 10.0.0.1" />
+                <div class="hint">Comma-separated list of IP addresses</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeApiKeyModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="generateApiKey()">🔑 Generate Key</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== WEBHOOK MODAL ===== -->
+<div class="modal-overlay" id="webhookModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title">🔗 Add Webhook</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                    Configure a webhook endpoint for real-time notifications
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeWebhookModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Webhook URL <span style="color:hsl(var(--destructive));">*</span></label>
+                <input type="url" id="webhookUrl" placeholder="https://api.example.com/webhook" />
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="settings-group">
+                    <label>Secret</label>
+                    <input type="text" id="webhookSecret" placeholder="Your webhook secret" />
+                    <div class="hint">Used to verify webhook signatures</div>
+                </div>
+                <div class="settings-group">
+                    <label>Format</label>
+                    <select id="webhookFormat">
+                        <option value="json">JSON</option>
+                        <option value="xml">XML</option>
+                        <option value="form">Form-encoded</option>
+                    </select>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Events to Send</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventDocumentUpload" checked /> Document Upload
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventDocumentApproved" checked /> Document Approved
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventEmissionAdded" checked /> Emission Added
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventReportGenerated" checked /> Report Generated
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventSlaBreached" /> SLA Breached
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="webhookEventUserAdded" /> User Added
+                    </label>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                    <input type="checkbox" id="webhookActive" checked /> Active
+                </label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeWebhookModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="addWebhook()">🔗 Add Webhook</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailTitle">Item Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailSubtitle">View details</div>
+            </div>
+            <button class="modal-close" onclick="closeDetailModal()">✕</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

@@ -489,8 +489,8 @@ async def get_pending_reviews(
                 uploaded_by (email)
             ''') \
             .eq('status', 'pending') \
-            .order('priority', desc=True) \
-            .order('created_at', asc=True)
+            .order('priority') \
+            .order('created_at')
         
         if organization_id:
             query = query.eq('organization_id', organization_id)

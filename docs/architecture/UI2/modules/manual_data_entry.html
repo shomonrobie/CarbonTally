@@ -1,0 +1,286 @@
+<!-- Manual Data Entry Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>✏️ Manual Data Entry</h1>
+            <p>Enter carbon emissions data manually with auto-calculation and validation</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="loadMockEntry()">
+                🧪 Load Sample Entry
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="clearForm()">
+                🗑️ Clear Form
+            </button>
+        </div>
+    </div>
+
+    <!-- Entry Type Tabs -->
+    <div style="margin-bottom:16px;">
+        <div class="tabs">
+            <button class="tab active" data-entry-type="fuel" onclick="switchEntryType('fuel')">
+                ⛽ Fuel
+            </button>
+            <button class="tab" data-entry-type="utility" onclick="switchEntryType('utility')">
+                💡 Utility
+            </button>
+            <button class="tab" data-entry-type="scope3" onclick="switchEntryType('scope3')">
+                🌍 Scope 3
+            </button>
+            <button class="tab" data-entry-type="manual" onclick="switchEntryType('manual')">
+                📝 Manual Entry
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== FORM ===== -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <div class="card-title" id="formTitle">⛽ Fuel Consumption Entry</div>
+                <div class="card-description" id="formDescription">Enter fuel consumption data for vehicles and equipment</div>
+            </div>
+            <div>
+                <span class="badge badge-success" id="formStatus">Ready</span>
+            </div>
+        </div>
+        <div class="card-content">
+
+            <div class="form-grid" id="formGrid">
+                <!-- Organization (hidden, auto-filled) -->
+                <div class="full-width" style="display:none;">
+                    <div class="input-group">
+                        <label>Organization ID</label>
+                        <input type="text" class="input" value="org_12345678" disabled />
+                    </div>
+                </div>
+
+                <!-- Asset / Facility -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Asset / Vehicle <span style="color:hsl(var(--destructive));">*</span></label>
+                        <select class="select" id="assetSelect">
+                            <option value="">Select Asset...</option>
+                            <option value="Fleet_001">🚗 Fleet #001 - Ford Transit</option>
+                            <option value="Fleet_002">🚗 Fleet #002 - Mercedes Sprinter</option>
+                            <option value="Fleet_003">🚗 Fleet #003 - VW Crafter</option>
+                            <option value="Fleet_004">🚗 Fleet #004 - Ford Transit</option>
+                            <option value="Fleet_005">🚗 Fleet #005 - Mercedes Sprinter</option>
+                            <option value="Building_A">🏢 Building A - London Office</option>
+                            <option value="Building_B">🏢 Building B - Manchester Office</option>
+                            <option value="Building_C">🏢 Building C - Birmingham Office</option>
+                            <option value="Data_Center">🖥️ Data Center - London</option>
+                            <option value="Warehouse">📦 Warehouse - Distribution Center</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Facility / Site <span style="color:hsl(var(--destructive));">*</span></label>
+                        <select class="select" id="facilitySelect">
+                            <option value="">Select Facility...</option>
+                            <option value="London_Office">📍 London Office</option>
+                            <option value="Manchester_Office">📍 Manchester Office</option>
+                            <option value="Birmingham_Office">📍 Birmingham Office</option>
+                            <option value="Data_Center">📍 Data Center - London</option>
+                            <option value="Distribution_Center">📍 Distribution Center</option>
+                            <option value="Glasgow_Office">📍 Glasgow Office</option>
+                            <option value="Belfast_Office">📍 Belfast Office</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Fuel/Energy Type -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Energy / Fuel Type <span style="color:hsl(var(--destructive));">*</span></label>
+                        <select class="select" id="fuelTypeSelect">
+                            <option value="">Select Type...</option>
+                            <option value="Diesel">🛢️ Diesel</option>
+                            <option value="Petrol">🛢️ Petrol</option>
+                            <option value="AdBlue">🧪 AdBlue</option>
+                            <option value="Electricity">⚡ Electricity</option>
+                            <option value="Natural Gas">🔥 Natural Gas</option>
+                            <option value="LPG">🔥 LPG</option>
+                            <option value="Jet Fuel">✈️ Jet Fuel</option>
+                            <option value="Marine Diesel">⛴️ Marine Diesel</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Scope -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Scope <span style="color:hsl(var(--destructive));">*</span></label>
+                        <select class="select" id="scopeSelect">
+                            <option value="Scope 1">Scope 1 - Direct Emissions</option>
+                            <option value="Scope 2">Scope 2 - Energy Indirect</option>
+                            <option value="Scope 3">Scope 3 - Supply Chain</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quantity/Consumption -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Quantity / Consumption <span style="color:hsl(var(--destructive));">*</span></label>
+                        <input type="number" class="input" id="quantityInput" placeholder="e.g., 450" step="0.01" min="0" />
+                        <span class="hint" id="unitHint">Unit: Liters (L)</span>
+                    </div>
+                </div>
+
+                <!-- DEFRA Factor -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>DEFRA Factor <span style="color:hsl(var(--destructive));">*</span></label>
+                        <div style="display:flex;gap:8px;">
+                            <select class="select" id="defraFactorSelect" style="flex:1;">
+                                <option value="">Select Factor...</option>
+                                <option value="2.54">Diesel - 2.54 kgCO₂e/L</option>
+                                <option value="2.16">Petrol - 2.16 kgCO₂e/L</option>
+                                <option value="0.207">Electricity - 0.207 kgCO₂e/kWh</option>
+                                <option value="0.183">Natural Gas - 0.183 kgCO₂e/kWh</option>
+                                <option value="0.155">Short Haul Flight - 0.155 kgCO₂e/km</option>
+                                <option value="0.195">Long Haul Flight - 0.195 kgCO₂e/km</option>
+                                <option value="0.035">National Rail - 0.035 kgCO₂e/km</option>
+                                <option value="10.5">Hotel Stay - 10.5 kgCO₂e/night</option>
+                                <option value="0.500">Mixed Waste - 0.500 kgCO₂e/kg</option>
+                                <option value="0.000">Unknown - 0.000 kgCO₂e</option>
+                            </select>
+                            <span class="badge badge-muted" style="align-self:center;">2025</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Date Range -->
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>Start Date <span style="color:hsl(var(--destructive));">*</span></label>
+                        <input type="date" class="input" id="startDate" />
+                    </div>
+                </div>
+
+                <div class="half-width">
+                    <div class="input-group">
+                        <label>End Date <span style="color:hsl(var(--destructive));">*</span></label>
+                        <input type="date" class="input" id="endDate" />
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div class="full-width">
+                    <div class="input-group">
+                        <label>Notes / Comments</label>
+                        <textarea class="input" id="notesInput" rows="2" placeholder="Additional notes about this entry..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Calculation Display -->
+                <div class="full-width">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                        <div class="calc-display">
+                            <div class="label">Quantity</div>
+                            <div class="value" id="displayQuantity">0.00</div>
+                            <div style="font-size:12px;color:hsl(var(--muted-foreground));" id="displayUnit">L</div>
+                        </div>
+                        <div class="calc-display">
+                            <div class="label">DEFRA Factor</div>
+                            <div class="value" id="displayFactor">0.00</div>
+                            <div style="font-size:12px;color:hsl(var(--muted-foreground));">kgCO₂e/unit</div>
+                        </div>
+                        <div class="calc-display" style="border-color:hsl(var(--primary));">
+                            <div class="label">Total Emissions</div>
+                            <div class="value" id="displayEmissions">0.00</div>
+                            <div style="font-size:12px;color:hsl(var(--muted-foreground));">kgCO₂e</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Results -->
+                <div class="full-width" id="validationResults">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border));display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="addToQueue()">
+                        ➕ Add to Queue
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="validateEntry()">
+                        ✅ Validate
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="clearForm()">
+                        🗑️ Clear
+                    </button>
+                </div>
+                <div>
+                    <button class="btn btn-primary" id="submitBtn" onclick="submitEntry()">
+                        💾 Save Entry
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ENTRY QUEUE ===== -->
+    <div class="card" style="margin-top:24px;">
+        <div class="card-header">
+            <div>
+                <div class="card-title">📋 Entry Queue</div>
+                <div class="card-description">Pending entries ready for submission</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <span class="badge badge-warning" id="queueCount">0 entries</span>
+                <button class="btn btn-ghost btn-sm" onclick="clearQueue()">🗑️ Clear All</button>
+                <button class="btn btn-success btn-sm" onclick="submitQueue()">📤 Submit All</button>
+            </div>
+        </div>
+        <div class="card-content">
+            <div id="queueContainer">
+                <div class="text-center text-muted" style="padding:32px;">
+                    <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                    <div>No entries in queue</div>
+                    <div style="font-size:13px;">Add entries using the form above</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== RECENT ENTRIES ===== -->
+    <div class="card" style="margin-top:24px;">
+        <div class="card-header">
+            <div>
+                <div class="card-title">📊 Recent Entries</div>
+                <div class="card-description">Previously saved manual entries</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="refreshHistory()">🔄 Refresh</button>
+        </div>
+        <div class="card-content">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Asset</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Emissions</th>
+                            <th>Scope</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>

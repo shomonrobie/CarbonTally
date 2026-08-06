@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - [Module Name]</title>
+    <link rel="stylesheet" href="../css/dashboard.css" />
+    <style>
+        /* Module-specific styles */
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== SIDEBAR (SAME AS DASHBOARD) ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <a href="../dashboard_analyst.html" class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </a>
+                <a href="document_man.html" class="sidebar-item active">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </a>
+                <!-- Add ALL sidebar links here -->
+                <!-- Same as dashboard -->
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item" onclick="logout()">
+                    <span class="icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search..." id="moduleSearch" />
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="user-info">
+                        <div class="avatar" id="userAvatar">U</div>
+                        <div>
+                            <div class="name" id="userName">User</div>
+                            <div class="role" id="userRole">Role</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ===== MODULE CONTENT ===== -->
+            <div class="main-body">
+                <!-- Module content goes here -->
+            </div>
+
+            <!-- ===== FOOTER ===== -->
+            <footer class="footer">
+                <div>© 2026 CarbonTally (UK) Ltd. All rights reserved.</div>
+                <div class="footer-links">
+                    <a href="../privacy_policy.html">Privacy Policy</a>
+                    <a href="../cookie_policy.html">Cookie Policy</a>
+                    <a href="../terms.html">Terms</a>
+                    <a href="../about_us.html">About Us</a>
+                </div>
+            </footer>
+
+        </div>
+    </div>
+
+    <!-- ===== THEME MODAL ===== -->
+    <div class="theme-modal-overlay" id="themeModal">
+        <!-- Same as dashboard -->
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <!-- ===== SHARED JAVASCRIPT ===== -->
+    <script src="../js/dashboard.js"></script>
+
+    <!-- ===== MODULE-SPECIFIC JAVASCRIPT ===== -->
+    <script>
+        // Module-specific code
+        document.addEventListener('DOMContentLoaded', function() {
+            // Your module code here
+        });
+    </script>
+
+</body>
+</html>

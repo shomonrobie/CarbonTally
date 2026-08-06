@@ -1,0 +1,184 @@
+<!-- Roles & Permissions Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>🔑 Roles & Permissions</h1>
+            <p>Define roles and manage access permissions for your organization</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="showCreateRoleModal()">
+                ➕ Create Role
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showToast('📋 Role audit log opened')">
+                📋 Audit Log
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:24px;">
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--primary));" id="statTotalRoles">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Total Roles</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--success));" id="statTotalMembers">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Total Members</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--warning));" id="statDefaultRole">—</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Default Role</div>
+        </div>
+        <div class="card" style="text-align:center;padding:16px;">
+            <div style="font-size:24px;font-weight:700;color:hsl(var(--primary));" id="statPermissions">0</div>
+            <div style="font-size:12px;color:hsl(var(--muted-foreground));">Total Permissions</div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+        <select id="roleFilter" onchange="applyFilters()">
+            <option value="all">All Roles</option>
+            <option value="Admin">Admin</option>
+            <option value="Manager">Manager</option>
+            <option value="Analyst">Analyst</option>
+            <option value="Staff">Staff</option>
+            <option value="Viewer">Viewer</option>
+            <option value="Compliance Officer">Compliance Officer</option>
+            <option value="Sustainability Lead">Sustainability Lead</option>
+        </select>
+        <select id="memberFilter" onchange="applyFilters()">
+            <option value="all">Any Members</option>
+            <option value="has">Has Members</option>
+            <option value="none">No Members</option>
+        </select>
+        <input type="text" id="searchInput" placeholder="Search roles..." onkeyup="applyFilters()" />
+        <button class="btn btn-sm btn-primary" onclick="applyFilters()">🔍 Apply</button>
+        <button class="btn btn-sm btn-ghost" onclick="clearFilters()">✕ Clear</button>
+        <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 roles</span>
+    </div>
+
+    <!-- Roles Grid -->
+    <div class="roles-grid" id="rolesContainer">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination">
+        <!-- Rendered by JS -->
+    </div>
+
+
+
+    <!-- ===== CREATE/EDIT ROLE MODAL ===== -->
+    <div class="modal-overlay" id="roleModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="roleModalTitle">🔑 Create Role</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;" id="roleModalSubtitle">
+                        Define a new role and its permissions
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeRoleModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="settings-group">
+                        <label>Role Name <span style="color:hsl(var(--destructive));">*</span></label>
+                        <input type="text" id="roleName" placeholder="e.g., Data Analyst" />
+                    </div>
+                    <div class="settings-group">
+                        <label>Color</label>
+                        <input type="color" id="roleColor" value="#3b82f6" style="padding:4px;height:42px;" />
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <label>Description <span style="color:hsl(var(--destructive));">*</span></label>
+                    <textarea id="roleDescription" rows="2" placeholder="Describe the role's purpose and responsibilities"></textarea>
+                </div>
+
+                <div style="margin-top:16px;border-top:1px solid hsl(var(--border));padding-top:16px;">
+                    <h4 style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">
+                        🛡️ Permissions
+                    </h4>
+                    <p style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px;">
+                        Select the permissions this role should have
+                    </p>
+
+                    <div class="permission-grid" id="permissionGrid">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <div class="settings-group" style="margin-top:12px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+                        <input type="checkbox" id="roleIsDefault" />
+                        Set as default role for new members
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeRoleModal()">Cancel</button>
+                <button class="btn btn-primary" id="roleSaveBtn" onclick="saveRole()">💾 Save Role</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ROLE DETAIL MODAL ===== -->
+    <div class="modal-overlay" id="roleDetailModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="roleDetailTitle">Role Details</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="roleDetailSubtitle">View role information</div>
+                </div>
+                <button class="modal-close" onclick="closeRoleDetail()">✕</button>
+            </div>
+            <div class="modal-body" id="roleDetailBody">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer" id="roleDetailFooter">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+        
+    </div>
+    <!-- <script>
+(function() {
+    console.log('📋 roles_permissions.html loaded, checking for container...');
+    
+    function render() {
+        if (typeof renderStats === 'function' && typeof renderRoles === 'function') {
+            var container = document.getElementById('rolesContainer');
+            if (container) {
+                console.log('✅ Container found, rendering roles...');
+                renderStats();
+                renderRoles();
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Try immediately
+    if (!render()) {
+        // Retry
+        var attempts = 0;
+        var maxAttempts = 20;
+        var interval = setInterval(function() {
+            attempts++;
+            if (render() || attempts >= maxAttempts) {
+                clearInterval(interval);
+                if (attempts >= maxAttempts) {
+                    console.error('❌ Failed to render roles');
+                }
+            }
+        }, 200);
+    }
+})();
+</script> -->
+
+</div>

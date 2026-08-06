@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "source_path": "D:\\carbon_ledger\\tools\\carbon_data_factory\\docs\\ghg-conversion-factors-2025-flat-format.xlsx",
+    "file_sha256": "8bfdb45b81ec4a88e3bdf4584637330f62e6bd09ce1940e654c5d7b7f736de94",
+    "file_size_bytes": 505634,
+    "title": "",
+    "version": "1",
+    "year": 2025,
+    "status": "Final",
+    "next_publication_date": "June 2026",
+    "factor_set_label": "Flat file",
+    "producer": "",
+    "contact": "",
+    "notes": []
+  },
+  "worksheets": [
+    {
+      "name": "Front page",
+      "sheet_type": "metadata",
+      "max_row": 27,
+      "max_col": 47,
+      "header_row": null,
+      "columns": [],
+      "data_row_count": null,
+      "notes": []
+    },
+    {
+      "name": "Factors by Category",
+      "sheet_type": "data",
+      "max_row": 8748,
+      "max_col": 10,
+      "header_row": 6,
+      "columns": [
+        {
+          "label": "ID",
+          "index": 1
+        },
+        {
+          "label": "Scope",
+          "index": 2
+        },
+        {
+          "label": "Level 1",
+          "index": 3
+        },
+        {
+          "label": "Level 2",
+          "index": 4
+        },
+        {
+          "label": "Level 3",
+          "index": 5
+        },
+        {
+          "label": "Level 4",
+          "index": 6
+        },
+        {
+          "label": "Column Text",
+          "index": 7
+        },
+        {
+          "label": "UOM",
+          "index": 8
+        },
+        {
+          "label": "GHG/Unit",
+          "index": 9
+        },
+        {
+          "label": "GHG Conversion Factor 2025",
+          "index": 10
+        }
+      ],
+      "data_row_count": 8742,
+      "notes": []
+    }
+  ],
+  "data_sheet_names": [
+    "Factors by Category"
+  ],
+  "reporting_year": 2025
+}

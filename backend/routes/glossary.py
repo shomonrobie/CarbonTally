@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from auth import AuthUser, require_role, require_permission
+from auth import AuthUser, require_auth, require_org_member, require_org_admin, require_permission, require_role  # ✅ Add require_role
 from database import get_supabase_client
 
 router = APIRouter(prefix="/api/glossary", tags=["Glossary"])
+
 
 # ==========================================
 # PYDANTIC MODELS
@@ -134,19 +135,28 @@ async def get_glossary(
         if search:
             query = query.or_(f"term.ilike.%{search}%,definition.ilike.%{search}%")
         
-        # Get total count
-        count_query = query.clone()
-        count_result = count_query.select('id', count='exact').execute()
+        # ✅ Fix: Remove .clone() and use separate count query
+        count_query = supabase.from_('glossary') \
+            .select('id', count='exact') \
+            .eq('is_active', True)
+        
+        if category:
+            count_query = count_query.eq('category', category)
+        
+        if search:
+            count_query = count_query.or_(f"term.ilike.%{search}%,definition.ilike.%{search}%")
+        
+        count_result = count_query.execute()
         total = count_result.count or 0
         
         # Get paginated results
-        result = query.order('term', asc=True) \
+        result = query.order('term') \
             .range(offset, offset + limit - 1) \
             .execute()
         
         # Transform data
         terms = []
-        for term in result.data:
+        for term in (result.data or []):
             terms.append(GlossaryTermResponse(
                 id=term['id'],
                 term=term['term'],
@@ -176,6 +186,8 @@ async def get_glossary(
             detail=f"Failed to get glossary: {str(e)}"
         )
 
+
+
 @router.get("/categories")
 async def get_glossary_categories():
     """
@@ -201,37 +213,48 @@ async def get_glossary_categories():
 
 @router.get("/search")
 async def search_glossary(
-    q: str = Query(..., min_length=1, description="Search query"),
-    limit: int = Query(20, ge=1, le=100, description="Number of results")
+    q: str = Query(..., min_length=1),
+    category: Optional[str] = None,
+    current_user: AuthUser = Depends(require_auth())
 ):
-    """
-    Quick search glossary terms.
-    Public endpoint - no authentication required.
-    """
+    """Search glossary terms."""
     try:
         supabase = get_supabase_client()
         
-        result = supabase.from_('glossary') \
-            .select('id, term, definition, category') \
-            .eq('is_active', True) \
-            .or_(f"term.ilike.%{q}%,definition.ilike.%{q}%") \
-            .order('term', asc=True) \
-            .limit(limit) \
-            .execute()
+        query = supabase.from_('glossary') \
+            .select('*') \
+            .ilike('term', f'%{q}%')
+        
+        if category:
+            query = query.eq('category', category)
+        
+        # ✅ Fix: Remove .clone() and use separate count query
+        # Get count
+        count_query = supabase.from_('glossary') \
+            .select('id', count='exact') \
+            .ilike('term', f'%{q}%')
+        
+        if category:
+            count_query = count_query.eq('category', category)
+        
+        count_result = count_query.execute()
+        total = count_result.count or 0
+        
+        # Get results
+        result = query.order('term').execute()
         
         return {
             "success": True,
             "data": result.data,
-            "total": len(result.data) if result.data else 0,
-            "query": q
+            "total": total
         }
         
     except Exception as e:
-        print(f"❌ Error searching glossary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to search glossary: {str(e)}"
         )
+
 
 @router.get("/{term_id}", response_model=GlossaryTermResponse)
 async def get_glossary_term(term_id: str):
@@ -284,7 +307,7 @@ async def get_glossary_term(term_id: str):
 @router.post("/", response_model=GlossaryTermResponse)
 async def create_glossary_term(
     term_data: GlossaryTermCreate,
-    current_user: AuthUser = Depends(require_role(["admin", "data_approver"]))  # ✅ Called here
+    current_user: AuthUser = Depends(require_role(["admin", "data_approver"]))
 ):
     """
     Create a new glossary term.
@@ -293,6 +316,13 @@ async def create_glossary_term(
     try:
         supabase = get_supabase_client()
         
+        # Check if client is initialized
+        if supabase is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Supabase client not initialized"
+            )
+        
         # Check if term already exists
         existing = supabase.from_('glossary') \
             .select('id') \
@@ -300,7 +330,11 @@ async def create_glossary_term(
             .maybe_single() \
             .execute()
         
-        if existing.data:
+        # Handle None response
+        if existing is None:
+            print("⚠️ Warning: existing query returned None")
+            # Continue anyway - we'll try to create
+        elif existing.data:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Term '{term_data.term}' already exists"
@@ -321,10 +355,17 @@ async def create_glossary_term(
             }) \
             .execute()
         
+        # Check result
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database insert returned None"
+            )
+            
         if not result.data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create glossary term"
+                detail="Failed to create glossary term - no data returned"
             )
         
         term = result.data[0]
@@ -344,10 +385,13 @@ async def create_glossary_term(
         raise
     except Exception as e:
         print(f"❌ Error creating glossary term: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create glossary term: {str(e)}"
         )
+
 
 @router.put("/{term_id}", response_model=GlossaryTermResponse)
 async def update_glossary_term(
@@ -559,3 +603,4 @@ async def restore_glossary_term(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to restore glossary term: {str(e)}"
         )
+        

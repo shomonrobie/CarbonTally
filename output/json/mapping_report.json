@@ -1,0 +1,69 @@
+{
+  "reporting_year": 2025,
+  "data_sheets": [
+    {
+      "name": "Factors by Category",
+      "header_row": 6,
+      "columns": [
+        {
+          "label": "ID",
+          "index": 1
+        },
+        {
+          "label": "Scope",
+          "index": 2
+        },
+        {
+          "label": "Level 1",
+          "index": 3
+        },
+        {
+          "label": "Level 2",
+          "index": 4
+        },
+        {
+          "label": "Level 3",
+          "index": 5
+        },
+        {
+          "label": "Level 4",
+          "index": 6
+        },
+        {
+          "label": "Column Text",
+          "index": 7
+        },
+        {
+          "label": "UOM",
+          "index": 8
+        },
+        {
+          "label": "GHG/Unit",
+          "index": 9
+        },
+        {
+          "label": "GHG Conversion Factor 2025",
+          "index": 10
+        }
+      ]
+    }
+  ],
+  "column_mapping": {
+    "ID": "defra_id (reference only — no DB column)",
+    "Scope": "scope",
+    "Level 1": "activity_type (label component)",
+    "Level 2": "activity_type (label component)",
+    "Level 3": "activity_type (label component)",
+    "Level 4": "activity_type (label component)",
+    "Column Text": "activity_type (label component)",
+    "UOM": "unit",
+    "GHG/Unit": "activity_type (label component)",
+    "GHG Conversion Factor <year>": "co2e_multiplier",
+    "reporting_year (from header)": "reporting_year"
+  },
+  "constant_values": {
+    "factor_source": "DEFRA-DESNZ",
+    "factor_set": "DEFRA-<year>",
+    "country": "GB"
+  }
+}

@@ -1,0 +1,2454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Notification Center</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            gap: 4px;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .avatar-sm {
+            width: 28px;
+            height: 28px;
+            font-size: 11px;
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+            min-width: 120px;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: hsl(var(--muted));
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        .switch input:checked + .slider {
+            background: hsl(var(--primary));
+        }
+        .switch input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           NOTIFICATION STYLES
+           ============================================ */
+        .notification-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .notification-stat {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 14px 16px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .notification-stat:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-2px);
+        }
+        .notification-stat .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .notification-stat .label {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .notification-stat .icon { font-size: 18px; display: block; margin-bottom: 4px; }
+
+        /* Notification Item */
+        .notification-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            transition: all 0.15s ease;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .notification-item:hover {
+            background: hsl(var(--accent));
+            box-shadow: var(--shadow);
+        }
+        .notification-item.unread {
+            border-left: 3px solid hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+        .notification-item .notif-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius);
+            background: hsl(var(--muted));
+        }
+        .notification-item .notif-content { flex: 1; }
+        .notification-item .notif-content .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .notification-item .notif-content .message {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .notification-item .notif-content .meta {
+            display: flex;
+            gap: 12px;
+            margin-top: 6px;
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            flex-wrap: wrap;
+        }
+        .notification-item .notif-content .meta .badge { font-size: 10px; }
+        .notification-item .notif-time {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .notification-item .notif-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+            align-items: center;
+        }
+
+        /* ============================================
+           SETTINGS STYLES
+           ============================================ */
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+        .setting-row .setting-info { flex: 1; }
+        .setting-row .setting-info .label {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .setting-row .setting-info .desc {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .setting-row .setting-control {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Email Logs */
+        .email-log-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            transition: all 0.15s ease;
+            margin-bottom: 8px;
+        }
+        .email-log-item:hover {
+            background: hsl(var(--accent));
+        }
+        .email-log-item .email-info { flex: 1; }
+        .email-log-item .email-info .recipient {
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .email-log-item .email-info .subject {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .email-log-item .email-info .meta {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           MODAL STYLES
+           ============================================ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .modal-body { margin: 16px 0; }
+        .modal-body .detail-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .modal-body .detail-row .label {
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            width: 140px;
+            flex-shrink: 0;
+        }
+        .modal-body .detail-row .value {
+            color: hsl(var(--foreground));
+        }
+
+        .modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1200px) {
+            .notification-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+            .notification-item {
+                flex-wrap: wrap;
+            }
+            .notification-item .notif-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .notification-stats {
+                grid-template-columns: 1fr 1fr;
+            }
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .modal { padding: 16px; }
+            .modal-body .detail-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+            .modal-body .detail-row .label {
+                width: 100%;
+            }
+            .setting-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            .setting-row .setting-control {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            .filter-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item active">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📋</span> Organization
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">🔄</span> Activity
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">🔌</span> Integrations
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search notifications..." id="searchInput" />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>🔔 Notification Center</h1>
+                        <p>Manage your notifications, delivery status, and preferences</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="markAllRead()">
+                            ✅ Mark All Read
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshNotifications()">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="notification-stats" id="notifStats">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <!-- Tabs -->
+                <div style="margin-bottom:16px;">
+                    <div class="tabs">
+                        <button class="tab active" data-tab="inbox" onclick="switchTab('inbox')">
+                            📬 Inbox
+                            <span class="badge badge-destructive" id="unreadBadge">8</span>
+                        </button>
+                        <button class="tab" data-tab="settings" onclick="switchTab('settings')">
+                            ⚙️ Settings
+                        </button>
+                        <button class="tab" data-tab="email-logs" onclick="switchTab('email-logs')">
+                            📧 Email Logs
+                        </button>
+                        <button class="tab" data-tab="delivery" onclick="switchTab('delivery')">
+                            📊 Delivery Status
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===== INBOX TAB ===== -->
+                <div id="tab-inbox">
+                    <!-- Filters -->
+                    <div class="filter-bar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:hsl(var(--muted));border-radius:var(--radius);align-items:center;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <label style="font-size:12px;font-weight:500;color:hsl(var(--muted-foreground));">📊 Type</label>
+                            <select class="select" id="typeFilter" onchange="applyFilters()" style="min-width:120px;padding:4px 8px;font-size:12px;">
+                                <option value="all">All Types</option>
+                                <option value="report_ready">📊 Report Ready</option>
+                                <option value="validation_needed">✅ Validation Needed</option>
+                                <option value="approval_required">📝 Approval Required</option>
+                                <option value="deadline_approaching">⏰ Deadline Approaching</option>
+                                <option value="team_update">👥 Team Update</option>
+                                <option value="system_update">⚙️ System Update</option>
+                                <option value="document_uploaded">📄 Document Uploaded</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <label style="font-size:12px;font-weight:500;color:hsl(var(--muted-foreground));">⚡ Priority</label>
+                            <select class="select" id="priorityFilter" onchange="applyFilters()" style="min-width:100px;padding:4px 8px;font-size:12px;">
+                                <option value="all">All Priorities</option>
+                                <option value="high">🔴 High</option>
+                                <option value="medium">🟡 Medium</option>
+                                <option value="low">🟢 Low</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <label style="font-size:12px;font-weight:500;color:hsl(var(--muted-foreground));">📖 Status</label>
+                            <select class="select" id="readFilter" onchange="applyFilters()" style="min-width:100px;padding:4px 8px;font-size:12px;">
+                                <option value="all">All</option>
+                                <option value="unread">Unread</option>
+                                <option value="read">Read</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;"></div>
+                        <div style="display:flex;gap:4px;">
+                            <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+                            <span class="badge badge-muted" id="notifCount">0 notifications</span>
+                        </div>
+                    </div>
+
+                    <!-- Notification List -->
+                    <div class="card">
+                        <div class="card-content" id="notificationList">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== SETTINGS TAB ===== -->
+                <div id="tab-settings" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">⚙️ Notification Settings</div>
+                                <div class="card-description">Configure how and when you receive notifications</div>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <div class="setting-group">
+                                <div class="group-title" style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">Email Notifications</div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Report Ready</div>
+                                        <div class="desc">Notify when reports are ready for review</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="emailReportReady" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Validation Required</div>
+                                        <div class="desc">Notify when data needs validation</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="emailValidation" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Approval Required</div>
+                                        <div class="desc">Notify when approvals are needed</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="emailApproval" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Upcoming Deadlines</div>
+                                        <div class="desc">Notify about approaching deadlines</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="emailDeadlines" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Team Updates</div>
+                                        <div class="desc">Notify about team changes</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="emailTeam" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-group" style="margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border));">
+                                <div class="group-title" style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">Push Notifications</div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Browser Notifications</div>
+                                        <div class="desc">Enable browser push notifications</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="pushBrowser" checked />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="label">Notification Sounds</div>
+                                        <div class="desc">Play sound for notifications</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="switch">
+                                            <input type="checkbox" id="pushSound" />
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border));">
+                                <button class="btn btn-primary" onclick="saveNotificationSettings()">💾 Save Settings</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== EMAIL LOGS TAB ===== -->
+                <div id="tab-email-logs" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">📧 Email Logs</div>
+                                <div class="card-description">History of all sent emails</div>
+                            </div>
+                            <button class="btn btn-outline btn-sm" onclick="showToast('📊 Exporting email logs...')">📊 Export</button>
+                        </div>
+                        <div class="card-content" id="emailLogsList">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== DELIVERY STATUS TAB ===== -->
+                <div id="tab-delivery" style="display:none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">📊 Delivery Status</div>
+                                <div class="card-description">Track notification delivery metrics</div>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+                                <div class="notification-stat">
+                                    <div class="value" style="color:hsl(var(--success));">98.5%</div>
+                                    <div class="label">Delivery Rate</div>
+                                </div>
+                                <div class="notification-stat">
+                                    <div class="value" style="color:hsl(var(--primary));">2.3s</div>
+                                    <div class="label">Avg Delivery Time</div>
+                                </div>
+                                <div class="notification-stat">
+                                    <div class="value" style="color:hsl(var(--warning));">12</div>
+                                    <div class="label">Pending Deliveries</div>
+                                </div>
+                                <div class="notification-stat">
+                                    <div class="value" style="color:hsl(var(--destructive));">3</div>
+                                    <div class="label">Failed Deliveries</div>
+                                </div>
+                            </div>
+                            <div id="deliveryStatusList">
+                                <!-- Rendered by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== DETAIL MODAL ===== -->
+        <div class="modal-overlay" id="detailModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="detailTitle">Notification Details</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailSubtitle">View notification information</div>
+                    </div>
+                    <button class="modal-close" id="detailModalClose">✕</button>
+                </div>
+                <div class="modal-body" id="detailBody">
+                    <!-- Rendered by JS -->
+                </div>
+                <div class="modal-footer" id="detailFooter">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // MOCK DATA - Based on Schema
+        // ============================================
+
+        let notifications = [{
+            id: 'notif_001',
+            type: 'report_ready',
+            title: 'SECR Report 2026 Ready',
+            message: 'Your SECR report for 2026 has been generated and is ready for review.',
+            priority: 'high',
+            is_read: false,
+            read_at: null,
+            link: '/reports/secr-2026',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-15T14:30:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-15T14:30:00Z',
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-15T14:30:00Z',
+            metadata: { report_id: 'rpt_001', year: 2026, pages: 45 }
+        }, {
+            id: 'notif_002',
+            type: 'validation_needed',
+            title: 'Data Validation Required',
+            message: 'Fleet fuel data for Q4 2026 requires validation. 12 records need review.',
+            priority: 'high',
+            is_read: false,
+            read_at: null,
+            link: '/validation-queue',
+            sent_via: ['email'],
+            email_sent: true,
+            email_sent_at: '2026-12-15T13:00:00Z',
+            push_sent: false,
+            push_sent_at: null,
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-15T13:00:00Z',
+            metadata: { records: 12, file_id: 'file_002', scope: 'Scope 1' }
+        }, {
+            id: 'notif_003',
+            type: 'approval_required',
+            title: 'Document Approval Required',
+            message: 'Sarah Johnson has submitted a new document for approval: Supplier_Invoice_IT_Equipment.pdf',
+            priority: 'medium',
+            is_read: false,
+            read_at: null,
+            link: '/documents/approval',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-15T11:30:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-15T11:30:00Z',
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-15T11:30:00Z',
+            metadata: { document_id: 'doc_003', submitted_by: 'Sarah Johnson', type: 'scope3' }
+        }, {
+            id: 'notif_004',
+            type: 'deadline_approaching',
+            title: 'SECR Deadline Approaching',
+            message: 'SECR report deadline is approaching (Dec 31, 2026). Please ensure all data is submitted.',
+            priority: 'high',
+            is_read: true,
+            read_at: '2026-12-14T16:00:00Z',
+            link: '/reports/deadlines',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-14T08:00:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-14T08:00:00Z',
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-14T08:00:00Z',
+            metadata: { deadline: '2026-12-31', days_remaining: 16 }
+        }, {
+            id: 'notif_005',
+            type: 'team_update',
+            title: 'New Team Member Added',
+            message: 'Emma Martinez has joined the team as a Sustainability Analyst.',
+            priority: 'medium',
+            is_read: true,
+            read_at: '2026-12-14T10:00:00Z',
+            link: '/team',
+            sent_via: ['email'],
+            email_sent: true,
+            email_sent_at: '2026-12-13T09:30:00Z',
+            push_sent: false,
+            push_sent_at: null,
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-13T09:30:00Z',
+            metadata: { user_id: 'user_012', role: 'Analyst', department: 'Sustainability' }
+        }, {
+            id: 'notif_006',
+            type: 'system_update',
+            title: 'System Update v2.4.1 Deployed',
+            message: 'A new system update has been deployed with enhanced reporting features.',
+            priority: 'low',
+            is_read: true,
+            read_at: '2026-12-13T14:00:00Z',
+            link: '/settings/system',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-13T09:00:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-13T09:00:00Z',
+            is_dismissed: true,
+            dismissed_at: '2026-12-13T10:00:00Z',
+            created_at: '2026-12-13T09:00:00Z',
+            metadata: { version: '2.4.1', features: ['SECR templates', 'Improved validation'] }
+        }, {
+            id: 'notif_007',
+            type: 'document_uploaded',
+            title: 'New Document Uploaded',
+            message: 'Mike Roberts uploaded a new document: Business_Travel_Expenses_Q4.csv',
+            priority: 'low',
+            is_read: true,
+            read_at: '2026-12-12T15:00:00Z',
+            link: '/documents',
+            sent_via: ['email'],
+            email_sent: true,
+            email_sent_at: '2026-12-12T12:00:00Z',
+            push_sent: false,
+            push_sent_at: null,
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-12T12:00:00Z',
+            metadata: { file_id: 'file_005', file_type: 'csv', data_type: 'scope3' }
+        }, {
+            id: 'notif_008',
+            type: 'approval_required',
+            title: 'Bulk Approval Required',
+            message: '3 documents are pending approval. Please review them at your earliest convenience.',
+            priority: 'medium',
+            is_read: false,
+            read_at: null,
+            link: '/documents/approval',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-11T16:00:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-11T16:00:00Z',
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-11T16:00:00Z',
+            metadata: { pending_count: 3, documents: ['doc_004', 'doc_007', 'doc_009'] }
+        }, {
+            id: 'notif_009',
+            type: 'validation_needed',
+            title: 'Scope 3 Data Validation',
+            message: 'Scope 3 supplier data requires validation. 156 records need review.',
+            priority: 'high',
+            is_read: false,
+            read_at: null,
+            link: '/validation-queue',
+            sent_via: ['email'],
+            email_sent: true,
+            email_sent_at: '2026-12-10T10:00:00Z',
+            push_sent: false,
+            push_sent_at: null,
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-10T10:00:00Z',
+            metadata: { records: 156, file_id: 'file_006', suppliers: 23 }
+        }, {
+            id: 'notif_010',
+            type: 'report_ready',
+            title: 'CSRD Report Ready',
+            message: 'Your CSRD compliance report has been generated and is ready for review.',
+            priority: 'medium',
+            is_read: true,
+            read_at: '2026-12-09T14:30:00Z',
+            link: '/reports/csrd-2026',
+            sent_via: ['email', 'push'],
+            email_sent: true,
+            email_sent_at: '2026-12-09T14:30:00Z',
+            push_sent: true,
+            push_sent_at: '2026-12-09T14:30:00Z',
+            is_dismissed: false,
+            dismissed_at: null,
+            created_at: '2026-12-09T14:30:00Z',
+            metadata: { report_id: 'rpt_002', year: 2026, pages: 32 }
+        }];
+
+        // Email Logs
+        const emailLogs = [{
+            id: 'email_001',
+            recipient: 'john.doe@carbontally.com',
+            subject: 'SECR Report 2026 Ready',
+            type: 'report_ready',
+            status: 'delivered',
+            sent_at: '2026-12-15T14:30:00Z',
+            delivered_at: '2026-12-15T14:30:05Z',
+            opened_at: '2026-12-15T14:35:00Z',
+            error_message: null
+        }, {
+            id: 'email_002',
+            recipient: 'sarah.johnson@carbontally.com',
+            subject: 'Data Validation Required - Q4 Fleet Fuel',
+            type: 'validation_needed',
+            status: 'delivered',
+            sent_at: '2026-12-15T13:00:00Z',
+            delivered_at: '2026-12-15T13:00:03Z',
+            opened_at: '2026-12-15T13:15:00Z',
+            error_message: null
+        }, {
+            id: 'email_003',
+            recipient: 'mike.roberts@carbontally.com',
+            subject: 'Document Approval Required',
+            type: 'approval_required',
+            status: 'delivered',
+            sent_at: '2026-12-15T11:30:00Z',
+            delivered_at: '2026-12-15T11:30:04Z',
+            opened_at: null,
+            error_message: null
+        }, {
+            id: 'email_004',
+            recipient: 'anna.liu@carbontally.com',
+            subject: 'SECR Deadline Approaching',
+            type: 'deadline_approaching',
+            status: 'delivered',
+            sent_at: '2026-12-14T08:00:00Z',
+            delivered_at: '2026-12-14T08:00:06Z',
+            opened_at: '2026-12-14T09:00:00Z',
+            error_message: null
+        }, {
+            id: 'email_005',
+            recipient: 'tom.chen@carbontally.com',
+            subject: 'New Team Member Added',
+            type: 'team_update',
+            status: 'failed',
+            sent_at: '2026-12-13T09:30:00Z',
+            delivered_at: null,
+            opened_at: null,
+            error_message: 'Recipient mailbox full'
+        }, {
+            id: 'email_006',
+            recipient: 'emma.martinez@carbontally.com',
+            subject: 'Welcome to CarbonTally',
+            type: 'team_update',
+            status: 'delivered',
+            sent_at: '2026-12-13T09:31:00Z',
+            delivered_at: '2026-12-13T09:31:02Z',
+            opened_at: '2026-12-13T10:00:00Z',
+            error_message: null
+        }];
+
+        // Delivery Status
+        const deliveryStatus = [{
+            notification_id: 'notif_001',
+            channel: 'email',
+            status: 'delivered',
+            sent_at: '2026-12-15T14:30:00Z',
+            delivered_at: '2026-12-15T14:30:05Z'
+        }, {
+            notification_id: 'notif_001',
+            channel: 'push',
+            status: 'delivered',
+            sent_at: '2026-12-15T14:30:00Z',
+            delivered_at: '2026-12-15T14:30:02Z'
+        }, {
+            notification_id: 'notif_002',
+            channel: 'email',
+            status: 'delivered',
+            sent_at: '2026-12-15T13:00:00Z',
+            delivered_at: '2026-12-15T13:00:03Z'
+        }, {
+            notification_id: 'notif_003',
+            channel: 'email',
+            status: 'pending',
+            sent_at: '2026-12-15T11:30:00Z',
+            delivered_at: null
+        }, {
+            notification_id: 'notif_003',
+            channel: 'push',
+            status: 'delivered',
+            sent_at: '2026-12-15T11:30:00Z',
+            delivered_at: '2026-12-15T11:30:01Z'
+        }, {
+            notification_id: 'notif_004',
+            channel: 'email',
+            status: 'delivered',
+            sent_at: '2026-12-14T08:00:00Z',
+            delivered_at: '2026-12-14T08:00:06Z'
+        }];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let currentTab = 'inbox';
+        let currentFilters = {
+            type: 'all',
+            priority: 'all',
+            read: 'all'
+        };
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const notifStats = document.getElementById('notifStats');
+        const notificationList = document.getElementById('notificationList');
+        const emailLogsList = document.getElementById('emailLogsList');
+        const deliveryStatusList = document.getElementById('deliveryStatusList');
+        const notifCount = document.getElementById('notifCount');
+        const unreadBadge = document.getElementById('unreadBadge');
+        const searchInput = document.getElementById('searchInput');
+
+        const detailModal = document.getElementById('detailModal');
+        const detailModalClose = document.getElementById('detailModalClose');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // TAB FUNCTIONS
+        // ============================================
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === tab);
+            });
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.style.display = el.id === `tab-${tab}` ? 'block' : 'none';
+            });
+
+            if (tab === 'inbox') renderNotifications();
+            else if (tab === 'email-logs') renderEmailLogs();
+            else if (tab === 'delivery') renderDeliveryStatus();
+        }
+
+        // ============================================
+        // NOTIFICATION FUNCTIONS
+        // ============================================
+
+        function getPriorityIcon(priority) {
+            const icons = {
+                'high': '🔴',
+                'medium': '🟡',
+                'low': '🟢'
+            };
+            return icons[priority] || '🟢';
+        }
+
+        function getTypeIcon(type) {
+            const icons = {
+                'report_ready': '📊',
+                'validation_needed': '✅',
+                'approval_required': '📝',
+                'deadline_approaching': '⏰',
+                'team_update': '👥',
+                'system_update': '⚙️',
+                'document_uploaded': '📄'
+            };
+            return icons[type] || '📌';
+        }
+
+        function getTypeLabel(type) {
+            const labels = {
+                'report_ready': 'Report Ready',
+                'validation_needed': 'Validation Needed',
+                'approval_required': 'Approval Required',
+                'deadline_approaching': 'Deadline Approaching',
+                'team_update': 'Team Update',
+                'system_update': 'System Update',
+                'document_uploaded': 'Document Uploaded'
+            };
+            return labels[type] || type;
+        }
+
+        function formatTime(dateStr) {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diff = now - date;
+
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            if (diff < 172800000) return 'Yesterday';
+            return date.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function renderStats() {
+            const total = notifications.length;
+            const unread = notifications.filter(n => !n.is_read).length;
+            const high = notifications.filter(n => n.priority === 'high').length;
+            const medium = notifications.filter(n => n.priority === 'medium').length;
+            const low = notifications.filter(n => n.priority === 'low').length;
+
+            notifStats.innerHTML = `
+                <div class="notification-stat">
+                    <span class="icon">🔔</span>
+                    <div class="value">${total}</div>
+                    <div class="label">Total</div>
+                </div>
+                <div class="notification-stat">
+                    <span class="icon">📬</span>
+                    <div class="value">${unread}</div>
+                    <div class="label">Unread</div>
+                </div>
+                <div class="notification-stat">
+                    <span class="icon">🔴</span>
+                    <div class="value">${high}</div>
+                    <div class="label">High Priority</div>
+                </div>
+                <div class="notification-stat">
+                    <span class="icon">📧</span>
+                    <div class="value">${notifications.filter(n => n.email_sent).length}</div>
+                    <div class="label">Email Sent</div>
+                </div>
+            `;
+
+            unreadBadge.textContent = unread;
+        }
+
+        function applyFilters() {
+            currentFilters.type = document.getElementById('typeFilter').value;
+            currentFilters.priority = document.getElementById('priorityFilter').value;
+            currentFilters.read = document.getElementById('readFilter').value;
+            renderNotifications();
+        }
+
+        function clearFilters() {
+            document.getElementById('typeFilter').value = 'all';
+            document.getElementById('priorityFilter').value = 'all';
+            document.getElementById('readFilter').value = 'all';
+            currentFilters.type = 'all';
+            currentFilters.priority = 'all';
+            currentFilters.read = 'all';
+            renderNotifications();
+            showToast('🔄 Filters cleared');
+        }
+
+        function renderNotifications() {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            let filtered = [...notifications];
+
+            // Type filter
+            if (currentFilters.type !== 'all') {
+                filtered = filtered.filter(n => n.type === currentFilters.type);
+            }
+
+            // Priority filter
+            if (currentFilters.priority !== 'all') {
+                filtered = filtered.filter(n => n.priority === currentFilters.priority);
+            }
+
+            // Read filter
+            if (currentFilters.read === 'unread') {
+                filtered = filtered.filter(n => !n.is_read);
+            } else if (currentFilters.read === 'read') {
+                filtered = filtered.filter(n => n.is_read);
+            }
+
+            // Search filter
+            if (searchTerm) {
+                filtered = filtered.filter(n =>
+                    n.title.toLowerCase().includes(searchTerm) ||
+                    n.message.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Sort by created_at (newest first)
+            filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            notifCount.textContent = `${filtered.length} notifications`;
+
+            if (filtered.length === 0) {
+                notificationList.innerHTML = `
+                    <div class="text-center text-muted" style="padding:60px 20px;">
+                        <div style="font-size:48px;margin-bottom:16px;">📭</div>
+                        <div style="font-size:18px;font-weight:600;">No notifications</div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:8px;">
+                            You're all caught up! Check back later for new notifications.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            notificationList.innerHTML = filtered.map(n => `
+                <div class="notification-item ${n.is_read ? '' : 'unread'}" onclick="openDetail('${n.id}')">
+                    <div class="notif-icon">${getTypeIcon(n.type)}</div>
+                    <div class="notif-content">
+                        <div class="title">
+                            ${n.title}
+                            ${!n.is_read ? '<span class="badge badge-primary" style="font-size:9px;">NEW</span>' : ''}
+                            ${n.priority === 'high' ? '<span class="badge badge-destructive" style="font-size:9px;">High Priority</span>' : ''}
+                        </div>
+                        <div class="message">${n.message}</div>
+                        <div class="meta">
+                            <span>${getTypeLabel(n.type)}</span>
+                            <span>${getPriorityIcon(n.priority)} ${n.priority.charAt(0).toUpperCase() + n.priority.slice(1)}</span>
+                            <span>${formatTime(n.created_at)}</span>
+                            ${n.sent_via.includes('email') ? '<span class="badge badge-muted">📧 Email</span>' : ''}
+                            ${n.sent_via.includes('push') ? '<span class="badge badge-muted">📱 Push</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="notif-actions">
+                        ${!n.is_read ? `
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();markRead('${n.id}')" title="Mark as Read">✅</button>
+                        ` : ''}
+                        ${!n.is_dismissed ? `
+                            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();dismissNotification('${n.id}')" title="Dismiss" style="color:hsl(var(--muted-foreground));">✕</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // NOTIFICATION ACTIONS
+        // ============================================
+
+        function markRead(id) {
+            const n = notifications.find(notif => notif.id === id);
+            if (n) {
+                n.is_read = true;
+                n.read_at = new Date().toISOString();
+                renderNotifications();
+                renderStats();
+                showToast('✅ Marked as read');
+            }
+        }
+
+        function markAllRead() {
+            notifications.forEach(n => {
+                n.is_read = true;
+                n.read_at = new Date().toISOString();
+            });
+            renderNotifications();
+            renderStats();
+            showToast('✅ All notifications marked as read');
+        }
+
+        function dismissNotification(id) {
+            const n = notifications.find(notif => notif.id === id);
+            if (n) {
+                n.is_dismissed = true;
+                n.dismissed_at = new Date().toISOString();
+                renderNotifications();
+                showToast('🗑️ Notification dismissed');
+            }
+        }
+
+        function refreshNotifications() {
+            showToast('🔄 Refreshing notifications...');
+            setTimeout(() => {
+                renderNotifications();
+                renderStats();
+                showToast('✅ Notifications refreshed');
+            }, 800);
+        }
+
+        // ============================================
+        // DETAIL MODAL
+        // ============================================
+
+        function openDetail(id) {
+            const n = notifications.find(notif => notif.id === id);
+            if (!n) return;
+
+            // Mark as read if unread
+            if (!n.is_read) {
+                n.is_read = true;
+                n.read_at = new Date().toISOString();
+                renderNotifications();
+                renderStats();
+            }
+
+            document.getElementById('detailTitle').textContent = n.title;
+            document.getElementById('detailSubtitle').textContent = `${getTypeLabel(n.type)} • ${n.priority.toUpperCase()} Priority`;
+
+            document.getElementById('detailBody').innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                    <div style="font-size:32px;">${getTypeIcon(n.type)}</div>
+                    <div>
+                        <div style="font-size:16px;font-weight:600;color:hsl(var(--foreground));">${n.title}</div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));">${n.message}</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="detail-row">
+                        <span class="label">Type</span>
+                        <span class="value">${getTypeLabel(n.type)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Priority</span>
+                        <span class="value">${getPriorityIcon(n.priority)} ${n.priority.charAt(0).toUpperCase() + n.priority.slice(1)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Status</span>
+                        <span class="value">${n.is_read ? '✅ Read' : '📬 Unread'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Dismissed</span>
+                        <span class="value">${n.is_dismissed ? '✅ Yes' : '❌ No'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Sent Via</span>
+                        <span class="value">${n.sent_via.join(', ')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Created</span>
+                        <span class="value">${new Date(n.created_at).toLocaleString()}</span>
+                    </div>
+                    ${n.email_sent ? `
+                        <div class="detail-row">
+                            <span class="label">Email Sent</span>
+                            <span class="value">${new Date(n.email_sent_at).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${n.push_sent ? `
+                        <div class="detail-row">
+                            <span class="label">Push Sent</span>
+                            <span class="value">${new Date(n.push_sent_at).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${n.read_at ? `
+                        <div class="detail-row">
+                            <span class="label">Read At</span>
+                            <span class="value">${new Date(n.read_at).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${n.dismissed_at ? `
+                        <div class="detail-row">
+                            <span class="label">Dismissed At</span>
+                            <span class="value">${new Date(n.dismissed_at).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${n.link ? `
+                        <div class="detail-row" style="grid-column:1/-1;">
+                            <span class="label">Link</span>
+                            <span class="value"><a href="${n.link}" style="color:hsl(var(--primary));text-decoration:none;">${n.link}</a></span>
+                        </div>
+                    ` : ''}
+                </div>
+                ${n.metadata ? `
+                    <div style="margin-top:12px;">
+                        <div style="font-size:12px;font-weight:600;color:hsl(var(--foreground));margin-bottom:4px;">📊 Metadata</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:hsl(var(--muted));border-radius:var(--radius));">
+                            ${Object.entries(n.metadata).map(([key, value]) => `
+                                <div>
+                                    <div style="font-size:10px;color:hsl(var(--muted-foreground));">${key.replace(/_/g, ' ').toUpperCase()}</div>
+                                    <div style="font-size:13px;font-weight:500;color:hsl(var(--foreground));">${typeof value === 'object' ? JSON.stringify(value) : value}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+
+            document.getElementById('detailFooter').innerHTML = `
+                <button class="btn btn-ghost btn-sm" onclick="closeDetail()">Close</button>
+                ${!n.is_dismissed ? `
+                    <button class="btn btn-outline btn-sm" onclick="dismissNotification('${n.id}');closeDetail();">🗑️ Dismiss</button>
+                ` : ''}
+                ${n.link ? `
+                    <button class="btn btn-primary btn-sm" onclick="window.location.href='${n.link}'">🔗 Go to Link</button>
+                ` : ''}
+            `;
+
+            detailModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDetail() {
+            detailModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // EMAIL LOGS
+        // ============================================
+
+        function renderEmailLogs() {
+            if (emailLogs.length === 0) {
+                emailLogsList.innerHTML = `
+                    <div class="text-center text-muted" style="padding:40px 20px;">
+                        <div style="font-size:32px;margin-bottom:8px;">📧</div>
+                        <div>No email logs found</div>
+                        <div style="font-size:13px;">Email logs will appear here as emails are sent</div>
+                    </div>
+                `;
+                return;
+            }
+
+            emailLogsList.innerHTML = emailLogs.map(log => `
+                <div class="email-log-item">
+                    <div style="font-size:20px;">${log.status === 'delivered' ? '✅' : '❌'}</div>
+                    <div class="email-info">
+                        <div class="recipient">${log.recipient}</div>
+                        <div class="subject">${log.subject}</div>
+                        <div class="meta">
+                            <span>📂 ${log.type.replace('_', ' ').toUpperCase()}</span>
+                            <span>📅 ${new Date(log.sent_at).toLocaleString()}</span>
+                            ${log.delivered_at ? `<span>✅ Delivered: ${new Date(log.delivered_at).toLocaleString()}</span>` : ''}
+                            ${log.opened_at ? `<span>👁️ Opened: ${new Date(log.opened_at).toLocaleString()}</span>` : ''}
+                            ${log.error_message ? `<span class="badge badge-destructive">${log.error_message}</span>` : ''}
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0;">
+                        <span class="badge ${log.status === 'delivered' ? 'badge-success' : 'badge-destructive'}">
+                            ${log.status === 'delivered' ? '✅ Delivered' : '❌ Failed'}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // DELIVERY STATUS
+        // ============================================
+
+        function renderDeliveryStatus() {
+            if (deliveryStatus.length === 0) {
+                deliveryStatusList.innerHTML = `
+                    <div class="text-center text-muted" style="padding:40px 20px;">
+                        <div style="font-size:32px;margin-bottom:8px;">📊</div>
+                        <div>No delivery status data</div>
+                        <div style="font-size:13px;">Delivery status will appear here as notifications are sent</div>
+                    </div>
+                `;
+                return;
+            }
+
+            deliveryStatusList.innerHTML = deliveryStatus.map(d => `
+                <div class="email-log-item">
+                    <div style="font-size:20px;">${d.status === 'delivered' ? '✅' : d.status === 'pending' ? '⏳' : '❌'}</div>
+                    <div class="email-info">
+                        <div class="recipient">${d.channel.toUpperCase()} - Notification ${d.notification_id}</div>
+                        <div class="meta">
+                            <span>📅 Sent: ${new Date(d.sent_at).toLocaleString()}</span>
+                            ${d.delivered_at ? `<span>✅ Delivered: ${new Date(d.delivered_at).toLocaleString()}</span>` : ''}
+                            ${d.status === 'pending' ? '<span class="badge badge-warning">⏳ Pending</span>' : ''}
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0;">
+                        <span class="badge ${d.status === 'delivered' ? 'badge-success' : d.status === 'pending' ? 'badge-warning' : 'badge-destructive'}">
+                            ${d.status === 'delivered' ? '✅ Delivered' : d.status === 'pending' ? '⏳ Pending' : '❌ Failed'}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // SETTINGS
+        // ============================================
+
+        function saveNotificationSettings() {
+            showToast('💾 Notification settings saved successfully!');
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Detail Modal
+        detailModalClose.addEventListener('click', closeDetail);
+        detailModal.addEventListener('click', function(e) {
+            if (e.target === this) closeDetail();
+        });
+
+        // Search
+        searchInput.addEventListener('input', function() {
+            if (currentTab === 'inbox') renderNotifications();
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                if (detailModal.classList.contains('show')) {
+                    closeDetail();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+
+            // Ctrl+F to focus search
+            if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                searchInput.focus();
+            }
+
+            // Ctrl+R to refresh
+            if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                refreshNotifications();
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Render initial data
+        renderStats();
+        renderNotifications();
+        renderEmailLogs();
+        renderDeliveryStatus();
+
+        // Console
+        console.log('🔔 CarbonTally - Notification Center');
+        console.log('📋 Based on schema: notifications, notification_delivery_log, email_logs');
+        console.log('📊 10 notifications with various types and priorities');
+        console.log('📧 Email logs with delivery status');
+        console.log('📊 Delivery status tracking');
+        console.log('⚙️ Notification settings management');
+        console.log('🔍 Search and filter notifications');
+        console.log('⌨️  Ctrl+F to search, Ctrl+R to refresh');
+        console.log('🎨 9 themes available');
+    </script>
+
+</body>
+</html>

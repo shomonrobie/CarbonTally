@@ -1,0 +1,100 @@
+/* Staff Presence */
+.staff-presence-container {
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.staff-presence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.staff-presence-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.online-count {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.staff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.staff-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.staff-item:hover {
+  background: #f8fafc;
+}
+
+.staff-avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.avatar-initial {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.staff-info {
+  flex: 1;
+}
+
+.staff-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.staff-role {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.staff-status {
+  font-size: 0.75rem;
+}
+
+.status-label {
+  padding: 0.15rem 0.6rem;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #475569;
+}

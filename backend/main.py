@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from fastapi.responses import JSONResponse  # ✅ Make sure this is imported
+from fastapi.responses import JSONResponse
 
 # Load environment
 load_dotenv()
@@ -13,7 +13,10 @@ load_dotenv()
 from config import Config
 from database import get_supabase_client
 
-# Import all routers
+# ==========================================
+# IMPORT ALL ROUTERS
+# ==========================================
+# Public/General routes
 from routes import (
     waitlist,
     upload,
@@ -21,8 +24,39 @@ from routes import (
     glossary,
     users,
     notifications,
+    documents_main,      # ✅ Direct import
+    document_activity,   # ✅ Direct import
+    drafts,
+    reference,
+    logs,
+    emissions,
+    feedback,
+    drafts_enhanced,
+    customer_documents,
 )
-from routes.admin import staff, defra, extraction
+
+# Admin routes
+from routes.admin import (
+    staff,
+    defra,
+    extraction,
+    reviews,
+    assignments,
+    permissions,
+    workload,
+    beta,
+    audit,
+    review_history,    
+    admin_bulk,
+    email_templates,
+    admin_analytics,
+    settings,
+)
+
+# Admin logs (renamed to avoid conflict)
+from routes.admin import logs as admin_logs
+
+# Organization routes
 from routes.organizations import (
     management,
     members,
@@ -31,12 +65,13 @@ from routes.organizations import (
     analytics,
     dashboard,
     files,
+    team,
+    metadata,
+    exports,
+    bulk as org_bulk,
 )
-from routes.organizations import team
-from routes import documents
-from routes import reference, drafts
-from routes.admin import reviews
-from routes.admin import assignments
+
+
 
 # ==========================================
 # FASTAPI APP INITIALIZATION
@@ -48,75 +83,66 @@ app = FastAPI(
     description="CarbonTally API for carbon emissions tracking and reporting",
     docs_url="/docs",
     redoc_url="/redoc",
+    redirect_slashes=False,  # ✅ Prevents 307 redirects
     openapi_tags=[
-        {
-            "name": "Health",
-            "description": "Health check and system status endpoints"
-        },
-        {
-            "name": "Waitlist",
-            "description": "Public waitlist management"
-        },
-        {
-            "name": "Upload",
-            "description": "File upload and processing endpoints"
-        },
-        {
-            "name": "Reports",
-            "description": "Report generation (SECR, CSRD, ISSB)"
-        },
-        {
-            "name": "Glossary",
-            "description": "Glossary management"
-        },
-        {
-            "name": "User Management",
-            "description": "User profile and authentication"
-        },
-        {
-            "name": "Notifications",
-            "description": "Email notifications"
-        },
-        {
-            "name": "Admin - Staff Management",
-            "description": "Staff member management (admin only)"
-        },
-        {
-            "name": "Admin - DEFRA Factor Management",
-            "description": "DEFRA factor management (admin only)"
-        },
-        {
-            "name": "Admin - Extraction Management",
-            "description": "Extraction approval and review (admin/data approver)"
-        },
-        {
-            "name": "Organization Management",
-            "description": "Organization CRUD operations"
-        },
-        {
-            "name": "Organization Members",
-            "description": "Organization member management"
-        },
-        {
-            "name": "Organization Assets",
-            "description": "Facility and asset management"
-        },
-        {
-            "name": "Organization Data",
-            "description": "Emissions data management"
-        },
-        {
-            "name": "Organization Analytics",
-            "description": "Analytics and insights"
-        },
-        {
-            "name": "Organization Dashboard",
-            "description": "Dashboard summaries"
-        },
-        {
-            "name": "Organization Files",
-            "description": "File management"
-        }
+        # Health & System
+        {"name": "Health", "description": "Health check and system status endpoints"},
+        {"name": "System", "description": "System health, performance, and usage metrics"},
+        
+        # Public/General
+        {"name": "Waitlist", "description": "Public waitlist management"},
+        {"name": "Upload", "description": "File upload and processing endpoints"},
+        {"name": "Reports", "description": "Report generation (SECR, CSRD, ISSB)"},
+        {"name": "Glossary", "description": "Glossary management"},
+        {"name": "User Management", "description": "User profile and authentication"},
+        {"name": "Notifications", "description": "Email notifications"},
+        {"name": "Feedback", "description": "User feedback collection and management"},
+        
+        # Admin
+        {"name": "Admin - Staff Management", "description": "Staff member management (admin only)"},
+        {"name": "Admin - Staff Performance", "description": "Staff performance metrics and activity tracking"},
+        {"name": "Admin - DEFRA Factor Management", "description": "DEFRA factor management (admin only)"},
+        {"name": "Admin - Extraction Management", "description": "Extraction approval and review"},
+        {"name": "Admin - Reviews & Assignments", "description": "Review queue and assignment management"},
+        {"name": "Admin - Workload", "description": "Staff workload and queue settings"},
+        {"name": "Admin - Permissions", "description": "Role and permission management"},
+        {"name": "Admin - Beta Management", "description": "Beta access code and user management"},
+        {"name": "Admin - Audit", "description": "System audit and activity logs"},
+        {"name": "Admin - Review History", "description": "Review assignment history and audit trail"},
+        {"name": "Admin - Logs", "description": "Email and processing logs"},
+        {"name": "Admin - Bulk Operations", "description": "Bulk operations for organizations and documents"},
+        {"name": "Admin - Email Templates", "description": "Email template management"},
+        {"name": "Admin - Analytics", "description": "System analytics and health metrics"},
+        {"name": "Admin - Settings", "description": "System settings management"},
+        
+        # Organization
+        {"name": "Organization Management", "description": "Organization CRUD operations"},
+        {"name": "Organization Metadata", "description": "Organization metadata management"},
+        {"name": "Organization Members", "description": "Organization member management"},
+        {"name": "Organization Team", "description": "Team member management"},
+        {"name": "Organization Assets", "description": "Facility and asset management"},
+        {"name": "Organization Data", "description": "Emissions data management"},
+        {"name": "Organization Analytics", "description": "Analytics and insights"},
+        {"name": "Organization Dashboard", "description": "Dashboard summaries"},
+        {"name": "Organization Files", "description": "File management"},
+        {"name": "Organization Exports", "description": "Data export management"},
+        {"name": "Organization Bulk Operations", "description": "Bulk operations for members and assets"},
+        
+        # Documents
+        {"name": "Documents", "description": "Document management"},
+        {"name": "Documents - Activity", "description": "Document activity and customer reviews"},
+        {"name": "Customer Documents", "description": "Customer document management with asset linking and verification"},  # ✅ NEW
+
+        # Drafts
+        {"name": "Drafts", "description": "Draft management"},
+        {"name": "Drafts - Enhanced", "description": "Enhanced draft management with sections"},
+        
+        # Other
+        {"name": "Emissions", "description": "Emissions data management"},
+        {"name": "Reference Data", "description": "Reference data (units, fuel types, etc.)"},
+        {"name": "Logs", "description": "System logs and activity"},
+        {"name": "Customer Reviews", "description": "Customer document review and verification"},  # ✅ NEW
+
     ]
 )
 
@@ -135,12 +161,28 @@ app.add_middleware(
         "Accept",
         "Origin",
         "X-Requested-With",
+        "X-Client-Version",
+        "X-Client-Platform",
     ],
-    expose_headers=["Content-Disposition"],
-    max_age=600,  # Cache preflight requests for 10 minutes
+    expose_headers=[
+        "Content-Disposition",
+        "X-Total-Count",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+    ],
+    max_age=600,
 )
 
+# ==========================================
+# INCLUDE ALL ROUTERS
+# ==========================================
 
+# ==========================================
+# INCLUDE ALL ROUTERS
+# ==========================================
+
+# Public/General routes
 # ==========================================
 # INCLUDE ALL ROUTERS
 # ==========================================
@@ -152,11 +194,32 @@ app.include_router(reports.router)
 app.include_router(glossary.router)
 app.include_router(users.router)
 app.include_router(notifications.router)
+app.include_router(documents_main.router)   # ✅ Direct
+app.include_router(document_activity.router) # ✅ Direct
+app.include_router(reference.router)
+app.include_router(drafts.router)
+app.include_router(logs.router)
+app.include_router(emissions.router)
+app.include_router(feedback.router)
+app.include_router(drafts_enhanced.router)
+app.include_router(customer_documents.router)
 
 # Admin routes
 app.include_router(staff.router)
 app.include_router(defra.router)
 app.include_router(extraction.router)
+app.include_router(reviews.router)
+app.include_router(assignments.router)
+app.include_router(permissions.router)
+app.include_router(workload.router)
+app.include_router(beta.router)
+app.include_router(audit.router)
+app.include_router(review_history.router)
+app.include_router(admin_logs.router)
+app.include_router(admin_bulk.router)
+app.include_router(email_templates.router)
+app.include_router(admin_analytics.router)
+app.include_router(settings.router)
 
 # Organization routes
 app.include_router(management.router)
@@ -167,45 +230,39 @@ app.include_router(analytics.router)
 app.include_router(dashboard.router)
 app.include_router(files.router)
 app.include_router(team.router)
-app.include_router(documents.router)
-app.include_router(reference.router)
-app.include_router(drafts.router)
-app.include_router(reviews.router)
-app.include_router(assignments.router)
+app.include_router(metadata.router)
+app.include_router(exports.router)
+app.include_router(org_bulk.router)
 
 # ==========================================
 # ROOT ENDPOINTS
 # ==========================================
+
 @app.on_event("startup")
 async def startup_event():
     print("🚀 Starting CarbonTally API...")
     print(f"📋 CORS Allowed Origins: {Config.ALLOWED_ORIGINS}")
     print(f"🔧 CORS Allow Credentials: {Config.CORS_ALLOW_CREDENTIALS}")
+    print(f"📊 Total routes registered: {len(app.routes)}")
 
 @app.get("/", tags=["Health"])
 async def root():
-    """
-    Root endpoint.
-    Returns basic service information.
-    """
+    """Root endpoint. Returns basic service information."""
     return {
         "message": Config.APP_NAME,
         "version": Config.APP_VERSION,
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "documentation": "/docs",
-        "api_version": "v3"
+        "api_version": "v3",
+        "routes_count": len(app.routes)
     }
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """
-    Health check endpoint.
-    Verifies database connectivity and service status.
-    """
+    """Health check endpoint. Verifies database connectivity."""
     try:
         supabase = get_supabase_client()
-        # Test connection
         test = supabase.table("glossary").select("count", count="exact").limit(1).execute()
         supabase_connected = True
     except Exception as e:
@@ -225,46 +282,9 @@ async def health_check():
             },
             "api": {
                 "status": "running",
-                "version": Config.APP_VERSION
+                "version": Config.APP_VERSION,
+                "routes": len(app.routes)
             }
-        }
-    }
-
-@app.get("/test-upload", tags=["Health"])
-async def test_upload():
-    """
-    Test endpoint for file uploads.
-    Returns available upload endpoints.
-    """
-    return {
-        "status": "ready",
-        "message": "File upload endpoints available",
-        "endpoints": [
-            {
-                "path": "/upload-csv",
-                "method": "POST",
-                "description": "Upload and process CSV/Excel files"
-            },
-            {
-                "path": "/upload-pdf",
-                "method": "POST",
-                "description": "Upload and process PDF files"
-            },
-            {
-                "path": "/upload-batch",
-                "method": "POST",
-                "description": "Batch upload multiple files (premium)"
-            },
-            {
-                "path": "/repair-pdf",
-                "method": "POST",
-                "description": "Repair corrupted PDF with OCR"
-            }
-        ],
-        "limits": {
-            "max_file_size_mb": 50,
-            "max_batch_files": 20,
-            "max_batch_size_mb": 200
         }
     }
 
@@ -274,10 +294,8 @@ async def test_upload():
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
-    """
-    Custom HTTP exception handler for consistent error responses.
-    """
-    return JSONResponse(  # ✅ Use JSONResponse, not a dict
+    """Custom HTTP exception handler for consistent error responses."""
+    return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
@@ -292,14 +310,12 @@ async def http_exception_handler(request, exc):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
-    """
-    Generic exception handler for unhandled errors.
-    """
+    """Generic exception handler for unhandled errors."""
     print(f"❌ Unhandled exception: {exc}")
     import traceback
     traceback.print_exc()
     
-    return JSONResponse(  # ✅ Use JSONResponse, not a dict
+    return JSONResponse(
         status_code=500,
         content={
             "success": False,
@@ -312,18 +328,14 @@ async def generic_exception_handler(request, exc):
         }
     )
 
-
 # ==========================================
 # SHUTDOWN EVENT
 # ==========================================
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """
-    Clean up on application shutdown.
-    """
+    """Clean up on application shutdown."""
     print("🛑 Shutting down CarbonTally API...")
-    # Add any cleanup logic here (e.g., close database connections)
 
 # ==========================================
 # RUN APPLICATION
@@ -332,7 +344,6 @@ async def shutdown_event():
 if __name__ == "__main__":
     import uvicorn
     
-    # Get port from environment or use default
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     reload = os.getenv("RELOAD", "true").lower() == "true"

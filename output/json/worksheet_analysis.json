@@ -1,0 +1,63 @@
+[
+  {
+    "name": "Front page",
+    "sheet_type": "metadata",
+    "max_row": 27,
+    "max_col": 47,
+    "header_row": null,
+    "columns": [],
+    "data_row_count": null,
+    "notes": []
+  },
+  {
+    "name": "Factors by Category",
+    "sheet_type": "data",
+    "max_row": 8748,
+    "max_col": 10,
+    "header_row": 6,
+    "columns": [
+      {
+        "label": "ID",
+        "index": 1
+      },
+      {
+        "label": "Scope",
+        "index": 2
+      },
+      {
+        "label": "Level 1",
+        "index": 3
+      },
+      {
+        "label": "Level 2",
+        "index": 4
+      },
+      {
+        "label": "Level 3",
+        "index": 5
+      },
+      {
+        "label": "Level 4",
+        "index": 6
+      },
+      {
+        "label": "Column Text",
+        "index": 7
+      },
+      {
+        "label": "UOM",
+        "index": 8
+      },
+      {
+        "label": "GHG/Unit",
+        "index": 9
+      },
+      {
+        "label": "GHG Conversion Factor 2025",
+        "index": 10
+      }
+    ],
+    "data_row_count": 8742,
+    "notes": []
+  }
+]

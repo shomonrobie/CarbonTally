@@ -1,0 +1,1265 @@
+<!-- Settings Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>⚙️ Settings</h1>
+            <p>Configure your organization settings and preferences</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="resetSettings()">
+                ↺ Reset to Defaults
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="saveSettings()">
+                💾 Save Changes
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Layout -->
+    <div class="settings-grid">
+
+        <!-- Settings Navigation -->
+        <nav class="settings-nav" id="settingsNav">
+            <button class="settings-nav-item active" data-section="general" onclick="switchSettings('general')">
+                <span class="icon">🏢</span> General
+            </button>
+            <button class="settings-nav-item" data-section="organization" onclick="switchSettings('organization')">
+                <span class="icon">📋</span> Organization
+            </button>
+            <button class="settings-nav-item" data-section="reporting" onclick="switchSettings('reporting')">
+                <span class="icon">📊</span> Reporting
+            </button>
+            <button class="settings-nav-item" data-section="emissions" onclick="switchSettings('emissions')">
+                <span class="icon">📈</span> Emissions
+            </button>
+            <button class="settings-nav-item" data-section="documents" onclick="switchSettings('documents')">
+                <span class="icon">📁</span> Documents
+            </button>
+            <button class="settings-nav-item" data-section="security" onclick="switchSettings('security')">
+                <span class="icon">🔒</span> Security
+            </button>
+            <button class="settings-nav-item" data-section="integrations" onclick="switchSettings('integrations')">
+                <span class="icon">🔌</span> Integrations
+            </button>
+            <button class="settings-nav-item" data-section="notifications" onclick="switchSettings('notifications')">
+                <span class="icon">🔔</span> Notifications
+            </button>
+            <button class="settings-nav-item" data-section="billing" onclick="switchSettings('billing')">
+                <span class="icon">💳</span> Billing
+            </button>
+            <button class="settings-nav-item" data-section="users" onclick="switchSettings('users')">
+                <span class="icon">👤</span> User Preferences
+            </button>
+        </nav>
+
+        <!-- Settings Content -->
+        <div class="settings-content">
+
+            <!-- ===== GENERAL SETTINGS ===== -->
+            <div class="settings-section active" id="section-general">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🏢 General Settings</div>
+                            <div class="card-description">Basic organization information and preferences</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Organization Information</div>
+                            <div class="group-desc">Basic details about your organization</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Organization Name</div>
+                                    <div class="desc">Your organization's legal name</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="orgName" value="CarbonTally Ltd" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Company Number</div>
+                                    <div class="desc">Registered company number</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="companyNumber" value="12345678" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">VAT Number</div>
+                                    <div class="desc">VAT registration number</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="vatNumber" value="GB123456789" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Industry Sector</div>
+                                    <div class="desc">Primary industry classification</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="industrySector">
+                                        <option value="technology">Technology</option>
+                                        <option value="manufacturing">Manufacturing</option>
+                                        <option value="finance" selected>Finance</option>
+                                        <option value="healthcare">Healthcare</option>
+                                        <option value="retail">Retail</option>
+                                        <option value="energy">Energy</option>
+                                        <option value="consulting">Consulting</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Contact Information</div>
+                            <div class="group-desc">Primary and billing contacts</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Primary Contact Name</div>
+                                    <div class="desc">Main point of contact</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="primaryContact" value="John Doe" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Primary Contact Email</div>
+                                    <div class="desc">Contact email address</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="email" class="input" id="primaryEmail" value="john.doe@carbontally.com" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Billing Contact Name</div>
+                                    <div class="desc">Billing point of contact</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="billingContact" value="Sarah Johnson" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Billing Contact Email</div>
+                                    <div class="desc">Billing email address</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="email" class="input" id="billingEmail" value="billing@carbontally.com" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Location & Timezone</div>
+                            <div class="group-desc">Organization location and timezone</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Country</div>
+                                    <div class="desc">Primary country of operation</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="country">
+                                        <option value="UK" selected>United Kingdom</option>
+                                        <option value="US">United States</option>
+                                        <option value="EU">European Union</option>
+                                        <option value="AU">Australia</option>
+                                        <option value="CA">Canada</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Timezone</div>
+                                    <div class="desc">Organization timezone</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="timezone">
+                                        <option value="GMT" selected>GMT (UTC+0)</option>
+                                        <option value="BST">BST (UTC+1)</option>
+                                        <option value="EST">EST (UTC-5)</option>
+                                        <option value="CST">CST (UTC-6)</option>
+                                        <option value="PST">PST (UTC-8)</option>
+                                        <option value="AEST">AEST (UTC+10)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Currency</div>
+                                    <div class="desc">Reporting currency</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="currency">
+                                        <option value="GBP" selected>GBP (£)</option>
+                                        <option value="USD">USD ($)</option>
+                                        <option value="EUR">EUR (€)</option>
+                                        <option value="AUD">AUD ($)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== ORGANIZATION SETTINGS ===== -->
+            <div class="settings-section" id="section-organization">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📋 Organization Settings</div>
+                            <div class="card-description">Organization metadata and preferences</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Business Information</div>
+                            <div class="group-desc">Detailed business information</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Company Size</div>
+                                    <div class="desc">Number of employees</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="companySize">
+                                        <option value="1-10">1-10</option>
+                                        <option value="11-50">11-50</option>
+                                        <option value="51-200" selected>51-200</option>
+                                        <option value="201-500">201-500</option>
+                                        <option value="501-1000">501-1000</option>
+                                        <option value="1000+">1000+</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Website</div>
+                                    <div class="desc">Organization website</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="url" class="input" id="website" value="https://carbontally.com" />
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Registered Address</div>
+                                    <div class="desc">Official registered address</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="registeredAddress" value="123 Business Street, London, UK" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Subscription & Billing</div>
+                            <div class="group-desc">Subscription status and billing information</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Subscription Status</div>
+                                    <div class="desc">Current subscription status</div>
+                                </div>
+                                <div class="setting-control">
+                                    <span class="badge badge-success">🟢 Active</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Subscription Tier</div>
+                                    <div class="desc">Current plan</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="subscriptionTier">
+                                        <option value="starter">Starter</option>
+                                        <option value="professional" selected>Professional</option>
+                                        <option value="enterprise">Enterprise</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Tax Rate</div>
+                                    <div class="desc">Applicable tax rate (%)</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="number" class="input" id="taxRate" value="20" style="min-width:100px;" />
+                                    <span>%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== REPORTING SETTINGS ===== -->
+            <div class="settings-section" id="section-reporting">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📊 Reporting Settings</div>
+                            <div class="card-description">Configure reporting standards and preferences</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Reporting Standards</div>
+                            <div class="group-desc">Select which reporting frameworks to use</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">SECR Reporting</div>
+                                    <div class="desc">Streamlined Energy and Carbon Reporting</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="secrEnabled" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">ESRS / CSRD Reporting</div>
+                                    <div class="desc">European Sustainability Reporting Standards</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="esrsEnabled" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">ISSB Reporting</div>
+                                    <div class="desc">International Sustainability Standards Board</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="issbEnabled" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">GHG Protocol</div>
+                                    <div class="desc">Greenhouse Gas Protocol reporting</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="ghgEnabled" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">TCFD Reporting</div>
+                                    <div class="desc">Task Force on Climate-related Financial Disclosures</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="tcfdEnabled" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Financial Year</div>
+                            <div class="group-desc">Organization financial year settings</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Financial Year End</div>
+                                    <div class="desc">End date of financial year</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="financialYearEnd">
+                                        <option value="12-31">December 31</option>
+                                        <option value="03-31">March 31</option>
+                                        <option value="06-30">June 30</option>
+                                        <option value="09-30" selected>September 30</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Default Reporting Year</div>
+                                    <div class="desc">Default year for reports</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="defaultReportingYear">
+                                        <option value="2026">2026</option>
+                                        <option value="2025" selected>2025</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2023">2023</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">DEFRA Factors</div>
+                            <div class="group-desc">Default DEFRA conversion factor version</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Default DEFRA Version</div>
+                                    <div class="desc">Which DEFRA factor version to use</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="defraVersion">
+                                        <option value="2025">2025</option>
+                                        <option value="2024" selected>2024</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2022">2022</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Preferred Units</div>
+                                    <div class="desc">Default measurement units</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="preferredUnits">
+                                        <option value="metric" selected>Metric (kg, tonnes)</option>
+                                        <option value="imperial">Imperial (lbs, tons)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== EMISSIONS SETTINGS ===== -->
+            <div class="settings-section" id="section-emissions">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📈 Emissions Settings</div>
+                            <div class="card-description">Configure emissions calculation and data settings</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Calculation Settings</div>
+                            <div class="group-desc">How emissions are calculated</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Auto-Calculation</div>
+                                    <div class="desc">Automatically calculate emissions on data entry</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoCalculate" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Include Biogenic CO₂</div>
+                                    <div class="desc">Include biogenic carbon emissions in calculations</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="includeBiogenic" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Allocate Scope 3</div>
+                                    <div class="desc">Enable Scope 3 allocation and tracking</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="allocateScope3" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Data Quality</div>
+                            <div class="group-desc">Data validation and quality settings</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Auto-Validation</div>
+                                    <div class="desc">Automatically validate data on import</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoValidate" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Auto-Repair</div>
+                                    <div class="desc">Attempt to automatically repair invalid data</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoRepair" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Quality Threshold</div>
+                                    <div class="desc">Minimum data quality score required</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="qualityThreshold">
+                                        <option value="100">100% (Strict)</option>
+                                        <option value="90" selected>90% (Standard)</option>
+                                        <option value="80">80% (Relaxed)</option>
+                                        <option value="70">70% (Lax)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Net Zero Targets</div>
+                            <div class="group-desc">Net zero target settings</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Target Year</div>
+                                    <div class="desc">Net zero target year</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="netZeroTarget">
+                                        <option value="2030">2030</option>
+                                        <option value="2040">2040</option>
+                                        <option value="2050" selected>2050</option>
+                                        <option value="2060">2060</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Baseline Year</div>
+                                    <div class="desc">Baseline year for target tracking</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="baselineYear">
+                                        <option value="2023">2023</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2025" selected>2025</option>
+                                        <option value="2026">2026</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== DOCUMENTS SETTINGS ===== -->
+            <div class="settings-section" id="section-documents">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📁 Document Settings</div>
+                            <div class="card-description">Configure document management and storage</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">File Upload Limits</div>
+                            <div class="group-desc">File size and type restrictions</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Max File Size</div>
+                                    <div class="desc">Maximum allowed file size per upload</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="maxFileSize">
+                                        <option value="10">10 MB</option>
+                                        <option value="25">25 MB</option>
+                                        <option value="50" selected>50 MB</option>
+                                        <option value="100">100 MB</option>
+                                        <option value="200">200 MB</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Max Batch Files</div>
+                                    <div class="desc">Maximum files per batch upload</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="maxBatchFiles">
+                                        <option value="10">10</option>
+                                        <option value="25">25</option>
+                                        <option value="50" selected>50</option>
+                                        <option value="100">100</option>
+                                        <option value="500">500</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Allowed File Types</div>
+                                    <div class="desc">Accepted file extensions</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="allowedFileTypes" multiple style="height:auto;min-height:60px;">
+                                        <option value="csv" selected>CSV</option>
+                                        <option value="xlsx" selected>XLSX</option>
+                                        <option value="xls" selected>XLS</option>
+                                        <option value="pdf" selected>PDF</option>
+                                        <option value="jpg" selected>JPG</option>
+                                        <option value="jpeg" selected>JPEG</option>
+                                        <option value="png" selected>PNG</option>
+                                        <option value="doc" selected>DOC</option>
+                                        <option value="docx" selected>DOCX</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Processing Settings</div>
+                            <div class="group-desc">Document processing configuration</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Auto-Process</div>
+                                    <div class="desc">Automatically process uploaded documents</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoProcess" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Retention Period</div>
+                                    <div class="desc">How long to retain documents</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="retentionPeriod">
+                                        <option value="90">90 Days</option>
+                                        <option value="180">180 Days</option>
+                                        <option value="365" selected>1 Year</option>
+                                        <option value="730">2 Years</option>
+                                        <option value="0">Indefinite</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Auto-Archive</div>
+                                    <div class="desc">Automatically archive old documents</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="autoArchive" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== SECURITY SETTINGS ===== -->
+            <div class="settings-section" id="section-security">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🔒 Security Settings</div>
+                            <div class="card-description">Security and authentication settings</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Authentication</div>
+                            <div class="group-desc">Login and session security</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Require 2FA</div>
+                                    <div class="desc">Two-factor authentication requirement</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="require2fa" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Session Timeout</div>
+                                    <div class="desc">Inactive session timeout</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="sessionTimeout">
+                                        <option value="15">15 Minutes</option>
+                                        <option value="30">30 Minutes</option>
+                                        <option value="60" selected>60 Minutes</option>
+                                        <option value="120">2 Hours</option>
+                                        <option value="480">8 Hours</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Max Login Attempts</div>
+                                    <div class="desc">Failed login attempts before lockout</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="maxLoginAttempts">
+                                        <option value="3">3</option>
+                                        <option value="5" selected>5</option>
+                                        <option value="10">10</option>
+                                        <option value="0">Unlimited</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Data Security</div>
+                            <div class="group-desc">Data protection and privacy</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Audit Logging</div>
+                                    <div class="desc">Enable detailed audit logging</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="auditLogging" checked disabled />
+                                        <span class="slider"></span>
+                                    </label>
+                                    <span class="badge badge-muted" style="font-size:10px;">Enforced</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">IP Restriction</div>
+                                    <div class="desc">Restrict access to specific IPs</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="ipRestriction" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== INTEGRATIONS SETTINGS ===== -->
+            <div class="settings-section" id="section-integrations">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🔌 Integrations</div>
+                            <div class="card-description">Configure external integrations</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">API Settings</div>
+                            <div class="group-desc">API configuration and access</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">API Enabled</div>
+                                    <div class="desc">Enable REST API access</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="apiEnabled" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">API Key</div>
+                                    <div class="desc">Your API access key</div>
+                                </div>
+                                <div class="setting-control" style="flex-direction:column;align-items:stretch;gap:4px;">
+                                    <div style="display:flex;gap:8px;">
+                                        <input type="text" class="input" id="apiKey" value="ct_sk_live_xxxxxxxxxxxx" disabled style="min-width:200px;" />
+                                        <button class="btn btn-outline btn-sm" onclick="regenerateApiKey()">🔄 Regenerate</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Third-Party Integrations</div>
+                            <div class="group-desc">Connect with external services</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Carbon Accounting</div>
+                                    <div class="desc">Connect to external carbon accounting platforms</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="carbonIntegration">
+                                        <option value="none">None</option>
+                                        <option value="persefoni">Persefoni</option>
+                                        <option value="watershed" selected>Watershed</option>
+                                        <option value="sap">SAP</option>
+                                        <option value="salesforce">Salesforce</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">ERP Integration</div>
+                                    <div class="desc">Connect to ERP systems</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="erpIntegration">
+                                        <option value="none">None</option>
+                                        <option value="sap">SAP</option>
+                                        <option value="oracle">Oracle</option>
+                                        <option value="ms_dynamics">Microsoft Dynamics</option>
+                                        <option value="netsuite">NetSuite</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Data Export</div>
+                                    <div class="desc">Automated data export schedule</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="dataExport">
+                                        <option value="none">None</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly" selected>Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="quarterly">Quarterly</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== NOTIFICATIONS SETTINGS ===== -->
+            <div class="settings-section" id="section-notifications">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🔔 Notification Settings</div>
+                            <div class="card-description">Configure notification preferences</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Email Notifications</div>
+                            <div class="group-desc">Manage email notification preferences</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Report Ready</div>
+                                    <div class="desc">Notify when reports are ready</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notifyReportReady" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Data Validation Required</div>
+                                    <div class="desc">Notify when data needs validation</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notifyValidation" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Approval Required</div>
+                                    <div class="desc">Notify when approvals are needed</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notifyApproval" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Upcoming Deadlines</div>
+                                    <div class="desc">Notify about approaching deadlines</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notifyDeadlines" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Team Updates</div>
+                                    <div class="desc">Notify about team changes</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notifyTeam" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">In-App Notifications</div>
+                            <div class="group-desc">Manage in-app notification preferences</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Browser Notifications</div>
+                                    <div class="desc">Enable browser push notifications</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="browserNotifications" checked />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Notification Sounds</div>
+                                    <div class="desc">Play sound for notifications</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notificationSounds" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== BILLING SETTINGS ===== -->
+            <div class="settings-section" id="section-billing">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">💳 Billing Settings</div>
+                            <div class="card-description">Manage billing information and subscription</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Subscription Plan</div>
+                            <div class="group-desc">Your current subscription plan</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Current Plan</div>
+                                    <div class="desc">Active subscription tier</div>
+                                </div>
+                                <div class="setting-control">
+                                    <span class="badge badge-success" style="font-size:14px;padding:6px 16px;">⭐ Professional</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Billing Cycle</div>
+                                    <div class="desc">Subscription billing frequency</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="billingCycle">
+                                        <option value="monthly" selected>Monthly</option>
+                                        <option value="quarterly">Quarterly</option>
+                                        <option value="annual">Annual (Save 20%)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Next Billing Date</div>
+                                    <div class="desc">Upcoming billing date</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="date" class="input" id="nextBillingDate" value="2026-01-15" style="min-width:160px;" disabled />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Payment Method</div>
+                            <div class="group-desc">Manage your payment information</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Card on File</div>
+                                    <div class="desc">Current payment method</div>
+                                </div>
+                                <div class="setting-control" style="flex-direction:column;align-items:stretch;gap:4px;">
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <span style="font-size:20px;">💳</span>
+                                        <span>•••• 4242</span>
+                                        <span class="badge badge-muted">Expires 12/27</span>
+                                        <button class="btn btn-outline btn-sm" onclick="showToast('✏️ Edit payment method')">✏️ Edit</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Billing Address</div>
+                                    <div class="desc">Billing address for invoices</div>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="text" class="input" id="billingAddress" value="123 Business Street, London, UK" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== USER PREFERENCES ===== -->
+            <div class="settings-section" id="section-users">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">👤 User Preferences</div>
+                            <div class="card-description">Personalize your experience</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-group">
+                            <div class="group-title">Display Settings</div>
+                            <div class="group-desc">Customize how the dashboard looks</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Dark Mode</div>
+                                    <div class="desc">Switch between light and dark themes</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="darkMode">
+                                        <option value="light">☀️ Light</option>
+                                        <option value="dark">🌙 Dark</option>
+                                        <option value="system" selected>💻 System</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Compact Mode</div>
+                                    <div class="desc">Use compact layout for denser information</div>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="compactMode" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Default Dashboard</div>
+                                    <div class="desc">Default view when logging in</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="defaultDashboard">
+                                        <option value="dashboard">📊 Dashboard</option>
+                                        <option value="emissions">📈 Emissions</option>
+                                        <option value="reports">📄 Reports</option>
+                                        <option value="documents">📁 Documents</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Language & Region</div>
+                            <div class="group-desc">Language and region settings</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Language</div>
+                                    <div class="desc">Interface language</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="language">
+                                        <option value="en" selected>English</option>
+                                        <option value="fr">Français</option>
+                                        <option value="de">Deutsch</option>
+                                        <option value="es">Español</option>
+                                        <option value="zh">中文</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Date Format</div>
+                                    <div class="desc">Preferred date display format</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="dateFormat">
+                                        <option value="dd/mm/yyyy" selected>DD/MM/YYYY</option>
+                                        <option value="mm/dd/yyyy">MM/DD/YYYY</option>
+                                        <option value="yyyy-mm-dd">YYYY-MM-DD</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Number Format</div>
+                                    <div class="desc">Preferred number formatting</div>
+                                </div>
+                                <div class="setting-control">
+                                    <select class="select" id="numberFormat">
+                                        <option value="1,000.00" selected>1,000.00</option>
+                                        <option value="1.000,00">1.000,00</option>
+                                        <option value="1 000.00">1 000.00</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="group-title">Account</div>
+                            <div class="group-desc">Account management</div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Account Type</div>
+                                    <div class="desc">Your account role</div>
+                                </div>
+                                <div class="setting-control">
+                                    <span class="badge badge-primary">👑 Administrator</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row">
+                                <div class="setting-info">
+                                    <div class="label">Last Login</div>
+                                    <div class="desc">When you last logged in</div>
+                                </div>
+                                <div class="setting-control">
+                                    <span style="font-size:14px;">2026-12-15 14:30 GMT</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row" style="border-bottom:none;">
+                                <div class="setting-info">
+                                    <div class="label">Danger Zone</div>
+                                    <div class="desc">Account deletion and data management</div>
+                                </div>
+                                <div class="setting-control">
+                                    <button class="btn btn-danger btn-sm" onclick="confirmAccountDeletion()">
+                                        🗑️ Delete Account
+                                    </button>
+                                    <button class="btn btn-outline btn-sm" onclick="showToast('📤 Exporting data...')">
+                                        📤 Export Data
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>

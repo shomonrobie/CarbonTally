@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally · Export History</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        /* ===== THEME SYSTEM ===== */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --sidebar-width: 240px;
+            --sidebar-bg: 0, 0%, 100%;
+            --sidebar-border: 220, 15%, 90%;
+            --sidebar-item-hover: 150, 30%, 96%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+
+        [data-theme="forest"] { --primary: 150, 50%, 28%; --accent: 150, 30%, 92%; }
+        [data-theme="emerald"] { --primary: 160, 84%, 39%; --accent: 160, 70%, 92%; }
+        [data-theme="teal"] { --primary: 175, 60%, 25%; --accent: 175, 50%, 90%; }
+        [data-theme="navy"] { --primary: 222, 47%, 31%; --accent: 222, 40%, 90%; }
+        [data-theme="slate"] { --primary: 220, 20%, 18%; --accent: 220, 20%, 92%; }
+        [data-theme="warm-grey"] { --primary: 30, 15%, 25%; --accent: 30, 20%, 92%; }
+        [data-theme="purple"] { --primary: 260, 50%, 35%; --accent: 260, 40%, 90%; }
+        [data-theme="rose"] { --primary: 340, 60%, 35%; --accent: 340, 50%, 92%; }
+        [data-theme="carbon"] { --primary: 0, 0%, 15%; --accent: 0, 0%, 92%; }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            min-height: 100vh;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+            border: none; cursor: pointer; transition: all 0.15s ease;
+        }
+        .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .btn-primary:hover { opacity:0.9; box-shadow: 0 4px 12px hsla(var(--primary),0.3); transform:translateY(-1px); }
+        .btn-outline { background:transparent; color:hsl(var(--primary)); border:2px solid hsl(var(--primary)); }
+        .btn-outline:hover { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+        .btn-ghost { background:transparent; color:hsl(var(--foreground)); }
+        .btn-ghost:hover { background:hsl(var(--accent)); }
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-success { background:hsl(var(--success)); color:#fff; }
+        .btn-danger { background:hsl(var(--destructive)); color:#fff; }
+        .btn-secondary { background:hsl(var(--secondary)); color:#fff; }
+
+        .card {
+            background: hsl(var(--card)); border-radius: var(--radius); border:1px solid hsl(var(--border));
+            box-shadow: var(--shadow); transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header { padding: 16px 20px 8px 20px; display:flex; justify-content:space-between; align-items:center; }
+        .card-title { font-size:14px; font-weight:600; }
+        .card-description { font-size:12px; color:hsl(var(--muted-foreground)); }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px;
+            font-size:11px; font-weight:500;
+        }
+        .badge-success { background:hsl(var(--success)); color:#fff; }
+        .badge-warning { background:hsl(var(--warning)); color:#fff; }
+        .badge-primary { background:hsl(var(--primary)); color:#fff; }
+        .badge-muted { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+        .badge-destructive { background:hsl(var(--destructive)); color:#fff; }
+        .badge-secondary { background:hsl(var(--secondary)); color:#fff; }
+
+        .avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; background:hsl(var(--primary)); color:#fff; flex-shrink:0; }
+        .avatar-sm { width:28px; height:28px; font-size:11px; }
+
+        .app { display:flex; min-height:100vh; }
+        .sidebar {
+            width: var(--sidebar-width); background:hsl(var(--sidebar-bg)); border-right:1px solid hsl(var(--sidebar-border));
+            display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100;
+            transition:all 0.3s ease; overflow-y:auto;
+        }
+        .sidebar-logo { padding:20px 20px 16px 20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid hsl(var(--sidebar-border)); }
+        .sidebar-logo .logo-icon { width:32px; height:32px; background:hsl(var(--primary)); border-radius:var(--radius); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+        .sidebar-logo .logo-text { font-size:18px; font-weight:700; }
+        .sidebar-nav { flex:1; padding:16px 12px; overflow-y:auto; }
+        .sidebar-section-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:hsl(var(--muted-foreground)); padding:8px 12px 4px 12px; opacity:0.6; }
+        .sidebar-item {
+            display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:var(--radius);
+            color:hsl(var(--muted-foreground)); cursor:pointer; transition:all 0.15s ease; font-size:14px; font-weight:500;
+            border:none; background:transparent; width:100%; text-align:left;
+        }
+        .sidebar-item:hover { background:hsl(var(--sidebar-item-hover)); color:hsl(var(--foreground)); }
+        .sidebar-item.active { background:hsl(var(--sidebar-item-active)); color:#fff; }
+        .sidebar-item .icon { font-size:18px; width:24px; text-align:center; flex-shrink:0; }
+        .sidebar-item .badge { margin-left:auto; }
+
+        .main-content { margin-left:var(--sidebar-width); flex:1; min-height:100vh; display:flex; flex-direction:column; }
+        .top-header {
+            background:hsl(var(--card)); border-bottom:1px solid hsl(var(--border)); padding:0 32px; height:64px;
+            display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50;
+        }
+        .header-left { display:flex; align-items:center; gap:24px; flex:1; }
+        .header-search { flex:1; max-width:400px; position:relative; margin:0 24px; }
+        .header-search input { width:100%; padding:8px 12px 8px 36px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .header-search input:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+        .header-search .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:hsl(var(--muted-foreground)); }
+        .header-right { display:flex; align-items:center; gap:16px; }
+        .header-user { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 8px 4px 4px; border-radius:var(--radius); }
+        .header-user:hover { background:hsl(var(--accent)); }
+        .header-user .user-name { font-size:13px; font-weight:500; }
+        .header-user .user-role { font-size:11px; color:hsl(var(--muted-foreground)); }
+        .mobile-menu-btn { display:none; background:none; border:none; font-size:24px; cursor:pointer; }
+
+        .main-body { padding:24px 32px; flex:1; }
+        .page-header { margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+        .page-header h1 { font-size:24px; font-weight:700; }
+        .page-header p { font-size:14px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .stats-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:12px; margin-bottom:24px; }
+        .stat-card { background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border)); padding:14px 16px; }
+        .stat-card .stat-label { font-size:11px; font-weight:500; color:hsl(var(--muted-foreground)); text-transform:uppercase; letter-spacing:0.3px; }
+        .stat-card .stat-value { font-size:20px; font-weight:700; margin-top:4px; }
+        .stat-card .stat-sub { font-size:11px; color:hsl(var(--muted-foreground)); margin-top:2px; }
+
+        .filters-bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; background:hsl(var(--card)); padding:12px 16px; border-radius:var(--radius); border:1px solid hsl(var(--border)); }
+        .filters-bar select, .filters-bar input { padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; }
+        .filters-bar select:focus, .filters-bar input:focus { border-color:hsl(var(--ring)); }
+
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th { text-align:left; padding:10px 12px; background:hsl(var(--muted)); font-weight:600; color:hsl(var(--muted-foreground)); border-bottom:2px solid hsl(var(--border)); cursor:pointer; user-select:none; }
+        th:hover { background:hsl(var(--accent)); }
+        th .sort-icon { margin-left:4px; font-size:11px; }
+        td { padding:10px 12px; border-bottom:1px solid hsl(var(--border)); vertical-align:middle; }
+        tr:hover td { background:hsl(var(--accent)); }
+
+        .theme-btn { padding:4px 10px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); cursor:pointer; font-size:12px; display:flex; align-items:center; gap:4px; }
+
+        /* Pagination */
+        .pagination {
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+            padding:12px 0 0 0; border-top:1px solid hsl(var(--border)); margin-top:12px;
+        }
+        .pagination .page-info { font-size:13px; color:hsl(var(--muted-foreground)); }
+        .pagination .page-buttons { display:flex; gap:4px; flex-wrap:wrap; }
+        .pagination .page-btn {
+            padding:6px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border));
+            background:hsl(var(--background)); cursor:pointer; font-size:13px; transition:all 0.15s ease;
+            color:hsl(var(--foreground)); min-width:36px; text-align:center;
+        }
+        .pagination .page-btn:hover { background:hsl(var(--accent)); border-color:hsl(var(--ring)); }
+        .pagination .page-btn.active { background:hsl(var(--primary)); color:#fff; border-color:hsl(var(--primary)); }
+        .pagination .page-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+        /* Export item styles */
+        .file-icon { font-size:20px; width:32px; text-align:center; }
+        .file-icon .fa-file-pdf { color:#dc2626; }
+        .file-icon .fa-file-excel { color:#16a34a; }
+        .file-icon .fa-file-csv { color:#2563eb; }
+        .file-icon .fa-file-word { color:#2563eb; }
+        .file-icon .fa-file-archive { color:#d97706; }
+
+        .expiry-warning { color:hsl(var(--destructive)); font-weight:500; }
+        .expiry-soon { color:hsl(var(--warning)); font-weight:500; }
+
+        /* Footer */
+        .app-footer {
+            margin-top: auto;
+            padding: 16px 32px;
+            border-top: 1px solid hsl(var(--border));
+            background: hsl(var(--card));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .app-footer .footer-links { display:flex; gap:20px; align-items:center; }
+        .app-footer .footer-links a { color:hsl(var(--muted-foreground)); text-decoration:none; transition:color 0.15s ease; }
+        .app-footer .footer-links a:hover { color:hsl(var(--foreground)); }
+
+        /* Modal */
+        .modal-overlay {
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
+            z-index:1000; align-items:center; justify-content:center;
+        }
+        .modal-overlay.show { display:flex; }
+        .modal-box {
+            background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border));
+            box-shadow:var(--shadow-lg); max-width:600px; width:95%; max-height:85vh; overflow-y:auto;
+            padding:24px; animation:slideUp 0.2s ease;
+        }
+        .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+        .modal-title { font-size:20px; font-weight:700; }
+        .modal-close { background:none; border:none; font-size:24px; cursor:pointer; color:hsl(var(--muted-foreground)); }
+        .modal-footer { display:flex; justify-content:flex-end; gap:8px; padding-top:16px; border-top:1px solid hsl(var(--border)); margin-top:16px; }
+
+        .settings-group { margin-bottom:16px; }
+        .settings-group label { display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+        .settings-group input, .settings-group select, .settings-group textarea { width:100%; padding:8px 12px; border-radius:var(--radius); border:1px solid hsl(var(--border)); background:hsl(var(--background)); font-size:13px; outline:none; font-family:inherit; }
+        .settings-group input:focus, .settings-group select:focus, .settings-group textarea:focus { border-color:hsl(var(--ring)); box-shadow:0 0 0 3px hsla(var(--ring),0.15); }
+
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+
+        @media (max-width:1400px) { .stats-grid { grid-template-columns:repeat(4,1fr); } }
+        @media (max-width:992px) {
+            .sidebar { transform:translateX(-100%); width:280px; }
+            .sidebar.open { transform:translateX(0); }
+            .main-content { margin-left:0; }
+            .top-header { padding:0 16px; }
+            .main-body { padding:16px; }
+            .header-search { display:none; }
+            .mobile-menu-btn { display:flex !important; }
+            .app-footer { flex-direction:column; text-align:center; padding:16px; }
+            .app-footer .footer-links { flex-wrap:wrap; justify-content:center; }
+        }
+        @media (max-width:768px) {
+            .stats-grid { grid-template-columns:repeat(2,1fr); }
+            .pagination { flex-direction:column; align-items:stretch; }
+            .pagination .page-buttons { justify-content:center; }
+            .filters-bar { flex-direction:column; align-items:stretch; }
+        }
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo"><div class="logo-icon">🌱</div><span class="logo-text">CarbonTally</span></div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-section-title">Main</div>
+            <button class="sidebar-item"><span class="icon">🏠</span> Dashboard</button>
+            <button class="sidebar-item"><span class="icon">📁</span> Documents</button>
+            <button class="sidebar-item"><span class="icon">📦</span> Batch Management</button>
+            <button class="sidebar-item"><span class="icon">👤</span> Profile</button>
+            <button class="sidebar-item active"><span class="icon">📊</span> Export History</button>
+            <button class="sidebar-item"><span class="icon">💬</span> Feedback</button>
+            <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+            <button class="sidebar-item"><span class="icon">📋</span> Audit Logs</button>
+            <button class="sidebar-item"><span class="icon">⚙️</span> Settings</button>
+        </nav>
+        <div style="padding:16px 20px; border-top:1px solid hsl(var(--sidebar-border));">
+            <button class="sidebar-item"><span class="icon">❓</span> Help</button>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-content">
+        <header class="top-header">
+            <div class="header-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                <div class="header-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search exports..." id="globalSearch" /></div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" id="themeToggle"><i class="fas fa-palette"></i> <span id="currentThemeName">Forest</span></button>
+                <div class="header-user"><div class="avatar">JD</div><div><div class="user-name">John Doe</div><div class="user-role">Admin</div></div></div>
+            </div>
+        </header>
+
+        <div class="main-body">
+
+            <!-- PAGE HEADER -->
+            <div class="page-header">
+                <div><h1>📊 Export History</h1><p>Track and manage all data exports, downloads, and generated reports.</p></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" onclick="openExportModal()"><i class="fas fa-plus"></i> New Export</button>
+                    <button class="btn btn-outline btn-sm" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+            </div>
+
+            <!-- STATS -->
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">📄 Total Exports</div><div class="stat-value" id="totalExports">0</div><div class="stat-sub">all time</div></div>
+                <div class="stat-card"><div class="stat-label">✅ Completed</div><div class="stat-value" id="completedExports">0</div><div class="stat-sub">ready to download</div></div>
+                <div class="stat-card"><div class="stat-label">⏳ Processing</div><div class="stat-value" id="processingExports">0</div><div class="stat-sub">in progress</div></div>
+                <div class="stat-card"><div class="stat-label">⚠️ Failed</div><div class="stat-value" id="failedExports">0</div><div class="stat-sub">needs retry</div></div>
+                <div class="stat-card"><div class="stat-label">⬇️ Total Downloads</div><div class="stat-value" id="totalDownloads">0</div><div class="stat-sub">file downloads</div></div>
+                <div class="stat-card"><div class="stat-label">💾 Total Size</div><div class="stat-value" id="totalSize">0</div><div class="stat-sub">exported</div></div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="filters-bar">
+                <select id="formatFilter">
+                    <option value="all">All Formats</option>
+                    <option value="pdf">PDF</option>
+                    <option value="xlsx">Excel</option>
+                    <option value="csv">CSV</option>
+                    <option value="docx">Word</option>
+                    <option value="zip">ZIP</option>
+                </select>
+                <select id="statusFilter">
+                    <option value="all">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="processing">Processing</option>
+                    <option value="failed">Failed</option>
+                    <option value="expired">Expired</option>
+                </select>
+                <input type="date" id="dateFrom" placeholder="From" />
+                <span style="color:hsl(var(--muted-foreground));font-size:12px;">to</span>
+                <input type="date" id="dateTo" placeholder="To" />
+                <button class="btn btn-sm btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply</button>
+                <button class="btn btn-sm btn-ghost" onclick="clearFilters()"><i class="fas fa-times"></i> Clear</button>
+                <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 exports</span>
+            </div>
+
+            <!-- EXPORT TABLE -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📋 Export History</div>
+                    <span class="badge badge-primary" id="exportCount">0</span>
+                </div>
+                <div class="card-content" style="padding:0 20px 20px 20px;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th onclick="sortBy('fileName')" style="min-width:200px;">File Name <span class="sort-icon" id="sort-fileName">↕</span></th>
+                                    <th onclick="sortBy('format')" style="min-width:80px;">Format <span class="sort-icon" id="sort-format">↕</span></th>
+                                    <th onclick="sortBy('recordCount')" style="min-width:100px;">Records <span class="sort-icon" id="sort-recordCount">↕</span></th>
+                                    <th onclick="sortBy('size')" style="min-width:100px;">Size <span class="sort-icon" id="sort-size">↕</span></th>
+                                    <th onclick="sortBy('status')" style="min-width:120px;">Status <span class="sort-icon" id="sort-status">↕</span></th>
+                                    <th onclick="sortBy('createdAt')" style="min-width:150px;">Created <span class="sort-icon" id="sort-createdAt">↕</span></th>
+                                    <th onclick="sortBy('expiresAt')" style="min-width:130px;">Expires <span class="sort-icon" id="sort-expiresAt">↕</span></th>
+                                    <th style="min-width:100px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exportTableBody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div class="pagination" id="pagination">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- FOOTER -->
+        <footer class="app-footer">
+            <div>
+                <span>© 2026 CarbonTally Ltd. All rights reserved.</span>
+            </div>
+            <div class="footer-links">
+                <a href="#" onclick="showToast('📄 Privacy Policy')">Privacy Policy</a>
+                <a href="#" onclick="showToast('📄 Terms of Service')">Terms of Service</a>
+                <a href="#" onclick="showToast('📄 Cookie Policy')">Cookie Policy</a>
+                <a href="#" onclick="showToast('📧 support@carbontally.com')">Support</a>
+                <span>v3.2.1</span>
+            </div>
+        </footer>
+    </div>
+</div>
+
+<!-- ===== NEW EXPORT MODAL ===== -->
+<div class="modal-overlay" id="exportModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-file-export"></i> New Export</div>
+            <button class="modal-close" onclick="closeExportModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Export Type</label>
+                <select id="exportType">
+                    <option value="emissions">Emissions Data</option>
+                    <option value="compliance">Compliance Report</option>
+                    <option value="secr">SECR Report</option>
+                    <option value="csrd">CSRD Report</option>
+                    <option value="issb">ISSB Disclosure</option>
+                    <option value="audit">Audit Log</option>
+                    <option value="custom">Custom Query</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Format</label>
+                <select id="exportFormat">
+                    <option value="pdf">PDF</option>
+                    <option value="xlsx" selected>Excel (XLSX)</option>
+                    <option value="csv">CSV</option>
+                    <option value="docx">Word (DOCX)</option>
+                    <option value="zip">ZIP Archive</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Date Range</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <input type="date" id="exportDateFrom" />
+                    <input type="date" id="exportDateTo" />
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Include Options</label>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;padding:8px 0;">
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;">
+                        <input type="checkbox" checked /> Metadata
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;">
+                        <input type="checkbox" checked /> Charts
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;">
+                        <input type="checkbox" /> Raw Data
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;">
+                        <input type="checkbox" /> Calculations
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeExportModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="generateExport()"><i class="fas fa-file-export"></i> Generate Export</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        "use strict";
+
+        // ===== THEMES =====
+        const themes = [
+            { id: 'forest', name: 'Forest Green' },
+            { id: 'emerald', name: 'Emerald' },
+            { id: 'teal', name: 'Teal' },
+            { id: 'navy', name: 'Navy' },
+            { id: 'slate', name: 'Slate' },
+            { id: 'warm-grey', name: 'Warm Grey' },
+            { id: 'purple', name: 'Purple' },
+            { id: 'rose', name: 'Rose' },
+            { id: 'carbon', name: 'Carbon' }
+        ];
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+
+        function setTheme(id) {
+            currentTheme = id;
+            document.documentElement.setAttribute('data-theme', id);
+            localStorage.setItem('carbontally-theme', id);
+            const t = themes.find(th => th.id === id);
+            if (t) document.getElementById('currentThemeName').textContent = t.name;
+        }
+        setTheme(currentTheme);
+
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const idx = themes.findIndex(t => t.id === currentTheme);
+            const next = (idx + 1) % themes.length;
+            setTheme(themes[next].id);
+        });
+
+        // ===== MOCK DATA =====
+
+        const users = [
+            { id: 'u1', name: 'John Doe', avatar: 'JD', role: 'Admin' },
+            { id: 'u2', name: 'Sarah Johnson', avatar: 'SJ', role: 'Sustainability Officer' },
+            { id: 'u3', name: 'Mike Chen', avatar: 'MC', role: 'Data Analyst' },
+            { id: 'u4', name: 'Emma Wilson', avatar: 'EW', role: 'Compliance Manager' },
+            { id: 'u5', name: 'Alex Rivera', avatar: 'AR', role: 'Analyst' },
+        ];
+
+        const formatIcons = {
+            'pdf': 'fa-file-pdf',
+            'xlsx': 'fa-file-excel',
+            'csv': 'fa-file-csv',
+            'docx': 'fa-file-word',
+            'zip': 'fa-file-archive'
+        };
+
+        const formatLabels = {
+            'pdf': 'PDF',
+            'xlsx': 'Excel',
+            'csv': 'CSV',
+            'docx': 'Word',
+            'zip': 'ZIP'
+        };
+
+        const typeLabels = {
+            'emissions': 'Emissions Data',
+            'compliance': 'Compliance Report',
+            'secr': 'SECR Report',
+            'csrd': 'CSRD Report',
+            'issb': 'ISSB Disclosure',
+            'audit': 'Audit Log',
+            'custom': 'Custom Query'
+        };
+
+        let exportItems = [
+            {
+                id: 'e1',
+                userId: 'u1',
+                fileName: 'SECR_Report_2026_Q4',
+                format: 'pdf',
+                recordCount: 245,
+                size: '2.4 MB',
+                status: 'completed',
+                createdAt: '2026-01-15 14:30',
+                expiresAt: '2026-02-14 14:30',
+                downloads: 12,
+                exportType: 'secr',
+                filters: { year: '2026', quarter: 'Q4' }
+            },
+            {
+                id: 'e2',
+                userId: 'u2',
+                fileName: 'Emissions_Data_2026_Annual',
+                format: 'xlsx',
+                recordCount: 1256,
+                size: '5.8 MB',
+                status: 'completed',
+                createdAt: '2026-01-14 09:15',
+                expiresAt: '2026-02-13 09:15',
+                downloads: 8,
+                exportType: 'emissions',
+                filters: { year: '2026', scope: 'all' }
+            },
+            {
+                id: 'e3',
+                userId: 'u3',
+                fileName: 'CSRD_Disclosure_Report',
+                format: 'pdf',
+                recordCount: 534,
+                size: '3.2 MB',
+                status: 'processing',
+                createdAt: '2026-01-13 11:20',
+                expiresAt: '2026-02-12 11:20',
+                downloads: 0,
+                exportType: 'csrd',
+                filters: { year: '2026', standard: 'esrs_e1' }
+            },
+            {
+                id: 'e4',
+                userId: 'u4',
+                fileName: 'Audit_Log_Export_Jan2026',
+                format: 'csv',
+                recordCount: 3456,
+                size: '12.1 MB',
+                status: 'completed',
+                createdAt: '2026-01-12 08:00',
+                expiresAt: '2026-02-11 08:00',
+                downloads: 5,
+                exportType: 'audit',
+                filters: { startDate: '2026-01-01', endDate: '2026-01-31' }
+            },
+            {
+                id: 'e5',
+                userId: 'u1',
+                fileName: 'ISSB_S1_S2_Disclosure',
+                format: 'docx',
+                recordCount: 89,
+                size: '1.2 MB',
+                status: 'completed',
+                createdAt: '2026-01-11 16:45',
+                expiresAt: '2026-02-10 16:45',
+                downloads: 3,
+                exportType: 'issb',
+                filters: { standard: 's1_s2', year: '2026' }
+            },
+            {
+                id: 'e6',
+                userId: 'u5',
+                fileName: 'Custom_Query_Emissions_Scope3',
+                format: 'xlsx',
+                recordCount: 789,
+                size: '4.6 MB',
+                status: 'failed',
+                createdAt: '2026-01-10 13:50',
+                expiresAt: '2026-02-09 13:50',
+                downloads: 0,
+                exportType: 'custom',
+                filters: { scope: '3', category: 'all' }
+            },
+            {
+                id: 'e7',
+                userId: 'u2',
+                fileName: 'Compliance_Summary_2026',
+                format: 'pdf',
+                recordCount: 167,
+                size: '1.8 MB',
+                status: 'expired',
+                createdAt: '2025-12-15 10:10',
+                expiresAt: '2026-01-14 10:10',
+                downloads: 15,
+                exportType: 'compliance',
+                filters: { year: '2026', status: 'all' }
+            },
+            {
+                id: 'e8',
+                userId: 'u3',
+                fileName: 'GHG_Inventory_Data_2026',
+                format: 'zip',
+                recordCount: 2345,
+                size: '18.3 MB',
+                status: 'completed',
+                createdAt: '2026-01-09 09:30',
+                expiresAt: '2026-02-08 09:30',
+                downloads: 4,
+                exportType: 'emissions',
+                filters: { year: '2026', scope: 'all', format: 'zip' }
+            },
+            {
+                id: 'e9',
+                userId: 'u4',
+                fileName: 'SECR_Financial_Data',
+                format: 'xlsx',
+                recordCount: 456,
+                size: '2.9 MB',
+                status: 'completed',
+                createdAt: '2026-01-08 15:20',
+                expiresAt: '2026-02-07 15:20',
+                downloads: 7,
+                exportType: 'secr',
+                filters: { year: '2026', type: 'financial' }
+            },
+            {
+                id: 'e10',
+                userId: 'u1',
+                fileName: 'CSRD_Data_Export_Jan',
+                format: 'csv',
+                recordCount: 1234,
+                size: '6.7 MB',
+                status: 'processing',
+                createdAt: '2026-01-07 11:00',
+                expiresAt: '2026-02-06 11:00',
+                downloads: 0,
+                exportType: 'csrd',
+                filters: { month: 'January', year: '2026' }
+            },
+            {
+                id: 'e11',
+                userId: 'u5',
+                fileName: 'Audit_Trail_Complete_2025',
+                format: 'pdf',
+                recordCount: 5678,
+                size: '15.4 MB',
+                status: 'expired',
+                createdAt: '2025-12-20 14:00',
+                expiresAt: '2026-01-19 14:00',
+                downloads: 22,
+                exportType: 'audit',
+                filters: { year: '2025' }
+            },
+            {
+                id: 'e12',
+                userId: 'u2',
+                fileName: 'Emissions_Trend_Analysis',
+                format: 'docx',
+                recordCount: 234,
+                size: '1.5 MB',
+                status: 'completed',
+                createdAt: '2026-01-06 09:45',
+                expiresAt: '2026-02-05 09:45',
+                downloads: 2,
+                exportType: 'custom',
+                filters: { period: '5y', granularity: 'monthly' }
+            },
+            {
+                id: 'e13',
+                userId: 'u3',
+                fileName: 'ISSB_Climate_Disclosure',
+                format: 'pdf',
+                recordCount: 145,
+                size: '2.1 MB',
+                status: 'failed',
+                createdAt: '2026-01-05 13:30',
+                expiresAt: '2026-02-04 13:30',
+                downloads: 0,
+                exportType: 'issb',
+                filters: { standard: 's1', year: '2026' }
+            },
+            {
+                id: 'e14',
+                userId: 'u4',
+                fileName: 'Carbon_Footprint_Report',
+                format: 'xlsx',
+                recordCount: 678,
+                size: '3.4 MB',
+                status: 'completed',
+                createdAt: '2026-01-04 10:20',
+                expiresAt: '2026-02-03 10:20',
+                downloads: 6,
+                exportType: 'emissions',
+                filters: { scope: '1,2,3', year: '2026' }
+            },
+            {
+                id: 'e15',
+                userId: 'u1',
+                fileName: 'Compliance_Checklist_2026',
+                format: 'pdf',
+                recordCount: 98,
+                size: '0.8 MB',
+                status: 'completed',
+                createdAt: '2026-01-03 16:00',
+                expiresAt: '2026-02-02 16:00',
+                downloads: 10,
+                exportType: 'compliance',
+                filters: { framework: 'secr,csrd,issb' }
+            }
+        ];
+
+        // ===== STATE =====
+        let filteredExports = [...exportItems];
+        let currentPage = 1;
+        let perPage = 10;
+        let currentSort = { field: 'createdAt', direction: 'desc' };
+
+        // ===== DOM REFS =====
+        const tableBody = document.getElementById('exportTableBody');
+        const exportCount = document.getElementById('exportCount');
+        const filterCount = document.getElementById('filterCount');
+        const pagination = document.getElementById('pagination');
+        const totalExports = document.getElementById('totalExports');
+        const completedExports = document.getElementById('completedExports');
+        const processingExports = document.getElementById('processingExports');
+        const failedExports = document.getElementById('failedExports');
+        const totalDownloads = document.getElementById('totalDownloads');
+        const totalSize = document.getElementById('totalSize');
+
+        // ===== RENDER FUNCTIONS =====
+
+        function getUser(id) {
+            return users.find(u => u.id === id) || { name: 'Unknown', avatar: '??', role: 'Unknown' };
+        }
+
+        function getStatusBadge(status) {
+            const map = {
+                'completed': '<span class="badge badge-success"><i class="fas fa-check"></i> Completed</span>',
+                'processing': '<span class="badge badge-warning"><i class="fas fa-spinner fa-spin"></i> Processing</span>',
+                'failed': '<span class="badge badge-destructive"><i class="fas fa-times"></i> Failed</span>',
+                'expired': '<span class="badge badge-muted"><i class="fas fa-clock"></i> Expired</span>'
+            };
+            return map[status] || status;
+        }
+
+        function getFileIcon(format) {
+            const icon = formatIcons[format] || 'fa-file';
+            return `<i class="fas ${icon}"></i>`;
+        }
+
+        function getExpiryStatus(expiresAt) {
+            const now = new Date();
+            const expiry = new Date(expiresAt);
+            const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+            
+            if (daysLeft < 0) return '<span class="expiry-warning">Expired</span>';
+            if (daysLeft < 7) return `<span class="expiry-soon">${daysLeft} days</span>`;
+            return `${daysLeft} days`;
+        }
+
+        function renderStats(data) {
+            const total = data.length;
+            const completed = data.filter(e => e.status === 'completed').length;
+            const processing = data.filter(e => e.status === 'processing').length;
+            const failed = data.filter(e => e.status === 'failed').length;
+            const downloads = data.reduce((sum, e) => sum + (e.downloads || 0), 0);
+            
+            let totalMB = 0;
+            data.forEach(e => {
+                const sizeStr = e.size.replace(' MB', '');
+                const sizeVal = parseFloat(sizeStr);
+                if (!isNaN(sizeVal)) totalMB += sizeVal;
+            });
+            const totalGB = totalMB > 1024 ? (totalMB / 1024).toFixed(1) + ' GB' : totalMB.toFixed(1) + ' MB';
+
+            totalExports.textContent = total;
+            completedExports.textContent = completed;
+            processingExports.textContent = processing;
+            failedExports.textContent = failed;
+            totalDownloads.textContent = downloads;
+            totalSize.textContent = totalGB;
+        }
+
+        function sortData(data, field, direction) {
+            const sorted = [...data];
+            sorted.sort((a, b) => {
+                let aVal = a[field];
+                let bVal = b[field];
+                
+                if (field === 'size') {
+                    aVal = parseFloat(aVal.replace(' MB', ''));
+                    bVal = parseFloat(bVal.replace(' MB', ''));
+                }
+                
+                if (typeof aVal === 'string') {
+                    return direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            });
+            return sorted;
+        }
+
+        function applyFilters() {
+            const format = document.getElementById('formatFilter').value;
+            const status = document.getElementById('statusFilter').value;
+            const search = document.getElementById('globalSearch').value.toLowerCase().trim();
+            const from = document.getElementById('dateFrom').value;
+            const to = document.getElementById('dateTo').value;
+
+            let filtered = [...exportItems];
+
+            if (format !== 'all') {
+                filtered = filtered.filter(e => e.format === format);
+            }
+
+            if (status !== 'all') {
+                filtered = filtered.filter(e => e.status === status);
+            }
+
+            if (search) {
+                filtered = filtered.filter(e => 
+                    e.fileName.toLowerCase().includes(search) ||
+                    (typeLabels[e.exportType] || '').toLowerCase().includes(search) ||
+                    getUser(e.userId).name.toLowerCase().includes(search)
+                );
+            }
+
+            if (from) {
+                filtered = filtered.filter(e => e.createdAt.split(' ')[0] >= from);
+            }
+
+            if (to) {
+                filtered = filtered.filter(e => e.createdAt.split(' ')[0] <= to);
+            }
+
+            filtered = sortData(filtered, currentSort.field, currentSort.direction);
+            filteredExports = filtered;
+            currentPage = 1;
+            
+            renderStats(exportItems);
+            renderTable(filtered);
+            renderPagination(filtered.length);
+        }
+
+        function renderTable(data) {
+            const start = (currentPage - 1) * perPage;
+            const end = Math.min(start + perPage, data.length);
+            const pageItems = data.slice(start, end);
+
+            if (!pageItems || pageItems.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:hsl(var(--muted-foreground));">
+                    <i class="fas fa-file-export" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px;"></i>
+                    No exports found
+                </td></tr>`;
+                exportCount.textContent = '0';
+                filterCount.textContent = '0 exports';
+                return;
+            }
+
+            const html = pageItems.map(e => {
+                const user = getUser(e.userId);
+                const canDownload = e.status === 'completed' && e.status !== 'expired';
+
+                return `
+                    <tr>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <span class="file-icon">${getFileIcon(e.format)}</span>
+                                <div>
+                                    <div style="font-weight:500;">${e.fileName}</div>
+                                    <div style="font-size:11px;color:hsl(var(--muted-foreground));">
+                                        ${typeLabels[e.exportType] || e.exportType} · ${user.name}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge badge-secondary">${formatLabels[e.format] || e.format.toUpperCase()}</span></td>
+                        <td style="text-align:center;">${e.recordCount.toLocaleString()}</td>
+                        <td>${e.size}</td>
+                        <td>${getStatusBadge(e.status)}</td>
+                        <td style="font-size:12px;color:hsl(var(--muted-foreground));">${e.createdAt}</td>
+                        <td style="font-size:12px;">${getExpiryStatus(e.expiresAt)}</td>
+                        <td>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                ${canDownload ? `<button class="btn btn-sm btn-success" onclick="downloadExport('${e.id}')"><i class="fas fa-download"></i></button>` : ''}
+                                <button class="btn btn-sm btn-ghost" onclick="viewExportDetails('${e.id}')"><i class="fas fa-info-circle"></i></button>
+                                ${e.status === 'failed' ? `<button class="btn btn-sm btn-outline" onclick="retryExport('${e.id}')"><i class="fas fa-redo"></i></button>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            tableBody.innerHTML = html;
+            exportCount.textContent = data.length;
+            filterCount.textContent = data.length + ' exports';
+        }
+
+        function renderPagination(total) {
+            const totalPages = Math.ceil(total / perPage);
+            const start = (currentPage - 1) * perPage + 1;
+            const end = Math.min(currentPage * perPage, total);
+
+            if (totalPages <= 1) {
+                pagination.innerHTML = `
+                    <div class="page-info">Showing ${total} exports</div>
+                    <div class="page-buttons"></div>
+                `;
+                return;
+            }
+
+            let buttons = '';
+            buttons += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>&laquo;</button>`;
+            
+            let startPage = Math.max(1, currentPage - 2);
+            let endPage = Math.min(totalPages, currentPage + 2);
+            
+            if (startPage > 1) {
+                buttons += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+                if (startPage > 2) buttons += `<span style="padding:0 4px;">...</span>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                buttons += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) buttons += `<span style="padding:0 4px;">...</span>`;
+                buttons += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            }
+            
+            buttons += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>&raquo;</button>`;
+
+            pagination.innerHTML = `
+                <div class="page-info">Showing ${start}-${end} of ${total} exports</div>
+                <div class="page-buttons">${buttons}</div>
+            `;
+        }
+
+        // ===== SORTING =====
+        window.sortBy = function(field) {
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = field === 'createdAt' ? 'desc' : 'asc';
+            }
+            currentPage = 1;
+            
+            document.querySelectorAll('.sort-icon').forEach(el => {
+                el.textContent = '↕';
+            });
+            const icon = document.getElementById(`sort-${field}`);
+            if (icon) {
+                icon.textContent = currentSort.direction === 'asc' ? '↑' : '↓';
+            }
+            
+            applyFilters();
+        };
+
+        // ===== PAGINATION =====
+        window.goToPage = function(page) {
+            const totalPages = Math.ceil(filteredExports.length / perPage);
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            applyFilters();
+            document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        // ===== EXPORT ACTIONS =====
+        window.downloadExport = function(id) {
+            const exportItem = exportItems.find(e => e.id === id);
+            if (!exportItem) return;
+            
+            exportItem.downloads = (exportItem.downloads || 0) + 1;
+            showToast(`⬇️ Downloading ${exportItem.fileName}.${exportItem.format}...`);
+            setTimeout(() => {
+                applyFilters();
+                showToast(`✅ ${exportItem.fileName} downloaded successfully!`);
+            }, 1500);
+        };
+
+        window.viewExportDetails = function(id) {
+            const exportItem = exportItems.find(e => e.id === id);
+            if (!exportItem) return;
+            
+            const user = getUser(exportItem.userId);
+            const filters = exportItem.filters ? Object.entries(exportItem.filters).map(([k, v]) => `${k}: ${v}`).join(', ') : 'None';
+            
+            alert(
+                `📄 Export Details\n\n` +
+                `File: ${exportItem.fileName}.${exportItem.format}\n` +
+                `Type: ${typeLabels[exportItem.exportType] || exportItem.exportType}\n` +
+                `Format: ${formatLabels[exportItem.format] || exportItem.format.toUpperCase()}\n` +
+                `Records: ${exportItem.recordCount.toLocaleString()}\n` +
+                `Size: ${exportItem.size}\n` +
+                `Status: ${exportItem.status}\n` +
+                `Created By: ${user.name}\n` +
+                `Created: ${exportItem.createdAt}\n` +
+                `Expires: ${exportItem.expiresAt}\n` +
+                `Downloads: ${exportItem.downloads || 0}\n` +
+                `Filters: ${filters}`
+            );
+        };
+
+        window.retryExport = function(id) {
+            const exportItem = exportItems.find(e => e.id === id);
+            if (!exportItem) return;
+            
+            if (confirm(`Retry export "${exportItem.fileName}"?`)) {
+                exportItem.status = 'processing';
+                showToast(`🔄 Retrying ${exportItem.fileName}...`);
+                setTimeout(() => {
+                    exportItem.status = 'completed';
+                    exportItem.downloads = (exportItem.downloads || 0) + 1;
+                    applyFilters();
+                    showToast(`✅ ${exportItem.fileName} regenerated successfully!`);
+                }, 2000);
+            }
+        };
+
+        // ===== NEW EXPORT =====
+        window.openExportModal = function() {
+            document.getElementById('exportModal').classList.add('show');
+        };
+
+        window.closeExportModal = function() {
+            document.getElementById('exportModal').classList.remove('show');
+        };
+
+        window.generateExport = function() {
+            const type = document.getElementById('exportType').value;
+            const format = document.getElementById('exportFormat').value;
+            const dateFrom = document.getElementById('exportDateFrom').value;
+            const dateTo = document.getElementById('exportDateTo').value;
+
+            const recordCount = Math.floor(Math.random() * 5000) + 100;
+            const sizeMB = (recordCount / 1000 * 1.5).toFixed(1);
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0,10);
+            const timeStr = now.toLocaleTimeString();
+            const typeLabel = typeLabels[type] || type;
+
+            const newExport = {
+                id: 'e' + (exportItems.length + 1),
+                userId: 'u1',
+                fileName: `${typeLabel.replace(/\s/g, '_')}_${dateStr}`,
+                format: format,
+                recordCount: recordCount,
+                size: `${sizeMB} MB`,
+                status: 'processing',
+                createdAt: `${dateStr} ${timeStr}`,
+                expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0,10) + ' ' + timeStr,
+                downloads: 0,
+                exportType: type,
+                filters: { dateFrom: dateFrom || 'N/A', dateTo: dateTo || 'N/A' }
+            };
+
+            exportItems.unshift(newExport);
+            closeExportModal();
+            applyFilters();
+            showToast(`🔄 Generating ${typeLabel} export...`);
+
+            setTimeout(() => {
+                newExport.status = 'completed';
+                applyFilters();
+                showToast(`✅ ${typeLabel} export ready for download!`);
+            }, 2500);
+        };
+
+        // ===== FILTERS =====
+        window.applyFilters = function() {
+            applyFilters();
+        };
+
+        window.clearFilters = function() {
+            document.getElementById('formatFilter').value = 'all';
+            document.getElementById('statusFilter').value = 'all';
+            document.getElementById('globalSearch').value = '';
+            document.getElementById('dateFrom').value = '';
+            document.getElementById('dateTo').value = '';
+            currentPage = 1;
+            applyFilters();
+        };
+
+        window.refreshData = function() {
+            showToast('🔄 Refreshing export data...');
+            setTimeout(() => {
+                applyFilters();
+                showToast('✅ Data refreshed successfully!');
+            }, 500);
+        };
+
+        // ===== TOAST =====
+        window.showToast = function(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed; bottom: 80px; right: 24px; 
+                background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+                border-radius: var(--radius); padding: 12px 20px;
+                box-shadow: var(--shadow-lg); z-index: 2000;
+                font-size: 14px; color: hsl(var(--foreground));
+                animation: slideUp 0.3s ease;
+                max-width: 400px;
+            `;
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+
+        // ===== EVENT LISTENERS =====
+
+        document.getElementById('globalSearch').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                currentPage = 1;
+                applyFilters();
+            }
+        });
+
+        // Modal close
+        document.querySelectorAll('.modal-close').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.closest('.modal-overlay').classList.remove('show');
+            });
+        });
+
+        document.getElementById('exportModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('show');
+            }
+        });
+
+        // Mobile menu
+        document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
+
+        // ===== INIT =====
+        applyFilters();
+
+        console.log('📊 CarbonTally - Export History Module Loaded');
+        console.log('📄 ' + exportItems.length + ' exports tracked');
+        console.log('⬇️ Total downloads: ' + exportItems.reduce((s, e) => s + (e.downloads || 0), 0));
+
+    })();
+</script>
+</body>
+</html>

@@ -1,39 +1,15 @@
-// UploadManager.jsx - Complete with Bulk Upload Integration
+// UploadManager.jsx - Fixed API Endpoints
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { supabase } from './supabaseClient';
 import toast from 'react-hot-toast';
 import {
-  FaFilePdf,
-  FaImage,
-  FaCheckCircle,
-  FaExclamationTriangle,
-  FaSpinner,
-  FaEye,
-  FaEyeSlash,
-  FaArrowLeft,
-  FaArrowRight,
-  FaDownload,
-  FaTimes,
-  FaPlus,
-  FaSave,
-  FaBuilding,
-  FaCar,
-  FaBolt,
-  FaCalendarAlt,
-  FaFileUpload,
-  FaTrash,
-  FaUndo,
-  FaInfoCircle,
-  FaUpload,
-  FaBoxes,
-  FaFile,
-  FaUser,
-  FaEnvelope,
-  FaPhone,
-  FaBriefcase,
-  FaMapMarkerAlt
+  FaFilePdf, FaImage, FaCheckCircle, FaExclamationTriangle, FaSpinner,
+  FaEye, FaEyeSlash, FaArrowLeft, FaArrowRight, FaDownload, FaTimes,
+  FaPlus, FaSave, FaBuilding, FaCar, FaBolt, FaCalendarAlt, FaFileUpload,
+  FaTrash, FaUndo, FaInfoCircle, FaUpload, FaBoxes, FaFile, FaUser,
+  FaEnvelope, FaPhone, FaBriefcase, FaMapMarkerAlt
 } from 'react-icons/fa';
 import './css/UploadManager.css';
 import useDocumentLogging from './hooks/useDocumentLogging';
@@ -48,7 +24,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
   const [uploadMode, setUploadMode] = useState('single');
   
   // Single Upload State
-  const [activeStep, setActiveStep] = useState('upload'); // upload | review | complete
+  const [activeStep, setActiveStep] = useState('upload');
   const [file, setFile] = useState(null);
   const [uploadType, setUploadType] = useState('utility');
   const [specialInstructions, setSpecialInstructions] = useState('');
@@ -69,8 +45,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     facility_id: '',
     reporting_year: ''
   });
-  const [pdfRotation, setPdfRotation] = useState(0); // 0, 90, 180, 270
-
+  const [pdfRotation, setPdfRotation] = useState(0);
   const [facilities, setFacilities] = useState([]);
   const [assets, setAssets] = useState([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState('');
@@ -82,6 +57,8 @@ const UploadManager = ({ organization, onUploadComplete }) => {
   const [pdfNumPages, setPdfNumPages] = useState(null);
   const [pdfPageNumber, setPdfPageNumber] = useState(1);
   const [pdfScale, setPdfScale] = useState(1.0);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
+  const [sendingToCarbonTally, setSendingToCarbonTally] = useState(false);
 
   // Complete State
   const [completedData, setCompletedData] = useState(null);
@@ -101,33 +78,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
   const fileInputRef = useRef(null);
   const bulkFileInputRef = useRef(null);
   const pollInterval = useRef(null);
-  const [manualEntryMode, setManualEntryMode] = useState(false);
-  const [sendingToCarbonTally, setSendingToCarbonTally] = useState(false);
   
-
-  // Get auth token
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || localStorage.getItem('access_token');
-  };
-  const rotateLeft = () => {
-    setPdfRotation(prev => (prev - 90 + 360) % 360);
-    };
-
-  const rotateRight = () => {
-    setPdfRotation(prev => (prev + 90) % 360);
-    };
-
-  const resetRotation = () => {
-    setPdfRotation(0);
-    };
-
-  const getRotationStyle = (rotation) => {
-    return {
-        transform: `rotate(${rotation}deg)`,
-        transition: 'transform 0.3s ease'
-    };
-    };
   const { 
     logDocumentUpload, 
     logExtraction, 
@@ -136,8 +87,77 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     logError,
     logUserAction,
     getRecentLogs
-    } = useDocumentLogging();  
-  // Fetch facilities and assets
+  } = useDocumentLogging();
+
+  // Get auth token
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || localStorage.getItem('access_token');
+  };
+
+  const rotateLeft = () => {
+    setPdfRotation(prev => (prev - 90 + 360) % 360);
+  };
+
+  const rotateRight = () => {
+    setPdfRotation(prev => (prev + 90) % 360);
+  };
+
+  const resetRotation = () => {
+    setPdfRotation(0);
+  };
+
+  const getRotationStyle = (rotation) => {
+    return {
+      transform: `rotate(${rotation}deg)`,
+      transition: 'transform 0.3s ease'
+    };
+  };
+
+  // ============================================
+  // FIXED: FETCH FACILITIES AND ASSETS
+  // ============================================
+
+  const fetchFacilitiesAndAssets = async () => {
+    if (!organization?.id) {
+      console.log('⏳ Waiting for organization ID...');
+      return;
+    }
+
+    try {
+      const token = await getToken();
+      
+      // ✅ FIX: Include organization ID in the path
+      const facResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities?limit=1000`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (facResponse.ok) {
+        const data = await facResponse.json();
+        setFacilities(data.facilities || []);
+        console.log('✅ Facilities loaded:', data.facilities?.length || 0);
+      } else {
+        console.error('❌ Failed to fetch facilities:', facResponse.status);
+      }
+
+      // ✅ FIX: Include organization ID in the path
+      const assetResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/assets?limit=1000`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (assetResponse.ok) {
+        const data = await assetResponse.json();
+        setAssets(data.assets || []);
+        console.log('✅ Assets loaded:', data.assets?.length || 0);
+      } else {
+        console.error('❌ Failed to fetch assets:', assetResponse.status);
+      }
+    } catch (error) {
+      console.error('Error fetching facilities/assets:', error);
+      toast.error('Failed to load facilities and assets');
+    }
+  };
+
   useEffect(() => {
     if (organization?.id) {
       fetchFacilitiesAndAssets();
@@ -153,93 +173,19 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     };
   }, []);
 
-  const fetchFacilitiesAndAssets = async () => {
-    try {
-      const token = await getToken();
-      
-      const facResponse = await fetch(`${API_URL}/api/organizations/assets/facilities?limit=1000`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (facResponse.ok) {
-        const data = await facResponse.json();
-        setFacilities(data.facilities || []);
-      }
-
-      const assetResponse = await fetch(`${API_URL}/api/organizations/assets/?limit=1000`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (assetResponse.ok) {
-        const data = await assetResponse.json();
-        setAssets(data.assets || []);
-      }
-    } catch (error) {
-      console.error('Error fetching facilities/assets:', error);
-    }
-  };
-  
-  const handleSendToCarbonTally = async () => {
-  if (!fileId) {
-    toast.error('No file selected');
-    return;
-  }
-
-  setSendingToCarbonTally(true);
-  
-  try {
-    const token = await getToken();
-    
-    // ✅ Log manual entry request
-    await logManualEntry(fileId, { 
-      requested: true,
-      reason: 'Customer requested manual extraction'
-    }, {
-      file_name: file?.name,
-      organization_id: organization?.id
-    });
-    
-    // Update document status to 'staff_review' and add to manual review queue
-    const response = await fetch(`${API_URL}/api/admin/documents/${fileId}/status`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        status: 'staff_review',
-        notes: 'Customer requested manual extraction'
-      })
-    });
-
-    if (response.ok) {
-      toast.success('📋 Document sent to CarbonTally team for manual extraction!');
-      toast.custom('Our team will process your document within 24-48 hours.', {
-        icon: '⏳',
-        duration: 5000,
-      });
-      setManualEntryMode(true);
-      setDocumentStatus('staff_review');
-    } else {
-      const error = await response.json();
-      toast.error(error.detail || 'Failed to send for manual extraction');
-    }
-  } catch (error) {
-    console.error('Error sending to CarbonTally:', error);
-    toast.error('Failed to send document for manual extraction');
-  } finally {
-    setSendingToCarbonTally(false);
-  }
-};
-
   // ============================================
-  // SINGLE UPLOAD FUNCTIONS
+  // FIXED: SINGLE UPLOAD FUNCTIONS
   // ============================================
 
   const handleFileUpload = async () => {
     if (!file) {
-        toast.error('Please select a file first');
-        return;
+      toast.error('Please select a file first');
+      return;
+    }
+
+    if (!organization?.id) {
+      toast.error('Organization not found. Please reload.');
+      return;
     }
 
     setUploading(true);
@@ -249,34 +195,35 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('data_type', uploadType);
-    formData.append('organization_id', organization?.id || '');
+    formData.append('organization_id', organization.id);
     if (specialInstructions) {
-        formData.append('special_instructions', specialInstructions);
+      formData.append('special_instructions', specialInstructions);
     }
 
     const startTime = Date.now();
 
     try {
-        const token = await getToken();
-        
-        // ✅ Log upload start
-        await logDocumentUpload(file, {
+      const token = await getToken();
+      
+      // ✅ Log upload start
+      await logDocumentUpload(file, {
         data_type: uploadType,
         special_instructions: specialInstructions,
-        organization_id: organization?.id
-        });
-        
-        const response = await fetch(`${API_URL}/api/upload`, {
+        organization_id: organization.id
+      });
+      
+      // ✅ FIX: Use correct upload endpoint
+      const response = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`
         },
         body: formData
-        });
+      });
 
-        const result = await response.json();
+      const result = await response.json();
 
-        if (response.ok) {
+      if (response.ok) {
         setBatchId(result.batch_id);
         setFileId(result.file_id);
         setUploadProgress(100);
@@ -284,52 +231,54 @@ const UploadManager = ({ organization, onUploadComplete }) => {
         
         // ✅ Log extraction start
         await logExtraction(result.file_id, {
-            success: result.extraction_result ? true : false,
-            confidence: result.confidence_score || 0,
-            fields_extracted: result.extraction_result?.data_streams?.length || 0,
-            duration_ms: Date.now() - startTime
+          success: result.extraction_result ? true : false,
+          confidence: result.confidence_score || 0,
+          fields_extracted: result.extraction_result?.data_streams?.length || 0,
+          duration_ms: Date.now() - startTime
         });
         
         if (result.extraction_result) {
-            setExtractedData(result.extraction_result);
-            setDocumentStatus(result.status || 'processing');
-            setConfidenceScore(result.confidence_score || 0);
-            setExtractionIssues(result.issues || []);
-            populateReviewForm(result.extraction_result);
-            setActiveStep('review');
+          setExtractedData(result.extraction_result);
+          setDocumentStatus(result.status || 'processing');
+          setConfidenceScore(result.confidence_score || 0);
+          setExtractionIssues(result.issues || []);
+          populateReviewForm(result.extraction_result);
+          setActiveStep('review');
         } else {
-            setActiveStep('review');
-            setDocumentStatus('processing');
-            pollDocumentStatus(result.file_id);
+          setActiveStep('review');
+          setDocumentStatus('processing');
+          pollDocumentStatus(result.file_id);
         }
-        } else {
+      } else {
         setUploadError(result.detail || 'Upload failed');
         toast.error(result.detail || 'Upload failed');
         
         // ✅ Log upload error
         await logError(new Error(result.detail || 'Upload failed'), {
-            fileId: result.file_id,
-            fileName: file.name,
-            data_type: uploadType
+          fileId: result.file_id,
+          fileName: file.name,
+          data_type: uploadType
         });
-        }
+      }
     } catch (error) {
-        console.error('Upload error:', error);
-        setUploadError(error.message);
-        toast.error('Upload failed: ' + error.message);
-        
-        // ✅ Log error
-        await logError(error, {
+      console.error('Upload error:', error);
+      setUploadError(error.message);
+      toast.error('Upload failed: ' + error.message);
+      
+      // ✅ Log error
+      await logError(error, {
         fileName: file.name,
         fileSize: file.size,
         data_type: uploadType
-        });
+      });
     } finally {
-        setUploading(false);
+      setUploading(false);
     }
-    };
-  
+  };
+
   const pollDocumentStatus = async (fileId) => {
+    if (!fileId) return;
+    
     let attempts = 0;
     const maxAttempts = 30;
 
@@ -337,6 +286,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
       attempts++;
       try {
         const token = await getToken();
+        // ✅ FIX: Use correct status endpoint
         const response = await fetch(`${API_URL}/api/documents/${fileId}/status`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -365,8 +315,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
           toast('Processing is taking longer than expected. Please refresh.', {
             icon: '⏳',
             duration: 4000,
-            });
-
+          });
         }
       } catch (error) {
         console.error('Poll error:', error);
@@ -415,52 +364,62 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     }));
   };
 
+  // ============================================
+  // FIXED: APPROVE FUNCTION
+  // ============================================
+
   const handleApprove = async () => {
+    if (!fileId) {
+      toast.error('No document to approve');
+      return;
+    }
+
     if (!reviewData.billing_start) {
-        toast.error('Please enter a billing period start date');
-        return;
+      toast.error('Please enter a billing period start date');
+      return;
     }
     if (!reviewData.consumption || parseFloat(reviewData.consumption) <= 0) {
-        toast.error('Please enter a valid consumption value');
-        return;
+      toast.error('Please enter a valid consumption value');
+      return;
     }
     if (!reviewData.fuel_utility_type) {
-        toast.error('Please select a fuel/utility type');
-        return;
+      toast.error('Please select a fuel/utility type');
+      return;
     }
     if (!reviewData.asset_name) {
-        toast.error('Please enter or select an asset name');
-        return;
+      toast.error('Please enter or select an asset name');
+      return;
     }
 
     setReviewSubmitting(true);
 
     try {
-        const token = await getToken();
-        
-        const extractionResult = {
+      const token = await getToken();
+      
+      const extractionResult = {
         billing_start: reviewData.billing_start,
         consumption: parseFloat(reviewData.consumption),
         fuel_utility_type: reviewData.fuel_utility_type,
         asset_name: reviewData.asset_name,
         facility_id: reviewData.facility_id,
         reporting_year: reviewData.reporting_year || new Date().getFullYear()
-        };
+      };
 
-        const response = await fetch(`${API_URL}/api/documents/${fileId}/review`, {
+      // ✅ FIX: Use correct review endpoint
+      const response = await fetch(`${API_URL}/api/documents/${fileId}/review`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-            action: 'approve',
-            notes: staffNotes,
-            extraction_result: extractionResult
+          action: 'approve',
+          notes: staffNotes,
+          extraction_result: extractionResult
         })
-        });
+      });
 
-        if (response.ok) {
+      if (response.ok) {
         const result = await response.json();
         setCompletedData(result);
         setActiveStep('complete');
@@ -468,100 +427,146 @@ const UploadManager = ({ organization, onUploadComplete }) => {
         
         // ✅ Log approval
         await logDocumentDecision(fileId, 'approve', staffNotes, {
-            emission_id: result.emission_id,
-            extraction_data: extractionResult,
-            reviewed_by: organization?.name || 'Unknown'
+          emission_id: result.emission_id,
+          extraction_data: extractionResult,
+          reviewed_by: organization?.name || 'Unknown'
         });
         
         if (onUploadComplete) onUploadComplete(result);
-        } else {
+      } else {
         const error = await response.json();
         console.error('Approval error:', error);
         toast.error(error.detail || 'Failed to approve document');
         
         // ✅ Log error
         await logError(new Error(error.detail || 'Approval failed'), {
-            fileId,
-            action: 'approve',
-            data: extractionResult
+          fileId,
+          action: 'approve',
+          data: extractionResult
         });
-        }
+      }
     } catch (error) {
-        console.error('Approval error:', error);
-        toast.error('Failed to approve document');
-        
-        // ✅ Log error
-        await logError(error, {
+      console.error('Approval error:', error);
+      toast.error('Failed to approve document');
+      
+      // ✅ Log error
+      await logError(error, {
         fileId,
         action: 'approve'
-        });
+      });
     } finally {
-        setReviewSubmitting(false);
+      setReviewSubmitting(false);
     }
-    };
+  };
+
+  // ============================================
+  // FIXED: REJECT FUNCTION
+  // ============================================
 
   const handleReject = async () => {
+    if (!fileId) {
+      toast.error('No document to reject');
+      return;
+    }
+
     if (!window.confirm('Are you sure you want to reject this document?')) return;
 
     try {
-        const token = await getToken();
-        
-        // ✅ Log rejection
-        await logDocumentDecision(fileId, 'reject', staffNotes || 'Rejected by user', {
+      const token = await getToken();
+      
+      // ✅ Log rejection
+      await logDocumentDecision(fileId, 'reject', staffNotes || 'Rejected by user', {
         reason: staffNotes || 'Rejected by user',
         reviewed_by: organization?.name || 'Unknown'
-        });
-        
-        const response = await fetch(`${API_URL}/api/documents/${fileId}/review`, {
+      });
+      
+      // ✅ FIX: Use correct review endpoint
+      const response = await fetch(`${API_URL}/api/documents/${fileId}/review`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-            action: 'reject',
-            notes: staffNotes || 'Rejected by user'
+          action: 'reject',
+          notes: staffNotes || 'Rejected by user'
         })
-        });
+      });
 
-        if (response.ok) {
+      if (response.ok) {
         toast.success('Document rejected');
         setActiveStep('upload');
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
-        } else {
+      } else {
         const error = await response.json();
         toast.error(error.detail || 'Failed to reject document');
-        }
+      }
     } catch (error) {
-        console.error('Rejection error:', error);
-        toast.error('Failed to reject document');
+      console.error('Rejection error:', error);
+      toast.error('Failed to reject document');
     }
-    };
-  
-  const handleBackToUpload = () => {
-    setActiveStep('upload');
-    setFile(null);
-    setExtractedData(null);
-    setReviewData({
-      billing_start: '',
-      consumption: '',
-      fuel_utility_type: '',
-      asset_name: '',
-      facility_id: '',
-      reporting_year: ''
-    });
-    setStaffNotes('');
-    setBatchId(null);
-    setFileId(null);
-    setUploadProgress(0);
-    setUploadError(null);
-    setCompletedData(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // ============================================
-  // BULK UPLOAD FUNCTIONS
+  // FIXED: SEND TO CARBON TALLY
+  // ============================================
+
+  const handleSendToCarbonTally = async () => {
+    if (!fileId) {
+      toast.error('No file selected');
+      return;
+    }
+
+    setSendingToCarbonTally(true);
+    
+    try {
+      const token = await getToken();
+      
+      // ✅ Log manual entry request
+      await logManualEntry(fileId, { 
+        requested: true,
+        reason: 'Customer requested manual extraction'
+      }, {
+        file_name: file?.name,
+        organization_id: organization?.id
+      });
+      
+      // ✅ FIX: Use correct admin documents endpoint
+      const response = await fetch(`${API_URL}/api/admin/documents/${fileId}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          status: 'staff_review',
+          notes: 'Customer requested manual extraction'
+        })
+      });
+
+      if (response.ok) {
+        toast.success('📋 Document sent to CarbonTally team for manual extraction!');
+        toast.custom('Our team will process your document within 24-48 hours.', {
+          icon: '⏳',
+          duration: 5000,
+        });
+        setManualEntryMode(true);
+        setDocumentStatus('staff_review');
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Failed to send for manual extraction');
+      }
+    } catch (error) {
+      console.error('Error sending to CarbonTally:', error);
+      toast.error('Failed to send document for manual extraction');
+    } finally {
+      setSendingToCarbonTally(false);
+    }
+  };
+
+  // ============================================
+  // FIXED: BULK UPLOAD FUNCTIONS
   // ============================================
 
   const handleBulkFileDrop = (e) => {
@@ -605,107 +610,115 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     setBulkFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  // ============================================
+  // FIXED: HANDLE BULK UPLOAD
+  // ============================================
 
   const handleBulkUpload = async () => {
-  if (bulkFiles.length === 0) {
-    toast.error('Please select at least one file');
-    return;
-  }
-  if (!bulkBatchName.trim()) {
-    toast.error('Please enter a batch name');
-    return;
-  }
+    if (bulkFiles.length === 0) {
+      toast.error('Please select at least one file');
+      return;
+    }
+    if (!bulkBatchName.trim()) {
+      toast.error('Please enter a batch name');
+      return;
+    }
+    if (!organization?.id) {
+      toast.error('Organization not found. Please reload.');
+      return;
+    }
 
-  setBulkUploading(true);
-  setBulkProgress(0);
-  setBulkError(null);
-  setBulkFileProgress({});
+    setBulkUploading(true);
+    setBulkProgress(0);
+    setBulkError(null);
+    setBulkFileProgress({});
 
-  const formData = new FormData();
-  formData.append('batch_name', bulkBatchName);
-  formData.append('data_type', bulkDataType);
-  formData.append('organization_id', organization?.id || '');
-  formData.append('special_instructions', bulkSpecialInstructions);
+    const formData = new FormData();
+    formData.append('batch_name', bulkBatchName);
+    formData.append('data_type', bulkDataType);
+    formData.append('organization_id', organization.id);
+    formData.append('special_instructions', bulkSpecialInstructions);
 
-  bulkFiles.forEach((file) => {
-    formData.append('files', file);
-  });
-
-  try {
-    const token = await getToken();
-
-    // ✅ Log bulk upload start
-    await logDocumentUpload({
-      name: bulkBatchName,
-      size: bulkFiles.reduce((acc, f) => acc + f.size, 0),
-      type: 'bulk',
-      data_type: bulkDataType
-    }, {
-      file_count: bulkFiles.length,
-      special_instructions: bulkSpecialInstructions,
-      organization_id: organization?.id,
-      is_bulk: true
+    bulkFiles.forEach((file) => {
+      formData.append('files', file);
     });
 
-    const response = await fetch(`${API_URL}/api/batches/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
+    try {
+      const token = await getToken();
 
-    const data = await response.json();
-
-    if (response.ok) {
-      setBulkBatchId(data.batch_id);
-      toast.success(`✅ Batch "${bulkBatchName}" created with ${bulkFiles.length} files. Processing started.`);
-      setBulkProgress(100);
-      
-      // Poll for batch status
-      pollBulkStatus(data.batch_id);
-      
-      setBulkFiles([]);
-      setBulkBatchName('');
-      setBulkSpecialInstructions('');
-      
-      setBulkStatus({
-        batch_id: data.batch_id,
-        batch_name: bulkBatchName,
-        status: 'processing',
-        total_files: bulkFiles.length,
-        processed_files: 0,
-        files: bulkFiles.map(f => ({
-          name: f.name,
-          status: 'pending'
-        }))
+      // ✅ Log bulk upload start
+      await logDocumentUpload({
+        name: bulkBatchName,
+        size: bulkFiles.reduce((acc, f) => acc + f.size, 0),
+        type: 'bulk',
+        data_type: bulkDataType
+      }, {
+        file_count: bulkFiles.length,
+        special_instructions: bulkSpecialInstructions,
+        organization_id: organization.id,
+        is_bulk: true
       });
-    } else {
-      setBulkError(data.detail || 'Failed to upload batch');
-      toast.error(data.detail || 'Failed to upload batch');
+
+      // ✅ FIX: Use correct batch endpoint
+      const response = await fetch(`${API_URL}/api/batches`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setBulkBatchId(data.batch_id);
+        toast.success(`✅ Batch "${bulkBatchName}" created with ${bulkFiles.length} files. Processing started.`);
+        setBulkProgress(100);
+        
+        // Poll for batch status
+        pollBulkStatus(data.batch_id);
+        
+        setBulkFiles([]);
+        setBulkBatchName('');
+        setBulkSpecialInstructions('');
+        
+        setBulkStatus({
+          batch_id: data.batch_id,
+          batch_name: bulkBatchName,
+          status: 'processing',
+          total_files: bulkFiles.length,
+          processed_files: 0,
+          files: bulkFiles.map(f => ({
+            name: f.name,
+            status: 'pending'
+          }))
+        });
+      } else {
+        setBulkError(data.detail || 'Failed to upload batch');
+        toast.error(data.detail || 'Failed to upload batch');
+        setBulkUploading(false);
+        
+        // ✅ Log bulk upload error
+        await logError(new Error(data.detail || 'Batch upload failed'), {
+          batch_name: bulkBatchName,
+          file_count: bulkFiles.length,
+          is_bulk: true
+        });
+      }
+    } catch (error) {
+      console.error('Batch upload error:', error);
+      setBulkError(error.message);
+      toast.error('Failed to upload batch. Please try again.');
       setBulkUploading(false);
       
       // ✅ Log bulk upload error
-      await logError(new Error(data.detail || 'Batch upload failed'), {
+      await logError(error, {
         batch_name: bulkBatchName,
         file_count: bulkFiles.length,
         is_bulk: true
       });
     }
-  } catch (error) {
-    console.error('Batch upload error:', error);
-    setBulkError(error.message);
-    toast.error('Failed to upload batch. Please try again.');
-    setBulkUploading(false);
-    
-    // ✅ Log bulk upload error
-    await logError(error, {
-      batch_name: bulkBatchName,
-      file_count: bulkFiles.length,
-      is_bulk: true
-    });
-  }
-};
+  };
 
   const pollBulkStatus = async (batchId) => {
     if (pollInterval.current) {
@@ -715,6 +728,7 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     pollInterval.current = setInterval(async () => {
       try {
         const token = await getToken();
+        // ✅ FIX: Use correct batch status endpoint
         const response = await fetch(`${API_URL}/api/batches/${batchId}/status`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -756,6 +770,27 @@ const UploadManager = ({ organization, onUploadComplete }) => {
     setBulkError(null);
     setBulkFileProgress({});
     if (bulkFileInputRef.current) bulkFileInputRef.current.value = '';
+  };
+
+  const handleBackToUpload = () => {
+    setActiveStep('upload');
+    setFile(null);
+    setExtractedData(null);
+    setReviewData({
+      billing_start: '',
+      consumption: '',
+      fuel_utility_type: '',
+      asset_name: '',
+      facility_id: '',
+      reporting_year: ''
+    });
+    setStaffNotes('');
+    setBatchId(null);
+    setFileId(null);
+    setUploadProgress(0);
+    setUploadError(null);
+    setCompletedData(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // ============================================

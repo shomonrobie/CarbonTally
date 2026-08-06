@@ -10,8 +10,19 @@ import io
 import pandas as pd
 import numpy as np
 import traceback
-from auth import AuthUser, get_current_user, require_org_member
+from auth import AuthUser, get_current_user, require_auth, require_org_member
+
 from database import get_supabase_client
+from utils.emissions import (
+    process_fuel_data,
+    process_utility_data,
+    process_scope3_data,
+    extract_issues_from_result,
+    has_low_confidence,
+    get_emission_factor,
+    calculate_emissions_with_defra,
+    ACTIVITY_TYPE_MAPPING
+)
 
 
 router = APIRouter(prefix="/api", tags=["Upload"])
@@ -766,4 +777,238 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload file: {str(e)}"
+        )
+# Add to backend/routes/upload.py
+
+# ==========================================
+# Batch Status Endpoints
+# ==========================================
+
+@router.get("/batches/{batch_id}/status")
+async def get_batch_status(
+    batch_id: str,
+    current_user: AuthUser = Depends(require_auth())
+):
+    """Get detailed status of a batch."""
+    try:
+        supabase = get_supabase_client()
+        
+        # Get batch details
+        batch = supabase.from_('upload_batches') \
+            .select('*') \
+            .eq('id', batch_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not batch.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Batch not found"
+            )
+        
+        # Check access
+        if not current_user.is_admin:
+            member = supabase.from_('organization_members') \
+                .select('id') \
+                .eq('organization_id', batch.data['organization_id']) \
+                .eq('user_id', current_user.id) \
+                .maybe_single() \
+                .execute()
+            
+            if not member.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view this batch"
+                )
+        
+        # Get files in batch
+        files = supabase.from_('organization_files') \
+            .select('id, name, status, created_at, uploaded_at') \
+            .eq('batch_id', batch_id) \
+            .execute()
+        
+        return {
+            "success": True,
+            "data": {
+                "batch": batch.data,
+                "files": files.data,
+                "total_files": len(files.data) if files.data else 0,
+                "processed_files": batch.data.get('processed_files', 0)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get batch status: {str(e)}"
+        )
+
+@router.get("/batches/{batch_id}/progress")
+async def get_batch_progress(
+    batch_id: str,
+    current_user: AuthUser = Depends(require_auth())
+):
+    """Get real-time progress of a batch."""
+    try:
+        supabase = get_supabase_client()
+        
+        batch = supabase.from_('upload_batches') \
+            .select('total_files, processed_files, status, created_at, completed_at') \
+            .eq('id', batch_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not batch.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Batch not found"
+            )
+        
+        total = batch.data.get('total_files', 0)
+        processed = batch.data.get('processed_files', 0)
+        
+        progress = {
+            'total_files': total,
+            'processed_files': processed,
+            'percentage': round((processed / total * 100), 2) if total > 0 else 0,
+            'status': batch.data.get('status', 'pending'),
+            'created_at': batch.data.get('created_at'),
+            'completed_at': batch.data.get('completed_at')
+        }
+        
+        return {"success": True, "data": progress}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get batch progress: {str(e)}"
+        )
+
+@router.post("/batches/{batch_id}/cancel")
+async def cancel_batch(
+    batch_id: str,
+    current_user: AuthUser = Depends(require_auth())
+):
+    """Cancel a batch upload."""
+    try:
+        supabase = get_supabase_client()
+        
+        batch = supabase.from_('upload_batches') \
+            .select('organization_id, status') \
+            .eq('id', batch_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not batch.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Batch not found"
+            )
+        
+        if batch.data['status'] in ['completed', 'cancelled']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Batch is already {batch.data['status']}"
+            )
+        
+        # Check access
+        if not current_user.is_admin:
+            member = supabase.from_('organization_members') \
+                .select('id') \
+                .eq('organization_id', batch.data['organization_id']) \
+                .eq('user_id', current_user.id) \
+                .maybe_single() \
+                .execute()
+            
+            if not member.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to cancel this batch"
+                )
+        
+        # Update batch status
+        result = supabase.from_('upload_batches') \
+            .update({
+                'status': 'cancelled',
+                'completed_at': datetime.utcnow().isoformat()
+            }) \
+            .eq('id', batch_id) \
+            .execute()
+        
+        return {
+            "success": True,
+            "message": "Batch cancelled successfully",
+            "data": result.data[0] if result.data else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel batch: {str(e)}"
+        )
+
+@router.get("/batches/stats")
+async def get_batch_stats(
+    current_user: AuthUser = Depends(require_auth()),
+    organization_id: Optional[str] = None
+):
+    """Get batch statistics."""
+    try:
+        supabase = get_supabase_client()
+        
+        query = supabase.from_('upload_batches').select('*')
+        
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        elif not current_user.is_admin:
+            orgs = supabase.from_('organization_members') \
+                .select('organization_id') \
+                .eq('user_id', current_user.id) \
+                .execute()
+            
+            if orgs.data:
+                org_ids = [o['organization_id'] for o in orgs.data]
+                query = query.in_('organization_id', org_ids)
+        
+        result = query.execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "data": {
+                    "total_batches": 0,
+                    "by_status": {},
+                    "total_files": 0,
+                    "avg_batch_size": 0
+                }
+            }
+        
+        stats = {
+            'total_batches': len(result.data),
+            'by_status': {},
+            'total_files': 0,
+            'avg_batch_size': 0
+        }
+        
+        total_files = 0
+        for batch in result.data:
+            status = batch.get('status', 'unknown')
+            stats['by_status'][status] = stats['by_status'].get(status, 0) + 1
+            total_files += batch.get('total_files', 0)
+        
+        stats['total_files'] = total_files
+        stats['avg_batch_size'] = round(total_files / len(result.data), 2) if result.data else 0
+        
+        return {"success": True, "data": stats}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get batch stats: {str(e)}"
         )

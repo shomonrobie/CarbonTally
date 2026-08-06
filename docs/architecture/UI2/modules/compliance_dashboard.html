@@ -1,0 +1,521 @@
+<!-- Compliance Dashboard Module - SPA Compatible -->
+<style>
+    .compliance-stats {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .compliance-stat {
+        background: hsl(var(--card));
+        border-radius: var(--radius);
+        border: 1px solid hsl(var(--border));
+        padding: 14px 16px;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+    .compliance-stat:hover {
+        box-shadow: var(--shadow);
+        transform: translateY(-2px);
+    }
+    .compliance-stat .value {
+        font-size: 22px;
+        font-weight: 700;
+        color: hsl(var(--foreground));
+    }
+    .compliance-stat .label {
+        font-size: 11px;
+        color: hsl(var(--muted-foreground));
+        margin-top: 2px;
+    }
+    .compliance-stat .icon { font-size: 18px; display: block; margin-bottom: 4px; }
+
+    .compliance-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 24px;
+    }
+
+    .compliance-card {
+        background: hsl(var(--card));
+        border-radius: var(--radius);
+        border: 1px solid hsl(var(--border));
+        padding: 16px 20px;
+        transition: all 0.2s ease;
+    }
+    .compliance-card:hover {
+        box-shadow: var(--shadow-lg);
+    }
+    .compliance-card .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid hsl(var(--border));
+    }
+    .compliance-card .card-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: hsl(var(--foreground));
+    }
+    .compliance-card .card-score {
+        font-size: 28px;
+        font-weight: 700;
+        text-align: center;
+        padding: 8px 0;
+    }
+    .compliance-card .card-score .unit { font-size: 14px; font-weight: 400; color: hsl(var(--muted-foreground)); }
+    .compliance-card .card-meta {
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    .status-badge.compliant { background: #d1fae5; color: #065f46; }
+    .status-badge.partial { background: #fef3c7; color: #92400e; }
+    .status-badge.non-compliant { background: #fee2e2; color: #991b1b; }
+
+    /* Notification items */
+    .notif-item {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid hsl(var(--border));
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item .notif-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 14px;
+    }
+    .notif-item .notif-icon.info { background: #dbeafe; color: #1e40af; }
+    .notif-item .notif-icon.success { background: #d1fae5; color: #065f46; }
+    .notif-item .notif-icon.warning { background: #fef3c7; color: #92400e; }
+    .notif-item .notif-icon.error { background: #fee2e2; color: #991b1b; }
+    .notif-item .notif-content { flex: 1; }
+    .notif-item .notif-content .title {
+        font-size: 13px;
+        font-weight: 500;
+        color: hsl(var(--foreground));
+    }
+    .notif-item .notif-content .desc {
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+    }
+    .notif-item .notif-content .time {
+        font-size: 11px;
+        color: hsl(var(--muted-foreground));
+    }
+
+    /* Activity items */
+    .act-item {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid hsl(var(--border));
+    }
+    .act-item:last-child { border-bottom: none; }
+    .act-item .act-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--radius);
+        background: hsl(var(--muted));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 14px;
+    }
+    .act-item .act-content { flex: 1; }
+    .act-item .act-content .title {
+        font-size: 13px;
+        font-weight: 500;
+        color: hsl(var(--foreground));
+    }
+    .act-item .act-content .desc {
+        font-size: 12px;
+        color: hsl(var(--muted-foreground));
+    }
+    .act-item .act-content .time {
+        font-size: 11px;
+        color: hsl(var(--muted-foreground));
+    }
+
+    /* Tabs inside module */
+    .module-tabs {
+        display: flex;
+        gap: 4px;
+        background: hsl(var(--muted));
+        padding: 4px;
+        border-radius: var(--radius);
+        margin-bottom: 20px;
+    }
+    .module-tab {
+        padding: 6px 16px;
+        border-radius: calc(var(--radius) - 2px);
+        border: none;
+        background: transparent;
+        font-size: 13px;
+        font-weight: 500;
+        color: hsl(var(--muted-foreground));
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .module-tab:hover { color: hsl(var(--foreground)); }
+    .module-tab.active {
+        background: hsl(var(--card));
+        color: hsl(var(--foreground));
+        box-shadow: var(--shadow);
+    }
+
+    .table-wrap { overflow-x: auto; }
+    .table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table-wrap th {
+        text-align: left;
+        padding: 10px 12px;
+        background: hsl(var(--muted));
+        font-weight: 600;
+        color: hsl(var(--muted-foreground));
+        border-bottom: 2px solid hsl(var(--border));
+    }
+    .table-wrap td {
+        padding: 10px 12px;
+        border-bottom: 1px solid hsl(var(--border));
+        vertical-align: middle;
+    }
+    .table-wrap tr:hover td { background: hsl(var(--accent)); }
+
+    @media (max-width: 1200px) {
+        .compliance-stats { grid-template-columns: repeat(3, 1fr); }
+        .compliance-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+        .compliance-stats { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>📊 Compliance Dashboard</h1>
+            <p>Real-time compliance status for all regulatory frameworks.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="showToast('📊 Exporting compliance report...')">
+                📥 Export Report
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="refreshCompliance()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="module-tabs">
+        <button class="module-tab active" data-tab="overview" onclick="switchComplianceTab('overview')">📊 Overview</button>
+        <button class="module-tab" data-tab="notifications" onclick="switchComplianceTab('notifications')">🔔 Notifications</button>
+        <button class="module-tab" data-tab="activity" onclick="switchComplianceTab('activity')">📋 Activity</button>
+    </div>
+
+    <!-- ===== OVERVIEW TAB ===== -->
+    <div id="tab-overview">
+        <!-- Stats -->
+        <div class="compliance-stats">
+            <div class="compliance-stat">
+                <span class="icon">📋</span>
+                <div class="value">82%</div>
+                <div class="label">Overall Compliance</div>
+            </div>
+            <div class="compliance-stat">
+                <span class="icon">✅</span>
+                <div class="value">2</div>
+                <div class="label">Compliant</div>
+            </div>
+            <div class="compliance-stat">
+                <span class="icon">⚠️</span>
+                <div class="value">2</div>
+                <div class="label">Partial</div>
+            </div>
+            <div class="compliance-stat">
+                <span class="icon">📅</span>
+                <div class="value">2026-01-15</div>
+                <div class="label">Last Update</div>
+            </div>
+            <div class="compliance-stat">
+                <span class="icon">🔍</span>
+                <div class="value">11</div>
+                <div class="label">Findings</div>
+            </div>
+            <div class="compliance-stat">
+                <span class="icon">📈</span>
+                <div class="value">-3.2%</div>
+                <div class="label">Emission Trend</div>
+            </div>
+        </div>
+
+        <!-- Compliance Cards -->
+        <div class="compliance-grid">
+            <div class="compliance-card">
+                <div class="card-header">
+                    <div class="card-title">📋 SECR</div>
+                    <span class="status-badge compliant">✅ Compliant</span>
+                </div>
+                <div class="card-score">92<span class="unit">%</span></div>
+                <div class="progress-bar"><div class="fill" style="width:92%;"></div></div>
+                <div class="card-meta">
+                    <span>Last updated: 2026-01-15</span>
+                    <span>2 findings</span>
+                </div>
+            </div>
+
+            <div class="compliance-card">
+                <div class="card-header">
+                    <div class="card-title">📋 CSRD</div>
+                    <span class="status-badge partial">⚠️ Partial</span>
+                </div>
+                <div class="card-score" style="color:hsl(var(--warning));">68<span class="unit">%</span></div>
+                <div class="progress-bar"><div class="fill" style="width:68%;background:hsl(var(--warning));"></div></div>
+                <div class="card-meta">
+                    <span>Last updated: 2026-01-10</span>
+                    <span>5 findings</span>
+                </div>
+            </div>
+
+            <div class="compliance-card">
+                <div class="card-header">
+                    <div class="card-title">📋 ISSB</div>
+                    <span class="status-badge partial">⚠️ Partial</span>
+                </div>
+                <div class="card-score" style="color:hsl(var(--warning));">71<span class="unit">%</span></div>
+                <div class="progress-bar"><div class="fill" style="width:71%;background:hsl(var(--warning));"></div></div>
+                <div class="card-meta">
+                    <span>Last updated: 2026-01-12</span>
+                    <span>3 findings</span>
+                </div>
+            </div>
+
+            <div class="compliance-card">
+                <div class="card-header">
+                    <div class="card-title">📋 GHG Protocol</div>
+                    <span class="status-badge compliant">✅ Compliant</span>
+                </div>
+                <div class="card-score">88<span class="unit">%</span></div>
+                <div class="progress-bar"><div class="fill" style="width:88%;"></div></div>
+                <div class="card-meta">
+                    <span>Last updated: 2026-01-14</span>
+                    <span>1 finding</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emissions Table -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">📊 Emissions by Scope</div>
+            </div>
+            <div class="card-content">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Scope</th>
+                                <th>Category</th>
+                                <th>Value</th>
+                                <th>Unit</th>
+                                <th>Year</th>
+                            </tr>
+                        </thead>
+                        <tbody id="emissionsTableBody">
+                            <!-- Rendered by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== NOTIFICATIONS TAB ===== -->
+    <div id="tab-notifications" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">🔔 Notification Center</div>
+                <span class="badge badge-destructive" id="unreadCount">3</span>
+            </div>
+            <div class="card-content" id="notificationsList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ACTIVITY TAB ===== -->
+    <div id="tab-activity" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">📋 Activity Feed</div>
+                <span class="badge badge-primary" id="activityCount">8</span>
+            </div>
+            <div class="card-content" id="activityList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // ============================================
+    // MOCK DATA
+    // ============================================
+
+    const emissionsData = [
+        { scope: 'Scope 1', category: 'Stationary Combustion', value: 245.6, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 1', category: 'Fugitive Emissions', value: 32.1, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 2', category: 'Purchased Electricity', value: 312.4, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 2', category: 'Purchased Heat', value: 45.8, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 3', category: 'Business Travel', value: 87.3, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 3', category: 'Supply Chain', value: 189.2, unit: 'tCO₂e', year: 2025 },
+        { scope: 'Scope 3', category: 'Waste Disposal', value: 45.1, unit: 'tCO₂e', year: 2025 }
+    ];
+
+    const notifications = [
+        { id: 'n1', type: 'info', icon: 'ℹ️', title: 'SECR Report Ready', desc: 'Your SECR report for FY 2026 has been generated.', time: '2 hours ago', read: false },
+        { id: 'n2', type: 'success', icon: '✅', title: 'CSRD Data Validated', desc: 'All CSRD-required data points validated successfully.', time: '4 hours ago', read: false },
+        { id: 'n3', type: 'warning', icon: '⚠️', title: 'ISSB Data Gap Identified', desc: '3 data points are missing for ISSB compliance.', time: '1 day ago', read: true },
+        { id: 'n4', type: 'error', icon: '❌', title: 'GHG Protocol Calculation Error', desc: 'Scope 3 Category 5 calculation failed.', time: '2 days ago', read: true },
+        { id: 'n5', type: 'info', icon: 'ℹ️', title: 'New Emission Factor Update', desc: 'DEFRA 2026 emission factors are now available.', time: '3 days ago', read: true },
+        { id: 'n6', type: 'success', icon: '✅', title: 'Data Upload Completed', desc: 'Q4 2026 emissions data successfully uploaded.', time: '5 days ago', read: true }
+    ];
+
+    const activities = [
+        { id: 'a1', icon: '📤', title: 'John uploaded SECR data', desc: 'File: SECR_2026_Q4.xlsx • 2.4 MB', time: '1 hour ago', user: 'John Doe' },
+        { id: 'a2', icon: '✅', title: 'SECR report approved', desc: 'Report approved by Sustainability Officer', time: '3 hours ago', user: 'Sarah Johnson' },
+        { id: 'a3', icon: '✏️', title: 'CSRD data updated', desc: 'Updated Scope 3 emissions for Supply Chain', time: '5 hours ago', user: 'Mike Chen' },
+        { id: 'a4', icon: '⚠️', title: 'Compliance alert triggered', desc: 'ISSB S1 disclosure missing 2 data points', time: '1 day ago', user: 'System' },
+        { id: 'a5', icon: '📄', title: 'GHG Protocol report generated', desc: 'Annual GHG emissions inventory report', time: '2 days ago', user: 'Emma Wilson' },
+        { id: 'a6', icon: '👤', title: 'Team member added to compliance', desc: 'Alex Rivera added as Compliance Analyst', time: '3 days ago', user: 'John Doe' },
+        { id: 'a7', icon: '📊', title: 'Emission factors updated', desc: 'DEFRA 2026 factors imported (247 new factors)', time: '4 days ago', user: 'System' }
+    ];
+
+    // ============================================
+    // RENDER FUNCTIONS
+    // ============================================
+
+    function renderEmissionsTable() {
+        const tbody = document.getElementById('emissionsTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = emissionsData.map(e => `
+            <tr>
+                <td><span class="badge badge-primary">${e.scope}</span></td>
+                <td>${e.category}</td>
+                <td>${e.value}</td>
+                <td>${e.unit}</td>
+                <td>${e.year}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderNotifications() {
+        const container = document.getElementById('notificationsList');
+        if (!container) return;
+        const unread = notifications.filter(n => !n.read).length;
+        document.getElementById('unreadCount').textContent = unread;
+
+        container.innerHTML = notifications.map(n => `
+            <div class="notif-item" style="${n.read ? 'opacity:0.7;' : ''}">
+                <div class="notif-icon ${n.type}">${n.icon}</div>
+                <div class="notif-content">
+                    <div class="title">${n.title}</div>
+                    <div class="desc">${n.desc}</div>
+                    <div class="time">🕐 ${n.time}</div>
+                </div>
+                <div style="flex-shrink:0;">
+                    ${n.read ? '<span class="badge badge-muted">Read</span>' : '<span class="badge badge-destructive">Unread</span>'}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderActivity() {
+        const container = document.getElementById('activityList');
+        if (!container) return;
+        document.getElementById('activityCount').textContent = activities.length;
+
+        container.innerHTML = activities.map(a => `
+            <div class="act-item">
+                <div class="act-icon">${a.icon}</div>
+                <div class="act-content">
+                    <div class="title">${a.title}</div>
+                    <div class="desc">${a.desc}</div>
+                    <div class="time">👤 ${a.user} · 🕐 ${a.time}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ============================================
+    // TAB SWITCHER
+    // ============================================
+
+    function switchComplianceTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll('.module-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        // Show/hide tab content
+        document.getElementById('tab-overview').style.display = tab === 'overview' ? 'block' : 'none';
+        document.getElementById('tab-notifications').style.display = tab === 'notifications' ? 'block' : 'none';
+        document.getElementById('tab-activity').style.display = tab === 'activity' ? 'block' : 'none';
+
+        // Render content if needed
+        if (tab === 'notifications') renderNotifications();
+        if (tab === 'activity') renderActivity();
+    }
+
+    // ============================================
+    // REFRESH
+    // ============================================
+
+    function refreshCompliance() {
+        showToast('🔄 Refreshing compliance data...');
+        setTimeout(() => {
+            renderEmissionsTable();
+            renderNotifications();
+            renderActivity();
+            showToast('✅ Compliance data refreshed');
+        }, 1000);
+    }
+
+    // ============================================
+    // INIT
+    // ============================================
+
+    // Render everything
+    renderEmissionsTable();
+    renderNotifications();
+    renderActivity();
+
+    console.log('📊 Compliance Dashboard module loaded');
+    console.log('📋 7 emissions records, 6 notifications, 7 activities');
+    console.log('🔍 Click tabs to switch views');
+</script>

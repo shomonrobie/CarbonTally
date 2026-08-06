@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Document Management</title>
+    <link rel="stylesheet" href="../css/dashboard.css" />
+    <style>
+        /* Document-specific styles only */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 12px;
+        }
+
+        .doc-card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 16px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .doc-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        .doc-card .doc-icon { font-size: 32px; margin-bottom: 8px; }
+        .doc-card .doc-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .doc-card .doc-meta {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .doc-card .doc-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid hsl(var(--border));
+        }
+        .doc-card .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: hsl(var(--muted));
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .doc-card .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            background: hsl(var(--primary));
+        }
+
+        .doc-list-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            transition: all 0.15s ease;
+            margin-bottom: 8px;
+        }
+        .doc-list-item:hover {
+            background: hsl(var(--accent));
+            box-shadow: var(--shadow);
+        }
+        .doc-list-item .doc-icon { font-size: 24px; flex-shrink: 0; }
+        .doc-list-item .doc-info { flex: 1; }
+        .doc-list-item .doc-info .name {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .doc-list-item .doc-info .meta {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .doc-list-item .doc-status { flex-shrink: 0; }
+        .doc-list-item .doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+        .doc-stats {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .doc-stat {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 14px 16px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .doc-stat:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-2px);
+        }
+        .doc-stat .value {
+            font-size: 22px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .doc-stat .label {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .doc-stat .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+        /* Upload Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 500px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .modal-body { margin: 16px 0; }
+        .modal-body .form-group {
+            margin-bottom: 16px;
+        }
+        .modal-body .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .modal-body .form-group input,
+        .modal-body .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+        }
+        .modal-body .form-group input:focus,
+        .modal-body .form-group select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        @media (max-width: 1200px) {
+            .doc-stats { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .doc-stats { grid-template-columns: 1fr 1fr; }
+            .doc-grid { grid-template-columns: 1fr; }
+            .doc-list-item { flex-wrap: wrap; }
+            .doc-list-item .doc-actions { width: 100%; justify-content: flex-end; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== APP CONTAINER ===== -->
+    <div class="app">
+
+        <!-- ===== SIDEBAR (ALWAYS VISIBLE) ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <a href="../dashboard_analyst.html" class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </a>
+                <a href="document_man.html" class="sidebar-item active">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </a>
+                <a href="../uploads_man.html" class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </a>
+                <a href="../reports_center.html" class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </a>
+                <a href="../emissions_reports.html" class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </a>
+                <a href="../manual_data_entry.html" class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <a href="../manual_review_queue.html" class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </a>
+                <a href="../extracted_data_management.html" class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </a>
+                <a href="../batch_management.html" class="sidebar-item">
+                    <span class="icon">📦</span> Batches
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Analytics</div>
+                <a href="../activity_feed.html" class="sidebar-item">
+                    <span class="icon">🔄</span> Activity
+                </a>
+                <a href="../compliance_dashboard.html" class="sidebar-item">
+                    <span class="icon">📋</span> Compliance
+                </a>
+                <a href="../secr_report.html" class="sidebar-item">
+                    <span class="icon">📄</span> SECR Report
+                </a>
+                <a href="../export_history.html" class="sidebar-item">
+                    <span class="icon">📥</span> Export History
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Communication</div>
+                <a href="../notification_center.html" class="sidebar-item">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge badge-destructive">3</span>
+                </a>
+                <a href="../messaging_chat.html" class="sidebar-item">
+                    <span class="icon">💬</span> Messaging
+                    <span class="badge badge-warning">2</span>
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Profile</div>
+                <a href="../user_profile.html" class="sidebar-item">
+                    <span class="icon">👤</span> Profile
+                </a>
+                <a href="../feedback_and_support.html" class="sidebar-item">
+                    <span class="icon">💬</span> Feedback
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item" onclick="logout()">
+                    <span class="icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search documents..." id="moduleSearch" oninput="filterDocuments()" />
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="user-info">
+                        <div class="avatar" id="userAvatar">MR</div>
+                        <div>
+                            <div class="name" id="userName">Mike Roberts</div>
+                            <div class="role" id="userRole">Analyst</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ===== MODULE CONTENT ===== -->
+            <div class="main-body">
+
+                <!-- Breadcrumb -->
+                <div class="breadcrumb">
+                    <span>📁 Documents</span>
+                </div>
+
+                <!-- Module Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>📁 Document Management</h1>
+                        <p>Manage all your carbon emissions documents and records</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="showUploadModal()">
+                            📤 Upload Document
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="toggleView()">
+                            📋 Toggle View
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Document Stats -->
+                <div class="doc-stats" id="docStats">
+                    <div class="doc-stat">
+                        <span class="icon">📄</span>
+                        <div class="value" id="statTotal">0</div>
+                        <div class="label">Total Documents</div>
+                    </div>
+                    <div class="doc-stat">
+                        <span class="icon">📤</span>
+                        <div class="value" id="statUploaded">0</div>
+                        <div class="label">Uploaded</div>
+                    </div>
+                    <div class="doc-stat">
+                        <span class="icon">⏳</span>
+                        <div class="value" id="statProcessing">0</div>
+                        <div class="label">Processing</div>
+                    </div>
+                    <div class="doc-stat">
+                        <span class="icon">📝</span>
+                        <div class="value" id="statReview">0</div>
+                        <div class="label">In Review</div>
+                    </div>
+                    <div class="doc-stat">
+                        <span class="icon">✅</span>
+                        <div class="value" id="statApproved">0</div>
+                        <div class="label">Approved</div>
+                    </div>
+                    <div class="doc-stat">
+                        <span class="icon">❌</span>
+                        <div class="value" id="statRejected">0</div>
+                        <div class="label">Rejected</div>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:hsl(var(--muted));border-radius:var(--radius);align-items:center;">
+                    <div class="tabs" id="statusFilter">
+                        <button class="tab active" data-status="all" onclick="filterByStatus('all')">All</button>
+                        <button class="tab" data-status="uploaded" onclick="filterByStatus('uploaded')">📤 Uploaded</button>
+                        <button class="tab" data-status="processing" onclick="filterByStatus('processing')">⏳ Processing</button>
+                        <button class="tab" data-status="review" onclick="filterByStatus('review')">📝 Review</button>
+                        <button class="tab" data-status="approved" onclick="filterByStatus('approved')">✅ Approved</button>
+                        <button class="tab" data-status="rejected" onclick="filterByStatus('rejected')">❌ Rejected</button>
+                    </div>
+                    <div style="flex:1;min-width:150px;">
+                        <select class="select" id="typeFilter" onchange="filterDocuments()" style="padding:4px 8px;font-size:12px;">
+                            <option value="all">All Types</option>
+                            <option value="fuel">⛽ Fuel</option>
+                            <option value="utility">💡 Utility</option>
+                            <option value="scope3">🌍 Scope 3</option>
+                            <option value="document">📄 Document</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+                        <span class="badge badge-muted" id="docCount">0 documents</span>
+                    </div>
+                </div>
+
+                <!-- Document List -->
+                <div id="documentsContainer">
+                    <div class="doc-grid" id="docGrid">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ===== FOOTER ===== -->
+            <footer class="footer">
+                <div>© 2026 CarbonTally (UK) Ltd. All rights reserved.</div>
+                <div class="footer-links">
+                    <a href="../privacy_policy.html">Privacy Policy</a>
+                    <a href="../cookie_policy.html">Cookie Policy</a>
+                    <a href="../terms.html">Terms</a>
+                    <a href="../about_us.html">About Us</a>
+                </div>
+            </footer>
+
+        </div>
+    </div>
+
+    <!-- ===== UPLOAD MODAL ===== -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">📤 Upload Document</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                        Add a new document to the system
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeUploadModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Document Name <span style="color:hsl(var(--destructive));">*</span></label>
+                    <input type="text" id="docName" placeholder="e.g., Utility_Bill_London_Dec2026.pdf" />
+                </div>
+                <div class="form-group">
+                    <label>Document Type <span style="color:hsl(var(--destructive));">*</span></label>
+                    <select id="docType">
+                        <option value="fuel">⛽ Fuel</option>
+                        <option value="utility">💡 Utility</option>
+                        <option value="scope3">🌍 Scope 3</option>
+                        <option value="document">📄 Document</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="docStatus">
+                        <option value="uploaded">📤 Uploaded</option>
+                        <option value="processing">⏳ Processing</option>
+                        <option value="review">📝 Review</option>
+                        <option value="approved">✅ Approved</option>
+                        <option value="rejected">❌ Rejected</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>File Size (MB)</label>
+                    <input type="number" id="docSize" placeholder="e.g., 2.4" step="0.1" min="0.1" value="1.0" />
+                </div>
+                <div class="form-group">
+                    <label>Records</label>
+                    <input type="number" id="docRecords" placeholder="e.g., 12" min="0" value="0" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="uploadDocument()">📤 Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== THEME MODAL ===== -->
+    <div class="theme-modal-overlay" id="themeModal">
+        <div class="theme-modal">
+            <div class="theme-modal-header">
+                <div>
+                    <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                        Select a color scheme for your dashboard
+                    </div>
+                </div>
+                <button class="theme-modal-close" id="themeModalClose">✕</button>
+            </div>
+            <div class="theme-grid" id="themeGrid"></div>
+            <div class="theme-modal-footer">
+                <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                    <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <!-- ===== SHARED JAVASCRIPT ===== -->
+    <script src="../js/dashboard.js"></script>
+
+    <!-- ===== MODULE-SPECIFIC JAVASCRIPT ===== -->
+    <script>
+        // ============================================
+        // MOCK DATA
+        // ============================================
+
+        let documents = [{
+            id: 'doc_001',
+            name: 'Utility_Bill_London_Dec2026.pdf',
+            type: 'utility',
+            status: 'approved',
+            size: 2.4,
+            date: '2026-12-15',
+            records: 12,
+            uploadedBy: 'John Doe'
+        }, {
+            id: 'doc_002',
+            name: 'Fleet_Fuel_Q4_2026.csv',
+            type: 'fuel',
+            status: 'processing',
+            size: 1.8,
+            date: '2026-12-14',
+            records: 245,
+            uploadedBy: 'Sarah Johnson'
+        }, {
+            id: 'doc_003',
+            name: 'Supplier_Invoice_IT_Equipment.pdf',
+            type: 'scope3',
+            status: 'review',
+            size: 3.1,
+            date: '2026-12-13',
+            records: 8,
+            uploadedBy: 'Mike Roberts'
+        }, {
+            id: 'doc_004',
+            name: 'Electricity_Bill_Manchester.xlsx',
+            type: 'utility',
+            status: 'uploaded',
+            size: 1.2,
+            date: '2026-12-12',
+            records: 18,
+            uploadedBy: 'Anna Liu'
+        }, {
+            id: 'doc_005',
+            name: 'Gas_Bill_Birmingham_Q4.pdf',
+            type: 'utility',
+            status: 'processing',
+            size: 0.89,
+            date: '2026-12-11',
+            records: 6,
+            uploadedBy: 'Tom Chen'
+        }, {
+            id: 'doc_006',
+            name: 'Scope3_Supplier_Report.csv',
+            type: 'scope3',
+            status: 'review',
+            size: 3.2,
+            date: '2026-12-10',
+            records: 156,
+            uploadedBy: 'Emma Martinez'
+        }];
+
+        let currentView = 'grid';
+        let currentStatusFilter = 'all';
+        let currentTypeFilter = 'all';
+        let currentSearchTerm = '';
+
+        // ============================================
+        // DOCUMENT FUNCTIONS
+        // ============================================
+
+        function getStatusBadge(status) {
+            const badges = {
+                'uploaded': '<span class="badge badge-muted">📤 Uploaded</span>',
+                'processing': '<span class="badge badge-warning">⏳ Processing</span>',
+                'review': '<span class="badge badge-primary">📝 Review</span>',
+                'approved': '<span class="badge badge-success">✅ Approved</span>',
+                'rejected': '<span class="badge badge-destructive">❌ Rejected</span>'
+            };
+            return badges[status] || badges.uploaded;
+        }
+
+        function getFileIcon(type) {
+            const icons = { 'fuel': '⛽', 'utility': '💡', 'scope3': '🌍', 'document': '📄' };
+            return icons[type] || '📄';
+        }
+
+        function getStatusProgress(status) {
+            const progress = { 'uploaded': 0, 'processing': 45, 'review': 70, 'approved': 100, 'rejected': 100 };
+            return progress[status] || 0;
+        }
+
+        function updateStats() {
+            const total = documents.length;
+            const uploaded = documents.filter(d => d.status === 'uploaded').length;
+            const processing = documents.filter(d => d.status === 'processing').length;
+            const review = documents.filter(d => d.status === 'review').length;
+            const approved = documents.filter(d => d.status === 'approved').length;
+            const rejected = documents.filter(d => d.status === 'rejected').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statUploaded').textContent = uploaded;
+            document.getElementById('statProcessing').textContent = processing;
+            document.getElementById('statReview').textContent = review;
+            document.getElementById('statApproved').textContent = approved;
+            document.getElementById('statRejected').textContent = rejected;
+        }
+
+        function getFilteredDocuments() {
+            let filtered = [...documents];
+
+            // Status filter
+            if (currentStatusFilter !== 'all') {
+                filtered = filtered.filter(d => d.status === currentStatusFilter);
+            }
+
+            // Type filter
+            if (currentTypeFilter !== 'all') {
+                filtered = filtered.filter(d => d.type === currentTypeFilter);
+            }
+
+            // Search filter
+            if (currentSearchTerm) {
+                const term = currentSearchTerm.toLowerCase();
+                filtered = filtered.filter(d =>
+                    d.name.toLowerCase().includes(term) ||
+                    d.type.toLowerCase().includes(term) ||
+                    d.uploadedBy.toLowerCase().includes(term)
+                );
+            }
+
+            return filtered;
+        }
+
+        function renderDocuments() {
+            const filtered = getFilteredDocuments();
+            const container = document.getElementById('docGrid');
+            const count = document.getElementById('docCount');
+            
+            count.textContent = `${filtered.length} documents`;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:hsl(var(--muted-foreground));">
+                        <div style="font-size:48px;margin-bottom:16px;">📭</div>
+                        <div style="font-size:16px;font-weight:600;">No documents found</div>
+                        <div style="font-size:13px;margin-top:4px;">Try adjusting your filters or upload a new document</div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (currentView === 'grid') {
+                container.className = 'doc-grid';
+                container.innerHTML = filtered.map(doc => `
+                    <div class="doc-card">
+                        <div class="doc-icon">${getFileIcon(doc.type)}</div>
+                        <div class="doc-name">${doc.name}</div>
+                        <div class="doc-meta">
+                            <span>${doc.type.toUpperCase()}</span>
+                            <span>${doc.size} MB</span>
+                            <span>${doc.records || 0} records</span>
+                        </div>
+                        <div style="margin:8px 0;">
+                            ${getStatusBadge(doc.status)}
+                        </div>
+                        <div class="progress-bar">
+                            <div class="fill" style="width:${getStatusProgress(doc.status)}%;"></div>
+                        </div>
+                        <div class="doc-actions">
+                            <button class="btn btn-ghost btn-sm" onclick="viewDocument('${doc.id}')">👁️ View</button>
+                            <button class="btn btn-ghost btn-sm" onclick="downloadDocument('${doc.id}')">⬇️ Download</button>
+                            <button class="btn btn-ghost btn-sm" onclick="deleteDocument('${doc.id}')" style="color:hsl(var(--destructive));">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                container.className = '';
+                container.innerHTML = filtered.map(doc => `
+                    <div class="doc-list-item">
+                        <div class="doc-icon">${getFileIcon(doc.type)}</div>
+                        <div class="doc-info">
+                            <div class="name">${doc.name}</div>
+                            <div class="meta">
+                                ${doc.type.toUpperCase()} • ${doc.size} MB • ${doc.records || 0} records • ${doc.date}
+                            </div>
+                        </div>
+                        <div class="doc-status">${getStatusBadge(doc.status)}</div>
+                        <div class="doc-actions">
+                            <button class="btn btn-ghost btn-sm" onclick="viewDocument('${doc.id}')">👁️</button>
+                            <button class="btn btn-ghost btn-sm" onclick="downloadDocument('${doc.id}')">⬇️</button>
+                            <button class="btn btn-ghost btn-sm" onclick="deleteDocument('${doc.id}')" style="color:hsl(var(--destructive));">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateStats();
+        }
+
+        function filterDocuments() {
+            const searchInput = document.getElementById('moduleSearch');
+            currentSearchTerm = searchInput ? searchInput.value : '';
+            renderDocuments();
+        }
+
+        function filterByStatus(status) {
+            currentStatusFilter = status;
+            document.querySelectorAll('#statusFilter .tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.status === status);
+            });
+            renderDocuments();
+            showToast(`📊 Filtered by: ${status}`);
+        }
+
+        function filterByType(type) {
+            currentTypeFilter = type;
+            renderDocuments();
+            showToast(`📊 Filtered by type: ${type}`);
+        }
+
+        function clearFilters() {
+            currentStatusFilter = 'all';
+            currentTypeFilter = 'all';
+            currentSearchTerm = '';
+            
+            document.querySelectorAll('#statusFilter .tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.status === 'all');
+            });
+            document.getElementById('typeFilter').value = 'all';
+            document.getElementById('moduleSearch').value = '';
+            
+            renderDocuments();
+            showToast('🔄 Filters cleared');
+        }
+
+        function toggleView() {
+            currentView = currentView === 'grid' ? 'list' : 'grid';
+            renderDocuments();
+            showToast(`📋 ${currentView === 'grid' ? 'Grid' : 'List'} view`);
+        }
+
+        function viewDocument(id) {
+            const doc = documents.find(d => d.id === id);
+            if (doc) {
+                showToast(`👁️ Viewing: ${doc.name}`);
+            }
+        }
+
+        function downloadDocument(id) {
+            const doc = documents.find(d => d.id === id);
+            if (doc) {
+                showToast(`⬇️ Downloading: ${doc.name}`);
+            }
+        }
+
+        function deleteDocument(id) {
+            if (confirm('Are you sure you want to delete this document?')) {
+                const doc = documents.find(d => d.id === id);
+                if (doc) {
+                    documents = documents.filter(d => d.id !== id);
+                    renderDocuments();
+                    showToast(`🗑️ Deleted: ${doc.name}`);
+                }
+            }
+        }
+
+        // ============================================
+        // UPLOAD MODAL
+        // ============================================
+
+        function showUploadModal() {
+            document.getElementById('uploadModal').classList.add('show');
+            document.body.style.overflow = 'hidden';
+            // Reset form
+            document.getElementById('docName').value = '';
+            document.getElementById('docType').value = 'fuel';
+            document.getElementById('docStatus').value = 'uploaded';
+            document.getElementById('docSize').value = '1.0';
+            document.getElementById('docRecords').value = '0';
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadModal').classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function uploadDocument() {
+            const name = document.getElementById('docName').value.trim();
+            const type = document.getElementById('docType').value;
+            const status = document.getElementById('docStatus').value;
+            const size = parseFloat(document.getElementById('docSize').value) || 1.0;
+            const records = parseInt(document.getElementById('docRecords').value) || 0;
+
+            if (!name) {
+                showToast('⚠️ Please enter a document name', 'warning');
+                return;
+            }
+
+            const newDoc = {
+                id: `doc_${String(documents.length + 1).padStart(3, '0')}`,
+                name: name,
+                type: type,
+                status: status,
+                size: size,
+                date: new Date().toISOString().split('T')[0],
+                records: records,
+                uploadedBy: 'Current User'
+            };
+
+            documents.unshift(newDoc);
+            closeUploadModal();
+            renderDocuments();
+            showToast(`📤 Uploaded: ${name}`);
+        }
+
+        // ============================================
+        // SIDEBAR MOBILE TOGGLE
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuBtn = document.getElementById('mobileMenuBtn');
+            const sidebar = document.getElementById('sidebar');
+            
+            if (menuBtn && sidebar) {
+                menuBtn.addEventListener('click', function() {
+                    sidebar.classList.toggle('open');
+                });
+            }
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Close upload modal on overlay click
+        document.getElementById('uploadModal').addEventListener('click', function(e) {
+            if (e.target === this) closeUploadModal();
+        });
+
+        // Enter key to submit upload
+        document.getElementById('docName').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') uploadDocument();
+        });
+
+        renderDocuments();
+        console.log('📁 Document Management module loaded');
+        console.log('📄 ' + documents.length + ' documents loaded');
+        console.log('📌 Sidebar is always visible');
+    </script>
+
+</body>
+</html>

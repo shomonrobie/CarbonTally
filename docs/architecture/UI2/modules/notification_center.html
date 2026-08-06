@@ -1,0 +1,272 @@
+<!-- Notification Center Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>🔔 Notification Center</h1>
+            <p>Manage your notifications, delivery status, and preferences</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="markAllRead()">
+                ✅ Mark All Read
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="refreshNotifications()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="notification-stats" id="notifStats">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Tabs -->
+    <div style="margin-bottom:16px;">
+        <div class="tabs">
+            <button class="tab active" data-tab="inbox" onclick="switchTab('inbox')">
+                📬 Inbox
+                <span class="badge badge-destructive" id="unreadBadge">0</span>
+            </button>
+            <button class="tab" data-tab="settings" onclick="switchTab('settings')">
+                ⚙️ Settings
+            </button>
+            <button class="tab" data-tab="email-logs" onclick="switchTab('email-logs')">
+                📧 Email Logs
+            </button>
+            <button class="tab" data-tab="delivery" onclick="switchTab('delivery')">
+                📊 Delivery Status
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== INBOX TAB ===== -->
+    <div id="tab-inbox">
+        <!-- Filters -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>📊 Type</label>
+                <select class="select" id="typeFilter" onchange="applyFilters()">
+                    <option value="all">All Types</option>
+                    <option value="report_ready">📊 Report Ready</option>
+                    <option value="validation_needed">✅ Validation Needed</option>
+                    <option value="approval_required">📝 Approval Required</option>
+                    <option value="deadline_approaching">⏰ Deadline Approaching</option>
+                    <option value="team_update">👥 Team Update</option>
+                    <option value="system_update">⚙️ System Update</option>
+                    <option value="document_uploaded">📄 Document Uploaded</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>⚡ Priority</label>
+                <select class="select" id="priorityFilter" onchange="applyFilters()">
+                    <option value="all">All Priorities</option>
+                    <option value="high">🔴 High</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="low">🟢 Low</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>📖 Status</label>
+                <select class="select" id="readFilter" onchange="applyFilters()">
+                    <option value="all">All</option>
+                    <option value="unread">Unread</option>
+                    <option value="read">Read</option>
+                </select>
+            </div>
+            <div style="flex:1;"></div>
+            <div style="display:flex;gap:4px;">
+                <button class="btn btn-ghost btn-sm" onclick="clearFilters()">↺ Clear</button>
+                <span class="badge badge-muted" id="notifCount">0 notifications</span>
+            </div>
+        </div>
+
+        <!-- Notification List -->
+        <div class="card">
+            <div class="card-content" id="notificationList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SETTINGS TAB ===== -->
+    <div id="tab-settings" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">⚙️ Notification Settings</div>
+                    <div class="card-description">Configure how and when you receive notifications</div>
+                </div>
+            </div>
+            <div class="card-content">
+                <div class="setting-group">
+                    <div class="group-title" style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">Email Notifications</div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Report Ready</div>
+                            <div class="desc">Notify when reports are ready for review</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="emailReportReady" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Validation Required</div>
+                            <div class="desc">Notify when data needs validation</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="emailValidation" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Approval Required</div>
+                            <div class="desc">Notify when approvals are needed</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="emailApproval" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Upcoming Deadlines</div>
+                            <div class="desc">Notify about approaching deadlines</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="emailDeadlines" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Team Updates</div>
+                            <div class="desc">Notify about team changes</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="emailTeam" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setting-group" style="margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border));">
+                    <div class="group-title" style="font-size:14px;font-weight:600;color:hsl(var(--foreground));margin-bottom:8px;">Push Notifications</div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Browser Notifications</div>
+                            <div class="desc">Enable browser push notifications</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="pushBrowser" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <div class="label">Notification Sounds</div>
+                            <div class="desc">Play sound for notifications</div>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="pushSound" />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border));">
+                    <button class="btn btn-primary btn-sm" onclick="saveNotificationSettings()">💾 Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== EMAIL LOGS TAB ===== -->
+    <div id="tab-email-logs" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">📧 Email Logs</div>
+                    <div class="card-description">History of all sent emails</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="showToast('📊 Exporting email logs...')">📊 Export</button>
+            </div>
+            <div class="card-content" id="emailLogsList">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== DELIVERY STATUS TAB ===== -->
+    <div id="tab-delivery" style="display:none;">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">📊 Delivery Status</div>
+                    <div class="card-description">Track notification delivery metrics</div>
+                </div>
+            </div>
+            <div class="card-content">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+                    <div class="notification-stat">
+                        <div class="value" style="color:hsl(var(--success));">98.5%</div>
+                        <div class="label">Delivery Rate</div>
+                    </div>
+                    <div class="notification-stat">
+                        <div class="value" style="color:hsl(var(--primary));">2.3s</div>
+                        <div class="label">Avg Delivery Time</div>
+                    </div>
+                    <div class="notification-stat">
+                        <div class="value" style="color:hsl(var(--warning));">12</div>
+                        <div class="label">Pending Deliveries</div>
+                    </div>
+                    <div class="notification-stat">
+                        <div class="value" style="color:hsl(var(--destructive));">3</div>
+                        <div class="label">Failed Deliveries</div>
+                    </div>
+                </div>
+                <div id="deliveryStatusList">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="detailTitle">Notification Details</div>
+                <div style="font-size:13px;color:hsl(var(--muted-foreground));" id="detailSubtitle">View notification information</div>
+            </div>
+            <button class="modal-close" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <!-- Rendered by JS -->
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <!-- Rendered by JS -->
+        </div>
+    </div>
+</div>

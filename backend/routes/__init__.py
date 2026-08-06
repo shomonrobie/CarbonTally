@@ -1,16 +1,30 @@
 # backend/routes/__init__.py
 """
 CarbonTally API Routes Package
-All route modules are organized by domain and functionality.
 """
 
+from . import emissions
 from . import waitlist
 from . import upload
 from . import reports
 from . import glossary
 from . import users
 from . import notifications
-from .admin import staff, defra, extraction, reviews
+from . import documents_main      # ✅ Direct import (no documents folder)
+from . import document_activity   # ✅ Direct import (no documents folder)
+from . import drafts
+from . import reference
+from . import logs
+from . import feedback
+from . import drafts_enhanced
+from . import customer_documents
+from .admin import staff, defra, extraction, reviews, assignments, workload, beta, audit, review_history
+from .admin import logs as admin_logs
+from .admin import bulk as admin_bulk
+from .admin import email_templates
+from .admin import analytics as admin_analytics
+from .admin import settings
+
 from .organizations import (
     management,
     members,
@@ -19,29 +33,45 @@ from .organizations import (
     analytics,
     dashboard,
     files,
-    team
+    team,
+    metadata,
+    exports,
+    bulk as org_bulk,
 )
-from . import documents  # ✅ Add this
-from . import drafts
-from . import reference  # ✅ Add this
-from .admin import assignments  # ✅ Add this
-
-
 
 __all__ = [
     # Public/General routes
+    'emissions',
     'waitlist',
     'upload',
     'reports',
     'glossary',
     'users',
     'notifications',
+    'feedback',
+    'documents_main',      # ✅ Direct
+    'document_activity',   # ✅ Direct
+    'drafts',
+    'drafts_enhanced',
+    'reference',
+    'logs',
     
     # Admin routes
     'staff',
     'defra',
     'extraction',
-    'reviews',  # ✅ Add this
+    'reviews',
+    'assignments',
+    'workload',
+    'beta',
+    'audit',
+    'review_history',
+    'admin_logs',
+    'admin_bulk',
+    'email_templates',
+    'admin_analytics',
+    'settings',
+    
     # Organization routes
     'management',
     'members',
@@ -50,9 +80,8 @@ __all__ = [
     'analytics',
     'dashboard',
     'files',
-    'team',  # ✅ Add this
-    'documents',  # ✅ Add this
-    'drafts',
-    'reference',  # ✅ Add this
-    'assignments',  # ✅ Add this
+    'team',
+    'metadata',
+    'exports',
+    'org_bulk',
 ]

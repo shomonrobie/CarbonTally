@@ -1,0 +1,2082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Manual Data Entry</title>
+    <style>
+        /* ============================================
+           THEME SYSTEM
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --shadow-xl: 0 20px 60px rgba(0,0,0,0.12);
+            --transition-speed: 0.3s;
+            --sidebar-width: 240px;
+        }
+
+        /* Theme Presets */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --sidebar-item-active: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --sidebar-item-active: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --sidebar-item-active: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --sidebar-item-active: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --sidebar-item-active: 220, 20%, 18%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --sidebar-item-active: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --sidebar-item-active: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --sidebar-item-active: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --sidebar-item-active: 0, 0%, 15%;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                        color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui COMPONENTS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover { background: hsl(var(--accent)); }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+        .btn-danger {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-danger:hover { opacity: 0.85; }
+        .btn-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-success:hover { opacity: 0.85; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header {
+            padding: 16px 20px 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .card-description {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content { padding: 12px 20px 20px 20px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: all var(--transition-speed) ease;
+            cursor: pointer;
+        }
+
+        .input {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            transition: all 0.15s ease;
+            width: 100%;
+        }
+        .input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .input.error {
+            border-color: hsl(var(--destructive));
+        }
+        .input.success {
+            border-color: hsl(var(--success));
+        }
+        .input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .input-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .input-group .hint {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+        }
+        .input-group .error-text {
+            font-size: 11px;
+            color: hsl(var(--destructive));
+        }
+
+        .select {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        .select:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* ============================================
+           LAYOUT - Sidebar
+           ============================================ */
+        .app { display: flex; min-height: 100vh; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background: hsl(var(--card));
+            border-right: 1px solid hsl(var(--border));
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transition: all var(--transition-speed) ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            padding: 20px 20px 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .sidebar-logo .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            font-weight: 700;
+            transition: all var(--transition-speed) ease;
+        }
+        .sidebar-logo .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: hsl(var(--muted-foreground));
+            padding: 8px 12px 4px 12px;
+            opacity: 0.6;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .sidebar-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .sidebar-item.active {
+            background: hsl(var(--sidebar-item-active));
+            color: hsl(var(--primary-foreground));
+        }
+        .sidebar-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .sidebar-item .badge { margin-left: auto; font-size: 10px; padding: 1px 8px; }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid hsl(var(--border));
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ============================================
+           TOP HEADER
+           ============================================ */
+        .top-header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: all var(--transition-speed) ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+        }
+
+        .header-search {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+            margin: 0 16px;
+        }
+        .header-search input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+        .header-search input:focus {
+            border-color: hsl(var(--ring));
+            box-shadow: 0 0 0 3px hsla(var(--ring), 0.15);
+        }
+        .header-search .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-btn {
+            padding: 4px 10px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        /* ============================================
+           MAIN BODY
+           ============================================ */
+        .main-body {
+            padding: 24px 32px;
+            flex: 1;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .page-header p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+
+        /* ============================================
+           FORM STYLES
+           ============================================ */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .form-grid .full-width {
+            grid-column: 1 / -1;
+        }
+        .form-grid .half-width {
+            grid-column: span 1;
+        }
+
+        .form-section {
+            padding: 16px;
+            border-radius: var(--radius);
+            background: hsl(var(--muted));
+            border: 1px solid hsl(var(--border));
+        }
+        .form-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Calculation display */
+        .calc-display {
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            text-align: center;
+        }
+        .calc-display .label {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .calc-display .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: hsl(var(--primary));
+        }
+        .calc-display .value.high {
+            color: hsl(var(--destructive));
+        }
+        .calc-display .value.medium {
+            color: hsl(var(--warning));
+        }
+        .calc-display .value.low {
+            color: hsl(var(--success));
+        }
+
+        /* Emissions log entry */
+        .entry-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr auto;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .entry-row:hover { background: hsl(var(--accent)); }
+        .entry-row .entry-field {
+            font-size: 13px;
+        }
+        .entry-row .entry-field .label {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            display: block;
+        }
+        .entry-row .entry-field .value {
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+
+        /* Validation indicators */
+        .validation-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .validation-badge.valid {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .validation-badge.invalid {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .validation-badge.warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* ============================================
+           THEME MODAL
+           ============================================ */
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-xl);
+            max-width: 700px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 36px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+        .theme-option-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark { display: block; }
+
+        .theme-modal-footer {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .theme-modal-footer .hint {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           TOAST
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 450px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon { font-size: 18px; }
+        .toast .message {
+            font-size: 13px;
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-10px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1200px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            .form-grid .half-width {
+                grid-column: 1 / -1;
+            }
+            .entry-row {
+                grid-template-columns: 1fr 1fr;
+                gap: 4px;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .top-header { padding: 0 16px; }
+            .main-body { padding: 16px; }
+            .header-search { display: none; }
+            .mobile-menu-btn { display: flex !important; }
+        }
+
+        @media (max-width: 768px) {
+            .entry-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
+            .page-header { flex-direction: column; align-items: stretch; }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .theme-modal { padding: 16px; }
+            .form-section { padding: 12px; }
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--foreground));
+            padding: 4px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </button>
+                <button class="sidebar-item active">
+                    <span class="icon">✏️</span> Manual Entry
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <button class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </button>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Admin</div>
+                <button class="sidebar-item">
+                    <span class="icon">👥</span> Team
+                </button>
+                <button class="sidebar-item">
+                    <span class="icon">⚙️</span> Settings
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item">
+                    <span class="icon">❓</span> Help
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search entries, assets, facilities..." />
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="avatar">JD</div>
+                </div>
+            </header>
+
+            <!-- ===== MAIN BODY ===== -->
+            <div class="main-body">
+
+                <!-- Page Header -->
+                <div class="page-header">
+                    <div>
+                        <h1>✏️ Manual Data Entry</h1>
+                        <p>Enter carbon emissions data manually with auto-calculation and validation</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline btn-sm" onclick="loadMockEntry()">
+                            🧪 Load Sample Entry
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="clearForm()">
+                            🗑️ Clear Form
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Entry Type Tabs -->
+                <div style="margin-bottom:16px;">
+                    <div class="tabs">
+                        <button class="tab active" data-entry-type="fuel" onclick="switchEntryType('fuel')">
+                            ⛽ Fuel
+                        </button>
+                        <button class="tab" data-entry-type="utility" onclick="switchEntryType('utility')">
+                            💡 Utility
+                        </button>
+                        <button class="tab" data-entry-type="scope3" onclick="switchEntryType('scope3')">
+                            🌍 Scope 3
+                        </button>
+                        <button class="tab" data-entry-type="manual" onclick="switchEntryType('manual')">
+                            📝 Manual Entry
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===== FORM ===== -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title" id="formTitle">⛽ Fuel Consumption Entry</div>
+                            <div class="card-description" id="formDescription">Enter fuel consumption data for vehicles and equipment</div>
+                        </div>
+                        <div>
+                            <span class="badge badge-success" id="formStatus">Ready</span>
+                        </div>
+                    </div>
+                    <div class="card-content">
+
+                        <div class="form-grid" id="formGrid">
+                            <!-- Organization (hidden, auto-filled) -->
+                            <div class="full-width" style="display:none;">
+                                <div class="input-group">
+                                    <label>Organization ID</label>
+                                    <input type="text" class="input" value="org_12345678" disabled />
+                                </div>
+                            </div>
+
+                            <!-- Asset / Facility -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Asset / Vehicle <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <select class="select" id="assetSelect">
+                                        <option value="">Select Asset...</option>
+                                        <option value="Fleet_001">🚗 Fleet #001 - Ford Transit</option>
+                                        <option value="Fleet_002">🚗 Fleet #002 - Mercedes Sprinter</option>
+                                        <option value="Fleet_003">🚗 Fleet #003 - VW Crafter</option>
+                                        <option value="Fleet_004">🚗 Fleet #004 - Ford Transit</option>
+                                        <option value="Fleet_005">🚗 Fleet #005 - Mercedes Sprinter</option>
+                                        <option value="Building_A">🏢 Building A - London Office</option>
+                                        <option value="Building_B">🏢 Building B - Manchester Office</option>
+                                        <option value="Building_C">🏢 Building C - Birmingham Office</option>
+                                        <option value="Data_Center">🖥️ Data Center - London</option>
+                                        <option value="Warehouse">📦 Warehouse - Distribution Center</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Facility / Site <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <select class="select" id="facilitySelect">
+                                        <option value="">Select Facility...</option>
+                                        <option value="London_Office">📍 London Office</option>
+                                        <option value="Manchester_Office">📍 Manchester Office</option>
+                                        <option value="Birmingham_Office">📍 Birmingham Office</option>
+                                        <option value="Data_Center">📍 Data Center - London</option>
+                                        <option value="Distribution_Center">📍 Distribution Center</option>
+                                        <option value="Glasgow_Office">📍 Glasgow Office</option>
+                                        <option value="Belfast_Office">📍 Belfast Office</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Fuel/Energy Type -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Energy / Fuel Type <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <select class="select" id="fuelTypeSelect">
+                                        <option value="">Select Type...</option>
+                                        <option value="Diesel">🛢️ Diesel</option>
+                                        <option value="Petrol">🛢️ Petrol</option>
+                                        <option value="AdBlue">🧪 AdBlue</option>
+                                        <option value="Electricity">⚡ Electricity</option>
+                                        <option value="Natural Gas">🔥 Natural Gas</option>
+                                        <option value="LPG">🔥 LPG</option>
+                                        <option value="Jet Fuel">✈️ Jet Fuel</option>
+                                        <option value="Marine Diesel">⛴️ Marine Diesel</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Scope -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Scope <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <select class="select" id="scopeSelect">
+                                        <option value="Scope 1">Scope 1 - Direct Emissions</option>
+                                        <option value="Scope 2">Scope 2 - Energy Indirect</option>
+                                        <option value="Scope 3">Scope 3 - Supply Chain</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Quantity/Consumption -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Quantity / Consumption <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <input type="number" class="input" id="quantityInput" placeholder="e.g., 450" step="0.01" min="0" />
+                                    <span class="hint" id="unitHint">Unit: Liters (L)</span>
+                                </div>
+                            </div>
+
+                            <!-- DEFRA Factor -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>DEFRA Factor <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <div style="display:flex;gap:8px;">
+                                        <select class="select" id="defraFactorSelect" style="flex:1;">
+                                            <option value="">Select Factor...</option>
+                                            <option value="2.54">Diesel - 2.54 kgCO₂e/L</option>
+                                            <option value="2.16">Petrol - 2.16 kgCO₂e/L</option>
+                                            <option value="0.207">Electricity - 0.207 kgCO₂e/kWh</option>
+                                            <option value="0.183">Natural Gas - 0.183 kgCO₂e/kWh</option>
+                                            <option value="0.155">Short Haul Flight - 0.155 kgCO₂e/km</option>
+                                            <option value="0.195">Long Haul Flight - 0.195 kgCO₂e/km</option>
+                                            <option value="0.035">National Rail - 0.035 kgCO₂e/km</option>
+                                            <option value="10.5">Hotel Stay - 10.5 kgCO₂e/night</option>
+                                            <option value="0.500">Mixed Waste - 0.500 kgCO₂e/kg</option>
+                                            <option value="0.000">Unknown - 0.000 kgCO₂e</option>
+                                        </select>
+                                        <span class="badge badge-muted" style="align-self:center;">2025</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Date Range -->
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>Start Date <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <input type="date" class="input" id="startDate" value="2026-12-01" />
+                                </div>
+                            </div>
+
+                            <div class="half-width">
+                                <div class="input-group">
+                                    <label>End Date <span style="color:hsl(var(--destructive));">*</span></label>
+                                    <input type="date" class="input" id="endDate" value="2026-12-31" />
+                                </div>
+                            </div>
+
+                            <!-- Notes -->
+                            <div class="full-width">
+                                <div class="input-group">
+                                    <label>Notes / Comments</label>
+                                    <textarea class="input" id="notesInput" rows="2" placeholder="Additional notes about this entry..."></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Calculation Display -->
+                            <div class="full-width">
+                                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                                    <div class="calc-display">
+                                        <div class="label">Quantity</div>
+                                        <div class="value" id="displayQuantity">0.00</div>
+                                        <div style="font-size:12px;color:hsl(var(--muted-foreground));" id="displayUnit">L</div>
+                                    </div>
+                                    <div class="calc-display">
+                                        <div class="label">DEFRA Factor</div>
+                                        <div class="value" id="displayFactor">0.00</div>
+                                        <div style="font-size:12px;color:hsl(var(--muted-foreground));">kgCO₂e/unit</div>
+                                    </div>
+                                    <div class="calc-display" style="border-color:hsl(var(--primary));">
+                                        <div class="label">Total Emissions</div>
+                                        <div class="value" id="displayEmissions">0.00</div>
+                                        <div style="font-size:12px;color:hsl(var(--muted-foreground));">kgCO₂e</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Validation Results -->
+                            <div class="full-width" id="validationResults">
+                                <!-- Rendered by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div style="margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border));display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button class="btn btn-secondary btn-sm" onclick="addToQueue()">
+                                    ➕ Add to Queue
+                                </button>
+                                <button class="btn btn-outline btn-sm" onclick="validateEntry()">
+                                    ✅ Validate
+                                </button>
+                                <button class="btn btn-ghost btn-sm" onclick="clearForm()">
+                                    🗑️ Clear
+                                </button>
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" id="submitBtn" onclick="submitEntry()">
+                                    💾 Save Entry
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== ENTRY QUEUE ===== -->
+                <div class="card" style="margin-top:24px;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📋 Entry Queue</div>
+                            <div class="card-description">Pending entries ready for submission</div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <span class="badge badge-warning" id="queueCount">0 entries</span>
+                            <button class="btn btn-ghost btn-sm" onclick="clearQueue()">🗑️ Clear All</button>
+                            <button class="btn btn-success btn-sm" onclick="submitQueue()">📤 Submit All</button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div id="queueContainer">
+                            <div class="text-center text-muted" style="padding:32px;">
+                                <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                                <div>No entries in queue</div>
+                                <div style="font-size:13px;">Add entries using the form above</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== RECENT ENTRIES ===== -->
+                <div class="card" style="margin-top:24px;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📊 Recent Entries</div>
+                            <div class="card-description">Previously saved manual entries</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" onclick="refreshHistory()">🔄 Refresh</button>
+                    </div>
+                    <div class="card-content">
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Asset</th>
+                                        <th>Type</th>
+                                        <th>Quantity</th>
+                                        <th>Emissions</th>
+                                        <th>Scope</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <!-- Rendered by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                        <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Select a color scheme for your dashboard
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="theme-grid" id="themeGrid">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="theme-modal-footer">
+                    <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Success!</span>
+        </div>
+
+    </div>
+
+    <script>
+        // ============================================
+        // THEME CONFIGURATION
+        // ============================================
+
+        const themes = [
+            { id: 'forest', name: 'Forest Green', desc: 'Professional & sustainable', preview: { bg: '#1a6b43',
+                    accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' } },
+            { id: 'emerald', name: 'Emerald Green', desc: 'Bold & vibrant', preview: { bg: '#10b981', accent: '#d1fae5',
+                    btnBg: '#10b981', btnText: '#ffffff' } },
+            { id: 'teal', name: 'Teal', desc: 'Modern & corporate', preview: { bg: '#196666', accent: '#d4ecec',
+                    btnBg: '#196666', btnText: '#ffffff' } },
+            { id: 'navy', name: 'Navy Blue', desc: 'Trustworthy & financial', preview: { bg: '#1e3a5f', accent: '#dbe6f0',
+                    btnBg: '#1e3a5f', btnText: '#ffffff' } },
+            { id: 'slate', name: 'Slate Grey', desc: 'Clean & data-focused', preview: { bg: '#2d3748', accent: '#e8eaed',
+                    btnBg: '#2d3748', btnText: '#ffffff' } },
+            { id: 'warm-grey', name: 'Warm Grey', desc: 'Warm & approachable', preview: { bg: '#5a4a3a', accent: '#ede8e3',
+                    btnBg: '#5a4a3a', btnText: '#ffffff' } },
+            { id: 'purple', name: 'Purple', desc: 'Creative & premium', preview: { bg: '#5b3a7a', accent: '#ede6f5',
+                    btnBg: '#5b3a7a', btnText: '#ffffff' } },
+            { id: 'rose', name: 'Rose', desc: 'Warm & distinctive', preview: { bg: '#9e3b6d', accent: '#f5e6ee',
+                    btnBg: '#9e3b6d', btnText: '#ffffff' } },
+            { id: 'carbon', name: 'Carbon Black', desc: 'Ultra-minimalist', preview: { bg: '#262626', accent: '#e8e8e8',
+                    btnBg: '#262626', btnText: '#ffffff' } }
+        ];
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let currentEntryType = 'fuel';
+        let entryQueue = [];
+        let entryHistory = [];
+        let entryIdCounter = 0;
+
+        // DEFRA Factors mapping
+        const defraFactors = {
+            'Diesel': 2.54,
+            'Petrol': 2.16,
+            'AdBlue': 0.00,
+            'Electricity': 0.20712,
+            'Natural Gas': 0.18316,
+            'LPG': 1.49,
+            'Jet Fuel': 2.50,
+            'Marine Diesel': 3.10
+        };
+
+        const unitMapping = {
+            'Diesel': 'L',
+            'Petrol': 'L',
+            'AdBlue': 'L',
+            'Electricity': 'kWh',
+            'Natural Gas': 'kWh',
+            'LPG': 'L',
+            'Jet Fuel': 'L',
+            'Marine Diesel': 'L'
+        };
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        const assetSelect = document.getElementById('assetSelect');
+        const facilitySelect = document.getElementById('facilitySelect');
+        const fuelTypeSelect = document.getElementById('fuelTypeSelect');
+        const scopeSelect = document.getElementById('scopeSelect');
+        const quantityInput = document.getElementById('quantityInput');
+        const defraFactorSelect = document.getElementById('defraFactorSelect');
+        const startDate = document.getElementById('startDate');
+        const endDate = document.getElementById('endDate');
+        const notesInput = document.getElementById('notesInput');
+
+        const displayQuantity = document.getElementById('displayQuantity');
+        const displayFactor = document.getElementById('displayFactor');
+        const displayEmissions = document.getElementById('displayEmissions');
+        const displayUnit = document.getElementById('displayUnit');
+        const unitHint = document.getElementById('unitHint');
+
+        const validationResults = document.getElementById('validationResults');
+        const queueContainer = document.getElementById('queueContainer');
+        const queueCount = document.getElementById('queueCount');
+        const historyTableBody = document.getElementById('historyTableBody');
+        const formStatus = document.getElementById('formStatus');
+        const formTitle = document.getElementById('formTitle');
+        const formDescription = document.getElementById('formDescription');
+
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            toast.querySelector('.icon').textContent = icons[type] || icons.info;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            renderThemeGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // ENTRY TYPE SWITCHER
+        // ============================================
+
+        function switchEntryType(type) {
+            currentEntryType = type;
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.entryType === type);
+            });
+
+            const configs = {
+                'fuel': {
+                    title: '⛽ Fuel Consumption Entry',
+                    desc: 'Enter fuel consumption data for vehicles and equipment',
+                    scope: 'Scope 1',
+                    unit: 'L',
+                    fuelOptions: ['Diesel', 'Petrol', 'AdBlue', 'LPG']
+                },
+                'utility': {
+                    title: '💡 Utility Consumption Entry',
+                    desc: 'Enter electricity, gas, and water consumption data',
+                    scope: 'Scope 2',
+                    unit: 'kWh',
+                    fuelOptions: ['Electricity', 'Natural Gas']
+                },
+                'scope3': {
+                    title: '🌍 Scope 3 Entry',
+                    desc: 'Enter supply chain and business travel emissions',
+                    scope: 'Scope 3',
+                    unit: 'kgCO₂e',
+                    fuelOptions: ['Short Haul Flight', 'Long Haul Flight', 'National Rail', 'Hotel Stay', 'Mixed Waste',
+                        'Recycled Waste'
+                    ]
+                },
+                'manual': {
+                    title: '📝 Manual Entry',
+                    desc: 'Custom manual entry with custom values',
+                    scope: 'Scope 1',
+                    unit: 'kg',
+                    fuelOptions: ['Custom']
+                }
+            };
+
+            const config = configs[type];
+            formTitle.textContent = config.title;
+            formDescription.textContent = config.desc;
+            scopeSelect.value = config.scope;
+
+            // Update fuel options
+            fuelTypeSelect.innerHTML = '<option value="">Select Type...</option>' +
+                config.fuelOptions.map(f => `<option value="${f}">${f}</option>`).join('');
+
+            // Update unit hint
+            unitHint.textContent = `Unit: ${config.unit}`;
+
+            // Clear form
+            clearForm();
+
+            showToast(`Switched to ${config.title}`, 'info');
+        }
+
+        // ============================================
+        // CALCULATION ENGINE
+        // ============================================
+
+        function calculateEmissions() {
+            const fuelType = fuelTypeSelect.value;
+            const quantity = parseFloat(quantityInput.value) || 0;
+
+            // Get DEFRA factor from select or use mapping
+            let factor = parseFloat(defraFactorSelect.value) || 0;
+            if (!factor && fuelType) {
+                factor = defraFactors[fuelType] || 0;
+            }
+
+            const unit = unitMapping[fuelType] || 'kg';
+            const emissions = quantity * factor;
+
+            // Update displays
+            displayQuantity.textContent = quantity.toFixed(2);
+            displayFactor.textContent = factor.toFixed(4);
+            displayEmissions.textContent = emissions.toFixed(2);
+            displayUnit.textContent = unit;
+
+            // Color code emissions
+            const emissionValue = document.getElementById('displayEmissions');
+            if (emissions > 1000) {
+                emissionValue.className = 'value high';
+            } else if (emissions > 100) {
+                emissionValue.className = 'value medium';
+            } else {
+                emissionValue.className = 'value low';
+            }
+
+            return { quantity, factor, emissions, unit };
+        }
+
+        // ============================================
+        // VALIDATION
+        // ============================================
+
+        function validateEntry() {
+            const errors = [];
+            const warnings = [];
+
+            // Check required fields
+            if (!assetSelect.value) errors.push('Asset/Vehicle is required');
+            if (!facilitySelect.value) errors.push('Facility/Site is required');
+            if (!fuelTypeSelect.value) errors.push('Energy/Fuel Type is required');
+            if (!quantityInput.value || parseFloat(quantityInput.value) <= 0) {
+                errors.push('Quantity must be greater than 0');
+            }
+            if (!startDate.value) errors.push('Start Date is required');
+            if (!endDate.value) errors.push('End Date is required');
+            if (startDate.value && endDate.value && startDate.value > endDate.value) {
+                errors.push('Start Date must be before End Date');
+            }
+
+            // Warnings
+            const qty = parseFloat(quantityInput.value) || 0;
+            if (qty > 10000) warnings.push('Very high quantity - please verify');
+            if (qty > 0 && qty < 0.01) warnings.push('Very small quantity - please verify');
+
+            const factor = parseFloat(defraFactorSelect.value) || 0;
+            if (factor === 0 && fuelTypeSelect.value) {
+                warnings.push('DEFRA factor is 0 - emissions will be 0');
+            }
+
+            // Display validation results
+            let html = '';
+            if (errors.length === 0 && warnings.length === 0) {
+                html = `
+                    <div style="padding:12px;border-radius:var(--radius);background:#dcfce7;border:1px solid #86efac;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:18px;">✅</span>
+                            <div>
+                                <div style="font-weight:600;color:#166534;">All validations passed!</div>
+                                <div style="font-size:13px;color:#166534;">Entry is ready for submission.</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                formStatus.textContent = 'Valid ✅';
+                formStatus.className = 'badge badge-success';
+            } else {
+                let errorHtml = errors.map(e => `<li style="color:hsl(var(--destructive));">❌ ${e}</li>`).join('');
+                let warningHtml = warnings.map(w => `<li style="color:hsl(var(--warning));">⚠️ ${w}</li>`).join('');
+
+                html = `
+                    <div style="padding:12px;border-radius:var(--radius);background:${errors.length > 0 ? '#fee2e2' : '#fef3c7'};border:1px solid ${errors.length > 0 ? '#fca5a5' : '#fcd34d'};">
+                        <div style="display:flex;align-items:flex-start;gap:8px;">
+                            <span style="font-size:18px;">${errors.length > 0 ? '❌' : '⚠️'}</span>
+                            <div>
+                                <div style="font-weight:600;color:${errors.length > 0 ? '#991b1b' : '#92400e'};">
+                                    ${errors.length > 0 ? 'Validation failed' : 'Validation warnings'}
+                                </div>
+                                <ul style="margin:4px 0 0 20px;font-size:13px;">
+                                    ${errorHtml}
+                                    ${warningHtml}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                formStatus.textContent = errors.length > 0 ? 'Invalid ❌' : 'Warnings ⚠️';
+                formStatus.className = errors.length > 0 ? 'badge badge-destructive' : 'badge badge-warning';
+            }
+
+            validationResults.innerHTML = html;
+            return errors.length === 0;
+        }
+
+        // ============================================
+        // QUEUE MANAGEMENT
+        // ============================================
+
+        function addToQueue() {
+            const result = calculateEmissions();
+            const validation = validateEntry();
+
+            if (!validation) {
+                showToast('⚠️ Please fix validation errors before adding to queue', 'warning');
+                return;
+            }
+
+            const entry = {
+                id: `entry_${++entryIdCounter}`,
+                asset: assetSelect.value,
+                facility: facilitySelect.value,
+                fuelType: fuelTypeSelect.value,
+                scope: scopeSelect.value,
+                quantity: result.quantity,
+                factor: result.factor,
+                emissions: result.emissions,
+                unit: result.unit,
+                startDate: startDate.value,
+                endDate: endDate.value,
+                notes: notesInput.value,
+                status: 'queued',
+                createdAt: new Date().toISOString()
+            };
+
+            entryQueue.push(entry);
+            renderQueue();
+            showToast(`📋 Added ${entry.asset} to queue`);
+            clearForm();
+        }
+
+        function renderQueue() {
+            if (entryQueue.length === 0) {
+                queueContainer.innerHTML = `
+                    <div class="text-center text-muted" style="padding:32px;">
+                        <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                        <div>No entries in queue</div>
+                        <div style="font-size:13px;">Add entries using the form above</div>
+                    </div>
+                `;
+                queueCount.textContent = '0 entries';
+                return;
+            }
+
+            queueContainer.innerHTML = entryQueue.map((entry, index) => `
+                <div class="entry-row" style="animation:slideIn 0.3s ease;">
+                    <div class="entry-field">
+                        <span class="label">Asset</span>
+                        <span class="value">${entry.asset}</span>
+                    </div>
+                    <div class="entry-field">
+                        <span class="label">Type</span>
+                        <span class="value">${entry.fuelType}</span>
+                    </div>
+                    <div class="entry-field">
+                        <span class="label">Quantity</span>
+                        <span class="value">${entry.quantity.toFixed(2)} ${entry.unit}</span>
+                    </div>
+                    <div class="entry-field">
+                        <span class="label">Emissions</span>
+                        <span class="value" style="color:hsl(var(--primary));font-weight:700;">${entry.emissions.toFixed(2)} kgCO₂e</span>
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn btn-ghost btn-sm" onclick="editQueueEntry(${index})" title="Edit">✏️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="removeQueueEntry(${index})" title="Remove" style="color:hsl(var(--destructive));">✕</button>
+                    </div>
+                </div>
+            `).join('');
+
+            queueCount.textContent = `${entryQueue.length} entries`;
+        }
+
+        function removeQueueEntry(index) {
+            const removed = entryQueue.splice(index, 1)[0];
+            renderQueue();
+            showToast(`🗑️ Removed ${removed.asset} from queue`);
+        }
+
+        function editQueueEntry(index) {
+            const entry = entryQueue[index];
+            // Populate form with entry data
+            assetSelect.value = entry.asset;
+            facilitySelect.value = entry.facility;
+            fuelTypeSelect.value = entry.fuelType;
+            scopeSelect.value = entry.scope;
+            quantityInput.value = entry.quantity;
+            startDate.value = entry.startDate;
+            endDate.value = entry.endDate;
+            notesInput.value = entry.notes || '';
+
+            // Trigger calculation
+            calculateEmissions();
+
+            // Remove from queue
+            entryQueue.splice(index, 1);
+            renderQueue();
+
+            showToast(`✏️ Editing ${entry.asset}`, 'info');
+            // Scroll to form
+            document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function clearQueue() {
+            if (entryQueue.length === 0) return;
+            if (confirm('Clear all entries from queue?')) {
+                entryQueue = [];
+                renderQueue();
+                showToast('🗑️ Queue cleared');
+            }
+        }
+
+        function submitQueue() {
+            if (entryQueue.length === 0) {
+                showToast('⚠️ No entries to submit', 'warning');
+                return;
+            }
+
+            // Submit all entries to history
+            entryQueue.forEach(entry => {
+                entry.status = 'submitted';
+                entry.submittedAt = new Date().toISOString();
+                entryHistory.push({ ...entry });
+            });
+
+            const count = entryQueue.length;
+            entryQueue = [];
+            renderQueue();
+            renderHistory();
+            showToast(`✅ Submitted ${count} entries successfully!`);
+        }
+
+        // ============================================
+        // SUBMIT ENTRY
+        // ============================================
+
+        function submitEntry() {
+            const validation = validateEntry();
+            if (!validation) {
+                showToast('⚠️ Please fix validation errors before submitting', 'warning');
+                return;
+            }
+
+            const result = calculateEmissions();
+
+            // Create history entry
+            const entry = {
+                id: `history_${++entryIdCounter}`,
+                asset: assetSelect.value,
+                facility: facilitySelect.value,
+                fuelType: fuelTypeSelect.value,
+                scope: scopeSelect.value,
+                quantity: result.quantity,
+                factor: result.factor,
+                emissions: result.emissions,
+                unit: result.unit,
+                startDate: startDate.value,
+                endDate: endDate.value,
+                notes: notesInput.value,
+                status: 'submitted',
+                submittedAt: new Date().toISOString()
+            };
+
+            entryHistory.push(entry);
+            renderHistory();
+
+            showToast(`✅ Entry saved successfully! ${result.emissions.toFixed(2)} kgCO₂e`);
+            clearForm();
+        }
+
+        // ============================================
+        // HISTORY
+        // ============================================
+
+        function renderHistory() {
+            if (entryHistory.length === 0) {
+                historyTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center text-muted" style="padding:32px;">
+                            <div style="font-size:32px;margin-bottom:8px;">📭</div>
+                            <div>No entries yet</div>
+                            <div style="font-size:13px;">Start adding manual entries</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            historyTableBody.innerHTML = entryHistory.slice().reverse().map(entry => `
+                <tr>
+                    <td style="font-size:12px;">${entry.submittedAt ? new Date(entry.submittedAt).toLocaleDateString() : 'N/A'}</td>
+                    <td><strong>${entry.asset}</strong></td>
+                    <td><span class="badge badge-muted">${entry.fuelType}</span></td>
+                    <td>${entry.quantity.toFixed(2)} ${entry.unit}</td>
+                    <td style="font-weight:600;color:hsl(var(--primary));">
+                        ${entry.emissions.toFixed(2)} kgCO₂e
+                    </td>
+                    <td><span class="badge badge-primary">${entry.scope}</span></td>
+                    <td><span class="badge badge-success">✅ Submitted</span></td>
+                    <td>
+                        <button class="btn btn-ghost btn-sm" onclick="viewEntry('${entry.id}')" title="View">👁️</button>
+                        <button class="btn btn-ghost btn-sm" onclick="deleteEntry('${entry.id}')" title="Delete" style="color:hsl(var(--destructive));">✕</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function viewEntry(id) {
+            const entry = entryHistory.find(e => e.id === id);
+            if (entry) {
+                showToast(`📄 ${entry.asset}: ${entry.emissions.toFixed(2)} kgCO₂e (${entry.fuelType})`);
+            }
+        }
+
+        function deleteEntry(id) {
+            if (confirm('Delete this entry?')) {
+                entryHistory = entryHistory.filter(e => e.id !== id);
+                renderHistory();
+                showToast('🗑️ Entry deleted');
+            }
+        }
+
+        function refreshHistory() {
+            renderHistory();
+            showToast('🔄 History refreshed');
+        }
+
+        // ============================================
+        // FORM HELPERS
+        // ============================================
+
+        function clearForm() {
+            // Don't clear asset/facility if they have values
+            // assetSelect.value = '';
+            // facilitySelect.value = '';
+            fuelTypeSelect.value = '';
+            quantityInput.value = '';
+            defraFactorSelect.value = '';
+            notesInput.value = '';
+            displayQuantity.textContent = '0.00';
+            displayFactor.textContent = '0.00';
+            displayEmissions.textContent = '0.00';
+            validationResults.innerHTML = '';
+            formStatus.textContent = 'Ready';
+            formStatus.className = 'badge badge-success';
+            calculateEmissions();
+        }
+
+        function loadMockEntry() {
+            const mockEntries = [{
+                asset: 'Fleet_001',
+                facility: 'London_Office',
+                fuelType: 'Diesel',
+                scope: 'Scope 1',
+                quantity: 245.5,
+                startDate: '2026-12-01',
+                endDate: '2026-12-31',
+                notes: 'Q4 fleet fuel consumption'
+            }, {
+                asset: 'Building_A',
+                facility: 'London_Office',
+                fuelType: 'Electricity',
+                scope: 'Scope 2',
+                quantity: 4520,
+                startDate: '2026-12-01',
+                endDate: '2026-12-31',
+                notes: 'December electricity usage'
+            }, {
+                asset: 'Data_Center',
+                facility: 'Data_Center',
+                fuelType: 'Natural Gas',
+                scope: 'Scope 2',
+                quantity: 1800,
+                startDate: '2026-12-01',
+                endDate: '2026-12-31',
+                notes: 'Data center heating'
+            }];
+
+            const mock = mockEntries[Math.floor(Math.random() * mockEntries.length)];
+            assetSelect.value = mock.asset;
+            facilitySelect.value = mock.facility;
+            fuelTypeSelect.value = mock.fuelType;
+            scopeSelect.value = mock.scope;
+            quantityInput.value = mock.quantity;
+            startDate.value = mock.startDate;
+            endDate.value = mock.endDate;
+            notesInput.value = mock.notes;
+
+            // Set DEFRA factor
+            const factor = defraFactors[mock.fuelType] || 0;
+            const options = defraFactorSelect.options;
+            for (let i = 0; i < options.length; i++) {
+                if (parseFloat(options[i].value) === factor) {
+                    defraFactorSelect.selectedIndex = i;
+                    break;
+                }
+            }
+
+            calculateEmissions();
+            validateEntry();
+            showToast(`🧪 Loaded mock entry: ${mock.asset} (${mock.fuelType})`);
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        // Auto-calculate on input change
+        [quantityInput, fuelTypeSelect, defraFactorSelect].forEach(el => {
+            el.addEventListener('change', calculateEmissions);
+            el.addEventListener('input', calculateEmissions);
+        });
+
+        // Theme
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            renderThemeGrid();
+            showToast('Reset to Forest Green theme');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+
+            // Ctrl+Enter to submit
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                submitEntry();
+            }
+        });
+
+        // Sidebar mobile toggle
+        mobileMenuBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 992) {
+                const isClickInsideSidebar = sidebar.contains(e.target);
+                const isClickOnMenuBtn = mobileMenuBtn.contains(e.target);
+                if (!isClickInsideSidebar && !isClickOnMenuBtn && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        // Sidebar navigation
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                if (window.innerWidth <= 992) {
+                    sidebar.classList.remove('open');
+                }
+                const label = this.textContent.trim();
+                showToast(`🔀 Navigated to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Apply theme
+        setTheme(currentTheme);
+        renderThemeGrid();
+
+        // Set default date
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        startDate.value = firstDay.toISOString().split('T')[0];
+        endDate.value = lastDay.toISOString().split('T')[0];
+
+        // Initialize with fuel type
+        switchEntryType('fuel');
+
+        // Load sample history
+        const sampleHistory = [
+            { id: 'h1', asset: 'Fleet_001', facility: 'London_Office', fuelType: 'Diesel', scope: 'Scope 1',
+                quantity: 245.5, factor: 2.54, emissions: 623.57, unit: 'L', startDate: '2026-11-01',
+                endDate: '2026-11-30', notes: 'November fleet data', status: 'submitted',
+                submittedAt: '2026-12-01T10:30:00' },
+            { id: 'h2', asset: 'Building_A', facility: 'London_Office', fuelType: 'Electricity', scope: 'Scope 2',
+                quantity: 4520, factor: 0.207, emissions: 935.64, unit: 'kWh', startDate: '2026-11-01',
+                endDate: '2026-11-30', notes: 'November electricity', status: 'submitted',
+                submittedAt: '2026-12-02T14:20:00' },
+            { id: 'h3', asset: 'Data_Center', facility: 'Data_Center', fuelType: 'Natural Gas', scope: 'Scope 2',
+                quantity: 1800, factor: 0.183, emissions: 329.4, unit: 'kWh', startDate: '2026-11-01',
+                endDate: '2026-11-30', notes: 'Data center heating', status: 'submitted',
+                submittedAt: '2026-12-03T09:15:00' }
+        ];
+        entryHistory = sampleHistory;
+        renderHistory();
+
+        // Console
+        console.log('🌱 CarbonTally - Manual Data Entry');
+        console.log('📝 4 entry types: Fuel, Utility, Scope 3, Manual');
+        console.log('🧪 Click "Load Sample Entry" to test');
+        console.log('📊 Auto-calculation with DEFRA factors');
+        console.log('✅ Real-time validation');
+        console.log('📋 Queue management with batch submission');
+        console.log('📱 Fully responsive');
+        console.log('⌨️  Ctrl+Enter to submit');
+    </script>
+
+</body>
+</html>

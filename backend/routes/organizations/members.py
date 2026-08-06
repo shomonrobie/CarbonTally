@@ -4,7 +4,8 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime, timedelta
 import secrets
-from auth import AuthUser, require_org_member, require_permission
+from auth import AuthUser, require_org_member, require_permission, require_org_admin, require_auth
+
 from database import get_supabase_client
 from utils.email import send_invitation_email
 
@@ -67,6 +68,77 @@ class OrganizationMemberListResponse(BaseModel):
 # HELPER FUNCTIONS
 # ==========================================
 
+@router.get("/user/{user_id}")
+async def get_organization_by_user(
+    user_id: str,
+    current_user: AuthUser = Depends(require_auth)
+):
+    """
+    Get organization details for a specific user.
+    
+    Returns:
+        - Single organization object with role (current implementation)
+        - In future: Can return multiple organizations for consultants
+    
+    The response format is designed to be extensible:
+    - 'mode': 'single' or 'multi' (future)
+    - 'organizations': Array of org objects with roles
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get the user's organization membership
+        member_result = supabase.from_('organization_members') \
+            .select('organization_id, role') \
+            .eq('user_id', user_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not member_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User is not a member of any organization"
+            )
+        
+        org_id = member_result.data['organization_id']
+        role = member_result.data['role']
+        
+        # Get organization details
+        org_result = supabase.from_('organizations') \
+            .select('*') \
+            .eq('id', org_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not org_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Organization not found"
+            )
+        
+        # ✅ Return format that can be extended for multi-org support
+        return {
+            "mode": "single",  # Future: "multi" for consultants
+            "primary_organization": org_result.data,
+            "primary_role": role,
+            "organizations": [
+                {
+                    "organization": org_result.data,
+                    "role": role,
+                    "is_primary": True
+                }
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error fetching organization by user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch organization: {str(e)}"
+        )
+    
 def validate_role(role: str) -> bool:
     """Validate that the role is allowed."""
     allowed_roles = ['admin', 'editor', 'viewer']
@@ -635,4 +707,264 @@ async def resend_invitation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to resend invitation: {str(e)}"
+        )
+
+# Add to backend/routes/organizations/members.py
+
+# ==========================================
+# Bulk Member Operations
+# ==========================================
+
+class BulkMemberUpdate(BaseModel):
+    member_ids: List[str]
+    updates: Dict[str, Any]  # role, is_active, etc.
+
+@router.post("/{org_id}/members/bulk/update")
+async def bulk_update_members(
+    org_id: str,
+    bulk_update: BulkMemberUpdate,
+    current_user: AuthUser = Depends(require_org_admin())
+):
+    """Bulk update organization members."""
+    try:
+        supabase = get_supabase_client()
+        
+        results = {
+            'success_count': 0,
+            'failed_count': 0,
+            'errors': [],
+            'data': []
+        }
+        
+        for member_id in bulk_update.member_ids:
+            try:
+                # Check if member exists
+                existing = supabase.from_('organization_members') \
+                    .select('id, role') \
+                    .eq('id', member_id) \
+                    .eq('organization_id', org_id) \
+                    .maybe_single() \
+                    .execute()
+                
+                if not existing.data:
+                    results['failed_count'] += 1
+                    results['errors'].append({
+                        'member_id': member_id,
+                        'error': 'Member not found'
+                    })
+                    continue
+                
+                # Prevent removing last admin
+                if bulk_update.updates.get('role') and existing.data['role'] == 'admin':
+                    admin_count = supabase.from_('organization_members') \
+                        .select('id', count='exact') \
+                        .eq('organization_id', org_id) \
+                        .eq('role', 'admin') \
+                        .execute()
+                    
+                    if admin_count.count == 1:
+                        results['failed_count'] += 1
+                        results['errors'].append({
+                            'member_id': member_id,
+                            'error': 'Cannot remove the last admin'
+                        })
+                        continue
+                
+                # Update member
+                update_data = bulk_update.updates.copy()
+                update_data['updated_at'] = datetime.utcnow().isoformat()
+                
+                result = supabase.from_('organization_members') \
+                    .update(update_data) \
+                    .eq('id', member_id) \
+                    .execute()
+                
+                if result.data:
+                    results['success_count'] += 1
+                    results['data'].append(result.data[0])
+                else:
+                    results['failed_count'] += 1
+                    results['errors'].append({
+                        'member_id': member_id,
+                        'error': 'Failed to update member'
+                    })
+                    
+            except Exception as e:
+                results['failed_count'] += 1
+                results['errors'].append({
+                    'member_id': member_id,
+                    'error': str(e)
+                })
+        
+        return {
+            "success": True,
+            "message": f"Bulk update completed: {results['success_count']} successful, {results['failed_count']} failed",
+            "data": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to bulk update members: {str(e)}"
+        )
+
+@router.post("/{org_id}/members/bulk/remove")
+async def bulk_remove_members(
+    org_id: str,
+    member_ids: List[str],
+    current_user: AuthUser = Depends(require_org_admin())
+):
+    """Bulk remove members from organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        results = {
+            'success_count': 0,
+            'failed_count': 0,
+            'errors': [],
+            'data': []
+        }
+        
+        for member_id in member_ids:
+            try:
+                # Check if member exists
+                existing = supabase.from_('organization_members') \
+                    .select('id, role') \
+                    .eq('id', member_id) \
+                    .eq('organization_id', org_id) \
+                    .maybe_single() \
+                    .execute()
+                
+                if not existing.data:
+                    results['failed_count'] += 1
+                    results['errors'].append({
+                        'member_id': member_id,
+                        'error': 'Member not found'
+                    })
+                    continue
+                
+                # Prevent removing last admin
+                if existing.data['role'] == 'admin':
+                    admin_count = supabase.from_('organization_members') \
+                        .select('id', count='exact') \
+                        .eq('organization_id', org_id) \
+                        .eq('role', 'admin') \
+                        .execute()
+                    
+                    if admin_count.count == 1:
+                        results['failed_count'] += 1
+                        results['errors'].append({
+                            'member_id': member_id,
+                            'error': 'Cannot remove the last admin'
+                        })
+                        continue
+                
+                # Remove member
+                result = supabase.from_('organization_members') \
+                    .delete() \
+                    .eq('id', member_id) \
+                    .execute()
+                
+                if result.data:
+                    results['success_count'] += 1
+                    results['data'].append({
+                        'member_id': member_id,
+                        'removed': True
+                    })
+                else:
+                    results['failed_count'] += 1
+                    results['errors'].append({
+                        'member_id': member_id,
+                        'error': 'Failed to remove member'
+                    })
+                    
+            except Exception as e:
+                results['failed_count'] += 1
+                results['errors'].append({
+                    'member_id': member_id,
+                    'error': str(e)
+                })
+        
+        return {
+            "success": True,
+            "message": f"Bulk removal completed: {results['success_count']} successful, {results['failed_count']} failed",
+            "data": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to bulk remove members: {str(e)}"
+        )
+
+@router.get("/{org_id}/members/stats")
+async def get_member_stats(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get member statistics for an organization."""
+    try:
+        supabase = get_supabase_client()
+        
+        result = supabase.from_('organization_members') \
+            .select('role, is_active', count='exact') \
+            .eq('organization_id', org_id) \
+            .execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "data": {
+                    "total_members": 0,
+                    "by_role": {},
+                    "active_members": 0,
+                    "inactive_members": 0
+                }
+            }
+        
+        stats = {
+            'total_members': len(result.data),
+            'by_role': {},
+            'active_members': 0,
+            'inactive_members': 0
+        }
+        
+        for member in result.data:
+            role = member.get('role', 'unknown')
+            stats['by_role'][role] = stats['by_role'].get(role, 0) + 1
+            
+            if member.get('is_active', True):
+                stats['active_members'] += 1
+            else:
+                stats['inactive_members'] += 1
+        
+        return {"success": True, "data": stats}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get member stats: {str(e)}"
+        )
+
+@router.get("/{org_id}/members/roles")
+async def get_member_roles(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_member())
+):
+    """Get available roles for organization members."""
+    try:
+        # Define standard roles
+        roles = [
+            {'name': 'admin', 'description': 'Full access to organization settings and members'},
+            {'name': 'manager', 'description': 'Manage assets, data, and team members'},
+            {'name': 'viewer', 'description': 'View-only access to organization data'},
+            {'name': 'contributor', 'description': 'Can add and edit data but not manage members'}
+        ]
+        
+        return {"success": True, "data": roles}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get member roles: {str(e)}"
         )

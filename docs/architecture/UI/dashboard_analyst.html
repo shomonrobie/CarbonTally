@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Analyst Dashboard</title>
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <style>
+        /* Dashboard-specific styles */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🌱</div>
+                <span class="logo-text">CarbonTally</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-title">Main</div>
+                <button class="sidebar-item active">
+                    <span class="icon">🏠</span> Dashboard
+                </button>
+                <a href="modules/document_man.html" class="sidebar-item">
+                    <span class="icon">📁</span> Documents
+                    <span class="badge badge-warning">12</span>
+                </a>
+                <a href="uploads_man.html" class="sidebar-item">
+                    <span class="icon">📤</span> Upload Data
+                </a>
+                <a href="reports_center.html" class="sidebar-item">
+                    <span class="icon">📊</span> Reports
+                </a>
+                <a href="emissions_reports.html" class="sidebar-item">
+                    <span class="icon">📈</span> Emissions
+                </a>
+                <a href="manual_data_entry.html" class="sidebar-item">
+                    <span class="icon">✏️</span> Manual Entry
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Workflow</div>
+                <a href="manual_review_queue.html" class="sidebar-item">
+                    <span class="icon">✅</span> Validation Queue
+                    <span class="badge badge-destructive">8</span>
+                </a>
+                <a href="extracted_data_management.html" class="sidebar-item">
+                    <span class="icon">📂</span> Extracted Data
+                </a>
+                <a href="batch_management.html" class="sidebar-item">
+                    <span class="icon">📦</span> Batches
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Analytics</div>
+                <a href="activity_feed.html" class="sidebar-item">
+                    <span class="icon">🔄</span> Activity
+                </a>
+                <a href="compliance_dashboard.html" class="sidebar-item">
+                    <span class="icon">📋</span> Compliance
+                </a>
+                <a href="secr_report.html" class="sidebar-item">
+                    <span class="icon">📄</span> SECR Report
+                </a>
+                <a href="export_history.html" class="sidebar-item">
+                    <span class="icon">📥</span> Export History
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Communication</div>
+                <a href="notification_center.html" class="sidebar-item">
+                    <span class="icon">🔔</span> Notifications
+                    <span class="badge badge-destructive">3</span>
+                </a>
+                <a href="messaging_chat.html" class="sidebar-item">
+                    <span class="icon">💬</span> Messaging
+                    <span class="badge badge-warning">2</span>
+                </a>
+
+                <div class="sidebar-section-title" style="margin-top:16px;">Profile</div>
+                <a href="user_profile.html" class="sidebar-item">
+                    <span class="icon">👤</span> Profile
+                </a>
+                <a href="feedback_and_support.html" class="sidebar-item">
+                    <span class="icon">💬</span> Feedback
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="sidebar-item" onclick="logout()">
+                    <span class="icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+
+            <!-- ===== TOP HEADER ===== -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+                    <div class="header-search">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" placeholder="Search..." />
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="theme-btn" id="themeToggle">
+                        <span>🎨</span>
+                        <span id="currentThemeName">Forest</span>
+                    </button>
+                    <div class="user-info">
+                        <div class="avatar" id="userAvatar">MR</div>
+                        <div>
+                            <div class="name" id="userName">Mike Roberts</div>
+                            <div class="role" id="userRole">Analyst</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ===== DASHBOARD CONTENT ===== -->
+            <div class="main-body">
+
+                <div class="page-header">
+                    <div>
+                        <h1>📊 Analyst Dashboard</h1>
+                        <p>Welcome back, <span id="welcomeName">Mike</span>!</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <span class="role-badge analyst">📊 Analyst</span>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value">1,234.6</div>
+                        <div class="stat-label">Total Emissions (tCO₂e)</div>
+                        <div class="stat-change positive">↓ 12.3%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-value">8,492</div>
+                        <div class="stat-label">Total Transactions</div>
+                        <div class="stat-change positive">↑ 8%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📄</div>
+                        <div class="stat-value">147</div>
+                        <div class="stat-label">Documents Processed</div>
+                        <div class="stat-change">12 pending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-value">34%</div>
+                        <div class="stat-label">Net Zero Progress</div>
+                        <div class="stat-change positive">On track</div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card" style="margin-bottom:24px;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">⚡ Quick Actions</div>
+                            <div class="card-description">Common analysis tasks</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="quick-actions">
+                            <a href="manual_data_entry.html" class="quick-action">
+                                <span class="icon">✏️</span>
+                                <span class="label">Manual Entry</span>
+                            </a>
+                            <a href="uploads_man.html" class="quick-action">
+                                <span class="icon">📤</span>
+                                <span class="label">Upload Data</span>
+                            </a>
+                            <a href="emissions_reports.html" class="quick-action">
+                                <span class="icon">📈</span>
+                                <span class="label">Emissions Analysis</span>
+                            </a>
+                            <a href="reports_center.html" class="quick-action">
+                                <span class="icon">📊</span>
+                                <span class="label">Generate Report</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Module Access -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📦 Module Access</div>
+                            <div class="card-description">Available modules for analysts</div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="module-grid">
+                            <a href="modules/document_man.html" class="module-card">
+                                <span class="module-icon">📁</span>
+                                <div class="module-info">
+                                    <div class="name">Document Management</div>
+                                    <div class="desc">Manage all documents</div>
+                                </div>
+                                <span class="badge badge-muted module-badge">12</span>
+                            </a>
+                            <a href="uploads_man.html" class="module-card">
+                                <span class="module-icon">📤</span>
+                                <div class="module-info">
+                                    <div class="name">Upload Data</div>
+                                    <div class="desc">Single & batch uploads</div>
+                                </div>
+                            </a>
+                            <a href="reports_center.html" class="module-card">
+                                <span class="module-icon">📊</span>
+                                <div class="module-info">
+                                    <div class="name">Reports Center</div>
+                                    <div class="desc">Generate and manage reports</div>
+                                </div>
+                            </a>
+                            <a href="emissions_reports.html" class="module-card">
+                                <span class="module-icon">📈</span>
+                                <div class="module-info">
+                                    <div class="name">Emissions Reports</div>
+                                    <div class="desc">Analysis by scope</div>
+                                </div>
+                            </a>
+                            <a href="manual_data_entry.html" class="module-card">
+                                <span class="module-icon">✏️</span>
+                                <div class="module-info">
+                                    <div class="name">Manual Data Entry</div>
+                                    <div class="desc">Enter emissions data</div>
+                                </div>
+                            </a>
+                            <a href="manual_review_queue.html" class="module-card">
+                                <span class="module-icon">✅</span>
+                                <div class="module-info">
+                                    <div class="name">Validation Queue</div>
+                                    <div class="desc">Review pending items</div>
+                                </div>
+                                <span class="badge badge-destructive module-badge">8</span>
+                            </a>
+                            <a href="extracted_data_management.html" class="module-card">
+                                <span class="module-icon">📂</span>
+                                <div class="module-info">
+                                    <div class="name">Extracted Data</div>
+                                    <div class="desc">Manage extracted data</div>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ===== THEME MODAL ===== -->
+    <div class="theme-modal-overlay" id="themeModal">
+        <div class="theme-modal">
+            <div class="theme-modal-header">
+                <div>
+                    <div class="theme-modal-title">🎨 Choose Your Theme</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                        Select a color scheme for your dashboard
+                    </div>
+                </div>
+                <button class="theme-modal-close" id="themeModalClose">✕</button>
+            </div>
+            <div class="theme-grid" id="themeGrid"></div>
+            <div class="theme-modal-footer">
+                <div class="hint">💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes</div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary btn-sm" id="resetThemeBtn">↺ Reset</button>
+                    <button class="btn btn-primary btn-sm" id="closeThemeBtn">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast">
+        <span class="icon">✅</span>
+        <span class="message" id="toastMessage">Success!</span>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+    <script>
+        // Dashboard-specific initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update user info
+            const session = getUserSession();
+            if (session) {
+                document.getElementById('userAvatar').textContent = session.avatar || 'MR';
+                document.getElementById('userName').textContent = session.name || 'Mike Roberts';
+                document.getElementById('userRole').textContent = session.role || 'Analyst';
+                document.getElementById('welcomeName').textContent = session.name?.split(' ')[0] || 'Mike';
+            }
+        });
+    </script>
+
+</body>
+</html>

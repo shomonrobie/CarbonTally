@@ -1,0 +1,1955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Theme & Chart Selector</title>
+    <style>
+        /* ============================================
+           CSS Variables - Theme System
+           ============================================ */
+        :root {
+            /* Default Theme: Forest Green */
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.08);
+            --transition-speed: 0.3s;
+        }
+
+        /* All Themes */
+        [data-theme="forest"] {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --ring: 150, 50%, 28%;
+        }
+        [data-theme="emerald"] {
+            --primary: 160, 84%, 39%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 160, 70%, 92%;
+            --accent-foreground: 160, 84%, 39%;
+            --ring: 160, 84%, 39%;
+        }
+        [data-theme="teal"] {
+            --primary: 175, 60%, 25%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 175, 50%, 90%;
+            --accent-foreground: 175, 60%, 25%;
+            --ring: 175, 60%, 25%;
+        }
+        [data-theme="navy"] {
+            --primary: 222, 47%, 31%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 222, 40%, 90%;
+            --accent-foreground: 222, 47%, 31%;
+            --ring: 222, 47%, 31%;
+        }
+        [data-theme="slate"] {
+            --primary: 220, 20%, 18%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 220, 20%, 92%;
+            --accent-foreground: 220, 20%, 18%;
+            --ring: 220, 20%, 40%;
+        }
+        [data-theme="warm-grey"] {
+            --primary: 30, 15%, 25%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 30, 20%, 92%;
+            --accent-foreground: 30, 15%, 25%;
+            --ring: 30, 15%, 25%;
+        }
+        [data-theme="purple"] {
+            --primary: 260, 50%, 35%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 260, 40%, 90%;
+            --accent-foreground: 260, 50%, 35%;
+            --ring: 260, 50%, 35%;
+        }
+        [data-theme="rose"] {
+            --primary: 340, 60%, 35%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 340, 50%, 92%;
+            --accent-foreground: 340, 60%, 35%;
+            --ring: 340, 60%, 35%;
+        }
+        [data-theme="carbon"] {
+            --primary: 0, 0%, 15%;
+            --primary-foreground: 0, 0%, 100%;
+            --accent: 0, 0%, 92%;
+            --accent-foreground: 0, 0%, 15%;
+            --ring: 0, 0%, 40%;
+        }
+
+        /* ============================================
+           Chart Color Palettes
+           ============================================ */
+        .chart-palette-carbon {
+            --chart-1: #10b981;
+            --chart-2: #3b82f6;
+            --chart-3: #f59e0b;
+            --chart-4: #8b5cf6;
+            --chart-5: #ec4899;
+            --chart-6: #14b8a6;
+            --chart-7: #f97316;
+            --chart-8: #6366f1;
+        }
+        .chart-palette-rainbow {
+            --chart-1: #ef4444;
+            --chart-2: #f59e0b;
+            --chart-3: #eab308;
+            --chart-4: #22c55e;
+            --chart-5: #3b82f6;
+            --chart-6: #8b5cf6;
+            --chart-7: #ec4899;
+            --chart-8: #14b8a6;
+        }
+        .chart-palette-pastel {
+            --chart-1: #fca5a5;
+            --chart-2: #fcd34d;
+            --chart-3: #86efac;
+            --chart-4: #93c5fd;
+            --chart-5: #c4b5fd;
+            --chart-6: #f9a8d4;
+            --chart-7: #67e8f9;
+            --chart-8: #fdba74;
+        }
+        .chart-palette-monochrome {
+            --chart-1: #1a1a2e;
+            --chart-2: #2d2d44;
+            --chart-3: #40405b;
+            --chart-4: #535371;
+            --chart-5: #666688;
+            --chart-6: #7a7a9e;
+            --chart-7: #8d8db5;
+            --chart-8: #a1a1cb;
+        }
+        .chart-palette-corporate {
+            --chart-1: #1e3a5f;
+            --chart-2: #2d6b4a;
+            --chart-3: #b68b40;
+            --chart-4: #4a7a6a;
+            --chart-5: #a64747;
+            --chart-6: #4a6a7a;
+            --chart-7: #7a6a4a;
+            --chart-8: #6a4a7a;
+        }
+
+        /* ============================================
+           Base Styles
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease,
+                color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui Component Styles
+           ============================================ */
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            position: relative;
+        }
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover {
+            opacity: 0.85;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: hsl(var(--foreground));
+        }
+        .btn-ghost:hover {
+            background: hsl(var(--accent));
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+        .btn-lg {
+            padding: 12px 24px;
+            font-size: 16px;
+        }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.2s ease, border-color var(--transition-speed) ease;
+        }
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+        .card-header {
+            padding: 20px 24px 12px 24px;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .card-description {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content {
+            padding: 0 24px 24px 24px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover {
+            color: hsl(var(--foreground));
+        }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            transition: background var(--transition-speed) ease;
+        }
+
+        .separator {
+            height: 1px;
+            background: hsl(var(--border));
+            margin: 16px 0;
+        }
+
+        /* ============================================
+           Layout
+           ============================================ */
+        .app {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            transition: background var(--transition-speed) ease,
+                border-color var(--transition-speed) ease;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+            transition: background var(--transition-speed) ease;
+        }
+
+        .nav {
+            display: flex;
+            gap: 4px;
+            margin-left: 32px;
+        }
+
+        .nav-item {
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            border: none;
+            background: transparent;
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .nav-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .nav-item.active {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* ============================================
+           THEME SELECTOR
+           ============================================ */
+
+        .theme-btn {
+            padding: 6px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover {
+            background: hsl(var(--accent));
+            border-color: hsl(var(--ring));
+        }
+
+        .theme-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .theme-modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-modal {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-lg);
+            max-width: 800px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+            padding: 32px;
+        }
+
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .theme-modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .theme-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: hsl(var(--muted-foreground));
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            transition: all 0.15s ease;
+        }
+        .theme-modal-close:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+            margin: 12px 0;
+        }
+
+        .theme-option {
+            padding: 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .theme-option:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .theme-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .theme-option-preview {
+            width: 100%;
+            height: 40px;
+            border-radius: var(--radius);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 4px 8px;
+        }
+        .theme-option-preview .preview-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+        .theme-option-preview .preview-bar {
+            flex: 1;
+            height: 3px;
+            border-radius: 4px;
+        }
+        .theme-option-preview .preview-btn {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            border: none;
+        }
+
+        .theme-option-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+        }
+        .theme-option-desc {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 2px;
+        }
+        .theme-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 16px;
+            margin-top: 4px;
+        }
+        .theme-option.active .check-mark {
+            display: block;
+        }
+
+        /* ============================================
+           CHART PALETTE SELECTOR
+           ============================================ */
+
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .palette-option {
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 2px solid hsl(var(--border));
+            background: hsl(var(--background));
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .palette-option:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        .palette-option.active {
+            border-color: hsl(var(--primary));
+            background: hsl(var(--accent));
+        }
+
+        .palette-swatches {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+        .palette-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+        .palette-swatch:hover {
+            transform: scale(1.2);
+        }
+
+        .palette-option-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .palette-option .check-mark {
+            display: none;
+            color: hsl(var(--primary));
+            font-size: 14px;
+            margin-left: 4px;
+        }
+        .palette-option.active .check-mark {
+            display: inline;
+        }
+
+        /* ============================================
+           CHART TYPES
+           ============================================ */
+
+        .chart-type-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chart-type-btn {
+            padding: 4px 12px;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            background: hsl(var(--background));
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s ease;
+        }
+        .chart-type-btn:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .chart-type-btn.active {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            border-color: hsl(var(--primary));
+        }
+
+        /* ============================================
+           CHART VISUALIZATION
+           ============================================ */
+
+        .chart-container {
+            position: relative;
+            padding: 20px 0;
+        }
+
+        .chart-visual {
+            height: 280px;
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            padding: 20px 0 10px 0;
+            position: relative;
+        }
+
+        .chart-bar-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            height: 100%;
+            justify-content: flex-end;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .chart-bar {
+            width: 100%;
+            max-width: 36px;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+                background 0.4s ease,
+                transform 0.3s ease;
+            min-height: 4px;
+            position: relative;
+        }
+        .chart-bar:hover {
+            transform: scaleX(1.1);
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .chart-bar-label {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            font-weight: 500;
+            transition: color 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .chart-bar-value {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 9px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            background: hsl(var(--card));
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid hsl(var(--border));
+            white-space: nowrap;
+        }
+        .chart-bar-wrap:hover .chart-bar-value {
+            opacity: 1;
+        }
+
+        /* Stacked chart */
+        .chart-stacked .chart-bar {
+            border-radius: 2px;
+            min-height: 2px;
+        }
+
+        /* ============================================
+           CHART LEGEND
+           ============================================ */
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 12px 0 4px 0;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+            transition: color 0.3s ease;
+        }
+        .legend-item:hover {
+            color: hsl(var(--foreground));
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 4px;
+            transition: transform 0.2s ease;
+        }
+        .legend-dot:hover {
+            transform: scale(1.3);
+        }
+
+        /* ============================================
+           ANIMATIONS
+           ============================================ */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        @keyframes barGrow {
+            from {
+                height: 0 !important;
+            }
+            to {
+                height: var(--target-height);
+            }
+        }
+
+        /* ============================================
+           MAIN CONTENT
+           ============================================ */
+        .main {
+            flex: 1;
+            padding: 32px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .welcome {
+            margin-bottom: 32px;
+        }
+        .welcome h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .welcome p {
+            color: hsl(var(--muted-foreground));
+            font-size: 16px;
+            margin-top: 4px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card .stat-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stat-card .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .stat-card .stat-sub {
+            font-size: 13px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+        .table-wrap table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table-wrap th {
+            padding: 12px 20px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: hsl(var(--muted-foreground));
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .table-wrap td {
+            padding: 14px 20px;
+            border-bottom: 1px solid hsl(var(--border));
+            font-size: 14px;
+            color: hsl(var(--foreground));
+        }
+        .table-wrap tr:hover td {
+            background: hsl(var(--accent));
+        }
+
+        .footer {
+            margin-top: 32px;
+            padding: 24px 32px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+        }
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+        .footer-links a {
+            color: hsl(var(--muted-foreground));
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .footer-links a:hover {
+            color: hsl(var(--foreground));
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 12px 20px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(120px);
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 2000;
+            max-width: 400px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast .icon {
+            font-size: 20px;
+        }
+        .toast .message {
+            font-size: 14px;
+            color: hsl(var(--foreground));
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .nav {
+                display: none;
+            }
+        }
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .main {
+                padding: 16px;
+            }
+            .header {
+                padding: 0 16px;
+                height: auto;
+                min-height: 64px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .header-actions {
+                gap: 8px;
+            }
+            .theme-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .palette-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+            .footer {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+            .theme-modal {
+                padding: 16px;
+            }
+            .chart-visual {
+                height: 200px;
+                gap: 4px;
+            }
+            .chart-bar {
+                max-width: 24px;
+            }
+        }
+
+        .flex {
+            display: flex;
+        }
+        .items-center {
+            align-items: center;
+        }
+        .justify-between {
+            justify-content: space-between;
+        }
+        .gap-2 {
+            gap: 8px;
+        }
+        .gap-4 {
+            gap: 16px;
+        }
+        .mt-2 {
+            margin-top: 8px;
+        }
+        .mt-4 {
+            margin-top: 16px;
+        }
+        .mb-4 {
+            margin-bottom: 16px;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .flex-wrap {
+            flex-wrap: wrap;
+        }
+
+        /* Scrollable modal content */
+        .modal-body {
+            max-height: calc(85vh - 200px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .modal-body::-webkit-scrollbar {
+            width: 6px;
+        }
+        .modal-body::-webkit-scrollbar-track {
+            background: hsl(var(--muted));
+            border-radius: 4px;
+        }
+        .modal-body::-webkit-scrollbar-thumb {
+            background: hsl(var(--primary));
+            border-radius: 4px;
+        }
+
+        /* Section titles in modal */
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-top: 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title:first-child {
+            margin-top: 0;
+        }
+        .section-title .emoji {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app" id="app">
+
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <div class="flex items-center" style="gap: 16px;">
+                <div class="logo">
+                    <div class="logo-icon">🌱</div>
+                    CarbonTally
+                </div>
+                <nav class="nav">
+                    <button class="nav-item active">Dashboard</button>
+                    <button class="nav-item">Upload</button>
+                    <button class="nav-item">Documents</button>
+                    <button class="nav-item">History</button>
+                    <button class="nav-item">Team</button>
+                    <button class="nav-item">Assets</button>
+                </nav>
+            </div>
+
+            <div class="header-actions">
+                <button class="theme-btn" id="themeToggle">
+                    <span>🎨</span>
+                    <span id="currentThemeName">Forest</span>
+                    <span style="font-size:10px;">▼</span>
+                </button>
+
+                <button class="btn btn-primary btn-sm">
+                    <span>📥</span> Export
+                </button>
+                <div class="avatar">JD</div>
+            </div>
+        </header>
+
+        <!-- ===== THEME MODAL ===== -->
+        <div class="theme-modal-overlay" id="themeModal">
+            <div class="theme-modal">
+                <div class="theme-modal-header">
+                    <div>
+                        <div class="theme-modal-title">🎨 Customize Your Dashboard</div>
+                        <div style="font-size:14px;color:hsl(var(--muted-foreground));margin-top:4px;">
+                            Choose theme colors and chart styles
+                        </div>
+                    </div>
+                    <button class="theme-modal-close" id="themeModalClose">✕</button>
+                </div>
+
+                <div class="modal-body">
+                    <!-- Theme Colors -->
+                    <div class="section-title">
+                        <span class="emoji">🎨</span> Theme Colors
+                    </div>
+                    <div class="theme-grid" id="themeGrid">
+                        <!-- Rendered by JS -->
+                    </div>
+
+                    <div class="separator"></div>
+
+                    <!-- Chart Palettes -->
+                    <div class="section-title">
+                        <span class="emoji">🌈</span> Chart Color Palettes
+                    </div>
+                    <div class="palette-grid" id="paletteGrid">
+                        <!-- Rendered by JS -->
+                    </div>
+
+                    <div class="separator"></div>
+
+                    <!-- Chart Types -->
+                    <div class="section-title">
+                        <span class="emoji">📊</span> Chart Type
+                    </div>
+                    <div class="chart-type-selector" id="chartTypeSelector">
+                        <button class="chart-type-btn active" data-type="bar">Bar Chart</button>
+                        <button class="chart-type-btn" data-type="stacked">Stacked Bar</button>
+                        <button class="chart-type-btn" data-type="grouped">Grouped Bar</button>
+                        <button class="chart-type-btn" data-type="line">Line Chart</button>
+                        <button class="chart-type-btn" data-type="area">Area Chart</button>
+                    </div>
+                </div>
+
+                <div class="theme-modal-footer" style="margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border));display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));">
+                        💡 Use <kbd>←</kbd> <kbd>→</kbd> to cycle themes
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary btn-sm" id="resetThemeBtn">
+                            ↺ Reset All
+                        </button>
+                        <button class="btn btn-primary btn-sm" id="closeThemeBtn">
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== TOAST ===== -->
+        <div class="toast" id="toast">
+            <span class="icon">✅</span>
+            <span class="message" id="toastMessage">Theme changed!</span>
+        </div>
+
+        <!-- ===== MAIN ===== -->
+        <main class="main">
+            <div class="welcome">
+                <h1>Good morning, John 👋</h1>
+                <p>Here's your carbon emissions overview for Q4 2026</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="card stat-card">
+                    <div class="card-content" style="padding-top:20px;">
+                        <div class="stat-label"><span>📊</span> Total Emissions</div>
+                        <div class="stat-value">1,234,567</div>
+                        <div class="stat-sub">kg CO₂e</div>
+                        <div class="badge badge-success" style="margin-top:12px;">↓ 12% from last quarter</div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="card-content" style="padding-top:20px;">
+                        <div class="stat-label"><span>📈</span> Total Transactions</div>
+                        <div class="stat-value">8,492</div>
+                        <div class="stat-sub">42 this month</div>
+                        <div class="badge badge-muted" style="margin-top:12px;">+8% growth</div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="card-content" style="padding-top:20px;">
+                        <div class="stat-label"><span>📄</span> Documents</div>
+                        <div class="stat-value">147</div>
+                        <div class="stat-sub">12 pending review</div>
+                        <div class="badge badge-muted" style="margin-top:12px;">93% processed</div>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="card-content" style="padding-top:20px;">
+                        <div class="stat-label"><span>🎯</span> Net Zero Progress</div>
+                        <div class="stat-value">34%</div>
+                        <div class="stat-sub">Target: 2030</div>
+                        <div class="badge badge-success" style="margin-top:12px;">On track</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Card -->
+            <div class="card" style="margin-bottom:32px;">
+                <div class="card-header">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <div>
+                            <div class="card-title">Emissions Trend</div>
+                            <div class="card-description" id="chartDescription">Monthly CO₂e in tonnes by scope</div>
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            <div class="tabs">
+                                <button class="tab">Q4</button>
+                                <button class="tab active">Year</button>
+                                <button class="tab">All</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="chart-container" id="chartContainer">
+                        <div class="chart-visual" id="chartVisual">
+                            <!-- Rendered by JS -->
+                        </div>
+                        <div class="chart-legend" id="chartLegend">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <div>
+                            <div class="card-title">Recent Transactions</div>
+                            <div class="card-description">Last 5 entries</div>
+                        </div>
+                        <div class="tabs">
+                            <button class="tab active">All</button>
+                            <button class="tab">Scope 1</button>
+                            <button class="tab">Scope 2</button>
+                            <button class="tab">Scope 3</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Asset</th>
+                                    <th>Energy Source</th>
+                                    <th>Scope</th>
+                                    <th>Consumption</th>
+                                    <th>Emissions</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>2026-12-15</td>
+                                    <td><strong>Building A</strong> - Manchester</td>
+                                    <td>Natural Gas</td>
+                                    <td><span class="badge badge-warning">Scope 2</span></td>
+                                    <td>4,500 kWh</td>
+                                    <td style="font-weight:600;">824 kgCO₂e</td>
+                                    <td><span class="badge badge-success">Verified</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2026-12-14</td>
+                                    <td><strong>Fleet #42</strong> - Vehicle</td>
+                                    <td>Diesel</td>
+                                    <td><span class="badge badge-destructive">Scope 1</span></td>
+                                    <td>320 L</td>
+                                    <td style="font-weight:600;">813 kgCO₂e</td>
+                                    <td><span class="badge badge-success">Verified</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2026-12-13</td>
+                                    <td><strong>Data Center</strong> - London</td>
+                                    <td>Electricity</td>
+                                    <td><span class="badge badge-warning">Scope 2</span></td>
+                                    <td>12,800 kWh</td>
+                                    <td style="font-weight:600;">2,651 kgCO₂e</td>
+                                    <td><span class="badge badge-muted">Review</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2026-12-12</td>
+                                    <td><strong>Supplier Logistics</strong></td>
+                                    <td>Air Freight</td>
+                                    <td><span class="badge badge-primary">Scope 3</span></td>
+                                    <td>1,450 kg</td>
+                                    <td style="font-weight:600;">3,872 kgCO₂e</td>
+                                    <td><span class="badge badge-muted">Review</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2026-12-11</td>
+                                    <td><strong>Office</strong> - Birmingham</td>
+                                    <td>Electricity</td>
+                                    <td><span class="badge badge-warning">Scope 2</span></td>
+                                    <td>3,200 kWh</td>
+                                    <td style="font-weight:600;">663 kgCO₂e</td>
+                                    <td><span class="badge badge-success">Verified</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="footer">
+                <div>© 2026 CarbonTally (UK) Ltd. All rights reserved.</div>
+                <div class="footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Cookie Policy</a>
+                    <a href="#">Terms</a>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+
+        const themes = [{
+            id: 'forest',
+            name: 'Forest Green',
+            desc: 'Professional & sustainable',
+            preview: { bg: '#1a6b43', accent: '#e8f0ec', btnBg: '#1a6b43', btnText: '#ffffff' }
+        }, {
+            id: 'emerald',
+            name: 'Emerald Green',
+            desc: 'Bold & vibrant',
+            preview: { bg: '#10b981', accent: '#d1fae5', btnBg: '#10b981', btnText: '#ffffff' }
+        }, {
+            id: 'teal',
+            name: 'Teal',
+            desc: 'Modern & corporate',
+            preview: { bg: '#196666', accent: '#d4ecec', btnBg: '#196666', btnText: '#ffffff' }
+        }, {
+            id: 'navy',
+            name: 'Navy Blue',
+            desc: 'Trustworthy & financial',
+            preview: { bg: '#1e3a5f', accent: '#dbe6f0', btnBg: '#1e3a5f', btnText: '#ffffff' }
+        }, {
+            id: 'slate',
+            name: 'Slate Grey',
+            desc: 'Clean & data-focused',
+            preview: { bg: '#2d3748', accent: '#e8eaed', btnBg: '#2d3748', btnText: '#ffffff' }
+        }, {
+            id: 'warm-grey',
+            name: 'Warm Grey',
+            desc: 'Warm & approachable',
+            preview: { bg: '#5a4a3a', accent: '#ede8e3', btnBg: '#5a4a3a', btnText: '#ffffff' }
+        }, {
+            id: 'purple',
+            name: 'Purple',
+            desc: 'Creative & premium',
+            preview: { bg: '#5b3a7a', accent: '#ede6f5', btnBg: '#5b3a7a', btnText: '#ffffff' }
+        }, {
+            id: 'rose',
+            name: 'Rose',
+            desc: 'Warm & distinctive',
+            preview: { bg: '#9e3b6d', accent: '#f5e6ee', btnBg: '#9e3b6d', btnText: '#ffffff' }
+        }, {
+            id: 'carbon',
+            name: 'Carbon Black',
+            desc: 'Ultra-minimalist',
+            preview: { bg: '#262626', accent: '#e8e8e8', btnBg: '#262626', btnText: '#ffffff' }
+        }];
+
+        const chartPalettes = [{
+            id: 'carbon',
+            name: 'Carbon',
+            colors: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
+        }, {
+            id: 'rainbow',
+            name: 'Rainbow',
+            colors: ['#ef4444', '#f59e0b', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6']
+        }, {
+            id: 'pastel',
+            name: 'Pastel',
+            colors: ['#fca5a5', '#fcd34d', '#86efac', '#93c5fd', '#c4b5fd', '#f9a8d4', '#67e8f9', '#fdba74']
+        }, {
+            id: 'monochrome',
+            name: 'Monochrome',
+            colors: ['#1a1a2e', '#2d2d44', '#40405b', '#535371', '#666688', '#7a7a9e', '#8d8db5', '#a1a1cb']
+        }, {
+            id: 'corporate',
+            name: 'Corporate',
+            colors: ['#1e3a5f', '#2d6b4a', '#b68b40', '#4a7a6a', '#a64747', '#4a6a7a', '#7a6a4a', '#6a4a7a']
+        }];
+
+        const chartTypes = ['bar', 'stacked', 'grouped', 'line', 'area'];
+        let currentChartType = 'bar';
+
+        // Multi-series data: each series represents a scope
+        const chartData = {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+            series: [
+                { name: 'Scope 1', values: [45, 52, 38, 60, 48, 55, 42, 35, 50, 28, 33, 40] },
+                { name: 'Scope 2', values: [65, 58, 72, 50, 62, 45, 55, 60, 48, 52, 58, 45] },
+                { name: 'Scope 3', values: [25, 30, 28, 35, 32, 28, 30, 25, 22, 20, 18, 15] }
+            ]
+        };
+
+        // ============================================
+        // STATE
+        // ============================================
+
+        let currentTheme = localStorage.getItem('carbontally-theme') || 'forest';
+        let currentPalette = localStorage.getItem('carbontally-palette') || 'carbon';
+        let currentChartTypeState = localStorage.getItem('carbontally-chart-type') || 'bar';
+
+        // ============================================
+        // DOM REFS
+        // ============================================
+
+        const themeModal = document.getElementById('themeModal');
+        const themeGrid = document.getElementById('themeGrid');
+        const paletteGrid = document.getElementById('paletteGrid');
+        const themeToggle = document.getElementById('themeToggle');
+        const currentThemeName = document.getElementById('currentThemeName');
+        const themeModalClose = document.getElementById('themeModalClose');
+        const closeThemeBtn = document.getElementById('closeThemeBtn');
+        const resetThemeBtn = document.getElementById('resetThemeBtn');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+        const chartVisual = document.getElementById('chartVisual');
+        const chartLegend = document.getElementById('chartLegend');
+        const chartDescription = document.getElementById('chartDescription');
+        const chartTypeSelector = document.getElementById('chartTypeSelector');
+
+        // ============================================
+        // THEME FUNCTIONS
+        // ============================================
+
+        function setTheme(themeId) {
+            if (!themeId) return;
+            currentTheme = themeId;
+            document.documentElement.setAttribute('data-theme', themeId);
+            localStorage.setItem('carbontally-theme', themeId);
+
+            const theme = themes.find(t => t.id === themeId);
+            if (theme) {
+                currentThemeName.textContent = theme.name;
+            }
+
+            document.querySelectorAll('.theme-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === themeId);
+            });
+
+            showToast(`Theme changed to ${theme?.name || themeId}`);
+            renderChart(); // Re-render chart with new colors
+        }
+
+        function setPalette(paletteId) {
+            if (!paletteId) return;
+            currentPalette = paletteId;
+            localStorage.setItem('carbontally-palette', paletteId);
+
+            document.querySelectorAll('.palette-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.palette === paletteId);
+            });
+
+            showToast(`Chart palette changed to ${chartPalettes.find(p => p.id === paletteId)?.name || paletteId}`);
+            renderChart();
+        }
+
+        function setChartType(type) {
+            if (!type || !chartTypes.includes(type)) return;
+            currentChartTypeState = type;
+            localStorage.setItem('carbontally-chart-type', type);
+
+            document.querySelectorAll('.chart-type-btn').forEach(el => {
+                el.classList.toggle('active', el.dataset.type === type);
+            });
+
+            const names = {
+                bar: 'Bar Chart',
+                stacked: 'Stacked Bar Chart',
+                grouped: 'Grouped Bar Chart',
+                line: 'Line Chart',
+                area: 'Area Chart'
+            };
+            showToast(`Chart type changed to ${names[type] || type}`);
+            renderChart();
+        }
+
+        function showToast(message) {
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        // ============================================
+        // RENDER FUNCTIONS
+        // ============================================
+
+        function renderThemeGrid() {
+            themeGrid.innerHTML = themes.map(theme => `
+                <div class="theme-option ${currentTheme === theme.id ? 'active' : ''}" 
+                     data-theme="${theme.id}"
+                     onclick="setTheme('${theme.id}');">
+                    <div class="theme-option-preview" style="background:${theme.preview.accent};">
+                        <div class="preview-dot" style="background:${theme.preview.bg};"></div>
+                        <div class="preview-bar" style="background:${theme.preview.bg};"></div>
+                        <button class="preview-btn" style="background:${theme.preview.btnBg};color:${theme.preview.btnText};">Btn</button>
+                    </div>
+                    <div class="theme-option-name">${theme.name}</div>
+                    <div class="theme-option-desc">${theme.desc}</div>
+                    <div class="check-mark">✓</div>
+                </div>
+            `).join('');
+        }
+
+        function renderPaletteGrid() {
+            paletteGrid.innerHTML = chartPalettes.map(palette => `
+                <div class="palette-option ${currentPalette === palette.id ? 'active' : ''}" 
+                     data-palette="${palette.id}"
+                     onclick="setPalette('${palette.id}');">
+                    <div class="palette-swatches">
+                        ${palette.colors.slice(0, 6).map(c => 
+                            `<div class="palette-swatch" style="background:${c};"></div>`
+                        ).join('')}
+                        ${palette.colors.length > 6 ? '<span style="font-size:10px;color:hsl(var(--muted-foreground));">+</span>' : ''}
+                    </div>
+                    <div class="palette-option-name">
+                        ${palette.name}
+                        <span class="check-mark">✓</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderChart() {
+            const palette = chartPalettes.find(p => p.id === currentPalette) || chartPalettes[0];
+            const colors = palette.colors;
+            const { labels, series } = chartData;
+            const maxVal = Math.max(...series.flatMap(s => s.values)) * 1.2;
+
+            let html = '';
+            let legendHtml = '';
+
+            if (currentChartTypeState === 'bar') {
+                // Simple bar chart - show each series as a stack of bars per month
+                html = labels.map((label, i) => {
+                    const totalHeight = series.reduce((sum, s) => sum + s.values[i], 0);
+                    const pct = (totalHeight / maxVal) * 100;
+                    return `
+                        <div class="chart-bar-wrap">
+                            <div style="position:relative;width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;">
+                                ${series.map((s, si) => {
+                                    const h = (s.values[i] / maxVal) * 100;
+                                    const color = colors[si % colors.length];
+                                    return `
+                                        <div class="chart-bar" style="height:${h}%;background:${color};margin-top:2px;max-width:36px;width:100%;">
+                                            <div class="chart-bar-value">${s.values[i]}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div class="chart-bar-label">${label}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                legendHtml = series.map((s, i) => `
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background:${colors[i % colors.length]};"></div>
+                        ${s.name}
+                    </div>
+                `).join('');
+
+                chartDescription.textContent = 'Monthly CO₂e in tonnes by scope (bar chart)';
+
+            } else if (currentChartTypeState === 'stacked') {
+                // Stacked bar chart
+                html = labels.map((label, i) => {
+                    let cumulative = 0;
+                    return `
+                        <div class="chart-bar-wrap">
+                            <div style="position:relative;width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;">
+                                ${series.map((s, si) => {
+                                    const h = (s.values[i] / maxVal) * 100;
+                                    const color = colors[si % colors.length];
+                                    cumulative += h;
+                                    return `
+                                        <div class="chart-bar" style="height:${h}%;background:${color};max-width:36px;width:100%;border-radius:${si === series.length - 1 ? '4px 4px 0 0' : '0'};">
+                                            <div class="chart-bar-value">${s.values[i]}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div class="chart-bar-label">${label}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                legendHtml = series.map((s, i) => `
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background:${colors[i % colors.length]};"></div>
+                        ${s.name}
+                    </div>
+                `).join('');
+
+                chartDescription.textContent = 'Monthly CO₂e in tonnes by scope (stacked)';
+
+            } else if (currentChartTypeState === 'grouped') {
+                // Grouped bar chart - each month has grouped bars side by side
+                const numSeries = series.length;
+                const barWidth = 100 / (numSeries + 1);
+
+                html = labels.map((label, i) => {
+                    return `
+                        <div class="chart-bar-wrap">
+                            <div style="position:relative;width:100%;display:flex;align-items:flex-end;justify-content:center;height:100%;gap:2px;padding:0 4px;">
+                                ${series.map((s, si) => {
+                                    const h = (s.values[i] / maxVal) * 100;
+                                    const color = colors[si % colors.length];
+                                    return `
+                                        <div style="display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;flex:1;max-width:${barWidth}%;">
+                                            <div class="chart-bar" style="height:${h}%;background:${color};max-width:20px;width:100%;">
+                                                <div class="chart-bar-value">${s.values[i]}</div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div class="chart-bar-label">${label}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                legendHtml = series.map((s, i) => `
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background:${colors[i % colors.length]};"></div>
+                        ${s.name}
+                    </div>
+                `).join('');
+
+                chartDescription.textContent = 'Monthly CO₂e in tonnes by scope (grouped)';
+
+            } else if (currentChartTypeState === 'line') {
+                // Line chart
+                const points = series.map((s, si) => {
+                    const color = colors[si % colors.length];
+                    const path = s.values.map((v, i) => {
+                        const x = (i / (labels.length - 1)) * 100;
+                        const y = 100 - (v / maxVal) * 100;
+                        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                    }).join(' ');
+
+                    return `
+                        <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" preserveAspectRatio="none">
+                            <polyline points="${s.values.map((v, i) => `${(i / (labels.length - 1)) * 100} ${100 - (v / maxVal) * 100}`).join(' ')}" 
+                                      fill="none" 
+                                      stroke="${color}" 
+                                      stroke-width="3" 
+                                      stroke-linecap="round" 
+                                      stroke-linejoin="round"/>
+                            ${s.values.map((v, i) => `
+                                <circle cx="${(i / (labels.length - 1)) * 100}%" 
+                                        cy="${100 - (v / maxVal) * 100}%" 
+                                        r="6" 
+                                        fill="${color}" 
+                                        stroke="white" 
+                                        stroke-width="2"
+                                        style="pointer-events:auto;cursor:pointer;"/>
+                            `).join('')}
+                        </svg>
+                    `;
+                }).join('');
+
+                html = `
+                    <div style="position:relative;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:space-between;padding:0 4px;">
+                        ${points}
+                        ${labels.map(label => `
+                            <div style="display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;flex:1;">
+                                <div class="chart-bar-label" style="margin-top:8px;">${label}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                legendHtml = series.map((s, i) => `
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background:${colors[i % colors.length]};border-radius:50%;"></div>
+                        ${s.name}
+                    </div>
+                `).join('');
+
+                chartDescription.textContent = 'Monthly CO₂e in tonnes by scope (line chart)';
+
+            } else if (currentChartTypeState === 'area') {
+                // Area chart (simplified)
+                const points = series.map((s, si) => {
+                    const color = colors[si % colors.length];
+                    const path = s.values.map((v, i) => {
+                        const x = (i / (labels.length - 1)) * 100;
+                        const y = 100 - (v / maxVal) * 100;
+                        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                    }).join(' ');
+
+                    return `
+                        <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;" preserveAspectRatio="none">
+                            <polygon points="${s.values.map((v, i) => `${(i / (labels.length - 1)) * 100} ${100 - (v / maxVal) * 100}`).join(' ')} ${100} ${100} ${100} ${100}" 
+                                     fill="${color}" 
+                                     opacity="0.3"
+                                     stroke="${color}" 
+                                     stroke-width="2"/>
+                            <polyline points="${s.values.map((v, i) => `${(i / (labels.length - 1)) * 100} ${100 - (v / maxVal) * 100}`).join(' ')}" 
+                                      fill="none" 
+                                      stroke="${color}" 
+                                      stroke-width="3" 
+                                      stroke-linecap="round" 
+                                      stroke-linejoin="round"/>
+                            ${s.values.map((v, i) => `
+                                <circle cx="${(i / (labels.length - 1)) * 100}%" 
+                                        cy="${100 - (v / maxVal) * 100}%" 
+                                        r="5" 
+                                        fill="${color}" 
+                                        stroke="white" 
+                                        stroke-width="2"
+                                        style="pointer-events:auto;cursor:pointer;"/>
+                            `).join('')}
+                        </svg>
+                    `;
+                }).join('');
+
+                html = `
+                    <div style="position:relative;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:space-between;padding:0 4px;">
+                        ${points}
+                        ${labels.map(label => `
+                            <div style="display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;flex:1;">
+                                <div class="chart-bar-label" style="margin-top:8px;">${label}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                legendHtml = series.map((s, i) => `
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background:${colors[i % colors.length]};border-radius:50%;"></div>
+                        ${s.name}
+                    </div>
+                `).join('');
+
+                chartDescription.textContent = 'Monthly CO₂e in tonnes by scope (area chart)';
+            }
+
+            chartVisual.innerHTML = html;
+            chartLegend.innerHTML = legendHtml;
+        }
+
+        // ============================================
+        // MODAL FUNCTIONS
+        // ============================================
+
+        function openThemeModal() {
+            themeModal.classList.add('show');
+            document.body.style.overflow = 'hidden';
+            // Re-render grids to ensure active states
+            renderThemeGrid();
+            renderPaletteGrid();
+        }
+
+        function closeThemeModal() {
+            themeModal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+
+        themeToggle.addEventListener('click', openThemeModal);
+        themeModalClose.addEventListener('click', closeThemeModal);
+        closeThemeBtn.addEventListener('click', closeThemeModal);
+
+        themeModal.addEventListener('click', function(e) {
+            if (e.target === this) closeThemeModal();
+        });
+
+        resetThemeBtn.addEventListener('click', function() {
+            setTheme('forest');
+            setPalette('carbon');
+            setChartType('bar');
+            renderThemeGrid();
+            renderPaletteGrid();
+            showToast('Reset to default settings');
+        });
+
+        // Chart type selector
+        chartTypeSelector.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                setChartType(this.dataset.type);
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (themeModal.classList.contains('show')) {
+                    closeThemeModal();
+                }
+                return;
+            }
+
+            if (themeModal.classList.contains('show')) {
+                const themeIds = themes.map(t => t.id);
+                const currentIndex = themeIds.indexOf(currentTheme);
+                let newIndex = currentIndex;
+
+                if (e.key === 'ArrowRight') {
+                    newIndex = (currentIndex + 1) % themeIds.length;
+                    e.preventDefault();
+                } else if (e.key === 'ArrowLeft') {
+                    newIndex = (currentIndex - 1 + themeIds.length) % themeIds.length;
+                    e.preventDefault();
+                }
+
+                if (newIndex !== currentIndex) {
+                    setTheme(themeIds[newIndex]);
+                    renderThemeGrid();
+                }
+            }
+        });
+
+        // Tab interactions
+        document.querySelectorAll('.tab, .nav-item').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const parent = this.closest('.tabs, .nav');
+                if (parent) {
+                    parent.querySelectorAll('.tab, .nav-item').forEach(t => t.classList.remove('active'));
+                }
+                this.classList.add('active');
+            });
+        });
+
+        // ============================================
+        // EXPORT DROPDOWN
+        // ============================================
+
+        const exportBtn = document.querySelector('.btn-primary');
+        if (exportBtn) {
+            let dropdown = null;
+
+            exportBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+
+                if (!dropdown) {
+                    dropdown = document.createElement('div');
+                    dropdown.className = 'dropdown-content';
+                    dropdown.style.cssText = `
+                        position: absolute;
+                        top: 100%;
+                        right: 0;
+                        margin-top: 4px;
+                        background: hsl(var(--card));
+                        border: 1px solid hsl(var(--border));
+                        border-radius: var(--radius);
+                        box-shadow: var(--shadow-lg);
+                        min-width: 200px;
+                        z-index: 100;
+                        overflow: hidden;
+                        display: block;
+                    `;
+                    dropdown.innerHTML = `
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📊 SECR Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📈 CSRD Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            🌍 ISSB Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📋 Excel Export
+                        </button>
+                    `;
+                    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+                        item.addEventListener('mouseenter', function() {
+                            this.style.background = 'hsl(var(--accent))';
+                        });
+                        item.addEventListener('mouseleave', function() {
+                            this.style.background = 'transparent';
+                        });
+                        item.addEventListener('click', function() {
+                            showToast('📊 Exporting: ' + this.textContent.trim());
+                            dropdown.style.display = 'none';
+                        });
+                    });
+                    this.parentElement.style.position = 'relative';
+                    this.parentElement.appendChild(dropdown);
+                } else {
+                    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                }
+            });
+
+            document.addEventListener('click', function() {
+                if (dropdown) dropdown.style.display = 'none';
+            });
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        // Set initial theme
+        setTheme(currentTheme);
+        setPalette(currentPalette);
+        setChartType(currentChartTypeState);
+        renderThemeGrid();
+        renderPaletteGrid();
+        renderChart();
+
+        console.log('🌱 CarbonTally - Multi-Color Chart Demo');
+        console.log('🎨 Click "🎨 Theme" to customize colors and chart types');
+        console.log('🌈 5 chart palettes available');
+        console.log('📊 5 chart types (Bar, Stacked, Grouped, Line, Area)');
+        console.log('⌨️  Use arrow keys (← →) to cycle themes');
+        console.log('💾 Your preferences are saved in localStorage');
+
+        // Auto-refresh chart every 15 seconds for demo
+        setInterval(() => {
+            // Regenerate some random data for demo
+            chartData.series.forEach(s => {
+                s.values = s.values.map(v => Math.max(5, v + Math.floor(Math.random() * 10) - 5));
+            });
+            renderChart();
+        }, 15000);
+    </script>
+
+</body>
+</html>

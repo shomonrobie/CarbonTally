@@ -1,0 +1,299 @@
+<!-- Organization Metadata Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <h1>📋 Organization Metadata</h1>
+            <p>Complete organization profile and sustainability metrics</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="resetMetadata()">
+                ↺ Reset
+            </button>
+            <button class="btn btn-primary" onclick="saveMetadata()">
+                💾 Save Changes
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div class="metrics-grid" id="summaryMetrics">
+        <!-- Rendered by JS -->
+    </div>
+
+    <!-- Metadata Grid -->
+    <div class="metadata-grid">
+
+        <!-- ===== EMPLOYEE METRICS ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">👥</span> Employee Metrics
+            </div>
+            <div class="metadata-item">
+                <span class="label">Total Employees</span>
+                <span class="value">
+                    <input type="number" class="input" id="totalEmployees" value="450" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Full-Time Employees</span>
+                <span class="value">
+                    <input type="number" class="input" id="fullTimeEmployees" value="380" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Part-Time Employees</span>
+                <span class="value">
+                    <input type="number" class="input" id="partTimeEmployees" value="70" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Contract Employees</span>
+                <span class="value">
+                    <input type="number" class="input" id="contractEmployees" value="45" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Average Employees (Year)</span>
+                <span class="value">
+                    <input type="number" class="input" id="averageEmployees" value="420" />
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== FINANCIAL METRICS ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">💰</span> Financial Metrics
+            </div>
+            <div class="metadata-item">
+                <span class="label">Annual Revenue</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:13px;color:hsl(var(--muted-foreground));">£</span>
+                        <input type="number" class="input" id="annualRevenue" value="15000000" />
+                    </div>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">EBITDA</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:13px;color:hsl(var(--muted-foreground));">£</span>
+                        <input type="number" class="input" id="ebitda" value="3200000" />
+                    </div>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Total Assets</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:13px;color:hsl(var(--muted-foreground));">£</span>
+                        <input type="number" class="input" id="totalAssets" value="8500000" />
+                    </div>
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== FACILITY METRICS ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">🏢</span> Facility Metrics
+            </div>
+            <div class="metadata-item">
+                <span class="label">Total Facilities</span>
+                <span class="value">
+                    <input type="number" class="input" id="totalFacilities" value="5" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Total Floor Area</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="number" class="input" id="totalFloorArea" value="45000" />
+                        <span style="font-size:12px;color:hsl(var(--muted-foreground));">sq ft</span>
+                    </div>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Occupied Floor Area</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="number" class="input" id="occupiedFloorArea" value="38000" />
+                        <span style="font-size:12px;color:hsl(var(--muted-foreground));">sq ft</span>
+                    </div>
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== SUSTAINABILITY METRICS ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">🌱</span> Sustainability Metrics
+            </div>
+            <div class="metadata-item">
+                <span class="label">Renewable Energy</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="number" class="input" id="renewableEnergy" value="45.5" step="0.1" />
+                        <span style="font-size:12px;color:hsl(var(--muted-foreground));">%</span>
+                    </div>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Carbon Offsets</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="number" class="input" id="carbonOffsets" value="20" step="0.1" />
+                        <span style="font-size:12px;color:hsl(var(--muted-foreground));">%</span>
+                    </div>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Energy Intensity</span>
+                <span class="value">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                        <input type="number" class="input" id="energyIntensity" value="0.85" step="0.01" />
+                        <span style="font-size:12px;color:hsl(var(--muted-foreground));">kWh/sq ft</span>
+                    </div>
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== REPORTING INFO ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">📊</span> Reporting Information
+            </div>
+            <div class="metadata-item">
+                <span class="label">Reporting Standard</span>
+                <span class="value">
+                    <select class="select" id="reportingStandard">
+                        <option value="GHG Protocol" selected>GHG Protocol</option>
+                        <option value="ISO 14064">ISO 14064</option>
+                        <option value="SECR">SECR</option>
+                        <option value="CSRD">CSRD</option>
+                        <option value="ISSB">ISSB</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Fiscal Year Start</span>
+                <span class="value">
+                    <input type="date" class="input" id="fiscalYearStart" value="2025-01-01" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Fiscal Year End</span>
+                <span class="value">
+                    <input type="date" class="input" id="fiscalYearEnd" value="2025-12-31" />
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== CONTACT INFO ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">📧</span> Contact Information
+            </div>
+            <div class="metadata-item">
+                <span class="label">Primary Contact</span>
+                <span class="value">
+                    <input type="text" class="input" id="primaryContactName" value="John Doe" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Primary Email</span>
+                <span class="value">
+                    <input type="email" class="input" id="primaryContactEmail" value="john.doe@carbontally.com" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Primary Phone</span>
+                <span class="value">
+                    <input type="tel" class="input" id="primaryContactPhone" value="+44 20 1234 5678" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Sustainability Officer</span>
+                <span class="value">
+                    <input type="text" class="input" id="sustainabilityOfficer" value="Sarah Green" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">Sustainability Email</span>
+                <span class="value">
+                    <input type="email" class="input" id="sustainabilityEmail" value="sarah.green@carbontally.com" />
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== INDUSTRY CLASSIFICATION ===== -->
+        <div class="metadata-section">
+            <div class="section-title">
+                <span class="icon">🏷️</span> Industry Classification
+            </div>
+            <div class="metadata-item">
+                <span class="label">Industry Sector</span>
+                <span class="value">
+                    <select class="select" id="industrySector">
+                        <option value="Technology" selected>Technology</option>
+                        <option value="Manufacturing">Manufacturing</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Healthcare">Healthcare</option>
+                        <option value="Retail">Retail</option>
+                        <option value="Energy">Energy</option>
+                        <option value="Consulting">Consulting</option>
+                        <option value="Education">Education</option>
+                        <option value="Non-profit">Non-profit</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">NAICS Code</span>
+                <span class="value">
+                    <input type="text" class="input" id="naicsCode" value="541512" />
+                </span>
+            </div>
+            <div class="metadata-item">
+                <span class="label">SIC Code</span>
+                <span class="value">
+                    <input type="text" class="input" id="sicCode" value="7373" />
+                </span>
+            </div>
+        </div>
+
+        <!-- ===== CUSTOM METRICS ===== -->
+        <div class="metadata-section" style="grid-column:1/-1;">
+            <div class="section-title">
+                <span class="icon">📌</span> Custom Metrics
+                <span class="badge badge-muted" style="font-size:10px;margin-left:8px;">JSON</span>
+            </div>
+            <div class="metadata-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:8px 0;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:150px;">
+                        <label style="font-size:12px;color:hsl(var(--muted-foreground));">Metric Name</label>
+                        <input type="text" class="input" id="customMetricName" placeholder="e.g., Customer Satisfaction" style="font-size:13px;" />
+                    </div>
+                    <div style="flex:1;min-width:100px;">
+                        <label style="font-size:12px;color:hsl(var(--muted-foreground));">Value</label>
+                        <input type="text" class="input" id="customMetricValue" placeholder="e.g., 92%" style="font-size:13px;" />
+                    </div>
+                    <div style="display:flex;align-items:flex-end;">
+                        <button class="btn btn-primary btn-sm" onclick="addCustomMetric()">
+                            ➕ Add
+                        </button>
+                    </div>
+                </div>
+                <div id="customMetricsList">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>

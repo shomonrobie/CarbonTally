@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CarbonTally - Organization Dashboard</title>
+    <style>
+        /* ============================================
+           CSS Variables - Theme System
+           ============================================ */
+        :root {
+            --primary: 150, 50%, 28%;
+            --primary-foreground: 0, 0%, 100%;
+            --secondary: 220, 14%, 45%;
+            --secondary-foreground: 0, 0%, 100%;
+            --accent: 150, 30%, 92%;
+            --accent-foreground: 150, 50%, 28%;
+            --muted: 220, 15%, 96%;
+            --muted-foreground: 220, 14%, 45%;
+            --background: 0, 0%, 100%;
+            --foreground: 220, 20%, 18%;
+            --card: 0, 0%, 100%;
+            --card-foreground: 220, 20%, 18%;
+            --border: 220, 15%, 90%;
+            --ring: 150, 50%, 28%;
+            --success: 150, 30%, 35%;
+            --warning: 38, 60%, 45%;
+            --destructive: 0, 50%, 40%;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.08);
+            --transition-speed: 0.3s;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            transition: background-color var(--transition-speed) ease;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           shadcn/ui Components
+           ============================================ */
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn:active { transform: scale(0.98); }
+
+        .btn-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px hsla(var(--primary), 0.3);
+        }
+
+        .btn-secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+        }
+        .btn-secondary:hover { opacity: 0.85; }
+
+        .btn-outline {
+            background: transparent;
+            color: hsl(var(--primary));
+            border: 2px solid hsl(var(--primary));
+        }
+        .btn-outline:hover {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .btn-sm { padding: 4px 12px; font-size: 12px; }
+        .btn-lg { padding: 12px 24px; font-size: 16px; }
+
+        .card {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.2s ease;
+        }
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+        .card-header {
+            padding: 20px 24px 12px 24px;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 4px;
+        }
+        .card-description {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+        }
+        .card-content {
+            padding: 20px 24px 24px 24px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .badge-primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-success {
+            background: hsl(var(--success));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-warning {
+            background: hsl(var(--warning));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-destructive {
+            background: hsl(var(--destructive));
+            color: hsl(var(--primary-foreground));
+        }
+        .badge-muted {
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: hsl(var(--muted));
+            padding: 4px;
+            border-radius: var(--radius);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 6px 16px;
+            border-radius: calc(var(--radius) - 2px);
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .tab:hover { color: hsl(var(--foreground)); }
+        .tab.active {
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: hsl(var(--muted));
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease;
+            background: hsl(var(--primary));
+        }
+
+        /* ============================================
+           Layout
+           ============================================ */
+
+        .app {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: hsl(var(--card));
+            border-bottom: 1px solid hsl(var(--border));
+            padding: 0 32px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: hsl(var(--primary));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: hsl(var(--primary-foreground));
+            font-size: 16px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 4px;
+            margin-left: 32px;
+        }
+        .nav-item {
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            border: none;
+            background: transparent;
+            color: hsl(var(--muted-foreground));
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .nav-item:hover {
+            background: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+        .nav-item.active {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        /* Main */
+        .main {
+            flex: 1;
+            padding: 32px;
+            max-width: 1440px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* ============================================
+           Organization Profile Section
+           ============================================ */
+
+        .org-profile {
+            background: hsl(var(--card));
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            padding: 24px;
+            margin-bottom: 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .org-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .org-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: var(--radius);
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .org-details h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .org-details p {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .org-stats-mini {
+            display: flex;
+            gap: 24px;
+        }
+        .org-stat-item {
+            text-align: center;
+        }
+        .org-stat-item .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .org-stat-item .label {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           Stats Grid
+           ============================================ */
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card .stat-icon {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+        .stat-card .stat-label {
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+            margin-top: 4px;
+        }
+        .stat-card .stat-change {
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .stat-change.positive {
+            color: hsl(var(--success));
+        }
+        .stat-change.negative {
+            color: hsl(var(--destructive));
+        }
+
+        /* ============================================
+           Two-Column Layout
+           ============================================ */
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        /* ============================================
+           Chart
+           ============================================ */
+
+        .chart-container {
+            height: 280px;
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            padding: 20px 0 10px 0;
+        }
+
+        .chart-bar-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            height: 100%;
+            justify-content: flex-end;
+        }
+
+        .chart-bar {
+            width: 100%;
+            max-width: 32px;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 4px;
+            background: hsl(var(--primary));
+            opacity: 0.8;
+            position: relative;
+        }
+        .chart-bar:hover {
+            opacity: 1;
+            transform: scaleX(1.1);
+        }
+        .chart-bar.scope1 { background: #10b981; }
+        .chart-bar.scope2 { background: #3b82f6; }
+        .chart-bar.scope3 { background: #8b5cf6; }
+
+        .chart-bar-label {
+            font-size: 10px;
+            color: hsl(var(--muted-foreground));
+            font-weight: 500;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        .chart-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .chart-legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 4px;
+        }
+
+        /* ============================================
+           Recent Activity / Documents
+           ============================================ */
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        .activity-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius);
+            background: hsl(var(--muted));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .activity-content {
+            flex: 1;
+        }
+        .activity-content .title {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .activity-content .desc {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+        .activity-content .time {
+            font-size: 11px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           Document Status List
+           ============================================ */
+
+        .doc-status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid hsl(var(--border));
+        }
+        .doc-status-item:last-child {
+            border-bottom: none;
+        }
+        .doc-status-item .name {
+            font-size: 14px;
+            color: hsl(var(--foreground));
+        }
+        .doc-status-item .status {
+            font-size: 12px;
+        }
+
+        /* ============================================
+           Review Queue
+           ============================================ */
+
+        .queue-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: var(--radius);
+            background: hsl(var(--muted));
+            margin-bottom: 8px;
+        }
+        .queue-item:last-child {
+            margin-bottom: 0;
+        }
+        .queue-item .priority {
+            width: 4px;
+            height: 32px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .queue-item .priority.high { background: hsl(var(--destructive)); }
+        .queue-item .priority.medium { background: hsl(var(--warning)); }
+        .queue-item .priority.low { background: hsl(var(--success)); }
+
+        .queue-item .info {
+            flex: 1;
+        }
+        .queue-item .info .title {
+            font-size: 14px;
+            font-weight: 500;
+            color: hsl(var(--foreground));
+        }
+        .queue-item .info .sub {
+            font-size: 12px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        /* ============================================
+           Footer
+           ============================================ */
+
+        .footer {
+            margin-top: 32px;
+            padding: 24px 32px;
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: hsl(var(--muted-foreground));
+        }
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+        .footer-links a {
+            color: hsl(var(--muted-foreground));
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .footer-links a:hover {
+            color: hsl(var(--foreground));
+        }
+
+        /* ============================================
+           Responsive
+           ============================================ */
+
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .nav {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .main {
+                padding: 16px;
+            }
+            .header {
+                padding: 0 16px;
+                height: auto;
+                min-height: 64px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .org-profile {
+                flex-direction: column;
+                align-items: stretch;
+                text-align: center;
+            }
+            .org-info {
+                flex-direction: column;
+            }
+            .org-stats-mini {
+                justify-content: center;
+            }
+            .footer {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+            .chart-container {
+                height: 200px;
+                gap: 6px;
+            }
+            .chart-bar {
+                max-width: 20px;
+            }
+        }
+
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .w-full { width: 100%; }
+        .flex-wrap { flex-wrap: wrap; }
+        .text-center { text-align: center; }
+        .text-muted { color: hsl(var(--muted-foreground)); }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <div class="flex items-center" style="gap: 16px;">
+                <div class="logo">
+                    <div class="logo-icon">🌱</div>
+                    CarbonTally
+                </div>
+                <nav class="nav">
+                    <button class="nav-item active">Dashboard</button>
+                    <button class="nav-item">Upload</button>
+                    <button class="nav-item">Documents</button>
+                    <button class="nav-item">Emissions</button>
+                    <button class="nav-item">Assets</button>
+                    <button class="nav-item">Facilities</button>
+                    <button class="nav-item">Team</button>
+                    <button class="nav-item">Reports</button>
+                </nav>
+            </div>
+
+            <div class="header-actions">
+                <button class="btn btn-primary btn-sm">
+                    <span>📥</span> Export
+                </button>
+                <div class="avatar">JD</div>
+            </div>
+        </header>
+
+        <!-- ===== MAIN ===== -->
+        <main class="main">
+
+            <!-- ===== Organization Profile ===== -->
+            <div class="org-profile">
+                <div class="org-info">
+                    <div class="org-logo">CT</div>
+                    <div class="org-details">
+                        <h2>CarbonTally Ltd</h2>
+                        <p>
+                            <span>🏢 Company #: 12345678</span>
+                            <span>📍 London, UK</span>
+                            <span>📅 FYE: Dec 31</span>
+                            <span class="badge badge-success">Active</span>
+                            <span class="badge badge-primary">Enterprise</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="org-stats-mini">
+                    <div class="org-stat-item">
+                        <div class="value">4</div>
+                        <div class="label">Facilities</div>
+                    </div>
+                    <div class="org-stat-item">
+                        <div class="value">23</div>
+                        <div class="label">Assets</div>
+                    </div>
+                    <div class="org-stat-item">
+                        <div class="value">12</div>
+                        <div class="label">Team Members</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Stats Grid ===== -->
+            <div class="stats-grid">
+                <div class="card stat-card">
+                    <div class="card-content">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value">1,234,567</div>
+                        <div class="stat-label">Total Emissions (kg CO₂e)</div>
+                        <div class="stat-change positive">↓ 12% from last quarter</div>
+                    </div>
+                </div>
+
+                <div class="card stat-card">
+                    <div class="card-content">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-value">8,492</div>
+                        <div class="stat-label">Total Transactions</div>
+                        <div class="stat-change positive">↑ 8% from last month</div>
+                    </div>
+                </div>
+
+                <div class="card stat-card">
+                    <div class="card-content">
+                        <div class="stat-icon">📄</div>
+                        <div class="stat-value">147</div>
+                        <div class="stat-label">Documents Processed</div>
+                        <div class="stat-change">12 pending review</div>
+                    </div>
+                </div>
+
+                <div class="card stat-card">
+                    <div class="card-content">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-value">34%</div>
+                        <div class="stat-label">Net Zero Progress</div>
+                        <div class="stat-change positive">Target: 2030</div>
+                        <div class="progress-bar">
+                            <div class="fill" style="width: 34%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Two-Column Layout ===== -->
+            <div class="grid-2">
+
+                <!-- ===== Chart ===== -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center flex-wrap gap-2">
+                            <div>
+                                <div class="card-title">Emissions Trend</div>
+                                <div class="card-description">Monthly CO₂e by scope</div>
+                            </div>
+                            <div class="tabs">
+                                <button class="tab">Q4</button>
+                                <button class="tab active">Year</button>
+                                <button class="tab">All</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="chart-container">
+                            <!-- Jan -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:55%;"></div>
+                                    <div class="chart-bar scope2" style="height:40%;"></div>
+                                    <div class="chart-bar scope3" style="height:25%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Jan</div>
+                            </div>
+                            <!-- Feb -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:60%;"></div>
+                                    <div class="chart-bar scope2" style="height:45%;"></div>
+                                    <div class="chart-bar scope3" style="height:30%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Feb</div>
+                            </div>
+                            <!-- Mar -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:45%;"></div>
+                                    <div class="chart-bar scope2" style="height:50%;"></div>
+                                    <div class="chart-bar scope3" style="height:28%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Mar</div>
+                            </div>
+                            <!-- Apr -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:70%;"></div>
+                                    <div class="chart-bar scope2" style="height:35%;"></div>
+                                    <div class="chart-bar scope3" style="height:35%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Apr</div>
+                            </div>
+                            <!-- May -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:50%;"></div>
+                                    <div class="chart-bar scope2" style="height:55%;"></div>
+                                    <div class="chart-bar scope3" style="height:32%;"></div>
+                                </div>
+                                <div class="chart-bar-label">May</div>
+                            </div>
+                            <!-- Jun -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:65%;"></div>
+                                    <div class="chart-bar scope2" style="height:40%;"></div>
+                                    <div class="chart-bar scope3" style="height:28%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Jun</div>
+                            </div>
+                            <!-- Jul -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:48%;"></div>
+                                    <div class="chart-bar scope2" style="height:42%;"></div>
+                                    <div class="chart-bar scope3" style="height:30%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Jul</div>
+                            </div>
+                            <!-- Aug -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:38%;"></div>
+                                    <div class="chart-bar scope2" style="height:48%;"></div>
+                                    <div class="chart-bar scope3" style="height:25%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Aug</div>
+                            </div>
+                            <!-- Sep -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:52%;"></div>
+                                    <div class="chart-bar scope2" style="height:44%;"></div>
+                                    <div class="chart-bar scope3" style="height:22%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Sep</div>
+                            </div>
+                            <!-- Oct -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:30%;"></div>
+                                    <div class="chart-bar scope2" style="height:50%;"></div>
+                                    <div class="chart-bar scope3" style="height:20%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Oct</div>
+                            </div>
+                            <!-- Nov -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:36%;"></div>
+                                    <div class="chart-bar scope2" style="height:52%;"></div>
+                                    <div class="chart-bar scope3" style="height:18%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Nov</div>
+                            </div>
+                            <!-- Dec -->
+                            <div class="chart-bar-wrap">
+                                <div style="width:100%;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end;gap:2px;">
+                                    <div class="chart-bar scope1" style="height:42%;"></div>
+                                    <div class="chart-bar scope2" style="height:46%;"></div>
+                                    <div class="chart-bar scope3" style="height:15%;"></div>
+                                </div>
+                                <div class="chart-bar-label">Dec</div>
+                            </div>
+                        </div>
+
+                        <div class="chart-legend">
+                            <div class="chart-legend-item">
+                                <div class="chart-legend-dot" style="background:#10b981;"></div>
+                                Scope 1
+                            </div>
+                            <div class="chart-legend-item">
+                                <div class="chart-legend-dot" style="background:#3b82f6;"></div>
+                                Scope 2
+                            </div>
+                            <div class="chart-legend-item">
+                                <div class="chart-legend-dot" style="background:#8b5cf6;"></div>
+                                Scope 3
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Right Column ===== -->
+                <div style="display:flex;flex-direction:column;gap:24px;">
+
+                    <!-- ===== Review Queue ===== -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <div class="card-title">📋 Review Queue</div>
+                                    <div class="card-description">Documents pending review</div>
+                                </div>
+                                <span class="badge badge-warning">4 items</span>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <div class="queue-item">
+                                <div class="priority high"></div>
+                                <div class="info">
+                                    <div class="title">Utility Bill - London Office</div>
+                                    <div class="sub">Uploaded 2 hours ago • Scope 2</div>
+                                </div>
+                                <span class="badge badge-warning">High</span>
+                            </div>
+                            <div class="queue-item">
+                                <div class="priority medium"></div>
+                                <div class="info">
+                                    <div class="title">Fleet Fuel - Q4 2026</div>
+                                    <div class="sub">Uploaded 5 hours ago • Scope 1</div>
+                                </div>
+                                <span class="badge badge-muted">Medium</span>
+                            </div>
+                            <div class="queue-item">
+                                <div class="priority low"></div>
+                                <div class="info">
+                                    <div class="title">Supplier Invoice - IT Equipment</div>
+                                    <div class="sub">Uploaded 1 day ago • Scope 3</div>
+                                </div>
+                                <span class="badge badge-muted">Low</span>
+                            </div>
+                            <div style="margin-top:12px;">
+                                <button class="btn btn-primary btn-sm w-full">View All Queue Items</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ===== Recent Activity ===== -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">🔄 Recent Activity</div>
+                            <div class="card-description">Latest actions in your organization</div>
+                        </div>
+                        <div class="card-content">
+                            <div class="activity-item">
+                                <div class="activity-icon">📄</div>
+                                <div class="activity-content">
+                                    <div class="title">Utility bill approved</div>
+                                    <div class="desc">London Office • Scope 2</div>
+                                    <div class="time">2 hours ago</div>
+                                </div>
+                                <span class="badge badge-success">Approved</span>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon">📤</div>
+                                <div class="activity-content">
+                                    <div class="title">New file uploaded</div>
+                                    <div class="desc">Fleet_Fuel_Q4_2026.csv</div>
+                                    <div class="time">5 hours ago</div>
+                                </div>
+                                <span class="badge badge-warning">Processing</span>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon">👤</div>
+                                <div class="activity-content">
+                                    <div class="title">Team member added</div>
+                                    <div class="desc">Sarah Johnson joined as Analyst</div>
+                                    <div class="time">1 day ago</div>
+                                </div>
+                                <span class="badge badge-primary">Team</span>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-icon">📊</div>
+                                <div class="activity-content">
+                                    <div class="title">SECR Report generated</div>
+                                    <div class="desc">FY 2026 Report • 45 pages</div>
+                                    <div class="time">2 days ago</div>
+                                </div>
+                                <span class="badge badge-success">Ready</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ===== Document Status ===== -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <div>
+                            <div class="card-title">📄 Document Status</div>
+                            <div class="card-description">Real-time document processing status</div>
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="tabs">
+                                <button class="tab active">All</button>
+                                <button class="tab">Uploaded</button>
+                                <button class="tab">Processing</button>
+                                <button class="tab">Review</button>
+                                <button class="tab">Approved</button>
+                                <button class="tab">Rejected</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                            <div><span class="badge badge-muted">📤 Uploaded: 23</span></div>
+                            <div><span class="badge badge-warning">⏳ Processing: 8</span></div>
+                            <div><span class="badge badge-primary">📝 Review: 12</span></div>
+                            <div><span class="badge badge-success">✅ Approved: 89</span></div>
+                            <div><span class="badge badge-destructive">❌ Rejected: 15</span></div>
+                        </div>
+                        <div style="text-align:right;">
+                            <span class="text-muted">Total: 147 documents</span>
+                        </div>
+                    </div>
+
+                    <div class="doc-status-item">
+                        <span class="name">Utility_Bill_London_Dec2026.pdf</span>
+                        <span class="badge badge-success">Approved</span>
+                    </div>
+                    <div class="doc-status-item">
+                        <span class="name">Fleet_Fuel_Q4_2026.csv</span>
+                        <span class="badge badge-warning">Processing</span>
+                    </div>
+                    <div class="doc-status-item">
+                        <span class="name">Supplier_Invoice_IT_Equipment.pdf</span>
+                        <span class="badge badge-primary">Review</span>
+                    </div>
+                    <div class="doc-status-item">
+                        <span class="name">Electricity_Bill_Manchester.xlsx</span>
+                        <span class="badge badge-muted">Uploaded</span>
+                    </div>
+                    <div class="doc-status-item">
+                        <span class="name">Scope3_Data_Supplier_Report.csv</span>
+                        <span class="badge badge-destructive">Rejected</span>
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <button class="btn btn-outline btn-sm w-full">View All Documents</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Footer ===== -->
+            <footer class="footer">
+                <div>© 2026 CarbonTally (UK) Ltd. All rights reserved.</div>
+                <div class="footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Cookie Policy</a>
+                    <a href="#">Terms</a>
+                    <a href="#">Support</a>
+                </div>
+            </footer>
+
+        </main>
+    </div>
+
+    <script>
+        // ============================================
+        // Tab Interactions
+        // ============================================
+
+        document.querySelectorAll('.tab, .nav-item').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const parent = this.closest('.tabs, .nav');
+                if (parent) {
+                    parent.querySelectorAll('.tab, .nav-item').forEach(t => t.classList.remove('active'));
+                }
+                this.classList.add('active');
+
+                // Show toast-like feedback
+                const label = this.textContent.trim();
+                showNotification(`Switched to: ${label}`);
+            });
+        });
+
+        // ============================================
+        // Notification System
+        // ============================================
+
+        function showNotification(message) {
+            const existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 24px;
+                right: 24px;
+                background: hsl(var(--card));
+                border: 1px solid hsl(var(--border));
+                border-radius: var(--radius);
+                padding: 12px 20px;
+                box-shadow: var(--shadow-lg);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                z-index: 2000;
+                animation: slideIn 0.3s ease;
+                font-size: 14px;
+                color: hsl(var(--foreground));
+            `;
+            toast.innerHTML = `
+                <span style="font-size:18px;">📢</span>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Add animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateY(20px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+            .toast-notification {
+                transition: opacity 0.3s ease, transform 0.3s ease;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // ============================================
+        // Export Button
+        // ============================================
+
+        const exportBtn = document.querySelector('.btn-primary');
+        if (exportBtn) {
+            let dropdown = null;
+            exportBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!dropdown) {
+                    dropdown = document.createElement('div');
+                    dropdown.style.cssText = `
+                        position: absolute;
+                        top: 100%;
+                        right: 0;
+                        margin-top: 4px;
+                        background: hsl(var(--card));
+                        border: 1px solid hsl(var(--border));
+                        border-radius: var(--radius);
+                        box-shadow: var(--shadow-lg);
+                        min-width: 200px;
+                        z-index: 100;
+                        overflow: hidden;
+                        display: block;
+                    `;
+                    dropdown.innerHTML = `
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📊 SECR Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📈 CSRD Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            🌍 ISSB Report
+                        </button>
+                        <button class="dropdown-item" style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer;font-size:14px;color:hsl(var(--foreground));">
+                            📋 Excel Export
+                        </button>
+                    `;
+                    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+                        item.addEventListener('mouseenter', function() {
+                            this.style.background = 'hsl(var(--accent))';
+                        });
+                        item.addEventListener('mouseleave', function() {
+                            this.style.background = 'transparent';
+                        });
+                        item.addEventListener('click', function() {
+                            showNotification('📊 Exporting: ' + this.textContent.trim());
+                            dropdown.style.display = 'none';
+                        });
+                    });
+                    this.parentElement.style.position = 'relative';
+                    this.parentElement.appendChild(dropdown);
+                } else {
+                    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                }
+            });
+            document.addEventListener('click', function() {
+                if (dropdown) dropdown.style.display = 'none';
+            });
+        }
+
+        // ============================================
+        // Console
+        // ============================================
+
+        console.log('🌱 CarbonTally Dashboard');
+        console.log('📊 Based on your database schema');
+        console.log('📦 Tables: organizations, facilities, assets, emissions_logs');
+        console.log('📄 Documents: organization_files, customer_documents');
+        console.log('👥 Team: organization_members, staff_profiles');
+        console.log('📋 Queue: manual_review_queue');
+        console.log('🔄 Activity: activity_feed, document_activity_log');
+    </script>
+
+</body>
+</html>

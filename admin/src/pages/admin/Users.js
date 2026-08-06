@@ -1,15 +1,15 @@
-// admin/pages/admin/Users.jsx - FIXED VERSION
-
+// admin/src/pages/admin/Users.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
 import { FaSpinner, FaEdit, FaTrash, FaUserPlus, FaUserCheck, FaUserTimes, FaSearch, FaFilter } from 'react-icons/fa';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -26,152 +26,229 @@ const Users = () => {
 
   const [organizations, setOrganizations] = useState([]);
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || localStorage.getItem('access_token');
+  };
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    setError(null);
-    
+  // ✅ Fetch users from backend API
+  const fetchUsers = async () => {
     try {
-      await Promise.all([
-        fetchUsers(),
-        fetchRoles(),
-        fetchOrganizations()
-      ]);
+      setLoading(true);
+      const token = await getToken();
+
+      const response = await fetch(`${API_URL}/api/admin/staff`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.staff || []);
+      } else {
+        console.error('Failed to fetch users:', response.status);
+        toast.error('Failed to load users');
+      }
     } catch (error) {
-      console.error('Error fetching data:', error);
-      setError('Failed to load data. Please try again.');
-      toast.error('Failed to load data');
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUsers = async () => {
-    try {
-      // Simplified query to avoid 400 error
-      const { data, error } = await supabase
-        .from('staff_profiles')
-        .select(`
-          id,
-          email,
-          first_name,
-          last_name,
-          role,
-          role_id,
-          is_active,
-          last_login,
-          created_at,
-          organization_id
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Users fetch error:', error);
-        throw error;
-      }
-      
-      // Fetch role details separately if needed
-      const usersWithRoles = await Promise.all(data.map(async (user) => {
-        if (user.role_id) {
-          const { data: roleData } = await supabase
-            .from('roles')
-            .select('name, description')
-            .eq('id', user.role_id)
-            .single();
-          
-          return {
-            ...user,
-            roles: roleData,
-            role: roleData?.name || user.role || 'viewer'
-          };
-        }
-        return user;
-      }));
-      
-      setUsers(usersWithRoles || []);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      toast.error('Failed to load users');
-      throw error;
-    }
-  };
-
+  // ✅ Fetch roles from backend API
   const fetchRoles = async () => {
     try {
-      const { data, error } = await supabase
-        .from('roles')
-        .select('*')
-        .order('name');
+      const token = await getToken();
 
-      if (error) {
-        console.error('Roles fetch error:', error);
-        throw error;
-      }
-      
-      setRoles(data || []);
-      
-      // If no roles found, try to insert default roles
-      if (!data || data.length === 0) {
-        console.log('No roles found, inserting defaults...');
-        await insertDefaultRoles();
+      const response = await fetch(`${API_URL}/api/admin/permissions/roles`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setRoles(data || []);
+      } else {
+        console.error('Failed to fetch roles:', response.status);
+        toast.error('Failed to load roles');
       }
     } catch (error) {
       console.error('Error fetching roles:', error);
       toast.error('Failed to load roles');
-      throw error;
     }
   };
 
-  const insertDefaultRoles = async () => {
-    try {
-      const defaultRoles = [
-        { name: 'admin', description: 'Full system access' },
-        { name: 'data_extractor', description: 'Can extract data' },
-        { name: 'data_approver', description: 'Can approve data' },
-        { name: 'staff', description: 'Staff member' },
-        { name: 'viewer', description: 'Read-only access' }
-      ];
-      
-      const { error } = await supabase
-        .from('roles')
-        .insert(defaultRoles);
-        
-      if (error) throw error;
-      
-      // Refresh roles
-      await fetchRoles();
-      toast.success('Default roles created');
-    } catch (error) {
-      console.error('Error creating default roles:', error);
-    }
-  };
-
+  // ✅ Fetch organizations from backend API
   const fetchOrganizations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .order('name');
+      const token = await getToken();
 
-      if (error) {
-        console.error('Organizations fetch error:', error);
-        throw error;
+      const response = await fetch(`${API_URL}/api/organizations/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOrganizations(data || []);
+      } else {
+        console.error('Failed to fetch organizations:', response.status);
       }
-      
-      setOrganizations(data || []);
     } catch (error) {
       console.error('Error fetching organizations:', error);
-      toast.error('Failed to load organizations');
-      throw error;
     }
   };
 
-  // Rest of the component remains the same...
-  // (All other functions - handleCreateUser, handleUpdateUser, etc. stay the same)
+  useEffect(() => {
+    fetchUsers();
+    fetchRoles();
+    fetchOrganizations();
+  }, []);
 
+  // ✅ Create user via backend API
+  const handleCreateUser = async () => {
+    if (!newUser.email) {
+      toast.error('Email is required');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = await getToken();
+
+      const response = await fetch(`${API_URL}/api/admin/staff`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: newUser.email,
+          first_name: newUser.firstName,
+          last_name: newUser.lastName,
+          role: newUser.role,
+          organization_id: newUser.organization_id || null
+        })
+      });
+
+      if (response.ok) {
+        toast.success('✅ User created successfully!');
+        setShowAddModal(false);
+        setNewUser({
+          email: '',
+          firstName: '',
+          lastName: '',
+          role: 'viewer',
+          organization_id: '',
+        });
+        fetchUsers();
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Failed to create user');
+      }
+    } catch (error) {
+      console.error('Error creating user:', error);
+      toast.error('Failed to create user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Update user via backend API
+  const handleUpdateUser = async (userId, newRole) => {
+    try {
+      const token = await getToken();
+
+      const response = await fetch(`${API_URL}/api/admin/staff/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          role: newRole
+        })
+      });
+
+      if (response.ok) {
+        toast.success('✅ User role updated successfully');
+        fetchUsers();
+        setShowEditModal(false);
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Failed to update user');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      toast.error('Failed to update user');
+    }
+  };
+
+  // ✅ Toggle user active status via backend API
+  const handleToggleActive = async (userId, currentStatus) => {
+    try {
+      const token = await getToken();
+
+      const response = await fetch(`${API_URL}/api/admin/staff/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          is_active: !currentStatus
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`✅ User ${!currentStatus ? 'activated' : 'deactivated'}`);
+        fetchUsers();
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Failed to update user status');
+      }
+    } catch (error) {
+      console.error('Error toggling user status:', error);
+      toast.error('Failed to update user status');
+    }
+  };
+
+  // ✅ Delete user via backend API
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+
+    try {
+      const token = await getToken();
+
+      const response = await fetch(`${API_URL}/api/admin/staff/${userId}?permanent=true`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        toast.success('✅ User deleted successfully');
+        fetchUsers();
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Failed to delete user');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error('Failed to delete user');
+    }
+  };
+
+  // Filter users
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
       user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -183,91 +260,29 @@ const Users = () => {
     return matchesSearch && matchesRole;
   });
 
-  const handleCreateUser = async () => {
-    if (!newUser.email) {
-      toast.error('Email is required');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      const { data: existingUser, error: checkError } = await supabase
-        .from('staff_profiles')
-        .select('id')
-        .eq('email', newUser.email)
-        .maybeSingle();
-
-      if (existingUser) {
-        toast.error('User already exists');
-        setLoading(false);
-        return;
-      }
-
-      const roleObj = roles.find(r => r.name === newUser.role);
-      
-      const { data, error } = await supabase
-        .from('staff_profiles')
-        .insert({
-          email: newUser.email,
-          first_name: newUser.firstName,
-          last_name: newUser.lastName,
-          role: newUser.role,
-          role_id: roleObj?.id,
-          is_active: true,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Insert error:', error);
-        throw error;
-      }
-
-      // Create invitation
-      const token = Math.random().toString(36).substring(2, 15) + 
-                    Math.random().toString(36).substring(2, 15);
-      
-      const { error: inviteError } = await supabase
-        .from('user_invitations')
-        .insert({
-          email: newUser.email,
-          role_id: roleObj?.id,
-          organization_id: newUser.organization_id || null,
-          token: token,
-          status: 'pending',
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-        });
-
-      if (inviteError) {
-        console.error('Invite error:', inviteError);
-        // Don't throw here, user was created but invite failed
-        toast.warning('User created but invitation failed. Please try again.');
-      } else {
-        toast.success('✅ User invited successfully!');
-      }
-
-      setShowAddModal(false);
-      setNewUser({
-        email: '',
-        firstName: '',
-        lastName: '',
-        role: 'viewer',
-        organization_id: '',
-      });
-      await fetchUsers();
-    } catch (error) {
-      console.error('Error creating user:', error);
-      toast.error('Failed to create user: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
+  // Get role badge color
+  const getRoleBadgeColor = (role) => {
+    const colors = {
+      admin: 'bg-red-100 text-red-800',
+      data_extractor: 'bg-blue-100 text-blue-800',
+      staff: 'bg-green-100 text-green-800',
+      data_approver: 'bg-purple-100 text-purple-800',
+      viewer: 'bg-gray-100 text-gray-800'
+    };
+    return colors[role] || colors.viewer;
   };
 
-  // All other functions remain the same...
-
-  // ... (keep all the other functions from your original code)
+  // Get role display name
+  const getRoleDisplayName = (role) => {
+    const names = {
+      admin: 'Admin',
+      data_extractor: 'Data Extractor',
+      staff: 'Staff',
+      data_approver: 'Data Approver',
+      viewer: 'Viewer'
+    };
+    return names[role] || role;
+  };
 
   if (loading && users.length === 0) {
     return (
@@ -280,28 +295,11 @@ const Users = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="text-red-600 text-4xl mb-4">⚠️</div>
-          <p className="text-gray-800 font-medium">{error}</p>
-          <button 
-            onClick={fetchAllData}
-            className="mt-4 btn-primary"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">👥 User Management</h1>
-        <p className="text-gray-600">Manage system users and their roles</p>
+        <h1 className="text-2xl font-bold text-gray-900">👥 Staff Management</h1>
+        <p className="text-gray-600">Manage CarbonTally staff members and their roles</p>
       </div>
 
       <div className="card">
@@ -329,7 +327,7 @@ const Users = () => {
                   <option value="all">All Roles</option>
                   {roles.map(role => (
                     <option key={role.id} value={role.name}>
-                      {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                      {getRoleDisplayName(role.name)}
                     </option>
                   ))}
                 </select>
@@ -339,7 +337,7 @@ const Users = () => {
               onClick={() => setShowAddModal(true)}
               className="btn-primary flex items-center gap-2 w-full md:w-auto"
             >
-              <FaUserPlus /> Add User
+              <FaUserPlus /> Add Staff
             </button>
           </div>
 
@@ -347,7 +345,7 @@ const Users = () => {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="bg-blue-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-blue-600">{users.length}</div>
-              <div className="text-sm text-blue-700">Total Users</div>
+              <div className="text-sm text-blue-700">Total Staff</div>
             </div>
             <div className="bg-green-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-green-600">
@@ -369,20 +367,19 @@ const Users = () => {
             </div>
             <div className="bg-orange-50 p-4 rounded-lg text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {users.filter(u => u.role && ['staff', 'data_extractor', 'data_approver'].includes(u.role)).length}
+                {users.filter(u => u.role === 'staff' || u.role === 'data_extractor' || u.role === 'data_approver').length}
               </div>
               <div className="text-sm text-orange-700">Staff</div>
             </div>
           </div>
 
-          {/* Users Table - Keep your existing table code */}
+          {/* Users Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Organization</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -391,8 +388,8 @@ const Users = () => {
               <tbody className="divide-y divide-gray-200">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
-                      {searchTerm || filterRole !== 'all' ? 'No users match your filters' : 'No users found'}
+                    <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                      {searchTerm || filterRole !== 'all' ? 'No users match your filters' : 'No staff members found'}
                     </td>
                   </tr>
                 ) : (
@@ -401,11 +398,11 @@ const Users = () => {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-medium">
-                            {user.first_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
+                            {user.first_name?.[0] || user.email?.[0]?.toUpperCase()}
                           </div>
                           <div>
                             <div className="font-medium text-gray-900">
-                              {user.first_name || ''} {user.last_name || ''}
+                              {user.first_name} {user.last_name}
                             </div>
                             <div className="text-sm text-gray-500">{user.email}</div>
                           </div>
@@ -415,9 +412,6 @@ const Users = () => {
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRoleBadgeColor(user.role)}`}>
                           {getRoleDisplayName(user.role)}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {user.organization_id ? organizations.find(o => o.id === user.organization_id)?.name || 'N/A' : 'N/A'}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -472,33 +466,144 @@ const Users = () => {
         </div>
       </div>
 
-      {/* Keep your modals - they remain the same */}
-      {/* ... Add User Modal and Edit User Modal code ... */}
+      {/* Add User Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">Add Staff Member</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                  className="input-field w-full"
+                  placeholder="staff@carbontally.co.uk"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                <input
+                  type="text"
+                  value={newUser.firstName}
+                  onChange={(e) => setNewUser({...newUser, firstName: e.target.value})}
+                  className="input-field w-full"
+                  placeholder="John"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                <input
+                  type="text"
+                  value={newUser.lastName}
+                  onChange={(e) => setNewUser({...newUser, lastName: e.target.value})}
+                  className="input-field w-full"
+                  placeholder="Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+                  className="input-field w-full"
+                >
+                  {roles.map(role => (
+                    <option key={role.id} value={role.name}>
+                      {getRoleDisplayName(role.name)} - {role.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleCreateUser}
+                disabled={loading}
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {loading ? <FaSpinner className="animate-spin" /> : <FaUserPlus />}
+                {loading ? 'Creating...' : 'Add Staff'}
+              </button>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">Edit Staff Member</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                <div className="text-gray-900 font-medium">
+                  {editingUser.first_name} {editingUser.last_name}
+                </div>
+                <div className="text-sm text-gray-500">{editingUser.email}</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  value={editingUser.role}
+                  onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
+                  className="input-field w-full"
+                >
+                  {roles.map(role => (
+                    <option key={role.id} value={role.name}>
+                      {getRoleDisplayName(role.name)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-1 text-sm rounded-full ${
+                    editingUser.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {editingUser.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                  <button
+                    onClick={() => setEditingUser({...editingUser, is_active: !editingUser.is_active})}
+                    className="text-sm text-primary-600 hover:text-primary-800"
+                  >
+                    Toggle
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => handleUpdateUser(editingUser.id, editingUser.role)}
+                disabled={loading}
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {loading ? <FaSpinner className="animate-spin" /> : <FaEdit />}
+                {loading ? 'Saving...' : 'Update Staff'}
+              </button>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-// Helper functions
-const getRoleBadgeColor = (role) => {
-  const colors = {
-    admin: 'bg-red-100 text-red-800',
-    data_extractor: 'bg-blue-100 text-blue-800',
-    staff: 'bg-green-100 text-green-800',
-    data_approver: 'bg-purple-100 text-purple-800',
-    viewer: 'bg-gray-100 text-gray-800'
-  };
-  return colors[role] || colors.viewer;
-};
-
-const getRoleDisplayName = (role) => {
-  const names = {
-    admin: 'Admin',
-    data_extractor: 'Data Extractor',
-    staff: 'Staff',
-    data_approver: 'Data Approver',
-    viewer: 'Viewer'
-  };
-  return names[role] || role;
 };
 
 export default Users;

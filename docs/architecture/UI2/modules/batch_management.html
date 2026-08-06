@@ -1,0 +1,178 @@
+
+<!-- Batch Management Module - SPA Compatible -->
+<div class="main-body">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span>📦 Batch Management</span>
+    </div>
+
+    <!-- PAGE HEADER -->
+    <div class="page-header">
+        <div>
+            <h1>📦 Batch Management</h1>
+            <p>Monitor upload batches, track processing status, and manage file operations</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="openNewBatchModal()">
+                ➕ New Batch
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="refreshData()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">📦 Total Batches</div>
+            <div class="stat-value" id="totalBatches">0</div>
+            <div class="stat-sub">all time</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">✅ Completed</div>
+            <div class="stat-value" id="completedBatches">0</div>
+            <div class="stat-sub">processed fully</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⏳ Processing</div>
+            <div class="stat-value" id="processingBatches">0</div>
+            <div class="stat-sub">in progress</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">📄 Total Files</div>
+            <div class="stat-value" id="totalFiles">0</div>
+            <div class="stat-sub">across all batches</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">⚠️ Failed</div>
+            <div class="stat-value" id="failedBatches">0</div>
+            <div class="stat-sub">needs attention</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">📊 Success Rate</div>
+            <div class="stat-value" id="successRate">0%</div>
+            <div class="stat-sub">files processed</div>
+        </div>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="filters-bar">
+        <select id="statusFilter">
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="processing">Processing</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+        </select>
+        <select id="typeFilter">
+            <option value="all">All Types</option>
+            <option value="fuel">Fuel</option>
+            <option value="utility">Utility</option>
+            <option value="scope3">Scope 3</option>
+            <option value="document">Document</option>
+        </select>
+        <input type="date" id="dateFrom" />
+        <span style="color:hsl(var(--muted-foreground));font-size:12px;">to</span>
+        <input type="date" id="dateTo" />
+        <button class="btn btn-sm btn-primary" id="applyFilters">🔍 Apply</button>
+        <button class="btn btn-sm btn-ghost" id="clearFilters">✕ Clear</button>
+        <span style="margin-left:auto;font-size:12px;color:hsl(var(--muted-foreground));" id="filterCount">0 batches</span>
+    </div>
+
+    <!-- BATCH TABLE -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">📋 Batch List</div>
+            <span class="badge badge-primary" id="rowCount">0</span>
+        </div>
+        <div class="card-content" style="padding:0 20px 20px 20px;">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="min-width:180px;">Batch Name</th>
+                            <th style="min-width:90px;">Type</th>
+                            <th style="min-width:80px;">Files</th>
+                            <th style="min-width:140px;">Progress</th>
+                            <th style="min-width:120px;">Status</th>
+                            <th style="min-width:120px;">Created By</th>
+                            <th style="min-width:130px;">Date</th>
+                            <th style="min-width:100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchTableBody">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination">
+                <!-- Rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== NEW BATCH MODAL (inside .main-body) ===== -->
+    <div class="modal-overlay" id="newBatchModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">📦 New Batch</div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">Create a new upload batch</div>
+                </div>
+                <button class="modal-close" onclick="closeNewBatchModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Batch Name <span style="color:hsl(var(--destructive));">*</span></label>
+                    <input type="text" id="newBatchName" placeholder="Enter batch name" />
+                </div>
+                <div class="form-group">
+                    <label>Type <span style="color:hsl(var(--destructive));">*</span></label>
+                    <select id="newBatchType">
+                        <option value="fuel">⛽ Fuel</option>
+                        <option value="utility">⚡ Utility</option>
+                        <option value="scope3">🌍 Scope 3</option>
+                        <option value="document">📄 Document</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="newBatchDesc" rows="3" placeholder="Enter batch description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Files</label>
+                    <div style="border:2px dashed hsl(var(--border));border-radius:var(--radius);padding:30px;text-align:center;color:hsl(var(--muted-foreground));cursor:pointer;">
+                        📤 Drop files here or click to upload
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeNewBatchModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewBatch()">📦 Create Batch</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== DETAIL MODAL (inside .main-body) ===== -->
+    <div class="modal-overlay" id="batchDetailModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">📦 Batch Details: <span id="modalBatchName"></span></div>
+                    <div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px;">View and manage batch processing</div>
+                </div>
+                <button class="modal-close" onclick="closeBatchDetailModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeBatchDetailModal()">Close</button>
+                <button class="btn btn-primary" id="modalProcessBtn">▶️ Process Batch</button>
+            </div>
+        </div>
+    </div>
+
+</div>

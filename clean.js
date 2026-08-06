@@ -1,0 +1,1 @@
+const fs = require("fs"); const f = "prisma/schema.prisma"; let c = fs.readFileSync(f, "utf8"); c = c.replace(/,\s*\]/g, " ]"); fs.writeFileSync(f, c); console.log("? Trailing comma fixed successfully!");

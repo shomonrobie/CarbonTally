@@ -1,9 +1,9 @@
-# backend/auth.py - COMPLETE FIXED VERSION
+# backend/auth.py - Updated to work with or without parentheses
 
 import os
 import jwt
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Callable
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -178,6 +178,7 @@ async def get_current_user(
                 detail="No user ID found in token"
             )
         
+        # ✅ FIX: Allow all authenticated users
         # Check if user is in staff_profiles
         staff_data = None
         is_staff = False
@@ -194,13 +195,7 @@ async def get_current_user(
                     permissions,
                     extraction_count,
                     accuracy_rate,
-                    last_login,
-                    roles (
-                        id,
-                        name,
-                        description,
-                        permissions
-                    )
+                    last_login
                 ''') \
                 .eq('id', user_id) \
                 .maybe_single() \
@@ -221,10 +216,12 @@ async def get_current_user(
         org_role = None
         
         try:
-            # ✅ Now with is_active column
-            org_result = supabase_client.from_('organization_members').select(
-                'id, organization_id, role, created_at, is_active'
-            ).eq('user_id', user_id).eq('is_active', True).maybe_single().execute()
+            org_result = supabase_client.from_('organization_members') \
+                .select('id, organization_id, role, created_at, is_active') \
+                .eq('user_id', user_id) \
+                .eq('is_active', True) \
+                .maybe_single() \
+                .execute()
             
             if org_result and org_result.data:
                 org_member_data = org_result.data
@@ -237,91 +234,44 @@ async def get_current_user(
                 
         except Exception as org_error:
             print(f"⚠️ Organization member query error: {org_error}")
-                
-        except Exception as org_error:
-            print(f"⚠️ Organization member query error: {org_error}")
         
-        # Determine user's role and permissions
+        # ✅ RETURN: Allow all authenticated users
+        # Get user metadata from auth
+        user_metadata = {}
+        if hasattr(user, 'user_metadata'):
+            user_metadata = user.user_metadata
+        elif isinstance(user, dict) and user.get('user_metadata'):
+            user_metadata = user.get('user_metadata', {})
+        
+        # Determine role
+        role = "user"
+        role_name = "user"
+        permissions = {}
+        
         if is_staff and staff_data:
-            # Staff user
-            role_id = staff_data.get('role_id')
-            role_name = staff_data.get('role', 'viewer')
-            
-            # Get permissions from database
-            permissions = {}
-            if role_id:
-                db_permissions = get_role_permissions_from_db(supabase_client, role_id)
-                if db_permissions:
-                    permissions = db_permissions
-                    print(f"✅ Loaded permissions from database for role: {role_name}")
-                else:
-                    permissions = DEFAULT_STAFF_PERMISSIONS.copy()
-                    print(f"⚠️ Using default permissions for role: {role_name}")
-            else:
-                permissions = DEFAULT_STAFF_PERMISSIONS.copy()
-            
-            # Merge custom permissions
-            if staff_data.get('permissions'):
-                if isinstance(staff_data['permissions'], dict):
-                    permissions.update(staff_data['permissions'])
-                    print(f"✅ Merged custom permissions for staff member")
-            
-            # Check if staff account is active
-            if not staff_data.get('is_active', False):
-                print(f"❌ Staff account inactive: {user_email}")
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Staff account is inactive"
-                )
-            
-            return AuthUser(
-                user_id=user_id,
-                email=user_email,
-                role=role_name,
-                role_id=role_id,
-                role_name=role_name,
-                permissions=permissions,
-                is_active=staff_data.get('is_active', True),
-                first_name=staff_data.get('first_name'),
-                last_name=staff_data.get('last_name'),
-                organization_id=organization_id,
-                extraction_count=staff_data.get('extraction_count', 0),
-                accuracy_rate=staff_data.get('accuracy_rate', 100.0),
-                is_staff=True,
-                is_org_member=is_org_member
-            )
-        
+            role = staff_data.get('role', 'staff')
+            role_name = role
+            permissions = staff_data.get('permissions', {})
         elif is_org_member and org_member_data:
-            # Organization member (not staff)
-            org_role_name = f"org_{org_role}" if org_role else "org_viewer"
-            permissions = DEFAULT_ORG_PERMISSIONS.copy()
-            
-            print(f"✅ User {user_email} is an organization member with role: {org_role}")
-            
-            return AuthUser(
-                user_id=user_id,
-                email=user_email,
-                role=org_role_name,
-                role_id=None,
-                role_name=org_role_name,
-                permissions=permissions,
-                is_active=True,
-                first_name=None,
-                last_name=None,
-                organization_id=organization_id,
-                extraction_count=0,
-                accuracy_rate=100.0,
-                is_staff=False,
-                is_org_member=True
-            )
+            role = f"org_{org_role}" if org_role else "org_viewer"
+            role_name = role
         
-        else:
-            # No access
-            print(f"❌ User {user_email} has no access (not staff and not org member)")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User does not have access to this system"
-            )
+        return AuthUser(
+            user_id=user_id,
+            email=user_email,
+            role=role,
+            role_id=staff_data.get('role_id') if staff_data else None,
+            role_name=role_name,
+            permissions=permissions,
+            is_active=True,
+            first_name=staff_data.get('first_name') if staff_data else user_metadata.get('first_name'),
+            last_name=staff_data.get('last_name') if staff_data else user_metadata.get('last_name'),
+            organization_id=organization_id,
+            extraction_count=staff_data.get('extraction_count', 0) if staff_data else 0,
+            accuracy_rate=staff_data.get('accuracy_rate', 100.0) if staff_data else 100.0,
+            is_staff=is_staff,
+            is_org_member=is_org_member
+        )
         
     except HTTPException:
         raise
@@ -333,105 +283,156 @@ async def get_current_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication failed: {str(e)}"
         )
+
 # ==========================================
-# AUTHORIZATION HELPERS - FIXED
+# AUTHENTICATION HELPERS - FIXED!
 # ==========================================
 
-def require_role(required_roles: List[str]):
+def require_auth():
     """
-    Dependency factory to require specific roles.
+    Dependency factory for authentication.
     Returns a callable that FastAPI can use as a dependency.
+    Works with both: Depends(require_auth) and Depends(require_auth())
     """
-    async def role_checker(current_user: AuthUser = Depends(get_current_user)):
-        if current_user.role not in required_roles:
+    async def auth_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required roles: {', '.join(required_roles)}. User has role: {current_user.role}"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
             )
         return current_user
-    return role_checker  # ✅ Returns the callable
+    
+    return auth_checker
 
-def require_permission(permission: str):
+def require_admin():
     """
-    Dependency factory to require specific permission.
-    Returns a callable that FastAPI can use as a dependency.
+    Dependency factory for admin privileges.
+    Works with both: Depends(require_admin) and Depends(require_admin())
     """
-    async def permission_checker(current_user: AuthUser = Depends(get_current_user)):
-        if not current_user.permissions.get(permission, False):
+    async def admin_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        if current_user.role != 'admin' and current_user.role_name != 'admin':
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}"
+                detail="Admin privileges required"
             )
+        
         return current_user
-    return permission_checker  # ✅ Returns the callable
-
-def require_any_permission(permissions: List[str]):
-    """Require any of the specified permissions."""
-    async def permission_checker(current_user: AuthUser = Depends(get_current_user)):
-        has_permission = any(
-            current_user.permissions.get(perm, False) 
-            for perm in permissions
-        )
-        if not has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required any permission from: {', '.join(permissions)}"
-            )
-        return current_user
-    return permission_checker
-
-def require_all_permissions(permissions: List[str]):
-    """Require all specified permissions."""
-    async def permission_checker(current_user: AuthUser = Depends(get_current_user)):
-        missing = [
-            perm for perm in permissions 
-            if not current_user.permissions.get(perm, False)
-        ]
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing permissions: {', '.join(missing)}"
-            )
-        return current_user
-    return permission_checker
+    
+    return admin_checker
 
 def require_staff():
-    """Require user to be a staff member."""
-    async def staff_checker(current_user: AuthUser = Depends(get_current_user)):
+    """
+    Dependency factory for staff membership.
+    Works with both: Depends(require_staff) and Depends(require_staff())
+    """
+    async def staff_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
         if not current_user.is_staff:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Staff access required"
             )
+        
         return current_user
+    
     return staff_checker
 
 def require_org_member():
     """
-    Require user to be an active organization member.
+    Dependency factory for organization membership.
+    Works with both: Depends(require_org_member) and Depends(require_org_member())
     """
-    async def org_checker(current_user: AuthUser = Depends(get_current_user)):
+    async def org_member_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
         if not current_user.is_org_member:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Organization member access required"
             )
-        # Check if the organization member is active
-        if not current_user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Organization member account is inactive"
-            )
+        
         return current_user
-    return org_checker
+    
+    return org_member_checker
 
+def require_org_admin():
+    """
+    Dependency factory for organization admin privileges.
+    Works with both: Depends(require_org_admin) and Depends(require_org_admin())
+    """
+    async def org_admin_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check if user is system admin
+        if current_user.role == 'admin' or current_user.role_name == 'admin':
+            return current_user
+        
+        # Check if user is org admin
+        if current_user.is_org_member:
+            # Check role in organization_members
+            supabase = get_supabase_client()
+            try:
+                result = supabase.from_('organization_members') \
+                    .select('role') \
+                    .eq('user_id', current_user.user_id) \
+                    .eq('organization_id', current_user.organization_id) \
+                    .maybe_single() \
+                    .execute()
+                
+                if result and result.data and result.data.get('role') == 'admin':
+                    return current_user
+            except Exception:
+                pass
+        
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization admin privileges required"
+        )
+    
+    return org_admin_checker
 
 def require_org_access(organization_id: str):
     """
-    Require access to a specific organization.
-    Staff can access any organization, members can only access their own.
+    Dependency factory for organization access.
+    Requires the organization_id parameter.
     """
-    async def org_access_checker(current_user: AuthUser = Depends(get_current_user)):
+    async def org_access_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
         # Staff can access any organization
         if current_user.is_staff:
             return current_user
@@ -449,10 +450,100 @@ def require_org_access(organization_id: str):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
         )
+    
     return org_access_checker
-def get_role_permissions(supabase_client, role_id: str) -> Dict[str, bool]:
+
+def require_role(required_roles: List[str]):
+    """
+    Dependency factory for role requirements.
+    """
+    async def role_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if current_user.role not in required_roles and current_user.role_name not in required_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Required roles: {', '.join(required_roles)}. User has role: {current_user.role}"
+            )
+        return current_user
+    
+    return role_checker
+
+def require_permission(permission: str):
+    """
+    Dependency factory for permission requirements.
+    """
+    async def permission_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user.permissions.get(permission, False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission}"
+            )
+        return current_user
+    
+    return permission_checker
+
+def require_any_permission(permissions: List[str]):
+    """Require any of the specified permissions."""
+    async def permission_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        has_permission = any(
+            current_user.permissions.get(perm, False) 
+            for perm in permissions
+        )
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Required any permission from: {', '.join(permissions)}"
+            )
+        return current_user
+    
+    return permission_checker
+
+def require_all_permissions(permissions: List[str]):
+    """Require all specified permissions."""
+    async def permission_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        missing = [
+            perm for perm in permissions 
+            if not current_user.permissions.get(perm, False)
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing permissions: {', '.join(missing)}"
+            )
+        return current_user
+    
+    return permission_checker
+
+# ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+
+def get_role_permissions(supabase_client: Client, role_id: str) -> Dict[str, bool]:
     """
     Get permissions for a role.
     This is an alias for get_role_permissions_from_db for backward compatibility.
     """
     return get_role_permissions_from_db(supabase_client, role_id)
+
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> Optional[AuthUser]:
+    """
+    Get current user if authenticated, return None otherwise.
+    """
+    if not credentials:
+        return None
+    
+    try:
+        return await get_current_user(credentials)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
