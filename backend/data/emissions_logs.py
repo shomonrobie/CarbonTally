@@ -13,7 +13,11 @@ from typing import Any, Optional
 
 from core.types import DateRange
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
-from domain.calculation import EmissionLog, EmissionsAggregate
+from domain.calculation import (
+    CalculationSnapshot,
+    EmissionLog,
+    EmissionsAggregate,
+)
 
 #: Service-role placeholder used for NOT NULL actor/user columns the v2.1
 #: contract does not pass to the repository.
@@ -241,6 +245,64 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 f"emissions log {entity.id!r} does not exist; cannot save"
             )
         return _row_to_log(row)
+
+    async def save_snapshot(
+        self,
+        snapshot: CalculationSnapshot,
+        *,
+        activity: str,
+        activity_type: str,
+        factor_source: Optional[str] = None,
+        factor_set: Optional[str] = None,
+        import_batch_id: Optional[str] = None,
+        calculated_by: Optional[str] = None,
+    ) -> CalculationSnapshot:
+        """Persist an immutable calculation snapshot (Backend v2.1 §13).
+
+        The RC2 ``calculation_snapshots`` table stores provenance columns the
+        domain model does not carry (``activity``, ``activity_type``,
+        ``factor_source``, ``factor_set``, ``import_batch_id``), so they are
+        supplied here alongside the snapshot. ``calculated_at`` defaults to
+        ``NOW()`` and the snapshot's ``match_request_id`` is stored in the
+        table's ``request_id`` column. Snapshots are append-only and are never
+        updated or deleted (ADR-5); a conflict on ``id`` therefore raises.
+        """
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.calculation_snapshots (
+                id, organization_id, activity, activity_type, quantity,
+                quantity_unit, co2e_multiplier, co2e_kg, scope, date,
+                factor_id, factor_source, factor_set, import_batch_id,
+                reporting_year, methodology, algorithm_version, content_hash,
+                calculated_by, request_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                      $14, $15, $16, $17, $18, $19, $20)
+            RETURNING id
+            """,
+            snapshot.id,
+            snapshot.organization_id,
+            activity,
+            activity_type,
+            snapshot.quantity,
+            snapshot.quantity_unit,
+            snapshot.co2e_multiplier,
+            snapshot.co2e_kg,
+            snapshot.scope,
+            snapshot.date,
+            snapshot.factor_id,
+            factor_source,
+            factor_set,
+            import_batch_id,
+            snapshot.reporting_year,
+            snapshot.methodology,
+            snapshot.algorithm_version,
+            snapshot.content_hash,
+            calculated_by,
+            snapshot.match_request_id,
+        )
+        if row is None:
+            raise RuntimeError("calculation snapshot insert returned no row")
+        return snapshot
 
     async def delete(self, id: str) -> None:
         """Delete an emissions record (not used in the normal flow)."""
