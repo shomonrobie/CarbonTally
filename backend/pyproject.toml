@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+pythonpath = ["."]
+addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+# asyncpg does not ship PEP-561 type stubs; treat it as untyped rather than
+# failing every import site with `import-untyped`.
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
