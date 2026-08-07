@@ -1,0 +1,38 @@
+"""CarbonTally business-processing engines (Backend v2.1 §7).
+
+Engines implement the platform's business processing. Each engine has a single
+responsibility, is stateless (a new instance per request) and depends only on
+``core``, ``domain``, ``infra`` and the repository layer — never on the API
+layer, and never on other engines except through constructor injection
+(§4.2).
+
+Phase 4 ships the Factor Matching Engine and its six pipeline stages.
+"""
+from __future__ import annotations
+
+from engines.factor_matching import FactorMatchingEngine, build_matching_pipeline
+from engines.matching_stages import (
+    AliasMatchStage,
+    AliasResolver,
+    ExactMatchStage,
+    FuzzyMatchStage,
+    KeywordSearchStage,
+    NaturalKeyStage,
+    RepositoryAliasResolver,
+    SemanticMatchStage,
+    SemanticScorer,
+)
+
+__all__ = [
+    "AliasMatchStage",
+    "AliasResolver",
+    "ExactMatchStage",
+    "FactorMatchingEngine",
+    "FuzzyMatchStage",
+    "KeywordSearchStage",
+    "NaturalKeyStage",
+    "RepositoryAliasResolver",
+    "SemanticMatchStage",
+    "SemanticScorer",
+    "build_matching_pipeline",
+]
