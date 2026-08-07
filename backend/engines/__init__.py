@@ -10,6 +10,12 @@ Phase 4 ships the Factor Matching Engine and its six pipeline stages.
 """
 from __future__ import annotations
 
+from engines.calculation import (
+    DEFAULT_ALGORITHM_VERSION,
+    CalculationEngine,
+    CalculationRequest,
+    CalculationSink,
+)
 from engines.factor_matching import FactorMatchingEngine, build_matching_pipeline
 from engines.matching_stages import (
     AliasMatchStage,
@@ -26,6 +32,10 @@ from engines.matching_stages import (
 __all__ = [
     "AliasMatchStage",
     "AliasResolver",
+    "CalculationEngine",
+    "CalculationRequest",
+    "CalculationSink",
+    "DEFAULT_ALGORITHM_VERSION",
     "ExactMatchStage",
     "FactorMatchingEngine",
     "FuzzyMatchStage",
@@ -36,3 +46,4 @@ __all__ = [
     "SemanticScorer",
     "build_matching_pipeline",
 ]
+
