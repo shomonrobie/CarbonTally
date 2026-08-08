@@ -1,9 +1,15 @@
 """Shared fixtures for the repository integration suite.
 
-The tests run against a real Supabase Postgres database (the local Supabase
-stack by default). A dedicated database is strongly recommended: the session
-fixture truncates the tables under test (with CASCADE) so every assertion is
-deterministic. Override ``INTEGRATION_DATABASE_URL`` to target another database.
+The tests run against a real Supabase Postgres database. By default they use
+the **dedicated integration-test database** ``carbontally_test`` on the local
+Supabase stack, *never* the authoritative application database
+(``postgresql://postgres:postgres@127.0.0.1:54326/postgres``), which holds the
+imported DEFRA-2025 factor dataset and must not be truncated by tests.
+
+The session fixture truncates the tables under test (with CASCADE) inside the
+dedicated test database so every assertion is deterministic and no test data
+ever leaks into the authoritative database. Override ``INTEGRATION_DATABASE_URL``
+to target any other database (e.g. a CI sandbox).
 """
 from __future__ import annotations
 
@@ -23,11 +29,14 @@ from domain.organization import Organization
 
 TEST_DB_URL = os.getenv(
     "INTEGRATION_DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:54326/postgres",
+    "postgresql://postgres:postgres@127.0.0.1:54326/carbontally_test",
 )
 
 #: Environment used by infra/supabase.py inside the test process.
-os.environ.setdefault("DATABASE_URL", TEST_DB_URL)
+#: ``DATABASE_URL`` is *forced* (not ``setdefault``) so a stale ``DATABASE_URL``
+#: exported in the outer shell can never redirect repository pools at the
+#: authoritative database; the test process always talks to the test database.
+os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("SUPABASE_URL", "http://127.0.0.1:54325")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
