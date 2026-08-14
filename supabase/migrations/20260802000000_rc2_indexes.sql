@@ -20,11 +20,12 @@
 --          matching the emissions_logs_emission_factor_id_idx pattern).
 --
 -- WHY NOT CONCURRENTLY: the Supabase migration runner (`supabase db reset`)
--- applies migrations inside a single pipeline, where CREATE INDEX CONCURRENTLY
--- is illegal (SQLSTATE 25001). A db reset rebuilds an empty database, so there
--- are no concurrent writers to guard against; plain CREATE INDEX IF NOT EXISTS
--- is safe and idempotent. Each statement is self-contained; a failure is
--- non-destructive (only the offending index is skipped) and can be re-run.
+-- applies migrations inside a single pipeline, where the CONCURRENTLY option
+-- on CREATE INDEX is illegal (SQLSTATE 25001). A db reset rebuilds an empty
+-- database, so there are no concurrent writers to guard against; plain
+-- CREATE INDEX IF NOT EXISTS is safe and idempotent. Each statement is
+-- self-contained; a failure is non-destructive (only the offending index is
+-- skipped) and can be re-run.
 -- A NOTE: after dropping/rebuilding the factor UNIQUE index in 002, this file
 -- never re-creates it here — 002 owns the factor natural key.
 -- ============================================================================
@@ -39,8 +40,9 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- SECTION 1 — RECONCILE THE RC1 PERFORMANCE + FK-SUPPORT FAMILY (I1–I5, FK)
 -- ============================================================================
 -- All IF NOT EXISTS: absent on this scheme → created; present → no-op. Plain
--- (non-CONCURRENTLY) creation because the Supabase migration runner pipelines
--- statements and CONCURRENTLY is illegal there; db reset builds an empty DB.
+-- (non-concurrent) creation because the Supabase migration runner pipelines
+-- statements and the CONCURRENTLY option is illegal there; db reset builds
+-- an empty DB.
 
 -- I1 — tenant composites
 CREATE INDEX IF NOT EXISTS customer_documents_org_created_idx
@@ -138,8 +140,8 @@ CREATE INDEX IF NOT EXISTS dpq_emission_factor_used_idx
 --
 -- ROLLBACK: drop only the two Section-2 additions if reverting to the RC1
 -- index set; the Section-1 quotes are all baseline-owned and left intact:
---   DROP INDEX CONCURRENTLY IF EXISTS public.password_reset_tokens_user_id_idx;
---   DROP INDEX CONCURRENTLY IF EXISTS public.dpq_emission_factor_used_idx;
+--   DROP INDEX IF EXISTS public.password_reset_tokens_user_id_idx;
+--   DROP INDEX IF EXISTS public.dpq_emission_factor_used_idx;
 -- ============================================================================
 
 -- End of 003_rc2_indexes.sql

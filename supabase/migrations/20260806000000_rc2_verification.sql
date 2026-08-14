@@ -240,8 +240,8 @@ SELECT i.indexname, i.tablename, i.indexdef
       'emission_factors_year_activity_country_uniq')
  ORDER BY i.indexname;
 
--- 4c. Invalid indexes — a failed CREATE INDEX CONCURRENTLY leaves an invalid
--- index behind. PASS = empty. (Fix: DROP INDEX CONCURRENTLY <name>; re-run 003.)
+-- 4c. Invalid indexes — a failed index build leaves an invalid index behind.
+-- PASS = empty. (Fix: DROP INDEX IF EXISTS <name>; re-run 003.)
 SELECT c.relname AS invalid_index, ct.relname AS table_name
   FROM pg_index i
   JOIN pg_class c  ON c.oid  = i.indexrelid

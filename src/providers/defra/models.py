@@ -1,8 +1,9 @@
-"""Typed data models shared across the DEFRA importer pipeline.
+"""Typed models for the CarbonTally DEFRA 2025 emission-factor importer.
 
-Every pipeline stage exchanges these dataclasses. Values are kept close to the
-published workbook wherever possible and are only normalised where the target
-``emission_factors`` table requires it.
+Every pipeline stage (parser -> mapper -> validator -> exporter) exchanges these
+dataclasses. The models deliberately keep the *full* published DEFRA row so no
+information is discarded: fields without a column in ``public.emission_factors``
+are preserved in ``EmissionFactor.metadata`` (exported as JSON).
 """
 from __future__ import annotations
 
@@ -11,10 +12,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Optional
 
+# Sheet classifications produced by the parser.
+SHEET_DATA = "data"
+SHEET_DOCUMENTATION = "documentation"
+SHEET_UNSUPPORTED = "unsupported"
 
-# ---------------------------------------------------------------------------
-# JSON helpers
-# ---------------------------------------------------------------------------
+
 def to_jsonable(value: Any) -> Any:
     """Convert pipeline values into plain JSON-serialisable objects."""
     if isinstance(value, Decimal):
@@ -37,7 +40,7 @@ def to_jsonable(value: Any) -> Any:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class WorkbookMeta:
-    """Metadata discovered on the workbook's meta (front) sheet(s)."""
+    """Metadata discovered on the workbook's documentation sheet(s)."""
 
     source_path: str
     file_sha256: str = ""
@@ -76,12 +79,13 @@ class WorksheetInfo:
     """Discovery result for a single worksheet."""
 
     name: str
-    sheet_type: str  # 'metadata' | 'data' | 'other'
+    sheet_type: str  # data | documentation | unsupported
     max_row: Optional[int]
     max_col: Optional[int]
-    header_row: Optional[int] = None  # 1-based header row (data sheets)
-    columns: tuple[tuple[str, int], ...] = ()  # (column_label, 1-based index)
+    header_row: Optional[int] = None
+    columns: tuple[tuple[str, int], ...] = ()
     data_row_count: Optional[int] = None
+    blank_rows: int = 0
     notes: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -94,6 +98,7 @@ class WorksheetInfo:
                 "header_row": self.header_row,
                 "columns": [{"label": label, "index": idx} for label, idx in self.columns],
                 "data_row_count": self.data_row_count,
+                "blank_rows": self.blank_rows,
                 "notes": list(self.notes),
             }
         )
@@ -101,7 +106,7 @@ class WorksheetInfo:
 
 @dataclass(frozen=True, slots=True)
 class WorkbookAnalysis:
-    """Top-level analysis of the workbook (meta + worksheet inventory)."""
+    """Top-level analysis: metadata + worksheet inventory + reporting year."""
 
     meta: WorkbookMeta
     worksheets: tuple[WorksheetInfo, ...]
@@ -118,32 +123,53 @@ class WorkbookAnalysis:
             }
         )
 
-
 # ---------------------------------------------------------------------------
 # Row-level data
 # ---------------------------------------------------------------------------
 @dataclass(slots=True)
-class RawRow:
-    """A raw worksheet row (values only) with provenance."""
+class ParsedRow:
+    """A row parsed from a data worksheet, as published (pre-mapping)."""
 
     sheet_name: str
     row_number: int
-    cells: tuple[Any, ...]
+    defra_id: str
+    scope: str
+    level1: str
+    level2: str
+    level3: str
+    level4: str
+    column_text: str
+    uom: str
+    ghg_unit: str
+    factor_raw: Any
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "sheet_name": self.sheet_name,
-            "row_number": self.row_number,
-            "cells": [to_jsonable(c) for c in self.cells],
-        }
+        return to_jsonable(
+            {
+                "sheet_name": self.sheet_name,
+                "row_number": self.row_number,
+                "defra_id": self.defra_id,
+                "scope": self.scope,
+                "level1": self.level1,
+                "level2": self.level2,
+                "level3": self.level3,
+                "level4": self.level4,
+                "column_text": self.column_text,
+                "uom": self.uom,
+                "ghg_unit": self.ghg_unit,
+                "factor_raw": self.factor_raw,
+            }
+        )
 
 
 @dataclass(slots=True)
 class EmissionFactor:
-    """A normalised emission factor ready for validation and loading.
+    """A mapped emission factor.
 
-    Carries both the DB-facing fields and the full published row so the
-    JSON/report outputs preserve every DEFRA detail exactly as published.
+    Carries the DB-facing fields plus the full published row. DEFRA fields with
+    no column in ``public.emission_factors`` (defra_id, level hierarchy, column
+    text, GHG/Unit breakdown, provenance) live in ``metadata`` so nothing is
+    lost; ``skip_reason`` marks rows the mapper could not map.
     """
 
     reporting_year: int
@@ -170,6 +196,7 @@ class EmissionFactor:
     # pipeline metadata
     natural_key: tuple[str, ...] = field(default_factory=tuple)
     skip_reason: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return to_jsonable(
@@ -182,17 +209,10 @@ class EmissionFactor:
                 "factor_source": self.factor_source,
                 "factor_set": self.factor_set,
                 "country": self.country,
-                "defra_id": self.defra_id,
-                "level1": self.level1,
-                "level2": self.level2,
-                "level3": self.level3,
-                "level4": self.level4,
-                "column_text": self.column_text,
-                "uom": self.uom,
-                "ghg_unit": self.ghg_unit,
                 "row_number": self.row_number,
                 "sheet_name": self.sheet_name,
                 "natural_key": list(self.natural_key),
+                "metadata": self.metadata,
             }
         )
 
@@ -202,7 +222,7 @@ class EmissionFactor:
 # ---------------------------------------------------------------------------
 @dataclass(slots=True)
 class SkippedRow:
-    """A workbook row that was read but not imported."""
+    """A workbook row that was read but is not importable."""
 
     row_number: int
     sheet_name: str
@@ -249,52 +269,15 @@ class DuplicateRow:
             }
         )
 
-@dataclass(slots=True)
-class ParsedRow:
-    """A row parsed from a data worksheet, as published (pre-normalisation)."""
-
-    sheet_name: str
-    row_number: int
-    defra_id: str
-    scope: str
-    level1: str
-    level2: str
-    level3: str
-    level4: str
-    column_text: str
-    uom: str
-    ghg_unit: str
-    factor_raw: Any
-    parse_issue: Optional[str] = None  # set when a non-empty factor cannot be parsed
-
-    def as_dict(self) -> dict[str, Any]:
-        return to_jsonable(
-            {
-                "sheet_name": self.sheet_name,
-                "row_number": self.row_number,
-                "defra_id": self.defra_id,
-                "scope": self.scope,
-                "level1": self.level1,
-                "level2": self.level2,
-                "level3": self.level3,
-                "level4": self.level4,
-                "column_text": self.column_text,
-                "uom": self.uom,
-                "ghg_unit": self.ghg_unit,
-                "factor_raw": self.factor_raw,
-                "parse_issue": self.parse_issue,
-            }
-        )
-
 
 @dataclass(slots=True)
 class ValidationIssue:
-    """A validation finding against a single row."""
+    """A validation finding against a single row (severity: warning | error)."""
 
     row_number: int
     defra_id: str
     field: str
-    severity: str  # 'error' | 'warning'
+    severity: str
     message: str
 
     def as_dict(self) -> dict[str, Any]:
@@ -318,64 +301,57 @@ class ValidationReport:
     duplicates: list[DuplicateRow] = field(default_factory=list)
     issues: list[ValidationIssue] = field(default_factory=list)
 
-    def as_dict(self) -> dict[str, Any]:
-        return to_jsonable(
-            {
-                "factors": [f.as_dict() for f in self.factors],
-                "skipped": [s.as_dict() for s in self.skipped],
-                "duplicates": [d.as_dict() for d in self.duplicates],
-                "issues": [i.as_dict() for i in self.issues],
-            }
-        )
+    @property
+    def warnings(self) -> int:
+        return sum(1 for i in self.issues if i.severity == "warning")
 
+    @property
+    def errors(self) -> int:
+        return sum(1 for i in self.issues if i.severity == "error")
 
+# ---------------------------------------------------------------------------
+# Run statistics / result
+# ---------------------------------------------------------------------------
 @dataclass(slots=True)
 class ImportStats:
     """Aggregate counts for the import run."""
 
+    sheets_processed: int = 0
+    data_sheets: int = 0
+    documentation_sheets: int = 0
+    unsupported_sheets: int = 0
     rows_scanned: int = 0
     rows_parsed: int = 0
-    empty_rows: int = 0
+    blank_rows: int = 0
     end_marker_rows: int = 0
     rows_with_id: int = 0
     factors_with_value: int = 0
     skipped_no_factor: int = 0
-    skipped_unparseable: int = 0
-    skipped_no_label: int = 0
+    skipped_invalid_factor: int = 0
+    skipped_no_activity_name: int = 0
     skipped_no_id: int = 0
     skipped_validation: int = 0
     duplicates: int = 0
     imported: int = 0
+    warnings: int = 0
+    errors: int = 0
 
     def as_dict(self) -> dict[str, Any]:
-        return to_jsonable(
-            {
-                "rows_scanned": self.rows_scanned,
-                "rows_parsed": self.rows_parsed,
-                "empty_rows": self.empty_rows,
-                "end_marker_rows": self.end_marker_rows,
-                "rows_with_id": self.rows_with_id,
-                "factors_with_value": self.factors_with_value,
-                "skipped_no_factor": self.skipped_no_factor,
-                "skipped_unparseable": self.skipped_unparseable,
-                "skipped_no_label": self.skipped_no_label,
-                "skipped_no_id": self.skipped_no_id,
-                "skipped_validation": self.skipped_validation,
-                "duplicates": self.duplicates,
-                "imported": self.imported,
-            }
-        )
+        from dataclasses import asdict
+        return to_jsonable(asdict(self))
 
 
 @dataclass(slots=True)
 class ImportResult:
-    """Everything a run produced, consumed by the loader/command/reporters."""
+    """Everything a run produced, consumed by the exporter and CLI."""
 
     analysis: WorkbookAnalysis
     validation: ValidationReport
     stats: ImportStats
     config: dict[str, Any] = field(default_factory=dict)
-    db: dict[str, Any] = field(default_factory=dict)  # loader outcome details
+    db: dict[str, Any] = field(default_factory=dict)
+    execution_time_ms: int = 0
+    sheet_stats: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return to_jsonable(
@@ -385,5 +361,21 @@ class ImportResult:
                 "stats": self.stats.as_dict(),
                 "config": self.config,
                 "db": self.db,
+                "execution_time_ms": self.execution_time_ms,
+                "sheet_stats": self.sheet_stats,
             }
         )
+
+
+    def as_dict(self) -> dict[str, Any]:
+        return to_jsonable(
+            {
+                "factors": [f.as_dict() for f in self.factors],
+                "skipped": [s.as_dict() for s in self.skipped],
+                "duplicates": [d.as_dict() for d in self.duplicates],
+                "issues": [i.as_dict() for i in self.issues],
+                "warnings": self.warnings,
+                "errors": self.errors,
+            }
+        )
+

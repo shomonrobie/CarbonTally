@@ -11,6 +11,7 @@ Phase 4 ships the Factor Matching Engine and its six pipeline stages.
 from __future__ import annotations
 
 from engines.ai_extraction import DEFAULT_FIELDS, AIExtractionEngine
+from engines.benchmarking import BenchmarkingEngine
 from engines.calculation import (
     DEFAULT_ALGORITHM_VERSION,
     CalculationEngine,
@@ -19,6 +20,7 @@ from engines.calculation import (
 )
 from engines.extraction import DocumentExtractionEngine, DocumentSink
 from engines.factor_matching import FactorMatchingEngine, build_matching_pipeline
+from engines.workflow import WorkflowOrchestrator, WorkflowResult
 from engines.matching_stages import (
     AliasMatchStage,
     AliasResolver,
@@ -30,11 +32,18 @@ from engines.matching_stages import (
     SemanticMatchStage,
     SemanticScorer,
 )
+from engines.validation import ValidationEngine
+from engines.report_generation import (
+    ReportContent,
+    ReportGenerationEngine,
+    ReportGenerationResult,
+)
 
 __all__ = [
     "AIExtractionEngine",
     "AliasMatchStage",
     "AliasResolver",
+    "BenchmarkingEngine",
     "CalculationEngine",
     "CalculationRequest",
     "CalculationSink",
@@ -48,8 +57,14 @@ __all__ = [
     "KeywordSearchStage",
     "NaturalKeyStage",
     "RepositoryAliasResolver",
+    "ReportContent",
+    "ReportGenerationEngine",
+    "ReportGenerationResult",
     "SemanticMatchStage",
     "SemanticScorer",
+    "ValidationEngine",
+    "WorkflowOrchestrator",
+    "WorkflowResult",
     "build_matching_pipeline",
 ]
 

@@ -1,0 +1,1842 @@
+<!DOCTYPE html>
+<html dir="ltr" lang="en" class="no-js usn">
+<head>
+    
+<script type="text/javascript">
+    !function (T, l, y) { var S = T.location, k = "script", D = "instrumentationKey", C = "ingestionendpoint", I = "disableExceptionTracking", E = "ai.device.", b = "toLowerCase", w = "crossOrigin", N = "POST", e = "appInsightsSDK", t = y.name || "appInsights"; (y.name || T[e]) && (T[e] = t); var n = T[t] || function (d) { var g = !1, f = !1, m = { initialize: !0, queue: [], sv: "5", version: 2, config: d }; function v(e, t) { var n = {}, a = "Browser"; return n[E + "id"] = a[b](), n[E + "type"] = a, n["ai.operation.name"] = S && S.pathname || "_unknown_", n["ai.internal.sdkVersion"] = "javascript:snippet_" + (m.sv || m.version), { time: function () { var e = new Date; function t(e) { var t = "" + e; return 1 === t.length && (t = "0" + t), t } return e.getUTCFullYear() + "-" + t(1 + e.getUTCMonth()) + "-" + t(e.getUTCDate()) + "T" + t(e.getUTCHours()) + ":" + t(e.getUTCMinutes()) + ":" + t(e.getUTCSeconds()) + "." + ((e.getUTCMilliseconds() / 1e3).toFixed(3) + "").slice(2, 5) + "Z" }(), iKey: e, name: "Microsoft.ApplicationInsights." + e.replace(/-/g, "") + "." + t, sampleRate: 100, tags: n, data: { baseData: { ver: 2 } } } } var h = d.url || y.src; if (h) { function a(e) { var t, n, a, i, r, o, s, c, u, p, l; g = !0, m.queue = [], f || (f = !0, t = h, s = function () { var e = {}, t = d.connectionString; if (t) for (var n = t.split(";"), a = 0; a < n.length; a++) { var i = n[a].split("="); 2 === i.length && (e[i[0][b]()] = i[1]) } if (!e[C]) { var r = e.endpointsuffix, o = r ? e.location : null; e[C] = "https://" + (o ? o + "." : "") + "dc." + (r || "services.visualstudio.com") } return e }(), c = s[D] || d[D] || "", u = s[C], p = u ? u + "/v2/track" : d.endpointUrl, (l = []).push((n = "SDK LOAD Failure: Failed to load Application Insights SDK script (See stack for details)", a = t, i = p, (o = (r = v(c, "Exception")).data).baseType = "ExceptionData", o.baseData.exceptions = [{ typeName: "SDKLoadFailed", message: n.replace(/\./g, "-"), hasFullStack: !1, stack: n + "\nSnippet failed to load [" + a + "] -- Telemetry is disabled\nHelp Link: https://go.microsoft.com/fwlink/?linkid=2128109\nHost: " + (S && S.pathname || "_unknown_") + "\nEndpoint: " + i, parsedStack: [] }], r)), l.push(function (e, t, n, a) { var i = v(c, "Message"), r = i.data; r.baseType = "MessageData"; var o = r.baseData; return o.message = 'AI (Internal): 99 message:"' + ("SDK LOAD Failure: Failed to load Application Insights SDK script (See stack for details) (" + n + ")").replace(/\"/g, "") + '"', o.properties = { endpoint: a }, i }(0, 0, t, p)), function (e, t) { if (JSON) { var n = T.fetch; if (n && !y.useXhr) n(t, { method: N, body: JSON.stringify(e), mode: "cors" }); else if (XMLHttpRequest) { var a = new XMLHttpRequest; a.open(N, t), a.setRequestHeader("Content-type", "application/json"), a.send(JSON.stringify(e)) } } }(l, p)) } function i(e, t) { f || setTimeout(function () { !t && m.core || a() }, 500) } var e = function () { var n = l.createElement(k); n.src = h; var e = y[w]; return !e && "" !== e || "undefined" == n[w] || (n[w] = e), n.onload = i, n.onerror = a, n.onreadystatechange = function (e, t) { "loaded" !== n.readyState && "complete" !== n.readyState || i(0, t) }, n }(); y.ld < 0 ? l.getElementsByTagName("head")[0].appendChild(e) : setTimeout(function () { l.getElementsByTagName(k)[0].parentNode.appendChild(e) }, y.ld || 0) } try { m.cookie = l.cookie } catch (p) { } function t(e) { for (; e.length;)!function (t) { m[t] = function () { var e = arguments; g || m.queue.push(function () { m[t].apply(m, e) }) } }(e.pop()) } var n = "track", r = "TrackPage", o = "TrackEvent"; t([n + "Event", n + "PageView", n + "Exception", n + "Trace", n + "DependencyData", n + "Metric", n + "PageViewPerformance", "start" + r, "stop" + r, "start" + o, "stop" + o, "addTelemetryInitializer", "setAuthenticatedUserContext", "clearAuthenticatedUserContext", "flush"]), m.SeverityLevel = { Verbose: 0, Information: 1, Warning: 2, Error: 3, Critical: 4 }; var s = (d.extensionConfig || {}).ApplicationInsightsAnalytics || {}; if (!0 !== d[I] && !0 !== s[I]) { var c = "onerror"; t(["_" + c]); var u = T[c]; T[c] = function (e, t, n, a, i) { var r = u && u(e, t, n, a, i); return !0 !== r && m["_" + c]({ message: e, url: t, lineNumber: n, columnNumber: a, error: i }), r }, d.autoExceptionInstrumented = !0 } return m }(y.cfg); function a() { y.onInit && y.onInit(n) } (T[t] = n).queue && 0 === n.queue.length ? (n.queue.push(a), n.trackPageView({})) : a() }(window, document, {
+        src: "https://js.monitor.azure.com/scripts/b/ai.2.min.js",
+        name: "UmbracoFrontend",
+        crossOrigin: "anonymous",
+        cfg: {
+            instrumentationKey: "7ae3a0e6-550d-4ca5-b67b-c46febcb6706"
+        }
+    });
+
+</script>
+
+            <!-- Google Tag Manager -->
+        <link rel="dns-prefetch" href="//www.googletagmanager.com">
+
+    <!-- Google Fonts -->
+<link rel="dns-prefetch" href="//fonts.googleapis.com">
+<link rel="dns-prefetch" href="//fonts.gstatic.com">
+    
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=2">
+        <link rel="canonical" href="https://www.water-plus.co.uk/" />
+    <title>Water Plus | The largest water retailer in the UK</title>
+    <meta name="description" content="We provide customers with water retail services, including billing, meter reading &amp; customer account support, along with technical water efficiency services">
+            <link rel="alternate" hreflang="en-gb" href="https://www.water-plus.co.uk/" />
+    <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@waterplusuk" />
+        <meta name="twitter:creator" content="@waterplusuk" />
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Water Plus | The largest water retailer in the UK" />
+    <meta property="og:image" content="https://wpwebumbraco-prd-wa.azurewebsites.net/media/lyapoo4u/logo-dark-blue.png" />
+    <meta property="og:url" content="https://www.water-plus.co.uk/" />
+    <meta property="og:description" content="We provide customers with water retail services, including billing, meter reading &amp; customer account support, along with technical water efficiency services" />
+    <meta property="og:site_name" content="Water Plus" />
+    <meta name="robots" content="index,follow">
+
+    
+    <link href="/sb/sitebuilder-ltr-css-bundle.css.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" media="screen" rel="stylesheet" />
+<link href="/sb/sitebuilder-css-bundle.css.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" media="screen" rel="stylesheet" />
+<link href="/sb/sitebuilder-css-small-header-03-sm-bundle.css.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" media="screen and (min-width:0) and (max-width:991px)" rel="stylesheet" />
+<link href="/sb/sitebuilder-css-large-header-07-lg-bundle.css.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" media="screen and (min-width:992px)" rel="stylesheet" />
+<link rel="stylesheet" media="screen" href="/uSkinned/css/generated/4c11cc79-0e24-4878-bd1f-f2ac56fab122.css?version=638538714766530000" />
+<link href="/sb/sitebuilder-css-prnt-bundle.css.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" media="print" rel="stylesheet" />
+
+
+            <link rel="shortcut icon" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=32&amp;height=32">
+        <link rel="apple-touch-icon" sizes="57x57" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=57&amp;height=57">
+        <link rel="apple-touch-icon" sizes="60x60" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=60&amp;height=60">
+        <link rel="apple-touch-icon" sizes="72x72" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=72&amp;height=72">
+        <link rel="apple-touch-icon" sizes="76x76" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=76&amp;height=76">
+        <link rel="apple-touch-icon" sizes="114x114" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=114&amp;height=114">
+        <link rel="apple-touch-icon" sizes="120x120" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=120&amp;height=120">
+        <link rel="apple-touch-icon" sizes="144x144" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=144&amp;height=144">
+        <link rel="apple-touch-icon" sizes="152x152" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=152&amp;height=152">
+        <link rel="apple-touch-icon" sizes="180x180" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=180&amp;height=180">
+        <link rel="icon" sizes="16x16" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=16&amp;height=16">
+        <link rel="icon" sizes="32x32" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=32&amp;height=32">
+        <link rel="icon" sizes="96x96" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=96&amp;height=96">
+        <link rel="icon" sizes="192x192" type="image/png" href="/media/lyapoo4u/logo-dark-blue.png?width=192&amp;height=192">
+        <meta name="msapplication-square70x70logo" content="/media/lyapoo4u/logo-dark-blue.png?width=70&height=70" />
+        <meta name="msapplication-square150x150logo" content="/media/lyapoo4u/logo-dark-blue.png?width=150&height=150" />
+        <meta name="msapplication-wide310x150logo" content="/media/lyapoo4u/logo-dark-blue.png?width=310&height=150" />
+        <meta name="msapplication-square310x310logo" content="/media/lyapoo4u/logo-dark-blue.png?width=310&height=310" />
+
+    
+            <script async defer src="https://www.google.com/recaptcha/api.js?render=6LeeZmsfAAAAAK-SB2w-6_XpkLha7vsRLlRvH8e1"></script>
+        <!-- Google Tag Manager -->
+        <script>
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-TC74KPT');</script>
+        <!-- End Google Tag Manager -->
+
+</head>
+<body 
+    
+ class="body-bg body-bg-solid header-07-lg header-03-sm show_header-on-scroll-lg show_header-on-scroll-sm directional-icons-chevron   full-page            content-underline-link-hover footer-underline-link footer-underline-link-hover     zoom_hover  "
+
+>
+
+
+            <!-- Google Tag Manager (noscript) -->
+        <noscript>
+            <iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TC74KPT"
+                    height="0" width="0" style="display:none;visibility:hidden"></iframe>
+        </noscript>
+        <!-- End Google Tag Manager (noscript) -->
+
+
+    <!-- Skip links -->
+    <a class="skip-to-content" id="skip-to-content-link" href="#site-content"></a>
+    <a class="skip-to-content" id="skip-to-footer-link" href="#site-footer"></a>
+    <!--// Skip links -->
+
+    <!-- Site -->
+    <div id="site">
+
+        <!-- Header -->
+            <header id="site-header" class="header-bg header-bg-solid" tabindex="-1">
+
+
+        <div class="container">
+
+            <div class="row">
+
+                    <div id="logo" >
+        <a href="https://www.water-plus.co.uk/" title="Water Plus">
+                    <picture>
+                            <img src="/media/ndxpdgcl/water-plus-logo-on-dark-no-strap.png" alt="Water Plus Logo">
+
+                    </picture>
+            <span>Water Plus</span>
+        </a>
+    </div>
+
+
+
+                    <!-- Expand -->
+                    <button id="burgerNavStyle" class="expand-header expand-3-bars expand-even-lines expand-active-cross" type="button" aria-expanded="false" aria-label="">
+                        <span></span>
+                    </button>
+                    <!--// Expand -->
+
+                <!-- Main navigation -->
+                        <nav aria-label="" class="main nav-dropdown navigation-dropdown-bg-solid">
+            <ul >
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://www.water-plus.co.uk/get-a-quote/"   >Get a quote</a>
+                            </span>
+
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://www.water-plus.co.uk/about-us/"   >About us</a>
+                            </span>
+
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://www.water-plus.co.uk/better-ways-with-water/"   >Water efficiency</a>
+                            </span>
+
+                        </li>
+                        <li  class="has-child active">
+                            <span>
+                                <a href="https://www.water-plus.co.uk/"   >Account actions</a>
+                            </span>
+
+                                <button class="expand-subpages" type="button" aria-expanded="false" aria-label=" Account actions">
+                                    <span aria-hidden="true"> Account actions</span>
+                                </button>
+            <ul >
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://myaccount.water-plus.co.uk/make-payment/"   >Make payment</a>
+                            </span>
+
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://www.water-plus.co.uk/moving-premises/"   >Moving IN/OUT</a>
+                            </span>
+
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://myaccount.water-plus.co.uk/meter-reads/"   >Submit meter reads</a>
+                            </span>
+
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://myaccount.water-plus.co.uk/bills/"   >View my bills</a>
+                            </span>
+
+                        </li>
+            </ul>
+                        </li>
+                        <li  class="no-child ">
+                            <span>
+                                <a href="https://myaccount.water-plus.co.uk/help/"   >Help</a>
+                            </span>
+
+                        </li>
+            </ul>
+        </nav>
+
+
+
+                <!--// Main navigation -->
+                <!-- Secondary navigation -->
+                
+                <!--// Secondary navigation -->
+                <!-- CTA Links -->
+                        <nav aria-label="" class="cta-links">
+                    <a class="btn boxed-btn btn-md base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders" href="https://myaccount.water-plus.co.uk/"   >
+                        <span></span>
+                        Login / Register
+                    </a>
+        </nav>
+
+                <!--// CTA Links -->
+                <!-- Site search -->
+                    <div class="form site-search-form site-search" aria-label="">
+            <form role="search" action="https://www.water-plus.co.uk/search/" method="get" name="searchForm">
+                <fieldset>
+                    <div class="form-group">
+                        <input type="text" class="form-control" name="search_field" aria-label="Search" placeholder="Search" value="" maxlength="256">
+                    </div>
+                    <button type="submit" role="button" aria-label="" class="btn base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders btn-search">
+                        <span></span>
+                        <i aria-hidden="true" class="icon usn_ion-ios-search"></i>
+                    </button>
+                </fieldset>
+            </form>
+            <button class="expand-search" data-bs-toggle="collapse" type="button" aria-expanded="false" aria-label="">
+                <em>Search</em>
+                <i aria-hidden="true" class="icon usn_ion-ios-search search-icon"></i>
+                <i aria-hidden="true" class="icon usn_ion-md-close close-icon"></i>
+            </button>
+        </div>
+
+                <!--// Site search -->
+
+            </div>
+
+        </div>
+    </header>
+
+
+        <!--// Header -->
+        <!-- Content -->
+        <main id="site-content" tabindex="-1">
+
+            
+            
+
+
+
+
+
+
+
+
+    <section class="content component usn_cmp_banner base-bg base-bg-solid d-md-none_only d-lg-none_only d-xl-none_only " >  
+
+        <div class="component-inner">
+
+
+                                <div class="item item_takeover-banner parallax c2-bg c2-bg-solid ">
+
+                            <!-- IMAGE -->
+                            <div class="image lazyload background-image  "  style="background-image:url('/media/5klc4rfa/adobestock_644189540.jpeg?width=300&height=220&v=1dad79785cf2670&quality=75')"  data-bgset="/media/5klc4rfa/adobestock_644189540.jpeg?width=1500&height=1100&v=1dad79785cf2670&quality=75 1x, /media/5klc4rfa/adobestock_644189540.jpeg?width=3000&height=2200&v=1dad79785cf2670&quality=75 2x" data-sizes="auto"   role="img" aria-label="">
+
+                            </div>
+                            <!--// IMAGE -->
+
+                            <div class="inner">
+                                <div class="container">
+
+                                    <!-- ROW -->
+                                    <div class="row text-center justify-content-center align-content-end">
+
+                                        <div class="info col">
+
+                                            <h1 class="heading  c2-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >We make water easy and simple for you</h1>
+
+                                                <p class="link " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                                            <a class="btn boxed-btn btn-md base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders" href="https://www.water-plus.co.uk/get-a-quote/"   >
+                                                                <span></span>
+                                                                Get a quote
+                                                            </a>
+                                                </p>
+
+                                        </div>
+                                    </div>
+                                    <!--// ROW -->
+
+                                </div>
+                            </div>
+                            <!-- SCROLL PROMPT -->
+                            <div class="scroll-prompt scroll-prompt-arrow ">
+                                <button type="button" aria-label="" class="scroll-link">
+                                    <i aria-hidden="true" class="icon"></i>
+                                    <div class="mouse-scroll"></div>
+                                    <span></span>
+                                </button>
+                            </div>
+                            <!--// SCROLL PROMPT -->
+
+                    </div>
+
+
+
+        </div>
+    </section>
+    <section class="content component usn_cmp_text c1-bg c1-bg-solid pb-0 d-md-none_only d-lg-none_only d-xl-none_only " >  
+
+        <div class="component-inner">
+                    <div class="container"><div class="row justify-content-center"><div class="content-col center-col col">
+
+
+
+                <div class="info ">
+
+        
+
+        <div class="text c1-text " data-os-animation="fadeIn" data-os-animation-delay="0s">
+            <p class="sm"><strong>Large-scale operations: </strong>manage<strong> </strong>complex industrial, manufacturing water use or trade effluent treatment? We have solutions tailored to your needs.</p>
+<p class="MsoNormal"><strong>Small and medium businesses:</strong> we enable you with full control to self-manage your water needs.</p>
+<p class="sm"> </p>
+        </div>
+
+
+    </div>
+
+
+
+
+                    </div></div></div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_pods c2-bg c2-bg-solid d-xs-none_only d-sm-none_only " >  
+
+        <div class="image lazyload background-image component-background-image image-opacity-100"  style="background-image:url('/media/e0sn4bnp/hero-3200-final.png'); background-repeat:no-repeat;background-size:100% auto;background-position:center top;" role="img" aria-label=""></div>
+        <div class="component-inner">
+                    <div class="container">
+
+
+
+                    <div class="component-main row listing listing_no-spacing listing_basic-grid listing-pods " >
+    <div class="item item_has-bg  items-3 col-12 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/get-a-quote/"   >
+                    <div class="info ">
+
+                        
+
+                            <div class="text c1-text">
+                                <h2 style="text-align: center; font-family: Roboto Slab;"><strong style="color: #023047;">We make water easy and simple</strong></h2>
+<p> </p>
+<p><strong>Tailored water solutions</strong> for your specific needs, whether it's complex industrial or manufacturing processes.</p>
+<p><strong>Self-management tools </strong>for full control of your water usage, regardless of your business size.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-lg base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders">
+                                    <span></span>
+                                    Get a quote
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_splitcomponent base-bg base-bg-solid  " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+
+                    <div class="component-main row justify-content-between align-items-center">
+
+                    <div class="item item_block usn_cmp_gallery align-self-center col-xl-5 col-md-6 order-md-1 order-1 col-12   " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+
+                                <div class="component-main row  listing  listing_basic-grid listing_gallery" >
+
+                        <div class="item  items-1 col-12  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+                            
+                                <div class="image  image-opacity-100 image_hover-opacity-40 " >
+
+                                                <picture>
+                <source data-srcset="/media/x4mgsueu/meter-read-32.png?width=800&amp;height=530&amp;v=1dc07b9366c8ca0&amp;quality=75&quality=100 1x, /media/x4mgsueu/meter-read-32.png?width=1600&amp;height=1060&amp;v=1dc07b9366c8ca0&amp;quality=75&quality=100 2x" width="800" height="530">
+                <img class="lazyload " src="/media/x4mgsueu/meter-read-32.png?width=160&amp;height=106&amp;v=1dc07b9366c8ca0&amp;quality=75" data-src="/media/x4mgsueu/meter-read-32.png?width=800&amp;height=530&amp;v=1dc07b9366c8ca0&amp;quality=75" width="800" height="530" alt="">
+            </picture>
+
+
+                                </div>
+
+                        </div>
+
+        </div>
+
+
+
+                        
+
+                    </div>
+
+                    <div class="item item_block usn_cmp_text align-self-center col-xl-7 col-md-6 order-md-2 order-2 col-12   " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+
+                            <div class="info text-left">
+
+        <h3 class="heading  base-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >Bills based on actual use</h3>        <p class="secondary-heading base-secondary-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >Your meter readings matter</p>
+
+
+        <div class="text base-text " data-os-animation="fadeIn" data-os-animation-delay="0s">
+            <p>Submitting regular water meter readings helps ensure your bills are accurate, based on your actual usage, with fewer estimates. <strong>With MyAccount, it’s quick and easy.</strong></p>
+<ul>
+<li>
+<p><strong>Single or multiple meter readings: </strong>Submitted with just one click.</p>
+</li>
+<li>
+<p><strong>Photo verification: </strong>Upload a photo of your meter to help us bill you accurately.</p>
+</li>
+<li>
+<p><strong>Track your history: </strong>View all your previous readings to monitor usage.</p>
+</li>
+<li>
+<p><strong>Report issues quickly: </strong>Easily flag any water-related concerns.</p>
+</li>
+<li>
+<p><strong>Locate your meter: </strong>Our map will show you exactly where your meter is.</p>
+</li>
+</ul>
+        </div>
+
+            <p class="link " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        <a class="btn boxed-btn btn-md c2-btn-bg c2-btn-bg-solid c2-btn-bg-hover-solid c2-btn-text c2-btn-borders" href="https://myaccount.water-plus.co.uk/help?categoryId=6f0124c0-1175-eb11-b1ab-000d3a2110c6"   >
+                            <span></span>
+                            Read more
+                        </a>
+                        <a class="btn boxed-btn btn-lg base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders" href="https://myaccount.water-plus.co.uk/meter-reads/"   >
+                            <span></span>
+                            Submit a reading
+                        </a>
+            </p>
+
+    </div>
+
+                        
+
+                    </div>
+
+        </div>
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_pods c1-bg c1-bg-solid  " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+        <!-- Introduction -->
+        <div class="component-introduction row justify-content-start text-left " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                <h2 class="heading  c1-heading " >Tell us if you are moving</h2>        <p class="secondary-heading c1-secondary-heading " >so we can update your account, your address details and bill you correctly.</p>
+
+
+            </div>
+        </div>
+        <!--// Introduction -->
+
+
+                    <div class="component-main row listing listing_no-spacing listing_basic-grid listing-pods " >
+    <div class="item  items-2 col-12 usn_pod_image text-left  os-animation" data-os-animation="fadeInLeft" data-os-animation-delay="0s" data-os-animation-duration="1.9s">
+
+            <div class="image  image-opacity-100 image_hover-opacity-40 " >
+
+                            <picture>
+                <source data-srcset="/media/o1djcb3t/water-plus-bluegrad-icon-moveing-premises.png?width=800&amp;height=600&amp;v=1dbe4d22dc6ccf0&amp;quality=75&quality=100 1x, /media/o1djcb3t/water-plus-bluegrad-icon-moveing-premises.png?width=1600&amp;height=1200&amp;v=1dbe4d22dc6ccf0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/o1djcb3t/water-plus-bluegrad-icon-moveing-premises.png?width=160&amp;height=120&amp;v=1dbe4d22dc6ccf0&amp;quality=75" data-src="/media/o1djcb3t/water-plus-bluegrad-icon-moveing-premises.png?width=800&amp;height=600&amp;v=1dbe4d22dc6ccf0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+
+            </div>
+
+    </div>
+    <div class="item item_has-bg  items-2 col-12 item_text-below usn_pod_textimage text-center  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/moving-premises/moving-in/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/xmvp32nb/moving-in-500px.png?width=800&amp;height=400&amp;v=1dbe4d22da64ca0&amp;quality=75&quality=100 1x, /media/xmvp32nb/moving-in-500px.png?width=1600&amp;height=800&amp;v=1dbe4d22da64ca0&amp;quality=75&quality=100 2x" width="800" height="400">
+                <img class="lazyload " src="/media/xmvp32nb/moving-in-500px.png?width=160&amp;height=80&amp;v=1dbe4d22da64ca0&amp;quality=75" data-src="/media/xmvp32nb/moving-in-500px.png?width=800&amp;height=400&amp;v=1dbe4d22da64ca0&amp;quality=75" width="800" height="400" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading  base-heading " >Moving into a premises we supply</p>
+
+                            <div class="text base-text">
+                                <p>New to Water Plus or received an occupier letter</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders">
+                                    <span></span>
+                                    Set up your new account
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+        <!-- Outro -->
+        <div class="component-outro row justify-content-center text-center " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                <p class="heading  c1-heading " >Are you moving out or switching premises?</p>        <p class="secondary-heading c1-secondary-heading " >Follow this link to access all the information you will required</p>
+
+
+                    <p class="link">
+                                <a class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders" href="https://www.water-plus.co.uk/moving-premises/"   >
+                                    <span></span>
+                                    Moving premises
+                                </a>
+                    </p>
+            </div>
+        </div>
+        <!--// Outro -->
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_reusablecomponents c1-bg c1-bg-solid  " >  
+
+        <div class="image lazyload background-image component-background-image image-opacity-100"  style="background-image:url('/media/450a4ysc/website-background.png'); background-repeat:no-repeat;background-size:auto;background-position:center center;" role="img" aria-label=""></div>
+        <div class="component-inner">
+                    <div class="container-fluid">
+
+
+                        <div class="" data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+
+    <section class="content component usn_cmp_pods c2-bg c2-bg-solid  " >  
+
+        <div class="image lazyload background-image component-background-image image-opacity-100"  style="background-image:url('/media/450a4ysc/website-background.png'); background-repeat:no-repeat;background-size:auto;background-position:center center;" role="img" aria-label=""></div>
+        <div class="component-inner">
+                    <div class="container-fluid">
+
+        <!-- Introduction -->
+        <div class="component-introduction row justify-content-center text-center " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                <h3 class="heading  c2-heading " >See how we've helped customers achieve better ways with water and cut costs.</h3>
+
+            </div>
+        </div>
+        <!--// Introduction -->
+
+
+                    <div class="component-main row listing  listing_basic-grid listing-pods slides" data-slick='{"autoplay": true, "autoplaySpeed": 8250,"dots": false ,"arrows": true ,"slidesToShow": 4, "responsive": [{"breakpoint": 992,"settings": {"slidesToShow": 3}},{"breakpoint": 768,"settings": {"slidesToShow": 3}},{"breakpoint": 575,"settings": {"slidesToShow": 1}}],"fade": false }'>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/water-efficiency-programme/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/cy1h43ex/saving.jpg?width=800&amp;height=600&amp;v=1dbd6b3dd4a84a0&amp;quality=75&quality=100 1x, /media/cy1h43ex/saving.jpg?width=1600&amp;height=1200&amp;v=1dbd6b3dd4a84a0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/cy1h43ex/saving.jpg?width=160&amp;height=120&amp;v=1dbd6b3dd4a84a0&amp;quality=75" data-src="/media/cy1h43ex/saving.jpg?width=800&amp;height=600&amp;v=1dbd6b3dd4a84a0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Water efficiency programme</p>        <p class="secondary-heading sm c1-secondary-heading " >Latest news</p>
+
+
+                            <div class="text c1-text">
+                                <p><span class="NormalTextRun SCXW187075936 BCX8">3</span><span class="NormalTextRun SCXW187075936 BCX8">,600+ businesses, schools, care homes and sport clubs see water-savings and cost reductions – as Water Plus engages sites, in large-scale project</span>&nbsp;</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Water efficiency program
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/nhs-foundation-trusts/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/sztnswji/nhs-trust-1.jpg?width=800&amp;height=600&amp;v=1dce841e43466f0&amp;quality=75&quality=100 1x, /media/sztnswji/nhs-trust-1.jpg?width=1600&amp;height=1200&amp;v=1dce841e43466f0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/sztnswji/nhs-trust-1.jpg?width=160&amp;height=120&amp;v=1dce841e43466f0&amp;quality=75" data-src="/media/sztnswji/nhs-trust-1.jpg?width=800&amp;height=600&amp;v=1dce841e43466f0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Hospital trusts step-up sustainability actions</p>        <p class="secondary-heading sm c1-secondary-heading " >Case Study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Health service trusts are increasing steps on sustainability with staff and finding ways to reduce carbon emissions during the year, in joint work.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    NHS Foundation Trusts
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/suntory/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/yead2lw5/suntory-43.jpg?width=800&amp;height=600&amp;v=1dd03c815575390&amp;quality=75&quality=100 1x, /media/yead2lw5/suntory-43.jpg?width=1600&amp;height=1200&amp;v=1dd03c815575390&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/yead2lw5/suntory-43.jpg?width=160&amp;height=120&amp;v=1dd03c815575390&amp;quality=75" data-src="/media/yead2lw5/suntory-43.jpg?width=800&amp;height=600&amp;v=1dd03c815575390&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Suntory Beverage & Food Great Britain & Ireland</p>        <p class="secondary-heading sm c1-secondary-heading " >Latest news</p>
+
+
+                            <div class="text c1-text">
+                                <p>Famous for producing its Ribena and Lucozade brands, has seen how close customer support and excellent customer service from Water Plus can help it progress towards its 2030 sustainability goals.&nbsp;</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    SUNTORY
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/multi-site-cuts-and-efficiency-gain/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/p4sn0udg/multi-site.jpg?width=800&amp;height=600&amp;v=1dcffc6584581f0&amp;quality=75&quality=100 1x, /media/p4sn0udg/multi-site.jpg?width=1600&amp;height=1200&amp;v=1dcffc6584581f0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/p4sn0udg/multi-site.jpg?width=160&amp;height=120&amp;v=1dcffc6584581f0&amp;quality=75" data-src="/media/p4sn0udg/multi-site.jpg?width=800&amp;height=600&amp;v=1dcffc6584581f0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Multi-site cuts risks and makes 42.5% efficiency gain</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <div class="OutlineElement Ltr SCXW217913455 BCX8">
+<div>A 17-site audit and water efficiency programme cut average daily water use by 42.5%, delivering benefits across the organisation’s multi-site estate and its many users.</div>
+</div>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Multi-site cuts and efficiency gain
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/co-op-and-water-plus/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/jwmd4eyr/co-op-power-logo.jpg?width=800&amp;height=600&amp;v=1dd1b7d0525acc0&amp;quality=75&quality=100 1x, /media/jwmd4eyr/co-op-power-logo.jpg?width=1600&amp;height=1200&amp;v=1dd1b7d0525acc0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/jwmd4eyr/co-op-power-logo.jpg?width=160&amp;height=120&amp;v=1dd1b7d0525acc0&amp;quality=75" data-src="/media/jwmd4eyr/co-op-power-logo.jpg?width=800&amp;height=600&amp;v=1dd1b7d0525acc0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Co-op and Water Plus delivering greater impact together</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Through collaboration, innovation and shared expertise, Water Plus has helped Co-op reduce costs, improve water efficiency and support meaningful community action.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Co-op and Water Plus
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/eg-on-the-move-strengthens-sustainability/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/dgkglp5v/eg-on-the-move-logo.jpg?width=800&amp;height=600&amp;v=1dd20c46bfa5670&amp;quality=75&quality=100 1x, /media/dgkglp5v/eg-on-the-move-logo.jpg?width=1600&amp;height=1200&amp;v=1dd20c46bfa5670&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/dgkglp5v/eg-on-the-move-logo.jpg?width=160&amp;height=120&amp;v=1dd20c46bfa5670&amp;quality=75" data-src="/media/dgkglp5v/eg-on-the-move-logo.jpg?width=800&amp;height=600&amp;v=1dd20c46bfa5670&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >EG On The Move strengthens sustainability</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>With a growing UK network, EG On The Move’s strategic partnership with Water Plus is strengthening&nbsp;its on-site water sustainability programme.&nbsp;</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Read more
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/water-savings/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/4mvnuxki/the-challenge-water-savings-v2.jpg?width=800&amp;height=600&amp;v=1dce842133b2100&amp;quality=75&quality=100 1x, /media/4mvnuxki/the-challenge-water-savings-v2.jpg?width=1600&amp;height=1200&amp;v=1dce842133b2100&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/4mvnuxki/the-challenge-water-savings-v2.jpg?width=160&amp;height=120&amp;v=1dce842133b2100&amp;quality=75" data-src="/media/4mvnuxki/the-challenge-water-savings-v2.jpg?width=800&amp;height=600&amp;v=1dce842133b2100&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Thousands of pounds cut from weekly water costs in at-scale 2026 action</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>It’s building on<span>&nbsp;</span>work that saw<span>&nbsp;3,609 water-saving visits delivered at businesses, care homes, sports clubs and council sites in collaborative at-scale activity.</span></p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Water savings
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/nottingham-trent-university/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/ouuhmihv/arkwright-b0561-1.jpg?rxy=0.4974134701588115,0.6214745747759163&amp;width=800&amp;height=600&amp;v=1dc624b362f96f0&amp;quality=75&quality=100 1x, /media/ouuhmihv/arkwright-b0561-1.jpg?rxy=0.4974134701588115,0.6214745747759163&amp;width=1600&amp;height=1200&amp;v=1dc624b362f96f0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/ouuhmihv/arkwright-b0561-1.jpg?rxy=0.4974134701588115,0.6214745747759163&amp;width=160&amp;height=120&amp;v=1dc624b362f96f0&amp;quality=75" data-src="/media/ouuhmihv/arkwright-b0561-1.jpg?rxy=0.4974134701588115,0.6214745747759163&amp;width=800&amp;height=600&amp;v=1dc624b362f96f0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Nottingham Trent University</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p data-pm-slice="1 1 []">Strategic Water Management for Sustainability</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Nottingham Trent University
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/j-d-wetherspoon/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/wvzdsynd/screenshot-2025-10-06-214725.png?rxy=0.5,0.6653124948215633&amp;width=800&amp;height=600&amp;v=1dc624b3621db50&amp;quality=75&quality=100 1x, /media/wvzdsynd/screenshot-2025-10-06-214725.png?rxy=0.5,0.6653124948215633&amp;width=1600&amp;height=1200&amp;v=1dc624b3621db50&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/wvzdsynd/screenshot-2025-10-06-214725.png?rxy=0.5,0.6653124948215633&amp;width=160&amp;height=120&amp;v=1dc624b3621db50&amp;quality=75" data-src="/media/wvzdsynd/screenshot-2025-10-06-214725.png?rxy=0.5,0.6653124948215633&amp;width=800&amp;height=600&amp;v=1dc624b3621db50&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading  c1-heading " >Wetherspoon's water savings</p>        <p class="secondary-heading c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Tracking technology delivers swift water reduction and supports Net Zero goals across 800 sites.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    J D Wetherspoon
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/applebees-catering/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/uhjax3nd/beestro-box-credit-applebees-catering-company.jpeg?width=800&amp;height=600&amp;v=1dbcef872cbc610&amp;quality=75&quality=100 1x, /media/uhjax3nd/beestro-box-credit-applebees-catering-company.jpeg?width=1600&amp;height=1200&amp;v=1dbcef872cbc610&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/uhjax3nd/beestro-box-credit-applebees-catering-company.jpeg?width=160&amp;height=120&amp;v=1dbcef872cbc610&amp;quality=75" data-src="/media/uhjax3nd/beestro-box-credit-applebees-catering-company.jpeg?width=800&amp;height=600&amp;v=1dbcef872cbc610&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading  c1-heading " >Applebees Catering</p>        <p class="secondary-heading c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Saves 90% on water use with Water Plus</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Applebees Catering
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/express-cuisine-saves-water-with-water-plus/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/m5cnxleh/case-study-express-cuisine.jpeg?rxy=0.2718681814173817,0.39941590151025447&amp;width=800&amp;height=600&amp;v=1dbcef8732a60d0&amp;quality=75&quality=100 1x, /media/m5cnxleh/case-study-express-cuisine.jpeg?rxy=0.2718681814173817,0.39941590151025447&amp;width=1600&amp;height=1200&amp;v=1dbcef8732a60d0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/m5cnxleh/case-study-express-cuisine.jpeg?rxy=0.2718681814173817,0.39941590151025447&amp;width=160&amp;height=120&amp;v=1dbcef8732a60d0&amp;quality=75" data-src="/media/m5cnxleh/case-study-express-cuisine.jpeg?rxy=0.2718681814173817,0.39941590151025447&amp;width=800&amp;height=600&amp;v=1dbcef8732a60d0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Reliable water partner to support future growth</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Express Cuisine demonstrates its commitment to responsible water use and operational efficiency while supporting its growth plans.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Express Cuisine
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/school-sees-45k-a-year-saving/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/45ihhlas/school-case-study.jpg?rxy=0.5029409381135063,0.21753458777508722&amp;width=800&amp;height=600&amp;v=1dbcf0e589f0570&amp;quality=75&quality=100 1x, /media/45ihhlas/school-case-study.jpg?rxy=0.5029409381135063,0.21753458777508722&amp;width=1600&amp;height=1200&amp;v=1dbcf0e589f0570&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/45ihhlas/school-case-study.jpg?rxy=0.5029409381135063,0.21753458777508722&amp;width=160&amp;height=120&amp;v=1dbcf0e589f0570&amp;quality=75" data-src="/media/45ihhlas/school-case-study.jpg?rxy=0.5029409381135063,0.21753458777508722&amp;width=800&amp;height=600&amp;v=1dbcf0e589f0570&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >School sees £45k a year saving</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>A Schools Trust that educates more than 13,000 children has seen a £45,000 a year saving - after the Trust moved all of its 17 sites to Water Plus.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    School sees £45k a year saving
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/queens-park-care-home/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/r2cfqgpd/care-home.png?width=800&amp;height=600&amp;v=1dbcef872db0850&amp;quality=75&quality=100 1x, /media/r2cfqgpd/care-home.png?width=1600&amp;height=1200&amp;v=1dbcef872db0850&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/r2cfqgpd/care-home.png?width=160&amp;height=120&amp;v=1dbcef872db0850&amp;quality=75" data-src="/media/r2cfqgpd/care-home.png?width=800&amp;height=600&amp;v=1dbcef872db0850&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading  c1-heading " >Queens Park Care Home</p>        <p class="secondary-heading c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Care home cuts water use and saves BIG!</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Queens Park Care Home
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/2-sisters-food-group/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/ovao53ko/2-sisters-hero-5.png?width=800&amp;height=600&amp;v=1dbcef872ee6940&amp;quality=75&quality=100 1x, /media/ovao53ko/2-sisters-hero-5.png?width=1600&amp;height=1200&amp;v=1dbcef872ee6940&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/ovao53ko/2-sisters-hero-5.png?width=160&amp;height=120&amp;v=1dbcef872ee6940&amp;quality=75" data-src="/media/ovao53ko/2-sisters-hero-5.png?width=800&amp;height=600&amp;v=1dbcef872ee6940&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >2 Sisters Food Group</p>        <p class="secondary-heading sm c1-secondary-heading " >Case study</p>
+
+
+                            <div class="text c1-text">
+                                <p>Water awareness days&nbsp;in Cumbria, Nottinghamshire, Lincolnshire and Derbyshire.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    2 Sisters Food Group
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-4 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner c1-bg c1-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/choice-hotels/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/cvsnqjri/hotels-choice.png?width=800&amp;height=600&amp;v=1dc1abb0f716b10&amp;quality=75&quality=100 1x, /media/cvsnqjri/hotels-choice.png?width=1600&amp;height=1200&amp;v=1dc1abb0f716b10&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/cvsnqjri/hotels-choice.png?width=160&amp;height=120&amp;v=1dc1abb0f716b10&amp;quality=75" data-src="/media/cvsnqjri/hotels-choice.png?width=800&amp;height=600&amp;v=1dc1abb0f716b10&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm c1-heading " >Choice Hotels</p>        <p class="secondary-heading sm c1-secondary-heading " >Latest news</p>
+
+
+                            <div class="text c1-text">
+                                <p><span class="NormalTextRun SCXW249094010 BCX8">A hotel group which provides top-rated rooms and facilities for hundreds of guests, is partnering with Water Plus, following the customer service it’s seeing.</span>&nbsp;</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+
+
+                    </div>
+        </div>
+    </section>
+            </div>
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_reusablecomponents base-bg base-bg-solid  " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+
+                        <div class="" data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+
+    <section class="content component usn_cmp_pods base-bg base-bg-solid pt-0 has-box-shadows " >  
+
+        <div class="component-inner">
+                    <div class="container-fluid">
+
+        <!-- Introduction -->
+        <div class="component-introduction row justify-content-start text-left os-animation" data-os-animation="slideInRight" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                <h2 class="heading  base-heading " >A splash of information</h2>        <p class="secondary-heading base-secondary-heading " >News and industry updates</p>
+
+
+            </div>
+        </div>
+        <!--// Introduction -->
+
+
+                    <div class="component-main row listing  listing_basic-grid listing-pods slides" data-slick='{"autoplay": true, "autoplaySpeed": 2000,"dots": true ,"arrows": false ,"slidesToShow": 3, "responsive": [{"breakpoint": 768,"settings": {"slidesToShow": 2}},{"breakpoint": 575,"settings": {"slidesToShow": 1}}],"fade": false }'>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/atlantic-rowers-take-on-climate-challenge/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/f54mi3uf/calltoearth-logo-rgb-blue-only.jpeg?width=800&amp;height=600&amp;v=1dc605f95251fb0&amp;quality=75&quality=100 1x, /media/f54mi3uf/calltoearth-logo-rgb-blue-only.jpeg?width=1600&amp;height=1200&amp;v=1dc605f95251fb0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/f54mi3uf/calltoearth-logo-rgb-blue-only.jpeg?width=160&amp;height=120&amp;v=1dc605f95251fb0&amp;quality=75" data-src="/media/f54mi3uf/calltoearth-logo-rgb-blue-only.jpeg?width=800&amp;height=600&amp;v=1dc605f95251fb0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Call to Earth Atlantic rowers</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <div class="OutlineElement Ltr SCXW157990109 BCX8">
+<p class="Paragraph SCXW157990109 BCX8"><span class="NormalTextRun SCXW157990109 BCX8">Team-up with Water Plus to boost actions and awareness on tackling climate change</span>&nbsp;</p>
+</div>
+<div class="OutlineElement Ltr SCXW157990109 BCX8">
+<p class="Paragraph SCXW157990109 BCX8"><span class="NormalTextRun SCXW157990109 BCX8"></span>&nbsp;</p>
+</div>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/water-stewardship-unlocks-innovation/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/rm3noxum/water-stewardship-customer.jpg?width=800&amp;height=600&amp;v=1dcfe2c4f901110&amp;quality=75&quality=100 1x, /media/rm3noxum/water-stewardship-customer.jpg?width=1600&amp;height=1200&amp;v=1dcfe2c4f901110&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/rm3noxum/water-stewardship-customer.jpg?width=160&amp;height=120&amp;v=1dcfe2c4f901110&amp;quality=75" data-src="/media/rm3noxum/water-stewardship-customer.jpg?width=800&amp;height=600&amp;v=1dcfe2c4f901110&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Driving innovation and opportunities through water stewardship</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>Bigger water users, including in the public sector, are seeing broad benefits from a 2026 water stewardship programme delivered through&nbsp;new&nbsp;collaborative action.&nbsp;</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/news/hot-weather/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/twuf4v5p/water-plus-darkblue-icon-hot-weatherv2.jpg?width=800&amp;height=600&amp;v=1dd03c7cad4c5a0&amp;quality=75&quality=100 1x, /media/twuf4v5p/water-plus-darkblue-icon-hot-weatherv2.jpg?width=1600&amp;height=1200&amp;v=1dd03c7cad4c5a0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/twuf4v5p/water-plus-darkblue-icon-hot-weatherv2.jpg?width=160&amp;height=120&amp;v=1dd03c7cad4c5a0&amp;quality=75" data-src="/media/twuf4v5p/water-plus-darkblue-icon-hot-weatherv2.jpg?width=800&amp;height=600&amp;v=1dd03c7cad4c5a0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Summer weather water stress</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <div>Help your sites weather summer 2026, protect operations from water disruptions, cut unnecessary costs, and keep water flowing; while checking current UK water usage restrictions.</div>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/grow-girls-and-women-s-league/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/ig0azkg2/ladies-cup-final.png?width=800&amp;height=600&amp;v=1dc321ad7194bd0&amp;quality=75&quality=100 1x, /media/ig0azkg2/ladies-cup-final.png?width=1600&amp;height=1200&amp;v=1dc321ad7194bd0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/ig0azkg2/ladies-cup-final.png?width=160&amp;height=120&amp;v=1dc321ad7194bd0&amp;quality=75" data-src="/media/ig0azkg2/ladies-cup-final.png?width=800&amp;height=600&amp;v=1dc321ad7194bd0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Girls and Women’s Football league</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>More sporting opportunities are opened up helping girls and women develop skills, grow confidence and build healthy lifestyles - in a partnership between Water Plus and a football league.</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/school-garden-makeovers/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/boxl4aum/grove-blue-4-3.jpg?width=800&amp;height=600&amp;v=1dcf821fddc8890&amp;quality=75&quality=100 1x, /media/boxl4aum/grove-blue-4-3.jpg?width=1600&amp;height=1200&amp;v=1dcf821fddc8890&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/boxl4aum/grove-blue-4-3.jpg?width=160&amp;height=120&amp;v=1dcf821fddc8890&amp;quality=75" data-src="/media/boxl4aum/grove-blue-4-3.jpg?width=800&amp;height=600&amp;v=1dcf821fddc8890&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Revitalising school grounds for outdoor learning</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>Volunteers&nbsp;from Water Plus&nbsp;grabbed spades&nbsp;and&nbsp;rakes&nbsp;to get&nbsp;outdoor spaces&nbsp;in great shape, so pupils can&nbsp;thrive and&nbsp;learn&nbsp;more&nbsp;about nature and climate change.&nbsp;&nbsp;</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/news/wholesaler-price-changes/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/otjhvaqm/price-changes.png?width=800&amp;height=600&amp;v=1dc814fa64966a0&amp;quality=75&quality=100 1x, /media/otjhvaqm/price-changes.png?width=1600&amp;height=1200&amp;v=1dc814fa64966a0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/otjhvaqm/price-changes.png?width=160&amp;height=120&amp;v=1dc814fa64966a0&amp;quality=75" data-src="/media/otjhvaqm/price-changes.png?width=800&amp;height=600&amp;v=1dc814fa64966a0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Water price changes 2026 - 2027</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>From 1 April 2026, wholesale water companies will update their charges for clean water and wastewater services. Ofwat will sign off final prices before they are published between January and March, but we already have indicative price changes, to help you plan ahead.</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/smart-meters/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/h4apwvhz/smart-meter-carusel.png?width=800&amp;height=600&amp;v=1dbdea04efc8ff0&amp;quality=75&quality=100 1x, /media/h4apwvhz/smart-meter-carusel.png?width=1600&amp;height=1200&amp;v=1dbdea04efc8ff0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/h4apwvhz/smart-meter-carusel.png?width=160&amp;height=120&amp;v=1dbdea04efc8ff0&amp;quality=75" data-src="/media/h4apwvhz/smart-meter-carusel.png?width=800&amp;height=600&amp;v=1dbdea04efc8ff0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Smart meters</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>Between 2025 and 2030, all water wholesalers are undertaking projects to update existing water meters with smart ones at non-household premises across England.&nbsp;</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/sunmagic-juices/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/eheacak0/sunmagic-juices.jpg?width=800&amp;height=600&amp;v=1dbcf0e58aa9e30&amp;quality=75&quality=100 1x, /media/eheacak0/sunmagic-juices.jpg?width=1600&amp;height=1200&amp;v=1dbcf0e58aa9e30&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/eheacak0/sunmagic-juices.jpg?width=160&amp;height=120&amp;v=1dbcf0e58aa9e30&amp;quality=75" data-src="/media/eheacak0/sunmagic-juices.jpg?width=800&amp;height=600&amp;v=1dbcf0e58aa9e30&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Sunmagic Juices</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>A UK-based producer of premium juices, juice drinks, fresh juice and smoothies, is increasing its water use tracking data, by working with Water Plus, as part of its sustainability actions.</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/net-zero-standard/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/vkmnvsqv/net-zero-reusable-component.jpg?width=800&amp;height=600&amp;v=1dc814fa660bf30&amp;quality=75&quality=100 1x, /media/vkmnvsqv/net-zero-reusable-component.jpg?width=1600&amp;height=1200&amp;v=1dc814fa660bf30&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/vkmnvsqv/net-zero-reusable-component.jpg?width=160&amp;height=120&amp;v=1dc814fa660bf30&amp;quality=75" data-src="/media/vkmnvsqv/net-zero-reusable-component.jpg?width=800&amp;height=600&amp;v=1dc814fa660bf30&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Water Plus gains Net Zero standard target</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <div class="OutlineElement Ltr SCXW157990109 BCX8">
+<p class="Paragraph SCXW157990109 BCX8">Water Plus has gained a Net Zero standard, confirming its reduction pathway not only meets, but beats the science-based target trajectory for 1.5C that many businesses aspire to. </p>
+</div>
+<div class="OutlineElement Ltr SCXW157990109 BCX8">
+<p class="Paragraph SCXW157990109 BCX8"><span class="NormalTextRun SCXW157990109 BCX8"></span> </p>
+</div>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/food-for-families-in-need/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/405hqtsf/1000070759.jpg?width=800&amp;height=600&amp;v=1dbe5fdd8aaf250&amp;quality=75&quality=100 1x, /media/405hqtsf/1000070759.jpg?width=1600&amp;height=1200&amp;v=1dbe5fdd8aaf250&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/405hqtsf/1000070759.jpg?width=160&amp;height=120&amp;v=1dbe5fdd8aaf250&amp;quality=75" data-src="/media/405hqtsf/1000070759.jpg?width=800&amp;height=600&amp;v=1dbe5fdd8aaf250&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Extra food provided for families in need</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <div>
+<p>Support from big-hearted staff at national business water retailer Water Plus&nbsp;</p>
+</div>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/teenage-cancer-trust/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/xlpj34yk/teenage-cancer-trust.jpg?width=800&amp;height=600&amp;v=1dbcf0e58b5e8d0&amp;quality=75&quality=100 1x, /media/xlpj34yk/teenage-cancer-trust.jpg?width=1600&amp;height=1200&amp;v=1dbcf0e58b5e8d0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/xlpj34yk/teenage-cancer-trust.jpg?width=160&amp;height=120&amp;v=1dbcf0e58b5e8d0&amp;quality=75" data-src="/media/xlpj34yk/teenage-cancer-trust.jpg?width=800&amp;height=600&amp;v=1dbcf0e58b5e8d0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Teenage Cancer Trust</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p><span class="NormalTextRun SCXW257178488 BCX8">100 hours of support in England and Scotland for young people facing cancer, through additional actions for communities by Water Plus</span>&nbsp;</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+    <div class="item item_has-bg  items-3 item_text-below usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner base-bg base-bg-solid  ">
+                    <a href="https://www.water-plus.co.uk/case-studies/water-plus-big-hitting-event-raises-money-for-teenage-cancer-trust/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/rwjlxg1a/teenage-cancer-trust-golf-teeing-off.jpg?width=800&amp;height=600&amp;v=1dbcf0e58c48ed0&amp;quality=75&quality=100 1x, /media/rwjlxg1a/teenage-cancer-trust-golf-teeing-off.jpg?width=1600&amp;height=1200&amp;v=1dbcf0e58c48ed0&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/rwjlxg1a/teenage-cancer-trust-golf-teeing-off.jpg?width=160&amp;height=120&amp;v=1dbcf0e58c48ed0&amp;quality=75" data-src="/media/rwjlxg1a/teenage-cancer-trust-golf-teeing-off.jpg?width=800&amp;height=600&amp;v=1dbcf0e58c48ed0&amp;quality=75" width="800" height="600" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        <p class="heading sm base-heading " >Big-hitting event raises money for Teenage Cancer Trust</p>        <p class="secondary-heading sm base-secondary-heading " >Latest news</p>
+
+
+                            <div class="text base-text">
+                                <p>260 more hours of support for young people facing cancer in England and Scotland</p>
+                            </div>
+
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+
+
+                    </div>
+        </div>
+    </section>
+            </div>
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_code base-bg base-bg-solid pt-0 " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+        <!-- Introduction -->
+        <div class="component-introduction row justify-content-center text-center " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                <h2 class="heading  base-heading " >We care about meeting all our customers' needs</h2>
+
+                    <div class="text base-text">
+                        <p>We have a "Great" rating on Trustpilot.</p>
+                    </div>
+            </div>
+        </div>
+        <!--// Introduction -->
+
+
+                <div class="code-item " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+<!-- TrustBox widget - Slider -->
+<div class="trustpilot-widget" data-locale="en-GB" data-template-id="54ad5defc6454f065c28af8b" data-businessunit-id="5ae866ea44c621000127a9d0" data-style-height="240px" data-style-width="100%" data-theme="light" data-tags="SelectedReview" data-review-languages="en">
+  <a href="https://uk.trustpilot.com/review/www.water-plus.co.uk" target="_blank" rel="noopener">Trustpilot</a>
+</div>
+<!-- End TrustBox widget -->    </div>
+
+
+        <!-- Outro -->
+        <div class="component-outro row justify-content-start text-left " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="info col">
+
+                
+
+            </div>
+        </div>
+        <!--// Outro -->
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_pods c1-bg c1-bg-solid pb-0 " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+
+
+                    <div class="component-main row listing  listing_basic-grid listing-pods " >
+    <div class="item   items-1 col-12 item_text-right usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner   ">
+                    <a href="https://www.water-plus.co.uk/partners/zellar/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/uvodviq2/zellar-three-phones-graphic-800.png?width=800&amp;height=600&amp;v=1da49316aea8330&amp;quality=75&quality=100 1x, /media/uvodviq2/zellar-three-phones-graphic-800.png?width=1600&amp;height=1200&amp;v=1da49316aea8330&amp;quality=75&quality=100 2x" width="800" height="600">
+                <img class="lazyload " src="/media/uvodviq2/zellar-three-phones-graphic-800.png?width=160&amp;height=120&amp;v=1da49316aea8330&amp;quality=75" data-src="/media/uvodviq2/zellar-three-phones-graphic-800.png?width=800&amp;height=600&amp;v=1da49316aea8330&amp;quality=75" width="800" height="600" alt="Examples of what you can do on the Zellar application">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        
+
+                            <div class="text c1-text">
+                                <h2>Check out our partner</h2>
+<p>Zellar's online platform can help your business to measure its environmental impact, reduce energy and water use, and cut costs.</p>
+<p>A sustainable business is a SMART business</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders">
+                                    <span></span>
+                                    Zellar discount
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_pods base-bg base-bg-solid pb-0 " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+
+
+                    <div class="component-main row listing  listing_basic-grid listing-pods " >
+    <div class="item   items-1 col-12 item_text-right usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner   ">
+                    <a href="https://www.water-plus.co.uk/better-ways-with-water/"   >
+                    <div class="image    image-opacity-100 image_hover-opacity-40" >
+                                    <picture>
+                <source data-srcset="/media/qr2lnbqd/water-plus-bluegreen-icon-save-2x.png?width=800&amp;height=800&amp;v=1dc07b9363aa730&amp;quality=75&quality=100 1x, /media/qr2lnbqd/water-plus-bluegreen-icon-save-2x.png?width=1600&amp;height=1600&amp;v=1dc07b9363aa730&amp;quality=75&quality=100 2x" width="800" height="800">
+                <img class="lazyload " src="/media/qr2lnbqd/water-plus-bluegreen-icon-save-2x.png?width=160&amp;height=160&amp;v=1dc07b9363aa730&amp;quality=75" data-src="/media/qr2lnbqd/water-plus-bluegreen-icon-save-2x.png?width=800&amp;height=800&amp;v=1dc07b9363aa730&amp;quality=75" width="800" height="800" alt="">
+            </picture>
+
+                    </div>
+                    <div class="info ">
+
+                        
+
+                            <div class="text base-text">
+                                <h2>Better ways with water</h2>
+<p class="sm"><strong>However you use water.</strong></p>
+<p class="sm"><strong>However much you use.</strong></p>
+<p class="sm"><strong>Whatever your business type.</strong></p>
+<p><br>We'll help you to be more water efficient, reduce carbon associated with water and cut costs.</p>
+                            </div>
+
+                            <p class="link">
+                                <span class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders">
+                                    <span></span>
+                                    Better ways with water
+                                </span>
+                            </p>
+                    </div>
+                </a>
+            </div>
+    </div>
+
+        </div>
+
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_splitcomponent base-bg base-bg-solid  " >  
+
+        <div class="component-inner">
+                    <div class="container">
+
+
+                    <div class="component-main row justify-content-between align-items-center">
+
+                    <div class="item item_block usn_cmp_gallery align-self-center col-xl-6 col-md-6 order-md-1 order-1 col-12   " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+
+                                <div class="component-main row  listing  listing_basic-grid listing_gallery" >
+
+                        <div class="item  items-1 col-12  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+                            
+                                <div class="image  image-opacity-100 image_hover-opacity-40 " >
+
+                                                <picture>
+                <source data-srcset="/media/h4pprzbc/laptop-final-web-v2.png?width=800&amp;height=530&amp;v=1dc07b936561e70&amp;quality=75&quality=100 1x, /media/h4pprzbc/laptop-final-web-v2.png?width=1600&amp;height=1060&amp;v=1dc07b936561e70&amp;quality=75&quality=100 2x" width="800" height="530">
+                <img class="lazyload " src="/media/h4pprzbc/laptop-final-web-v2.png?width=160&amp;height=106&amp;v=1dc07b936561e70&amp;quality=75" data-src="/media/h4pprzbc/laptop-final-web-v2.png?width=800&amp;height=530&amp;v=1dc07b936561e70&amp;quality=75" width="800" height="530" alt="">
+            </picture>
+
+
+                                </div>
+
+                        </div>
+
+        </div>
+
+
+
+                        
+
+                    </div>
+
+                    <div class="item item_block usn_cmp_text align-self-center col-xl-6 col-md-6 order-md-2 order-2 col-12   " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        
+
+                            <div class="info text-left">
+
+        <h2 class="heading  base-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >MyAccount Online</h2>
+
+        <div class="text base-text " data-os-animation="fadeIn" data-os-animation-delay="0s">
+            <p class="heading">Take full control of your account</p>
+<p>We've built the best online account management tool to help you save time and get more done.</p>
+<ul>
+<li>
+<p><strong>View all your bills</strong></p>
+</li>
+<li style="font-weight: bold;">
+<p><strong>Upload meter readings</strong></p>
+</li>
+<li style="font-weight: bold;">
+<p><strong>Pay online or set up Direct Debits</strong></p>
+</li>
+<li style="font-weight: bold;">
+<p><strong>Manage multiple accounts</strong></p>
+</li>
+</ul>
+        </div>
+
+            <p class="link " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                        <a class="btn boxed-btn btn-md c1-btn-bg c1-btn-bg-solid c1-btn-bg-hover-solid c1-btn-text c1-btn-borders" href="https://myaccount.water-plus.co.uk/"   >
+                            <span></span>
+                            Register for online access
+                        </a>
+            </p>
+
+    </div>
+
+                        
+
+                    </div>
+
+        </div>
+
+
+
+                    </div>
+        </div>
+    </section>
+    <section class="content component usn_cmp_banner base-bg base-bg-solid  " >  
+
+        <div class="component-inner">
+
+
+                                <div class="item item_short-banner  c1-bg c1-bg-solid ">
+
+
+                            <div class="inner">
+                                <div class="container">
+
+                                    <!-- ROW -->
+                                    <div class="row text-center justify-content-center align-content-center">
+
+                                        <div class="info col">
+
+                                            <h3 class="heading  c1-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >How can we help you?</h3>
+
+                                                <div class="text c1-text " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                                    <p>Got a question about your Water Plus account, or online MyAccount?</p>
+                                                </div>
+                                                <p class="link " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                                            <a class="btn boxed-btn btn-md c2-btn-bg c2-btn-bg-solid c2-btn-bg-hover-solid c2-btn-text c2-btn-borders" href="https://myaccount.water-plus.co.uk/help/"   >
+                                                                <span></span>
+                                                                Find your answers
+                                                            </a>
+                                                </p>
+
+                                        </div>
+                                    </div>
+                                    <!--// ROW -->
+
+                                </div>
+                            </div>
+
+                    </div>
+
+
+
+        </div>
+    </section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+
+        </main>
+        <!--// Content -->
+        <!-- Footer -->
+                    <footer id="site-footer" class="footer-bg footer-bg-solid" tabindex="-1">
+
+                <!-- Breadcrumb -->
+                
+                <!--// Breadcrumb -->
+
+                <div class="container-fluid">
+
+                        <!-- Row -->
+                        <div class="row listing">
+
+                                        <div class="item footer-item usn_pod_links   col-lg-2 col-md-2 col-12 col ">
+                                                <div class="inner">
+                                                    <p class="heading sm footer-heading "  data-os-animation="bounce" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >Services</p>        <div class="component-main row listing listing_links listing_links-mini " data-os-animation="bounce" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+
+                            <!-- Item -->
+                            <div class="item items-1 item_links col-12  " data-os-animation="bounce" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                <a href="https://www.water-plus.co.uk/get-a-quote/"   >
+
+Get a quote<i class="icon usn_ion-md-link footer-highlight after"></i>
+                                </a>
+                            </div>
+                            <!--// Item -->
+                            <!-- Item -->
+                            <div class="item items-1 item_links col-12  " data-os-animation="bounce" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                <a href="https://www.water-plus.co.uk/better-ways-with-water/"   >
+
+Better ways with water<i class="icon usn_ion-md-link footer-highlight after"></i>
+                                </a>
+                            </div>
+                            <!--// Item -->
+        </div>
+
+                                                </div>
+                                        </div>
+                                        <div class="item footer-item usn_pod_links   col-lg-3 col-md-3 col-12 col ">
+                                                <div class="inner">
+                                                    <p class="heading sm footer-heading "  data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s" >Work with us</p>        <div class="component-main row listing listing_links listing_links-mini " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+
+                            <!-- Item -->
+                            <div class="item items-1 item_links col-12  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                <a href="https://www.water-plus.co.uk/about-us/"   >
+
+About us<i class="icon usn_ion-md-link footer-highlight after"></i>
+                                </a>
+                            </div>
+                            <!--// Item -->
+                            <!-- Item -->
+                            <div class="item items-1 item_links col-12  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+                                <a href="https://www.water-plus.co.uk/about-us/careers/"   >
+
+Careers<i class="icon usn_ion-md-link footer-highlight after"></i>
+                                </a>
+                            </div>
+                            <!--// Item -->
+        </div>
+
+                                                </div>
+                                        </div>
+                                        <div class="item footer-item usn_pod_sociallinks   col-lg-3 col-md-3 col-12 col ">
+                                                <div class="inner">
+                                                            <nav class="social " data-os-animation="slideInLeft" data-os-animation-delay="0.1s" data-os-animation-duration="1.2s" aria-label="">
+
+            <ul>
+                        <li>
+                            <span>
+                                <a href="https://www.linkedin.com/company/10906575/"  rel="external "  >
+                                                <picture>
+                                                    <img class="lazyload" src="/media/2x5h3vbt/li-in-bug-white.png?height=16" data-srcset="/media/2x5h3vbt/li-in-bug-white.png?height=80 1x, /media/2x5h3vbt/li-in-bug-white.png?height=160 2x" alt="">
+                                                </picture>
+                                        <span class="visually-hidden">https://www.linkedin.com/company/10906575/</span>
+                                </a>
+                            </span>
+                        </li>
+                        <li>
+                            <span>
+                                <a href="https://twitter.com/waterplusuk"   >
+                                                <picture>
+                                                    <img class="lazyload" src="/media/ugnljo5j/logo-white.png?height=16" data-srcset="/media/ugnljo5j/logo-white.png?height=80 1x, /media/ugnljo5j/logo-white.png?height=160 2x" alt="">
+                                                </picture>
+                                        <span class="visually-hidden">https://twitter.com/waterplusuk</span>
+                                </a>
+                            </span>
+                        </li>
+                        <li>
+                            <span>
+                                <a href="https://www.youtube.com/channel/UCRWO2hAPYQPsZ-TOuQyRrVw"   >
+                                                <picture>
+                                                    <img class="lazyload" src="/media/r0xdj5it/yt_icon_mono_dark.png?height=16" data-srcset="/media/r0xdj5it/yt_icon_mono_dark.png?height=80 1x, /media/r0xdj5it/yt_icon_mono_dark.png?height=160 2x" alt="">
+                                                </picture>
+                                        <span class="visually-hidden">https://www.youtube.com/channel/UCRWO2hAPYQPsZ-TOuQyRrVw</span>
+                                </a>
+                            </span>
+                        </li>
+                        <li>
+                            <span>
+                                <a href="https://www.facebook.com/waterplusbusiness/"   >
+                                                <picture>
+                                                    <img class="lazyload" src="/media/wzrbjmzu/facebook_logo_secondary.png?height=16" data-srcset="/media/wzrbjmzu/facebook_logo_secondary.png?height=80 1x, /media/wzrbjmzu/facebook_logo_secondary.png?height=160 2x" alt="">
+                                                </picture>
+                                        <span class="visually-hidden">https://www.facebook.com/waterplusbusiness/</span>
+                                </a>
+                            </span>
+                        </li>
+            </ul>
+        </nav>
+
+                                                </div>
+                                        </div>
+    <div class="item  footer-item   col-lg-4 col-md-4 col-12 col  item_text-left usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner   ">
+                    <div class="info ">
+
+                        <p class="heading sm footer-heading " >Contact us</p>
+
+                            <div class="text footer-text">
+                                <p class="intro"><span class="MsoNormal sm small" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; line-height: normal;"><a href="https://myaccount.water-plus.co.uk/help" title="Contact us">Contact us</a> | Monday to Friday&nbsp; 8.30am to 5.30pm</span></p>
+<p class="sm intro"><span class="MsoNormal sm small" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; line-height: normal;">(except Bank Holidays)</span></p>
+                            </div>
+
+                    </div>
+            </div>
+    </div>
+    <div class="item  footer-item   col-lg-4 col-md-4 col-12 col  item_text-left usn_pod_textimage text-left  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+    </div>
+    <div class="item  footer-item   col-lg-12 col-md-12 col-12 col  item_text-right usn_pod_textimage text-left  os-animation" data-os-animation="shake" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+    </div>
+    <div class="item  footer-item   col-lg-12 col-md-12 col-12 col  item_text-below usn_pod_textimage text-center  " data-os-animation="fadeIn" data-os-animation-delay="0s" data-os-animation-duration="1.2s">
+            <div class="inner   ">
+                    <div class="info ">
+
+                        
+
+                            <div class="text footer-text">
+                                <p class="subFooter__legal-copy sm small">Registered in England and Wales as Water Plus Group Limited (Company Number 10012579), Water Plus Limited (Company Number 04141390) and Water Plus Select Limited (Company Number 03511659)</p>
+<p class="subFooter__legal-copy sm small">Registered Office: Water Plus, Prospect House, Gordon Banks Drive, Trentham Lakes, Stoke-On-Trent, ST4 4TW, United Kingdom.&nbsp;</p>
+<p class="subFooter__legal-copy sm small">VAT number: 243 6634 06</p>
+                            </div>
+
+                    </div>
+            </div>
+    </div>
+                                        <div class="item footer-item usn_pod_searchlinks   col-lg-4 col-md-6 col-12 col ">
+                                        </div>
+                                        <div class="item footer-item usn_pod_links   col-lg-2 col-md-2 col-12 col ">
+                                        </div>
+
+                        </div>
+                        <!--// Row -->
+                    <!-- Row -->
+                    <div class="row">
+
+                        <div class="col">
+                            <nav aria-label="" class="footer-navigation">
+                                <ul>
+                                    <li><div>&copy; 2026 Water Plus</div></li>
+                                                    <li><span><a href="https://www.water-plus.co.uk/policies-and-reports/"   >Policies</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/terms-conditions/"   >Terms & Conditions</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/policies-and-reports/#modern-slavery-statement"   >Modern Slavery Statement</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/policies-and-reports/privacy-policy/"   >Privacy Policy</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/policies-and-reports/cookies/"   >Cookie Policy</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/complaints/"   >Complaints</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/accessibility/"   >Accessibility</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/sitemap/"   >Sitemap</a></span></li>
+                <li><span><a href="https://www.water-plus.co.uk/documents-and-guides/"   >Documents and guides</a></span></li>
+
+                                </ul>
+                            </nav>
+                        </div>
+
+                    </div>
+                    <!--// Row -->
+
+                            <!-- Back to top -->
+        <div class="usn_back-to-top position-right">
+            <button id="back-to-top-link" aria-label="" class="btn base-btn-bg base-btn-bg base-btn-bg-solid base-btn-bg-hover-solid base-btn-text base-btn-borders btn-back-to-top">
+                <span></span>
+                <i aria-hidden="true" class="icon"></i><span aria-hidden="true" class="d-none"></span>
+            </button>
+        </div>
+        <!--// Back to top -->
+
+
+                </div>
+            </footer>
+
+        <!--// Footer -->
+
+    </div>
+    <!--// Site -->
+
+    
+    
+<script src="/sb/sitebuilder-js-bundle.js.vc41999768f0e17eaf0f7040e08a8aefc53f882f1" type="text/javascript"></script>
+
+
+
+    
+    
+
+    
+
+</body>
+<!--
+    ____        _ ____              _ __  __             _____ __   _                      __
+   / __ )__  __(_) / /_   _      __(_) /_/ /_     __  __/ ___// /__(_)___  ____  ___  ____/ /
+  / __  / / / / / / __/  | | /| / / / __/ __ \   / / / /\__ \/ //_/ / __ \/ __ \/ _ \/ __  /
+ / /_/ / /_/ / / / /_    | |/ |/ / / /_/ / / /  / /_/ /___/ / ,< / / / / / / / /  __/ /_/ /
+/_____/\__,_/_/_/\__/    |__/|__/_/\__/_/ /_/   \__,_//____/_/|_/_/_/ /_/_/ /_/\___/\__,_/
+
+Find out more at uSkinned.net
+
+-->
+</html>
