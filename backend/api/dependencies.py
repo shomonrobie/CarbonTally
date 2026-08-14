@@ -1,0 +1,317 @@
+"""Composition root for the v2.1 API (prep-pack §4.1, Phase 10.1).
+
+The single place that wires the existing repositories, engines, infrastructure
+singletons and the request/audit context for the API layer. The API never
+reconstructs engines or repositories inline — it consumes these dependencies.
+
+Design decisions (all aligned with the existing architecture):
+
+* **Authentication is reused, not reinvented.** ``backend/auth.py`` (JWT +
+  Supabase roles/permissions) is the existing authentication system; this
+  module re-exports ``get_current_user`` and ``require_admin`` rather than
+  implementing a second one.
+* **Repositories are new instances per request** over the service-role pool
+  (prep-pack §4.1). The pool itself is the ``infra.supabase`` singleton.
+* **Engines are new instances per request** (stateless, CT-ARCH-009).
+* **Infrastructure singletons** (event bus, audit logger, search index) match
+  the prep-pack §4.3 process-singleton scope.
+* **No database access happens at import time** — the pool is created lazily,
+  so importing this module is side-effect free (database safety).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
+from fastapi import Depends, HTTPException, Request, status
+
+# --- existing authentication/RBAC (backend/auth.py) — reused, not duplicated --
+from auth import AuthUser, get_current_user, require_admin  # noqa: F401
+
+from core.logging import get_logger
+from data.audit import AuditRepository
+from data.emission_factors import EmissionFactorsRepository
+from data.emissions_logs import EmissionsLogsRepository
+from data.events import EventsRepository
+from data.factor_aliases import FactorAliasesRepository
+from data.imports import ImportsRepository
+from data.organizations import OrganizationsRepository
+from data.reports import ReportsRepository
+from domain.matching import MatchingPipelineConfig
+from engines.benchmarking import BenchmarkingEngine
+from engines.calculation import CalculationEngine
+from engines.factor_matching import FactorMatchingEngine, build_matching_pipeline
+from engines.matching_stages import RepositoryAliasResolver
+from engines.report_generation import ReportGenerationEngine
+from engines.validation import ValidationEngine
+from infra.audit_logger import AuditLogger
+from infra.event_bus import EventBus
+from infra.search_index import FactorSearchIndex
+from infra.supabase import get_service_pool
+
+logger = get_logger(__name__)
+
+
+# ===========================================================================
+# Request / audit context
+# ===========================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class RequestContext:
+    """Structured per-request context attached by the middleware."""
+
+    correlation_id: str
+    client_ip: str = ""
+    started_at: str = ""
+    user_id: str = ""
+    actor: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AuditContext:
+    """Audit-relevant context for one request (correlation id, actor, ip)."""
+
+    correlation_id: str
+    actor: str
+    ip_address: str = ""
+
+
+def get_request_context(request: Request) -> RequestContext:
+    """Return the middleware-attached request context."""
+    context = getattr(request.state, "request_context", None)
+    if context is not None:
+        return context
+    return RequestContext(correlation_id="", client_ip="")
+
+
+async def get_audit_context(
+    request: Request,
+    current_user: AuthUser = Depends(get_current_user),
+) -> AuditContext:
+    """Build the audit context reused by admin write endpoints.
+
+    ``current_user`` is a FastAPI dependency (never a body param), so this
+    dependency never changes the route's body embedding.
+    """
+    context = get_request_context(request)
+    return AuditContext(
+        correlation_id=context.correlation_id,
+        actor=current_user.user_id,
+        ip_address=context.client_ip,
+    )
+
+
+def ensure_org_access(current_user: AuthUser, organization_id: str) -> None:
+    """Enforce organisation isolation on business endpoints.
+
+    An organisation member may only act on their own organisation; staff/admin
+    users (no bound organisation) may act on any organisation. This mirrors the
+    existing ``organization_members`` ownership model without touching RLS.
+    """
+    if not organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="organization_id is required",
+        )
+    bound_org = getattr(current_user, "organization_id", None)
+    if bound_org and bound_org != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization access denied",
+        )
+
+
+# ===========================================================================
+# Repository bundle (per-request, prep-pack §4.1)
+# ===========================================================================
+
+
+@dataclass
+class RepositoryBundle:
+    """Every repository the API consumes, bound to the service-role pool."""
+
+    factors: EmissionFactorsRepository
+    logs: EmissionsLogsRepository
+    organizations: OrganizationsRepository
+    imports: ImportsRepository
+    reports: ReportsRepository
+    audit: AuditRepository
+    events: EventsRepository
+    aliases: FactorAliasesRepository
+
+
+async def get_pool():
+    """The process-wide service-role asyncpg pool (lazy singleton)."""
+    return await get_service_pool()
+
+
+async def get_repositories() -> RepositoryBundle:
+    """Per-request repository bundle (stateless repositories, §4.1)."""
+    pool = await get_pool()
+    return RepositoryBundle(
+        factors=EmissionFactorsRepository(pool),
+        logs=EmissionsLogsRepository(pool),
+        organizations=OrganizationsRepository(pool),
+        imports=ImportsRepository(pool),
+        reports=ReportsRepository(pool),
+        audit=AuditRepository(pool),
+        events=EventsRepository(pool),
+        aliases=FactorAliasesRepository(pool),
+    )
+
+
+async def get_aliases_repository(
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> FactorAliasesRepository:
+    """The alias repository on its own (alias-resolver + alias endpoints).
+
+    Declared as a FastAPI dependency on the repository bundle so test suites can
+    override ``get_repositories`` without the alias resolver leaking to the
+    production pool.
+    """
+    return repos.aliases
+
+
+# ===========================================================================
+# Infrastructure singletons (prep-pack §4.3)
+# ===========================================================================
+
+_audit_logger: Optional[AuditLogger] = None
+_event_bus: Optional[EventBus] = None
+_search_index: Optional[FactorSearchIndex] = None
+
+
+async def get_audit_logger() -> AuditLogger:
+    """The process-wide :class:`infra.audit_logger.AuditLogger` singleton."""
+    global _audit_logger
+    if _audit_logger is None:
+        _audit_logger = AuditLogger(AuditRepository(await get_pool()))
+    return _audit_logger
+
+
+async def get_event_bus() -> EventBus:
+    """The process-wide :class:`infra.event_bus.EventBus` singleton."""
+    global _event_bus
+    if _event_bus is None:
+        _event_bus = EventBus()
+    return _event_bus
+
+
+async def get_factor_search_index() -> FactorSearchIndex:
+    """The process-wide factor search index, loaded lazily from the repository.
+
+    Loaded once from ``EmissionFactorsRepository.load_all_for_index()`` and
+    reused across requests (prep-pack §4.3: loaded at startup, rebuilt on import
+    events). Importing this module never touches the database; the load happens
+    on first dependency resolution only.
+    """
+    global _search_index
+    if _search_index is None:
+        index = FactorSearchIndex()
+        factors = await EmissionFactorsRepository(await get_pool()).load_all_for_index()
+        index.load(factors)
+        _search_index = index
+    return _search_index
+
+
+# ===========================================================================
+# Engine factories (new instance per request, CT-ARCH-009)
+# ===========================================================================
+
+
+async def get_matching_engine(
+    index: FactorSearchIndex = Depends(get_factor_search_index),
+    aliases: FactorAliasesRepository = Depends(get_aliases_repository),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
+) -> FactorMatchingEngine:
+    """Per-request :class:`FactorMatchingEngine` over the search index."""
+    config = MatchingPipelineConfig()
+    resolver: Optional[RepositoryAliasResolver] = RepositoryAliasResolver(aliases)
+    stages = build_matching_pipeline(config, alias_resolver=resolver)
+    return FactorMatchingEngine(
+        index,
+        stages,
+        config=config,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )
+
+
+async def get_calculation_engine(
+    repos: RepositoryBundle = Depends(get_repositories),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
+) -> CalculationEngine:
+    """Per-request :class:`CalculationEngine` (``EmissionsLogsRepository`` sink)."""
+    return CalculationEngine(
+        repos.logs,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )
+
+
+async def get_validation_engine(
+    repos: RepositoryBundle = Depends(get_repositories),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
+) -> ValidationEngine:
+    """Per-request :class:`ValidationEngine`."""
+    return ValidationEngine(
+        repos.logs,
+        repos.organizations,
+        repos.factors,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )
+
+
+async def get_benchmarking_engine(
+    repos: RepositoryBundle = Depends(get_repositories),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
+) -> BenchmarkingEngine:
+    """Per-request :class:`BenchmarkingEngine` (internal benchmarks, Phase 9B)."""
+    return BenchmarkingEngine(
+        repos.logs,
+        repos.organizations,
+        factor_lookup=repos.factors,
+        audit_logger=audit_logger,
+    )
+
+
+async def get_report_engine(
+    repos: RepositoryBundle = Depends(get_repositories),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_logger: AuditLogger = Depends(get_audit_logger),
+) -> ReportGenerationEngine:
+    """Per-request :class:`ReportGenerationEngine` with injected sub-engines."""
+    calculation_engine = CalculationEngine(
+        repos.logs,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )
+    validation_engine = ValidationEngine(
+        repos.logs,
+        repos.organizations,
+        repos.factors,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )
+    benchmarking_engine = BenchmarkingEngine(
+        repos.logs,
+        repos.organizations,
+        factor_lookup=repos.factors,
+        audit_logger=audit_logger,
+    )
+    return ReportGenerationEngine(
+        repos.reports,
+        repos.organizations,
+        repos.logs,
+        factor_lookup=repos.factors,
+        validation_engine=validation_engine,
+        benchmarking_engine=benchmarking_engine,
+        calculation_engine=calculation_engine,
+        event_bus=event_bus,
+        audit_logger=audit_logger,
+    )

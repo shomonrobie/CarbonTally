@@ -78,8 +78,18 @@ class ReportsRepository(AbstractRepository[GeneratedReport]):
         storage_url: str,
         file_size: int,
         page_count: int,
+        content: Optional[dict[str, Any]] = None,
     ) -> GeneratedReport:
-        """Mark the report as completed with its stored artefact details."""
+        """Mark the report as completed with its stored artefact details.
+
+        ``content`` (Phase 9C) is merged into the ``generated_content`` JSONB
+        alongside ``page_count`` so the structured report content is persisted
+        for later rendering/API consumption. When ``content`` is ``None`` the
+        behaviour is unchanged (page_count only).
+        """
+        generated: dict[str, Any] = {"page_count": page_count}
+        if content is not None:
+            generated["content"] = content
         row = await self._fetch_one(
             f"""
             UPDATE public.report_generation_queue
@@ -95,7 +105,7 @@ class ReportsRepository(AbstractRepository[GeneratedReport]):
             report_id,
             storage_url,
             file_size,
-            dumps_jsonb({"page_count": page_count}),
+            dumps_jsonb(generated),
         )
         if row is None:
             raise RuntimeError(f"report {report_id!r} does not exist")

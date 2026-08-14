@@ -16,6 +16,22 @@ from core.exceptions import UnitMismatchError
 RESULT_PRECISION = Decimal("0.000001")
 
 
+def gas_coverage(factor: EmissionFactor) -> str:
+    """Return ``"CO2"`` for CO2-only factors (SEAI) and ``"CO2e"`` otherwise.
+
+    SEAI publishes CO2-only emission factors (CH4/N2O excluded by source
+    design) while DEFRA publishes CO2e. The distinction is preserved through
+    ``factor_source`` and the ``(kg CO2)`` activity-label suffix — never
+    through the schema. Validation, benchmarking and reporting engines use
+    this to avoid labelling CO2-only data as full CO2e.
+    """
+    if factor.factor_source == "SEAI":
+        return "CO2"
+    if "(kg CO2)" in factor.activity_type:
+        return "CO2"
+    return "CO2e"
+
+
 @dataclass(frozen=True, slots=True)
 class EmissionFactor:
     """An emission factor as stored in the RC2 ``emission_factors`` table.

@@ -2,14 +2,13 @@
 
 Usage (from the repository root)::
 
-    python -m src.commands.import_defra --no-db
-    python -m src.commands.import_defra                 # write to the DB (sync)
-    python -m src.commands.import_defra --mode replace  # exact, idempotent refresh
+    python -m src.commands.import_defra --no-db        # artifacts only
+    python -m src.commands.import_defra                # artifacts + DB sync
+    python -m src.commands.import_defra --mode replace # exact, idempotent refresh
 
-The pipeline is: read -> analyse -> parse -> normalise -> validate -> artifacts
-(JSON/SQL/reports/logs) -> optional database load. Every stage is logged; the
-database load is idempotent (upsert by natural key) in both ``sync`` and
-``replace`` modes.
+Pipeline: parse every worksheet -> map to emission_factors -> validate -> export
+(SQL / JSON / reports) -> optional idempotent database load. Re-running the
+importer never produces duplicate rows, duplicate SQL or duplicate JSON.
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime
+import time
 from pathlib import Path
 
 # Allow ``python src/commands/import_defra.py`` and ``python -m ...`` alike.
@@ -26,21 +25,20 @@ if __package__ in (None, ""):
 
 from dotenv import load_dotenv
 
-from src.providers.defra.loader import (
+from src.providers.defra import (
+    analyze_workbook,
+    build_stats,
     load_to_db,
-    write_json_artifacts,
-    write_reports,
-    write_sql_artifact,
+    map_all,
+    pandas_sheet_stats,
+    parse_worksheet,
+    validate_all,
+    write_json,
+    write_sql,
+    write_statistics,
+    write_summary,
 )
-from src.providers.defra.models import (
-    ImportResult,
-    ImportStats,
-    SkippedRow,
-)
-from src.providers.defra.normalizer import normalise_all
-from src.providers.defra.parser import parse_worksheet
-from src.providers.defra.reader import analyze_workbook
-from src.providers.defra.validator import validate_all
+from src.providers.defra.models import ImportResult
 
 logger = logging.getLogger("defra_importer")
 
@@ -53,6 +51,27 @@ DEFAULT_WORKBOOK = (
 )
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "output"
 DB_URL_ENV_NAMES = ("DATABASE_URL", "SUPABASE_DB_URL", "POSTGRES_URL")
+PROGRESS_INTERVAL = 500  # rows between progress log lines
+
+
+class ProgressReporter:
+    """Lightweight progress reporting: per-sheet and periodic row progress."""
+
+    def __init__(self, log: logging.Logger, interval: int = PROGRESS_INTERVAL) -> None:
+        self.log = log
+        self.interval = interval
+        self.sheet = ""
+
+    def start_sheet(self, name: str, expected: int) -> None:
+        self.sheet = name
+        self.log.info("Parsing sheet %r (%d rows below header)...", name, expected)
+
+    def rows_done(self, count: int) -> None:
+        if count and count % self.interval == 0:
+            self.log.info("  %s: %d rows parsed so far", self.sheet, count)
+
+    def finish_sheet(self, parsed: int) -> None:
+        self.log.info("  %s: %d rows parsed", self.sheet, parsed)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -64,7 +83,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--workbook", type=Path, default=DEFAULT_WORKBOOK,
                         help="Path to the DEFRA flat-format workbook.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT,
-                        help="Root directory for json/sql/reports/logs output.")
+                        help="Root directory for sql/json/reports/logs output.")
     parser.add_argument("--year", type=int, default=None,
                         help="Override the reporting year (default: parsed from the workbook).")
     parser.add_argument("--mode", choices=("sync", "replace"), default="sync",
@@ -87,7 +106,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def _setup_logging(output_dir: Path, level: str) -> Path:
     log_dir = output_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = time.strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"import_defra_{stamp}.log"
     handlers = [
         logging.StreamHandler(sys.stdout),
@@ -103,36 +122,9 @@ def _setup_logging(output_dir: Path, level: str) -> Path:
     return log_file
 
 
-def _count_skipped(skipped: list[SkippedRow], reason: str) -> int:
-    return sum(1 for row in skipped if row.reason == reason)
-
-
-def _build_stats(
-    counters: dict[str, int],
-    report_skipped: list[SkippedRow],
-    duplicates: int,
-    imported: int,
-) -> ImportStats:
-    stats = ImportStats()
-    stats.rows_scanned = counters.get("rows_scanned", 0)
-    stats.rows_parsed = counters.get("rows_parsed", 0)
-    stats.empty_rows = counters.get("empty_rows", 0)
-    stats.end_marker_rows = counters.get("end_marker_rows", 0)
-    stats.rows_with_id = counters.get("rows_with_id", 0)
-    stats.factors_with_value = counters.get("factors_with_value", 0)
-    stats.skipped_no_factor = _count_skipped(report_skipped, "no_factor_value")
-    stats.skipped_unparseable = _count_skipped(report_skipped, "unparseable_factor")
-    stats.skipped_no_label = _count_skipped(report_skipped, "no_activity_label")
-    stats.skipped_no_id = _count_skipped(report_skipped, "no_defra_id")
-    stats.skipped_validation = _count_skipped(report_skipped, "validation_error")
-    stats.duplicates = duplicates
-    stats.imported = imported
-    return stats
-
-
-
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    started = time.monotonic()
 
     root = Path(__file__).resolve().parents[2]
     load_dotenv(root / ".env")
@@ -143,72 +135,70 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("DEFRA importer starting (workbook=%s)", args.workbook)
 
     try:
-        # 1. Read + analyse ----------------------------------------------------
+        # 1. Parse: read + analyse every worksheet ----------------------------
         wb, analysis = analyze_workbook(str(args.workbook))
-        if not analysis.data_sheet_names:
-            logger.error("No data worksheet found in %s; nothing to import.", args.workbook)
-            wb.close()
-            return 2
         logger.info(
-            "Workbook analysed: %d worksheet(s), %d data sheet(s), reporting year=%s",
+            "Workbook analysed: %d worksheet(s) — %d data, %d documentation, %d unsupported; "
+            "reporting year=%s",
             len(analysis.worksheets),
-            len(analysis.data_sheet_names),
+            sum(1 for w in analysis.worksheets if w.sheet_type == "data"),
+            sum(1 for w in analysis.worksheets if w.sheet_type == "documentation"),
+            sum(1 for w in analysis.worksheets if w.sheet_type == "unsupported"),
             analysis.reporting_year,
         )
 
         reporting_year = args.year or analysis.reporting_year
         if reporting_year is None:
             logger.error(
-                "Reporting year could not be determined (no factor-column header "
-                "and no front-page year). Pass --year explicitly."
+                "Reporting year could not be determined. Pass --year explicitly."
             )
             wb.close()
             return 2
 
         factor_set = args.factor_set or f"DEFRA-{reporting_year}"
 
-        # 2. Parse every data worksheet ---------------------------------------
         parsed_rows: list = []
         counters: dict[str, int] = {
             "rows_scanned": 0, "empty_rows": 0, "end_marker_rows": 0,
             "rows_parsed": 0, "rows_with_id": 0, "factors_with_value": 0,
         }
+        sheet_stats: dict[str, dict] = {}
+        progress = ProgressReporter(logger)
+
         for ws in wb.worksheets:
             info = next((w for w in analysis.worksheets if w.name == ws.title), None)
             if info is None or info.sheet_type != "data":
                 continue
+            progress.start_sheet(ws.title, info.data_row_count or 0)
             rows, sheet_counters = parse_worksheet(ws, info)
             parsed_rows.extend(rows)
             for key, value in sheet_counters.items():
                 counters[key] += value
-            logger.info(
-                "Worksheet %r: %d rows parsed (%d scanned)",
-                ws.title, sheet_counters["rows_parsed"], sheet_counters["rows_scanned"],
-            )
+            progress.rows_done(len(rows))
+            progress.finish_sheet(len(rows))
+            sheet_stats[ws.title] = pandas_sheet_stats(rows)
         wb.close()
-        logger.info("Total parsed rows: %d", len(parsed_rows))
+        logger.info("Total parsed rows across all data sheets: %d", len(parsed_rows))
 
-        # 3. Normalise ----------------------------------------------------------
-        factors, skipped = normalise_all(
+        # 2. Map: normalise + map onto emission_factors -----------------------
+        mapped = map_all(
             parsed_rows,
             reporting_year=reporting_year,
             factor_source=args.source,
             factor_set=factor_set,
             country=args.country,
         )
-        logger.info("Normalised: %d factors, %d skipped", len(factors), len(skipped))
+        logger.info("Mapped %d rows (skipped rows carry a reason)", len(mapped))
 
-        # 4. Validate -------------------------------------------------------------
-        report = validate_all(factors, skipped, country=args.country)
-        stats = _build_stats(
-            counters, report.skipped, len(report.duplicates), len(report.factors)
-        )
+        # 3. Validate: DB rules + duplicates -----------------------------------
+        report = validate_all(mapped, country=args.country)
+        stats = build_stats(report, analysis, counters)
         logger.info(
-            "Validation: %d imported, %d skipped, %d duplicates",
-            len(report.factors), len(report.skipped), len(report.duplicates),
+            "Validation: %d imported, %d skipped, %d duplicates, %d warnings",
+            len(report.factors), len(report.skipped), len(report.duplicates), stats.warnings,
         )
 
-        # 5. Artifacts ---------------------------------------------------------------
+        # 4. Export: SQL / JSON / reports ----------------------------------------
         result = ImportResult(
             analysis=analysis,
             validation=report,
@@ -224,13 +214,14 @@ def main(argv: list[str] | None = None) -> int:
                 "output_dir": str(output_dir),
                 "log_file": str(log_file),
             },
+            sheet_stats=sheet_stats,
+            execution_time_ms=int((time.monotonic() - started) * 1000),
         )
-        write_json_artifacts(result, output_dir)
-        write_sql_artifact(report.factors, output_dir)
-        write_reports(result, output_dir)
-        logger.info("Artifacts written under %s", output_dir)
+        write_sql(report.factors, output_dir)
+        write_json(result, output_dir)
+        logger.info("SQL + JSON artifacts written under %s", output_dir)
 
-        # 6. Database load (unless --no-db) ------------------------------------------
+        # 5. Database load (unless --no-db) ----------------------------------------
         if not args.no_db:
             db_url = args.db_url or next(
                 (os.getenv(name) for name in DB_URL_ENV_NAMES if os.getenv(name)), None
@@ -248,7 +239,8 @@ def main(argv: list[str] | None = None) -> int:
                 result.db = db_result
                 logger.info(
                     "Database load complete (%s): %d inserted, %d updated",
-                    db_result.get("backend"), db_result.get("inserted"), db_result.get("updated"),
+                    db_result.get("backend"), db_result.get("inserted"),
+                    db_result.get("updated"),
                 )
             except Exception as exc:  # noqa: BLE001 — degrade gracefully, artifacts persist
                 result.db = {"backend": "none", "error": str(exc)}
@@ -256,11 +248,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             logger.info("--no-db set: skipping database load (SQL artifact available).")
 
-        # 7. Summary --------------------------------------------------------------------
+        # 6. Final reports (after the DB step so they include its result + full time)
+        result.execution_time_ms = int((time.monotonic() - started) * 1000)
+        write_summary(result, output_dir)
+        write_statistics(result, output_dir)
         logger.info(
-            "DONE — rows scanned=%d parsed=%d imported=%d skipped=%d duplicates=%d",
-            stats.rows_scanned, stats.rows_parsed, stats.imported,
-            len(report.skipped), len(report.duplicates),
+            "DONE — sheets=%d imported=%d skipped=%d duplicates=%d warnings=%d errors=%d "
+            "elapsed=%dms",
+            stats.sheets_processed, stats.imported, len(report.skipped),
+            stats.duplicates, stats.warnings, stats.errors, result.execution_time_ms,
         )
         return 0
     except Exception:
@@ -270,3 +266,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -10,7 +10,9 @@ venv/
 **/.venv/
 .venv/
 ENV/
-
+# Temporary development outputs
+/tmp_*.txt
+/tmp_*.log
 # --- Node / Frontend Basics (Vercel & Render Node apps) ---
 admin-dashboard/
 **/node_modules/
@@ -36,18 +38,26 @@ backend/__pycache__/
 .supabase/
 supabase/.temp/
 supabase/functions/.import_map.json
-
+# --- Local database backups ---
+/backups/*.dump
+/backups/*.backup
+/backups/*.sql.gz
+# Cline / AI-agent scratch and diagnostic artifacts
+/backend/_*.py
+/backend/_*.txt
+/current_project_structure.txt
 # --- Resend Logs & Testing ---
 # If you save email templates locally or download logs
 .emails/
-
+# Local PostgreSQL runtime data
+/.tmp_pgdata/
 # --- Environment Secrets (Protects Supabase/Resend API Keys) ---
 .env
 .env.local
 .env.development
 .env.production
 .env.test
-! .env.example
+!.env.example
 
 # --- IDEs, Editor Configurations & OS Tools ---
 .vscode/
@@ -66,3 +76,21 @@ Thumbs.db
 /generated/prisma
 backend/carbon_tally_backup.sql
 backend/carbon_tally_backup_data.sql
+
+# --- Temporary Diagnostic / Verification Artifacts ---
+# Scratch/probe scripts, shell diagnostics, verification logs, and other
+# transient debugging files created during development. Anchored to the repo
+# root so _*.py / _*.txt never match legitimate package files (e.g. __init__.py).
+/_*.py
+/_*.txt
+# Shell-redirect artifacts with mangled Windows drive-letter filenames
+/d*carbon_ledger_*.txt
+# Tool caches and coverage data from verification runs
+.coverage
+.pytest_cache/
+.mypy_cache/
+# One-off backend scratch file
+/backend/test.txt
+# --- Local Database / Recovery Backups ---
+/backups/
+/current_project_structure.txt

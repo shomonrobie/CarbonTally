@@ -1,15 +1,21 @@
 -- ============================================================================
 -- CarbonTally Baseline Schema
 -- Supabase PostgreSQL 16 Compatible
--- All tables with proper data types, constraints, and RLS preparation
+-- Complete D5 Phase Implementation
+-- Total: 3,624+ lines
+-- ============================================================================
+
+-- ============================================================================
+-- PHASE D1: FOUNDATION & EXTENSIONS
 -- ============================================================================
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA extensions;
 
 -- ============================================================================
--- Core Reference Tables
+-- REFERENCE TABLES
 -- ============================================================================
 
 CREATE TABLE public.activity_categories (
@@ -173,8 +179,12 @@ CREATE TABLE public.glossary (
 COMMENT ON TABLE public.glossary IS 'Glossary of terms';
 
 -- ============================================================================
--- Core Organizations & Users
+-- PHASE D2: CORE BUSINESS TABLES
 -- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- Organizations & Users
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.organizations (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -240,7 +250,9 @@ CREATE TABLE public.organizations (
     carbon_tax_region VARCHAR,
     data_protection_officer VARCHAR,
     privacy_policy_url TEXT,
-    terms_url TEXT
+    terms_url TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    archived_at TIMESTAMPTZ
 );
 
 COMMENT ON TABLE public.organizations IS 'Organization/tenant root';
@@ -256,7 +268,8 @@ CREATE TABLE public.users (
     email_verified BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    is_anonymised BOOLEAN DEFAULT FALSE
 );
 
 COMMENT ON TABLE public.users IS 'User accounts (auth.users mirror)';
@@ -265,10 +278,11 @@ CREATE TABLE public.organization_members (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    role VARCHAR NOT NULL CHECK (role IN ('owner','admin','member','viewer')),
+    role VARCHAR NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     is_active BOOLEAN DEFAULT TRUE,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT organization_members_role_check CHECK (role IN ('owner','admin','member','viewer'))
 );
 
 COMMENT ON TABLE public.organization_members IS 'Organization membership';
@@ -304,14 +318,225 @@ CREATE TABLE public.organization_metadata (
     custom_metrics JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by UUID
+    updated_by UUID,
+    total_floor_area_sqm NUMERIC,
+    occupied_floor_area_sqm NUMERIC
 );
 
 COMMENT ON TABLE public.organization_metadata IS 'Organization extended metadata';
 
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- Password Reset & Authentication
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    user_id UUID,
+    token VARCHAR UNIQUE NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.password_reset_tokens IS 'Password reset tokens';
+
+CREATE TABLE public.pending_invites (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    email VARCHAR NOT NULL,
+    role VARCHAR NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.pending_invites IS 'Pending invites';
+
+CREATE TABLE public.user_invitations (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    email VARCHAR NOT NULL,
+    role_id UUID,
+    organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+    invited_by UUID,
+    token VARCHAR UNIQUE NOT NULL,
+    status VARCHAR,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.user_invitations IS 'User invitations';
+
+-- ----------------------------------------------------------------------------
+-- Beta & Waitlist
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.beta_access_codes (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    code TEXT UNIQUE NOT NULL,
+    email TEXT,
+    status TEXT,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    used_at TIMESTAMPTZ,
+    magic_token TEXT,
+    token_created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.beta_access_codes IS 'Beta access codes';
+
+CREATE TABLE public.beta_users (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    user_id UUID,
+    email TEXT UNIQUE NOT NULL,
+    beta_code TEXT,
+    access_level TEXT,
+    invited_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_active_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.beta_users IS 'Beta users';
+
+CREATE TABLE public.waitlist (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT,
+    company_name TEXT,
+    company_size TEXT,
+    interested_in TEXT,
+    source TEXT,
+    status TEXT,
+    invited_at TIMESTAMPTZ,
+    activated_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.waitlist IS 'Waitlist';
+
+-- ----------------------------------------------------------------------------
+-- Facilities & Assets
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.facilities (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    name VARCHAR NOT NULL,
+    postcode VARCHAR,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE,
+    metadata JSONB,
+    latitude NUMERIC,
+    longitude NUMERIC,
+    type VARCHAR,
+    address_line1 VARCHAR,
+    address_line2 VARCHAR,
+    city VARCHAR,
+    county VARCHAR,
+    country VARCHAR,
+    region VARCHAR,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    eircode VARCHAR,
+    meter_mpan_mprn VARCHAR,
+    CONSTRAINT facilities_postcode_or_eircode_check CHECK (postcode IS NOT NULL OR eircode IS NOT NULL)
+);
+
+COMMENT ON TABLE public.facilities IS 'Organization facilities/locations';
+
+CREATE TABLE public.assets (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    facility_id UUID NOT NULL REFERENCES public.facilities(id) ON DELETE CASCADE,
+    name VARCHAR NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_active BOOLEAN DEFAULT TRUE,
+    metadata JSONB,
+    capacity NUMERIC CHECK (capacity IS NULL OR capacity >= 0),
+    capacity_unit VARCHAR,
+    serial_number VARCHAR,
+    installation_date DATE,
+    type VARCHAR,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    organization_id UUID REFERENCES public.organizations(id)
+);
+
+COMMENT ON TABLE public.assets IS 'Assets within facilities';
+
+-- ----------------------------------------------------------------------------
+-- Suppliers
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.suppliers (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    name VARCHAR NOT NULL,
+    type VARCHAR,
+    supplier_category_id UUID REFERENCES public.supplier_categories(id),
+    contact_name VARCHAR,
+    contact_email VARCHAR,
+    contact_phone VARCHAR,
+    address TEXT,
+    website VARCHAR,
+    tax_id VARCHAR,
+    registration_number VARCHAR,
+    annual_emissions_scope1 NUMERIC CHECK (annual_emissions_scope1 IS NULL OR annual_emissions_scope1 >= 0),
+    annual_emissions_scope2 NUMERIC CHECK (annual_emissions_scope2 IS NULL OR annual_emissions_scope2 >= 0),
+    annual_emissions_scope3 NUMERIC CHECK (annual_emissions_scope3 IS NULL OR annual_emissions_scope3 >= 0),
+    reporting_year INTEGER,
+    emission_factor_scope1 NUMERIC CHECK (emission_factor_scope1 IS NULL OR emission_factor_scope1 >= 0),
+    emission_factor_scope2 NUMERIC CHECK (emission_factor_scope2 IS NULL OR emission_factor_scope2 >= 0),
+    emission_factor_scope3 NUMERIC CHECK (emission_factor_scope3 IS NULL OR emission_factor_scope3 >= 0),
+    emission_factor_unit VARCHAR,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_by UUID,
+    metadata JSONB,
+    address_line1 VARCHAR,
+    address_line2 VARCHAR,
+    city VARCHAR,
+    county VARCHAR,
+    postcode VARCHAR,
+    country VARCHAR,
+    eircode VARCHAR,
+    tax_region VARCHAR,
+    tax_rate NUMERIC,
+    vat_number VARCHAR,
+    company_number VARCHAR,
+    registration_region VARCHAR,
+    primary_contact VARCHAR,
+    primary_email VARCHAR,
+    primary_phone VARCHAR,
+    supplier_type VARCHAR,
+    annual_emissions NUMERIC CHECK (annual_emissions IS NULL OR annual_emissions >= 0),
+    emission_factor NUMERIC CHECK (emission_factor IS NULL OR emission_factor >= 0),
+    supplier_rating NUMERIC CHECK (supplier_rating IS NULL OR (supplier_rating >= 0 AND supplier_rating <= 100)),
+    is_certified BOOLEAN DEFAULT FALSE,
+    certification_type TEXT,
+    certification_expiry DATE,
+    contract_start DATE,
+    contract_end DATE,
+    payment_terms VARCHAR,
+    payment_currency VARCHAR,
+    bank_name VARCHAR,
+    bank_account VARCHAR,
+    iban VARCHAR,
+    swift_code VARCHAR,
+    risk_score NUMERIC CHECK (risk_score IS NULL OR (risk_score >= 0 AND risk_score <= 100)),
+    compliance_status VARCHAR,
+    sort_code VARCHAR
+);
+
+COMMENT ON TABLE public.suppliers IS 'Supplier records';
+
+-- ----------------------------------------------------------------------------
 -- Organization Files & Documents
--- ============================================================================
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.organization_files (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -353,7 +578,7 @@ CREATE TABLE public.customer_documents (
     file_url TEXT NOT NULL,
     file_type TEXT NOT NULL,
     upload_date TIMESTAMPTZ DEFAULT NOW(),
-    status TEXT DEFAULT 'uploaded' CHECK (status IN ('uploaded','pending','processing','processed','manual_review','verified','approved','rejected','failed')),
+    status TEXT DEFAULT 'uploaded',
     manual_review_queue_id UUID,
     metadata JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -368,7 +593,7 @@ CREATE TABLE public.customer_documents (
     billing_period_start DATE,
     billing_period_end DATE,
     processing_queue_id UUID,
-    supplier_id UUID,
+    supplier_id UUID REFERENCES public.suppliers(id),
     product_category_id UUID,
     processing_method VARCHAR,
     processing_status VARCHAR,
@@ -378,129 +603,20 @@ CREATE TABLE public.customer_documents (
     calculated_emissions_kg_co2e NUMERIC CHECK (calculated_emissions_kg_co2e IS NULL OR calculated_emissions_kg_co2e >= 0),
     updated_by UUID,
     uploaded_by UUID,
-    processing_started_at TIMESTAMPTZ
+    processing_started_at TIMESTAMPTZ,
+    file_checksum TEXT,
+    CONSTRAINT customer_documents_status_check CHECK (status IN ('uploaded','pending','processing','processed','manual_review','verified','approved','rejected','failed'))
 );
 
 COMMENT ON TABLE public.customer_documents IS 'Customer document storage';
 
 -- ============================================================================
--- Facilities & Assets
+-- PHASE D3: TRANSACTIONAL TABLES
 -- ============================================================================
 
-CREATE TABLE public.facilities (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    name VARCHAR NOT NULL,
-    postcode VARCHAR,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    is_active BOOLEAN DEFAULT TRUE,
-    metadata JSONB,
-    latitude NUMERIC,
-    longitude NUMERIC,
-    type VARCHAR,
-    address_line1 VARCHAR,
-    address_line2 VARCHAR,
-    city VARCHAR,
-    county VARCHAR,
-    country VARCHAR CHECK (country IS NULL OR country IN ('GB','IE')),
-    region VARCHAR,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    eircode VARCHAR,
-    meter_mpan_mprn VARCHAR,
-    CONSTRAINT facilities_postcode_or_eircode_check CHECK (postcode IS NOT NULL OR eircode IS NOT NULL)
-);
-
-COMMENT ON TABLE public.facilities IS 'Organization facilities/locations';
-
-CREATE TABLE public.assets (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    facility_id UUID NOT NULL REFERENCES public.facilities(id) ON DELETE CASCADE,
-    name VARCHAR NOT NULL,
-    description TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    is_active BOOLEAN DEFAULT TRUE,
-    metadata JSONB,
-    capacity NUMERIC CHECK (capacity IS NULL OR capacity >= 0),
-    capacity_unit VARCHAR,
-    serial_number VARCHAR,
-    installation_date DATE,
-    type VARCHAR,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    organization_id UUID REFERENCES public.organizations(id)
-);
-
-COMMENT ON TABLE public.assets IS 'Assets within facilities';
-
--- ============================================================================
--- Suppliers
--- ============================================================================
-
-CREATE TABLE public.suppliers (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    name VARCHAR NOT NULL,
-    type VARCHAR,
-    supplier_category_id UUID REFERENCES public.supplier_categories(id),
-    contact_name VARCHAR,
-    contact_email VARCHAR,
-    contact_phone VARCHAR,
-    address TEXT,
-    website VARCHAR,
-    tax_id VARCHAR,
-    registration_number VARCHAR,
-    annual_emissions_scope1 NUMERIC CHECK (annual_emissions_scope1 IS NULL OR annual_emissions_scope1 >= 0),
-    annual_emissions_scope2 NUMERIC CHECK (annual_emissions_scope2 IS NULL OR annual_emissions_scope2 >= 0),
-    annual_emissions_scope3 NUMERIC CHECK (annual_emissions_scope3 IS NULL OR annual_emissions_scope3 >= 0),
-    reporting_year INTEGER,
-    emission_factor_scope1 NUMERIC CHECK (emission_factor_scope1 IS NULL OR emission_factor_scope1 >= 0),
-    emission_factor_scope2 NUMERIC CHECK (emission_factor_scope2 IS NULL OR emission_factor_scope2 >= 0),
-    emission_factor_scope3 NUMERIC CHECK (emission_factor_scope3 IS NULL OR emission_factor_scope3 >= 0),
-    emission_factor_unit VARCHAR,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by UUID,
-    metadata JSONB,
-    address_line1 VARCHAR,
-    address_line2 VARCHAR,
-    city VARCHAR,
-    county VARCHAR,
-    postcode VARCHAR,
-    country VARCHAR CHECK (country IS NULL OR country IN ('GB','IE')),
-    eircode VARCHAR,
-    tax_region VARCHAR,
-    tax_rate NUMERIC,
-    vat_number VARCHAR,
-    company_number VARCHAR,
-    registration_region VARCHAR,
-    primary_contact VARCHAR,
-    primary_email VARCHAR,
-    primary_phone VARCHAR,
-    supplier_type VARCHAR,
-    annual_emissions NUMERIC CHECK (annual_emissions IS NULL OR annual_emissions >= 0),
-    emission_factor NUMERIC CHECK (emission_factor IS NULL OR emission_factor >= 0),
-    supplier_rating NUMERIC CHECK (supplier_rating IS NULL OR (supplier_rating >= 0 AND supplier_rating <= 100)),
-    is_certified BOOLEAN DEFAULT FALSE,
-    certification_type TEXT,
-    certification_expiry DATE,
-    contract_start DATE,
-    contract_end DATE,
-    payment_terms VARCHAR,
-    payment_currency VARCHAR CHECK (payment_currency IS NULL OR payment_currency IN ('GBP','EUR')),
-    bank_name VARCHAR,
-    bank_account VARCHAR,
-    iban VARCHAR,
-    swift_code VARCHAR,
-    risk_score NUMERIC CHECK (risk_score IS NULL OR (risk_score >= 0 AND risk_score <= 100)),
-    compliance_status VARCHAR
-);
-
-COMMENT ON TABLE public.suppliers IS 'Supplier records';
-
--- ============================================================================
--- Emissions Logs
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- Emission Factors & Logs
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.emission_factors (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -513,7 +629,7 @@ CREATE TABLE public.emission_factors (
     scope TEXT,
     factor_source TEXT,
     factor_set TEXT,
-    country VARCHAR CHECK (country IN ('GB','IE')),
+    country VARCHAR,
     region_deprecated VARCHAR
 );
 
@@ -543,14 +659,16 @@ CREATE TABLE public.emissions_logs (
     verified_at TIMESTAMPTZ,
     updated_by UUID,
     unit TEXT,
-    scope TEXT
+    scope TEXT,
+    emission_factor_id UUID REFERENCES public.emission_factors(id),
+    CONSTRAINT emissions_logs_unit_fkey FOREIGN KEY (unit) REFERENCES public.units(code)
 );
 
 COMMENT ON TABLE public.emissions_logs IS 'Emission records';
 
--- ============================================================================
+-- ----------------------------------------------------------------------------
 -- Conversations & Messaging
--- ============================================================================
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.conversations (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -633,48 +751,30 @@ CREATE TABLE public.file_attachments (
 
 COMMENT ON TABLE public.file_attachments IS 'Message file attachments';
 
--- ============================================================================
--- Notifications
--- ============================================================================
-
-CREATE TABLE public.notifications (
+CREATE TABLE public.typing_status (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    recipient_type VARCHAR NOT NULL,
-    recipient_id UUID NOT NULL,
-    notification_type VARCHAR NOT NULL,
-    title VARCHAR NOT NULL,
-    message TEXT NOT NULL,
-    priority VARCHAR,
-    link TEXT,
-    metadata JSONB,
-    is_read BOOLEAN DEFAULT FALSE,
-    read_at TIMESTAMPTZ,
-    is_dismissed BOOLEAN DEFAULT FALSE,
-    dismissed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    user_id UUID,
+    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
+    is_typing BOOLEAN DEFAULT FALSE,
+    started_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE public.notifications IS 'User notifications';
+COMMENT ON TABLE public.typing_status IS 'Typing status';
 
-CREATE TABLE public.notification_delivery (
+CREATE TABLE public.user_presence (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    notification_id UUID NOT NULL REFERENCES public.notifications(id) ON DELETE CASCADE,
-    channel VARCHAR NOT NULL,
-    status VARCHAR,
-    sent_at TIMESTAMPTZ,
-    delivered_at TIMESTAMPTZ,
-    opened_at TIMESTAMPTZ,
-    error_message TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    user_id UUID,
+    status TEXT,
+    last_seen_at TIMESTAMPTZ,
+    current_channel TEXT,
+    metadata JSONB
 );
 
-COMMENT ON TABLE public.notification_delivery IS 'Notification delivery tracking';
+COMMENT ON TABLE public.user_presence IS 'User presence';
 
 -- ============================================================================
--- Processing & Queue
+-- PHASE D3 CONTINUED: PROCESSING & QUEUE
 -- ============================================================================
 
 CREATE TABLE public.document_processing_queue (
@@ -682,7 +782,7 @@ CREATE TABLE public.document_processing_queue (
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     customer_document_id UUID,
     processing_type VARCHAR NOT NULL,
-    status VARCHAR DEFAULT 'pending' CHECK (status IN ('pending','processing','ai_extracted','manual_review','manual_extraction','qc','customer_review','approved','rejected','completed','failed')),
+    status VARCHAR DEFAULT 'pending',
     file_name VARCHAR NOT NULL,
     file_url TEXT NOT NULL,
     file_size_bytes BIGINT CHECK (file_size_bytes IS NULL OR file_size_bytes >= 0),
@@ -693,9 +793,9 @@ CREATE TABLE public.document_processing_queue (
     ai_extraction_method VARCHAR,
     ai_extracted_at TIMESTAMPTZ,
     ai_processing_time_ms INTEGER,
-    ai_mapped_facility_id UUID,
-    ai_mapped_asset_id UUID,
-    ai_mapped_supplier_id UUID,
+    ai_mapped_facility_id UUID REFERENCES public.facilities(id) ON DELETE SET NULL,
+    ai_mapped_asset_id UUID REFERENCES public.assets(id) ON DELETE SET NULL,
+    ai_mapped_supplier_id UUID REFERENCES public.suppliers(id) ON DELETE SET NULL,
     ai_mapping_confidence NUMERIC CHECK (ai_mapping_confidence IS NULL OR (ai_mapping_confidence >= 0 AND ai_mapping_confidence <= 100)),
     ai_mapped_document_type_code VARCHAR,
     manual_requested_by UUID,
@@ -723,13 +823,15 @@ CREATE TABLE public.document_processing_queue (
     batch_id UUID,
     batch_sequence INTEGER,
     processing_cost NUMERIC CHECK (processing_cost IS NULL OR processing_cost >= 0),
-    billing_currency VARCHAR CHECK (billing_currency IS NULL OR billing_currency IN ('GBP','EUR')),
+    billing_currency VARCHAR,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     updated_by UUID,
     completed_at TIMESTAMPTZ,
-    metadata JSONB
+    metadata JSONB,
+    emission_factor_used UUID REFERENCES public.emission_factors(id) ON DELETE NO ACTION,
+    CONSTRAINT document_processing_queue_status_check CHECK (status IN ('pending','processing','ai_extracted','manual_review','manual_extraction','qc','customer_review','approved','rejected','completed','failed'))
 );
 
 COMMENT ON TABLE public.document_processing_queue IS 'Document processing queue';
@@ -742,7 +844,7 @@ CREATE TABLE public.processing_queue (
     document_type VARCHAR NOT NULL,
     priority INTEGER,
     priority_score INTEGER,
-    queue_status VARCHAR DEFAULT 'pending' CHECK (queue_status IN ('pending','assigned','in_progress','on_hold','completed','cancelled')) NOT NULL,
+    queue_status VARCHAR DEFAULT 'pending' NOT NULL,
     sla_deadline TIMESTAMPTZ,
     sla_breached BOOLEAN DEFAULT FALSE NOT NULL,
     estimated_completion_hours INTEGER,
@@ -754,7 +856,8 @@ CREATE TABLE public.processing_queue (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID,
-    updated_by UUID
+    updated_by UUID,
+    CONSTRAINT processing_queue_status_check CHECK (queue_status IN ('pending','assigned','in_progress','on_hold','completed','cancelled'))
 );
 
 COMMENT ON TABLE public.processing_queue IS 'Processing queue';
@@ -773,7 +876,7 @@ CREATE TABLE public.processing_assignments (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE public.processing_assignments IS 'Queue task assignments';
+COMMENT ON TABLE public.processing_assignments IS 'Processing assignments';
 
 CREATE TABLE public.processing_steps (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -792,79 +895,53 @@ CREATE TABLE public.processing_steps (
 
 COMMENT ON TABLE public.processing_steps IS 'Processing step tracking';
 
--- ============================================================================
--- Manual Extraction
--- ============================================================================
-
-CREATE TABLE public.manual_extraction_batches (
+CREATE TABLE public.processing_time_log (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    batch_name VARCHAR NOT NULL,
-    batch_description TEXT,
-    total_documents INTEGER NOT NULL CHECK (total_documents >= 0),
-    total_pages INTEGER NOT NULL CHECK (total_pages >= 0),
-    total_cost NUMERIC NOT NULL CHECK (total_cost >= 0),
-    price_per_page NUMERIC CHECK (price_per_page IS NULL OR price_per_page >= 0),
-    currency VARCHAR CHECK (currency IS NULL OR currency IN ('GBP','EUR')),
-    status VARCHAR,
-    estimated_completion_date TIMESTAMPTZ,
-    actual_completion_date TIMESTAMPTZ,
-    sla_deadline TIMESTAMPTZ,
-    sla_breached BOOLEAN DEFAULT FALSE,
-    assigned_to UUID,
-    assigned_by UUID,
-    assigned_at TIMESTAMPTZ,
-    qc_by UUID,
-    qc_at TIMESTAMPTZ,
-    qc_notes TEXT,
-    qc_approved BOOLEAN,
-    customer_notes TEXT,
-    staff_notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by UUID,
-    completed_by UUID,
-    completed_at TIMESTAMPTZ
-);
-
-COMMENT ON TABLE public.manual_extraction_batches IS 'Manual extraction batches';
-
-CREATE TABLE public.manual_extraction_items (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    batch_id UUID NOT NULL REFERENCES public.manual_extraction_batches(id) ON DELETE CASCADE,
-    document_processing_queue_id UUID,
-    file_name VARCHAR NOT NULL,
-    file_url TEXT NOT NULL,
-    page_count INTEGER NOT NULL CHECK (page_count >= 0),
-    document_type VARCHAR,
-    status VARCHAR,
-    extracted_data JSONB,
-    mapped_data JSONB,
-    mapped_facility_id UUID,
-    mapped_asset_id UUID,
-    mapped_supplier_id UUID,
-    calculated_emissions_kg_co2e NUMERIC CHECK (calculated_emissions_kg_co2e IS NULL OR calculated_emissions_kg_co2e >= 0),
-    defra_factor_used UUID,
-    extracted_by UUID,
-    extracted_at TIMESTAMPTZ,
-    qc_by UUID,
-    qc_at TIMESTAMPTZ,
-    qc_notes TEXT,
-    quality_score INTEGER CHECK (quality_score IS NULL OR (quality_score >= 0 AND quality_score <= 100)),
-    customer_reviewed_by UUID,
-    customer_reviewed_at TIMESTAMPTZ,
-    customer_approved BOOLEAN,
-    customer_rejection_reason TEXT,
-    customer_notes TEXT,
+    assignment_id UUID NOT NULL REFERENCES public.processing_assignments(id) ON DELETE CASCADE,
+    staff_id UUID NOT NULL,
+    activity_type VARCHAR NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ,
+    duration_seconds INTEGER,
+    paused_duration_seconds INTEGER,
+    notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE public.manual_extraction_items IS 'Manual extraction items';
+COMMENT ON TABLE public.processing_time_log IS 'Processing time logs';
+
+CREATE TABLE public.processing_audit_trail (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    queue_id UUID NOT NULL,
+    action VARCHAR NOT NULL,
+    performed_by UUID,
+    performed_by_staff UUID,
+    performed_by_type VARCHAR,
+    previous_value JSONB,
+    new_value JSONB,
+    notes TEXT,
+    duration_ms INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.processing_audit_trail IS 'Processing audit trail';
+
+CREATE TABLE public.reassignment_history (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    assignment_id UUID NOT NULL,
+    previous_staff_id UUID,
+    new_staff_id UUID NOT NULL,
+    reassigned_by UUID NOT NULL,
+    reason VARCHAR,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.reassignment_history IS 'Reassignment history';
 
 -- ============================================================================
--- Reports
+-- PHASE D3 CONTINUED: REPORTS
 -- ============================================================================
 
 CREATE TABLE public.report_templates (
@@ -958,7 +1035,7 @@ CREATE TABLE public.report_comments (
 COMMENT ON TABLE public.report_comments IS 'Report comments';
 
 -- ============================================================================
--- AI & Content
+-- PHASE D3 CONTINUED: AI CONTENT
 -- ============================================================================
 
 CREATE TABLE public.ai_content_history (
@@ -983,8 +1060,443 @@ CREATE TABLE public.ai_content_history (
 COMMENT ON TABLE public.ai_content_history IS 'AI generation history';
 
 -- ============================================================================
--- Consultants
+-- PHASE D4: SUPPORTING TABLES
 -- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- Manual Review
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.manual_review_queue (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+    file_url TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    data_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    auto_extraction_result JSONB,
+    manual_extraction_result JSONB,
+    assigned_to UUID,
+    priority INTEGER,
+    customer_notes TEXT,
+    staff_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    estimated_completion_hours INTEGER,
+    batch_id UUID,
+    assigned_by UUID,
+    started_at TIMESTAMPTZ,
+    completed_by UUID,
+    data_entry JSONB,
+    review_time_seconds INTEGER,
+    priority_score INTEGER,
+    sla_deadline TIMESTAMPTZ,
+    sla_breached BOOLEAN DEFAULT FALSE,
+    escalation_level INTEGER,
+    customer_notified_at TIMESTAMPTZ,
+    customer_responded_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    customer_document_id UUID
+);
+
+COMMENT ON TABLE public.manual_review_queue IS 'Manual review queue';
+
+CREATE TABLE public.manual_extraction_batches (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    batch_name VARCHAR NOT NULL,
+    batch_description TEXT,
+    total_documents INTEGER NOT NULL CHECK (total_documents >= 0),
+    total_pages INTEGER NOT NULL CHECK (total_pages >= 0),
+    total_cost NUMERIC NOT NULL CHECK (total_cost >= 0),
+    price_per_page NUMERIC CHECK (price_per_page IS NULL OR price_per_page >= 0),
+    currency VARCHAR,
+    status VARCHAR,
+    estimated_completion_date TIMESTAMPTZ,
+    actual_completion_date TIMESTAMPTZ,
+    sla_deadline TIMESTAMPTZ,
+    sla_breached BOOLEAN DEFAULT FALSE,
+    assigned_to UUID,
+    assigned_by UUID,
+    assigned_at TIMESTAMPTZ,
+    qc_by UUID,
+    qc_at TIMESTAMPTZ,
+    qc_notes TEXT,
+    qc_approved BOOLEAN,
+    customer_notes TEXT,
+    staff_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_by UUID,
+    completed_by UUID,
+    completed_at TIMESTAMPTZ
+);
+
+COMMENT ON TABLE public.manual_extraction_batches IS 'Manual extraction batches';
+
+CREATE TABLE public.manual_extraction_items (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    batch_id UUID NOT NULL REFERENCES public.manual_extraction_batches(id) ON DELETE CASCADE,
+    document_processing_queue_id UUID,
+    file_name VARCHAR NOT NULL,
+    file_url TEXT NOT NULL,
+    page_count INTEGER NOT NULL CHECK (page_count >= 0),
+    document_type VARCHAR,
+    status VARCHAR,
+    extracted_data JSONB,
+    mapped_data JSONB,
+    mapped_facility_id UUID,
+    mapped_asset_id UUID,
+    mapped_supplier_id UUID,
+    calculated_emissions_kg_co2e NUMERIC CHECK (calculated_emissions_kg_co2e IS NULL OR calculated_emissions_kg_co2e >= 0),
+    defra_factor_used UUID,
+    extracted_by UUID,
+    extracted_at TIMESTAMPTZ,
+    qc_by UUID,
+    qc_at TIMESTAMPTZ,
+    qc_notes TEXT,
+    quality_score INTEGER CHECK (quality_score IS NULL OR (quality_score >= 0 AND quality_score <= 100)),
+    customer_reviewed_by UUID,
+    customer_reviewed_at TIMESTAMPTZ,
+    customer_approved BOOLEAN,
+    customer_rejection_reason TEXT,
+    customer_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.manual_extraction_items IS 'Manual extraction items';
+
+-- ----------------------------------------------------------------------------
+-- Customer Review & Verification
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.customer_review_log (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    file_id UUID,
+    organization_id UUID,
+    user_id UUID,
+    status VARCHAR NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.customer_review_log IS 'Customer review log';
+
+CREATE TABLE public.customer_verifications (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    customer_document_id UUID,
+    organization_id UUID,
+    customer_member_id UUID,
+    status TEXT,
+    notes TEXT,
+    submitted_at TIMESTAMPTZ,
+    submitted_by UUID,
+    verified_at TIMESTAMPTZ,
+    verified_by UUID,
+    rejected_at TIMESTAMPTZ,
+    rejected_by UUID,
+    rejected_reason TEXT,
+    revision_requested_at TIMESTAMPTZ,
+    revision_requested_by UUID,
+    revision_notes TEXT,
+    is_escalated BOOLEAN DEFAULT FALSE,
+    escalation_reason TEXT,
+    escalated_at TIMESTAMPTZ,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.customer_verifications IS 'Customer verifications';
+
+-- ----------------------------------------------------------------------------
+-- Staff & Performance
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.staff_roles (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    name VARCHAR UNIQUE NOT NULL,
+    description TEXT,
+    permissions JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_by UUID
+);
+
+COMMENT ON TABLE public.staff_roles IS 'Staff role definitions';
+
+CREATE TABLE public.staff_profiles (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    first_name VARCHAR NOT NULL,
+    last_name VARCHAR NOT NULL,
+    email VARCHAR UNIQUE NOT NULL,
+    role_id UUID REFERENCES public.staff_roles(id),
+    is_active BOOLEAN DEFAULT TRUE,
+    hire_date DATE,
+    skills JSONB,
+    max_concurrent_tasks INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_by UUID
+);
+
+COMMENT ON TABLE public.staff_profiles IS 'Staff profiles';
+
+CREATE TABLE public.staff_workload (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
+    assigned_tasks INTEGER CHECK (assigned_tasks IS NULL OR assigned_tasks >= 0),
+    in_progress_tasks INTEGER CHECK (in_progress_tasks IS NULL OR in_progress_tasks >= 0),
+    pending_tasks INTEGER CHECK (pending_tasks IS NULL OR pending_tasks >= 0),
+    completed_today INTEGER CHECK (completed_today IS NULL OR completed_today >= 0),
+    workload_score NUMERIC,
+    capacity_percentage NUMERIC,
+    date DATE,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.staff_workload IS 'Staff workload tracking';
+
+CREATE TABLE public.staff_performance (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    period_type VARCHAR NOT NULL,
+    total_assigned INTEGER,
+    total_completed INTEGER,
+    total_rejected INTEGER,
+    avg_processing_time_seconds INTEGER,
+    qc_pass_rate NUMERIC,
+    accuracy_rate NUMERIC,
+    productivity_score NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.staff_performance IS 'Staff performance metrics';
+
+CREATE TABLE public.staff_daily_performance (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    total_assigned INTEGER,
+    completed INTEGER,
+    rejected INTEGER,
+    qc_passed INTEGER,
+    qc_failed INTEGER,
+    total_processing_time_seconds INTEGER,
+    avg_time_per_document_seconds INTEGER,
+    productivity_score NUMERIC,
+    quality_score NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.staff_daily_performance IS 'Staff daily performance';
+
+CREATE TABLE public.team_performance (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    date DATE UNIQUE NOT NULL,
+    total_staff_active INTEGER,
+    total_assigned INTEGER,
+    total_completed INTEGER,
+    total_rejected INTEGER,
+    avg_processing_time_seconds INTEGER,
+    qc_pass_rate NUMERIC,
+    sla_compliance_rate NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.team_performance IS 'Team performance';
+
+-- ----------------------------------------------------------------------------
+-- QC & Approvals
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.qc_checklists (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    document_type VARCHAR NOT NULL,
+    checklist_name VARCHAR NOT NULL,
+    checklist_items JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_by UUID
+);
+
+COMMENT ON TABLE public.qc_checklists IS 'QC checklists';
+
+CREATE TABLE public.qc_checks (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    assignment_id UUID NOT NULL REFERENCES public.processing_assignments(id) ON DELETE CASCADE,
+    qc_by UUID NOT NULL,
+    qc_status VARCHAR,
+    qc_score INTEGER CHECK (qc_score IS NULL OR (qc_score >= 0 AND qc_score <= 100)),
+    checks_passed INTEGER,
+    checks_failed INTEGER,
+    notes TEXT,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.qc_checks IS 'QC check results';
+
+CREATE TABLE public.qc_errors (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    qc_check_id UUID NOT NULL REFERENCES public.qc_checks(id) ON DELETE CASCADE,
+    error_type VARCHAR NOT NULL,
+    field_name VARCHAR,
+    expected_value TEXT,
+    actual_value TEXT,
+    severity VARCHAR,
+    notes TEXT,
+    is_resolved BOOLEAN DEFAULT FALSE,
+    resolved_at TIMESTAMPTZ,
+    resolved_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.qc_errors IS 'QC errors';
+
+CREATE TABLE public.approval_requests (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    assignment_id UUID NOT NULL REFERENCES public.processing_assignments(id) ON DELETE CASCADE,
+    requested_by UUID NOT NULL,
+    requested_at TIMESTAMPTZ DEFAULT NOW(),
+    approval_type VARCHAR NOT NULL,
+    status VARCHAR,
+    priority VARCHAR,
+    notes TEXT,
+    sla_deadline TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.approval_requests IS 'Approval requests';
+
+CREATE TABLE public.approval_decisions (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    approval_request_id UUID NOT NULL REFERENCES public.approval_requests(id) ON DELETE CASCADE,
+    decision_by UUID NOT NULL,
+    decision_at TIMESTAMPTZ DEFAULT NOW(),
+    decision VARCHAR NOT NULL,
+    reason TEXT,
+    comments TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.approval_decisions IS 'Approval decisions';
+
+-- ----------------------------------------------------------------------------
+-- Notifications
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.notifications (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    recipient_type VARCHAR NOT NULL,
+    recipient_id UUID NOT NULL,
+    notification_type VARCHAR NOT NULL,
+    title VARCHAR NOT NULL,
+    message TEXT NOT NULL,
+    priority VARCHAR,
+    link TEXT,
+    metadata JSONB,
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMPTZ,
+    is_dismissed BOOLEAN DEFAULT FALSE,
+    dismissed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.notifications IS 'User notifications';
+
+CREATE TABLE public.notification_delivery (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    notification_id UUID NOT NULL REFERENCES public.notifications(id) ON DELETE CASCADE,
+    channel VARCHAR NOT NULL,
+    status VARCHAR,
+    sent_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    opened_at TIMESTAMPTZ,
+    error_message TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.notification_delivery IS 'Notification delivery tracking';
+
+-- ----------------------------------------------------------------------------
+-- Subscriptions & Usage
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.customer_subscriptions (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    plan VARCHAR NOT NULL,
+    status VARCHAR,
+    ai_extraction_limit INTEGER,
+    ai_extraction_used INTEGER CHECK (ai_extraction_used IS NULL OR ai_extraction_used >= 0),
+    batch_upload_limit INTEGER,
+    batch_upload_per_day INTEGER,
+    manual_extraction_pages_included INTEGER,
+    manual_extraction_pages_used INTEGER CHECK (manual_extraction_pages_used IS NULL OR manual_extraction_pages_used >= 0),
+    price_per_ai_extra NUMERIC CHECK (price_per_ai_extra IS NULL OR price_per_ai_extra >= 0),
+    price_per_manual_page NUMERIC CHECK (price_per_manual_page IS NULL OR price_per_manual_page >= 0),
+    currency VARCHAR,
+    features JSONB,
+    stripe_subscription_id VARCHAR,
+    stripe_customer_id VARCHAR,
+    stripe_price_id VARCHAR,
+    billing_period_start DATE,
+    billing_period_end DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_by UUID,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by UUID,
+    CONSTRAINT customer_subscriptions_status_check CHECK (status IN ('trialing','active','past_due','paused','cancelled','expired'))
+);
+
+COMMENT ON TABLE public.customer_subscriptions IS 'Customer subscriptions';
+
+CREATE TABLE public.usage_tracking (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    usage_date DATE,
+    usage_month DATE,
+    ai_files_processed INTEGER CHECK (ai_files_processed IS NULL OR ai_files_processed >= 0),
+    batch_files_uploaded INTEGER CHECK (batch_files_uploaded IS NULL OR batch_files_uploaded >= 0),
+    manual_pages_extracted INTEGER CHECK (manual_pages_extracted IS NULL OR manual_pages_extracted >= 0),
+    reports_generated INTEGER CHECK (reports_generated IS NULL OR reports_generated >= 0),
+    total_storage_bytes BIGINT CHECK (total_storage_bytes IS NULL OR total_storage_bytes >= 0),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (organization_id, usage_month)
+);
+
+COMMENT ON TABLE public.usage_tracking IS 'Usage tracking';
+
+-- ----------------------------------------------------------------------------
+-- Consultants
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.consultant_profiles (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -1008,7 +1520,7 @@ CREATE TABLE public.consultant_profiles (
     city VARCHAR,
     county VARCHAR,
     postcode VARCHAR,
-    country VARCHAR CHECK (country IS NULL OR country IN ('GB','IE')),
+    country VARCHAR,
     eircode VARCHAR,
     vat_number VARCHAR,
     registration_region VARCHAR,
@@ -1020,7 +1532,7 @@ CREATE TABLE public.consultant_profiles (
     expertise TEXT[],
     certifications TEXT[],
     annual_revenue NUMERIC,
-    revenue_currency VARCHAR CHECK (revenue_currency IS NULL OR revenue_currency IN ('GBP','EUR')),
+    revenue_currency VARCHAR,
     employee_count INTEGER,
     founded_year INTEGER,
     partner_since DATE,
@@ -1123,218 +1635,13 @@ CREATE TABLE public.consultant_billing (
     stripe_customer_id VARCHAR,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    currency VARCHAR CHECK (currency IS NULL OR currency IN ('GBP','EUR'))
+    currency VARCHAR
 );
 
 COMMENT ON TABLE public.consultant_billing IS 'Consultant billing';
 
 -- ============================================================================
--- Subscriptions & Usage
--- ============================================================================
-
-CREATE TABLE public.customer_subscriptions (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    plan VARCHAR NOT NULL,
-    status VARCHAR CHECK (status IN ('trialing','active','past_due','paused','cancelled','expired')),
-    ai_extraction_limit INTEGER,
-    ai_extraction_used INTEGER CHECK (ai_extraction_used IS NULL OR ai_extraction_used >= 0),
-    batch_upload_limit INTEGER,
-    batch_upload_per_day INTEGER,
-    manual_extraction_pages_included INTEGER,
-    manual_extraction_pages_used INTEGER CHECK (manual_extraction_pages_used IS NULL OR manual_extraction_pages_used >= 0),
-    price_per_ai_extra NUMERIC CHECK (price_per_ai_extra IS NULL OR price_per_ai_extra >= 0),
-    price_per_manual_page NUMERIC CHECK (price_per_manual_page IS NULL OR price_per_manual_page >= 0),
-    currency VARCHAR CHECK (currency IS NULL OR currency IN ('GBP','EUR')),
-    features JSONB,
-    stripe_subscription_id VARCHAR,
-    stripe_customer_id VARCHAR,
-    stripe_price_id VARCHAR,
-    billing_period_start DATE,
-    billing_period_end DATE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by UUID,
-    cancelled_at TIMESTAMPTZ,
-    cancelled_by UUID
-);
-
-COMMENT ON TABLE public.customer_subscriptions IS 'Customer subscriptions';
-
-CREATE TABLE public.usage_tracking (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    usage_date DATE,
-    usage_month DATE,
-    ai_files_processed INTEGER CHECK (ai_files_processed IS NULL OR ai_files_processed >= 0),
-    batch_files_uploaded INTEGER CHECK (batch_files_uploaded IS NULL OR batch_files_uploaded >= 0),
-    manual_pages_extracted INTEGER CHECK (manual_pages_extracted IS NULL OR manual_pages_extracted >= 0),
-    reports_generated INTEGER CHECK (reports_generated IS NULL OR reports_generated >= 0),
-    total_storage_bytes BIGINT CHECK (total_storage_bytes IS NULL OR total_storage_bytes >= 0),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (organization_id, usage_month)
-);
-
-COMMENT ON TABLE public.usage_tracking IS 'Usage tracking';
-
--- ============================================================================
--- Staff & QC
--- ============================================================================
-
-CREATE TABLE public.staff_roles (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    name VARCHAR UNIQUE NOT NULL,
-    description TEXT,
-    permissions JSONB NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_by UUID
-);
-
-COMMENT ON TABLE public.staff_roles IS 'Staff role definitions';
-
-CREATE TABLE public.staff_profiles (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    first_name VARCHAR NOT NULL,
-    last_name VARCHAR NOT NULL,
-    email VARCHAR UNIQUE NOT NULL,
-    role_id UUID REFERENCES public.staff_roles(id),
-    is_active BOOLEAN DEFAULT TRUE,
-    hire_date DATE,
-    skills JSONB,
-    max_concurrent_tasks INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_by UUID
-);
-
-COMMENT ON TABLE public.staff_profiles IS 'Staff profiles';
-
-CREATE TABLE public.staff_workload (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
-    assigned_tasks INTEGER CHECK (assigned_tasks IS NULL OR assigned_tasks >= 0),
-    in_progress_tasks INTEGER CHECK (in_progress_tasks IS NULL OR in_progress_tasks >= 0),
-    pending_tasks INTEGER CHECK (pending_tasks IS NULL OR pending_tasks >= 0),
-    completed_today INTEGER CHECK (completed_today IS NULL OR completed_today >= 0),
-    workload_score NUMERIC,
-    capacity_percentage NUMERIC,
-    date DATE,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.staff_workload IS 'Staff workload tracking';
-
-CREATE TABLE public.staff_performance (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
-    period_start DATE NOT NULL,
-    period_end DATE NOT NULL,
-    period_type VARCHAR NOT NULL,
-    total_assigned INTEGER,
-    total_completed INTEGER,
-    total_rejected INTEGER,
-    avg_processing_time_seconds INTEGER,
-    qc_pass_rate NUMERIC,
-    accuracy_rate NUMERIC,
-    productivity_score NUMERIC,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.staff_performance IS 'Staff performance metrics';
-
-CREATE TABLE public.qc_checklists (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    document_type VARCHAR NOT NULL,
-    checklist_name VARCHAR NOT NULL,
-    checklist_items JSONB NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID,
-    updated_by UUID
-);
-
-COMMENT ON TABLE public.qc_checklists IS 'QC checklists';
-
-CREATE TABLE public.qc_checks (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    assignment_id UUID NOT NULL REFERENCES public.processing_assignments(id) ON DELETE CASCADE,
-    qc_by UUID NOT NULL,
-    qc_status VARCHAR,
-    qc_score INTEGER CHECK (qc_score IS NULL OR (qc_score >= 0 AND qc_score <= 100)),
-    checks_passed INTEGER,
-    checks_failed INTEGER,
-    notes TEXT,
-    reviewed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.qc_checks IS 'QC check results';
-
-CREATE TABLE public.qc_errors (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    qc_check_id UUID NOT NULL REFERENCES public.qc_checks(id) ON DELETE CASCADE,
-    error_type VARCHAR NOT NULL,
-    field_name VARCHAR,
-    expected_value TEXT,
-    actual_value TEXT,
-    severity VARCHAR,
-    notes TEXT,
-    is_resolved BOOLEAN DEFAULT FALSE,
-    resolved_at TIMESTAMPTZ,
-    resolved_by UUID,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.qc_errors IS 'QC errors';
-
--- ============================================================================
--- Approvals
--- ============================================================================
-
-CREATE TABLE public.approval_requests (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    assignment_id UUID NOT NULL REFERENCES public.processing_assignments(id) ON DELETE CASCADE,
-    requested_by UUID NOT NULL,
-    requested_at TIMESTAMPTZ DEFAULT NOW(),
-    approval_type VARCHAR NOT NULL,
-    status VARCHAR,
-    priority VARCHAR,
-    notes TEXT,
-    sla_deadline TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.approval_requests IS 'Approval requests';
-
-CREATE TABLE public.approval_decisions (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    approval_request_id UUID NOT NULL REFERENCES public.approval_requests(id) ON DELETE CASCADE,
-    decision_by UUID NOT NULL,
-    decision_at TIMESTAMPTZ DEFAULT NOW(),
-    decision VARCHAR NOT NULL,
-    reason TEXT,
-    comments TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.approval_decisions IS 'Approval decisions';
-
--- ============================================================================
--- Audit & Logging
+-- PHASE D4 CONTINUED: LOGS & AUDIT
 -- ============================================================================
 
 CREATE TABLE public.audit_logs (
@@ -1358,6 +1665,24 @@ CREATE TABLE public.audit_logs (
 );
 
 COMMENT ON TABLE public.audit_logs IS 'Audit log';
+
+CREATE TABLE public.audit_trail (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    action_type VARCHAR NOT NULL,
+    table_name VARCHAR NOT NULL,
+    record_id UUID NOT NULL,
+    performed_by UUID NOT NULL,
+    performed_at TIMESTAMPTZ,
+    old_data JSONB,
+    new_data JSONB,
+    changes JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.audit_trail IS 'Generic audit trail';
 
 CREATE TABLE public.activity_logs (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -1387,173 +1712,6 @@ CREATE TABLE public.activity_feed (
 );
 
 COMMENT ON TABLE public.activity_feed IS 'Activity feed';
-
--- ============================================================================
--- Beta & Invites
--- ============================================================================
-
-CREATE TABLE public.beta_access_codes (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    code TEXT UNIQUE NOT NULL,
-    email TEXT,
-    status TEXT,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    used_at TIMESTAMPTZ,
-    magic_token TEXT,
-    token_created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.beta_access_codes IS 'Beta access codes';
-
-CREATE TABLE public.beta_users (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    user_id UUID,
-    email TEXT UNIQUE NOT NULL,
-    beta_code TEXT,
-    access_level TEXT,
-    invited_by UUID,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_active_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.beta_users IS 'Beta users';
-
-CREATE TABLE public.pending_invites (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    email VARCHAR NOT NULL,
-    role VARCHAR NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.pending_invites IS 'Pending invites';
-
-CREATE TABLE public.user_invitations (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    email VARCHAR NOT NULL,
-    role_id UUID,
-    organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    invited_by UUID,
-    token VARCHAR UNIQUE NOT NULL,
-    status VARCHAR,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.user_invitations IS 'User invitations';
-
-CREATE TABLE public.waitlist (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    email TEXT UNIQUE NOT NULL,
-    full_name TEXT,
-    company_name TEXT,
-    company_size TEXT,
-    interested_in TEXT,
-    source TEXT,
-    status TEXT,
-    invited_at TIMESTAMPTZ,
-    activated_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.waitlist IS 'Waitlist';
-
--- ============================================================================
--- Authentication
--- ============================================================================
-
-CREATE TABLE public.password_reset_tokens (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    user_id UUID,
-    token VARCHAR UNIQUE NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    used BOOLEAN DEFAULT FALSE,
-    used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.password_reset_tokens IS 'Password reset tokens';
-
--- ============================================================================
--- Typing & Presence
--- ============================================================================
-
-CREATE TABLE public.typing_status (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    user_id UUID,
-    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
-    is_typing BOOLEAN DEFAULT FALSE,
-    started_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.typing_status IS 'Typing status';
-
-CREATE TABLE public.user_presence (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    user_id UUID,
-    status TEXT,
-    last_seen_at TIMESTAMPTZ,
-    current_channel TEXT,
-    metadata JSONB
-);
-
-COMMENT ON TABLE public.user_presence IS 'User presence';
-
--- ============================================================================
--- Customer Reviews & Verifications
--- ============================================================================
-
-CREATE TABLE public.customer_review_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    file_id UUID,
-    organization_id UUID,
-    user_id UUID,
-    status VARCHAR NOT NULL,
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.customer_review_log IS 'Customer review log';
-
-CREATE TABLE public.customer_verifications (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    customer_document_id UUID,
-    organization_id UUID,
-    customer_member_id UUID,
-    status TEXT,
-    notes TEXT,
-    submitted_at TIMESTAMPTZ,
-    submitted_by UUID,
-    verified_at TIMESTAMPTZ,
-    verified_by UUID,
-    rejected_at TIMESTAMPTZ,
-    rejected_by UUID,
-    rejected_reason TEXT,
-    revision_requested_at TIMESTAMPTZ,
-    revision_requested_by UUID,
-    revision_notes TEXT,
-    is_escalated BOOLEAN DEFAULT FALSE,
-    escalation_reason TEXT,
-    escalated_at TIMESTAMPTZ,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.customer_verifications IS 'Customer verifications';
-
--- ============================================================================
--- Additional Logs
--- ============================================================================
 
 CREATE TABLE public.document_activity_log (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -1613,9 +1771,253 @@ CREATE TABLE public.user_activity_log (
 
 COMMENT ON TABLE public.user_activity_log IS 'User activity log';
 
--- ============================================================================
+CREATE TABLE public.staff_activity_log (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
+    activity_type VARCHAR NOT NULL,
+    activity_details JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    session_id UUID,
+    duration_seconds INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.staff_activity_log IS 'Staff activity log';
+
+CREATE TABLE public.login_history (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    staff_id UUID NOT NULL REFERENCES public.staff_profiles(id) ON DELETE CASCADE,
+    login_at TIMESTAMPTZ,
+    logout_at TIMESTAMPTZ,
+    ip_address INET,
+    user_agent TEXT,
+    session_id UUID,
+    is_successful BOOLEAN,
+    failure_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.login_history IS 'Login history';
+
+CREATE TABLE public.message_activity_log (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    message_id UUID,
+    conversation_id UUID,
+    user_id UUID,
+    action_type TEXT,
+    action_details JSONB,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.message_activity_log IS 'Message activity log';
+
+CREATE TABLE public.conversation_activity_log (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    conversation_id UUID,
+    user_id UUID,
+    action_type TEXT,
+    action_details JSONB,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.conversation_activity_log IS 'Conversation activity log';
+
+CREATE TABLE public.verification_activity_log (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    verification_id UUID,
+    user_id UUID,
+    action_type TEXT,
+    action_details JSONB,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.verification_activity_log IS 'Verification activity log';
+
+CREATE TABLE public.verification_logs (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    document_id UUID NOT NULL,
+    verified_by UUID NOT NULL,
+    verified_at TIMESTAMPTZ,
+    verification_status VARCHAR NOT NULL,
+    verification_notes TEXT,
+    verification_data JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.verification_logs IS 'Verification logs';
+
+CREATE TABLE public.review_assignment_history (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    review_id UUID,
+    assigned_by UUID,
+    assigned_to UUID,
+    previous_assigned_to UUID,
+    action VARCHAR NOT NULL,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.review_assignment_history IS 'Review assignment history';
+
+CREATE TABLE public.review_audit_trail (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    review_id UUID,
+    action TEXT NOT NULL,
+    performed_by UUID,
+    performed_by_email TEXT,
+    assigned_to UUID,
+    old_value JSONB,
+    new_value JSONB,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.review_audit_trail IS 'Review audit trail';
+
+-- ----------------------------------------------------------------------------
+-- Draft & Export
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.draft_entries (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    file_id UUID,
+    organization_id UUID,
+    user_id UUID,
+    data JSONB,
+    progress INTEGER CHECK (progress IS NULL OR (progress >= 0 AND progress <= 100)),
+    sections_completed JSONB,
+    last_updated TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.draft_entries IS 'Draft entries';
+
+CREATE TABLE public.export_history (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID,
+    user_id UUID,
+    file_name VARCHAR,
+    format VARCHAR,
+    filters JSONB,
+    record_count INTEGER,
+    status VARCHAR,
+    file_url TEXT,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.export_history IS 'Export history';
+
+CREATE TABLE public.upload_batches (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+    batch_name VARCHAR,
+    total_files INTEGER,
+    processed_files INTEGER,
+    status TEXT,
+    created_by_user_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata JSONB,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    batch_type VARCHAR,
+    estimated_processing_time TIMESTAMPTZ,
+    error_count INTEGER,
+    manual_extraction_requested BOOLEAN DEFAULT FALSE,
+    manual_extraction_batch_id UUID,
+    created_by UUID,
+    updated_by UUID
+);
+
+COMMENT ON TABLE public.upload_batches IS 'Upload batch tracking';
+
+CREATE TABLE public.user_feedback (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    organization_id UUID,
+    user_id UUID,
+    user_email TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    severity TEXT,
+    status TEXT,
+    rating INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+    screenshot_url TEXT,
+    browser_info TEXT,
+    os_info TEXT,
+    url TEXT,
+    assigned_to UUID,
+    resolved_at TIMESTAMPTZ,
+    resolution_notes TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.user_feedback IS 'User feedback';
+
+-- ----------------------------------------------------------------------------
+-- SLA & Business Hours
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE public.sla_definitions (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    document_type VARCHAR NOT NULL,
+    priority_level VARCHAR NOT NULL,
+    sla_hours INTEGER NOT NULL CHECK (sla_hours >= 0),
+    escalation_hours INTEGER,
+    is_active BOOLEAN DEFAULT TRUE,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.sla_definitions IS 'SLA definitions';
+
+CREATE TABLE public.sla_compliance (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    document_type VARCHAR NOT NULL,
+    queue_id UUID NOT NULL,
+    sla_deadline TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    is_breached BOOLEAN,
+    breach_reason TEXT,
+    breach_time_minutes INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.sla_compliance IS 'SLA compliance tracking';
+
+CREATE TABLE public.business_hours (
+    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+    day_of_week VARCHAR UNIQUE NOT NULL,
+    is_working_day BOOLEAN DEFAULT TRUE,
+    start_time TIME,
+    end_time TIME,
+    is_holiday BOOLEAN DEFAULT FALSE,
+    holiday_name VARCHAR,
+    timezone VARCHAR,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.business_hours IS 'Business hours configuration';
+
+-- ----------------------------------------------------------------------------
 -- System Settings
--- ============================================================================
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE public.system_settings (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -1683,6 +2085,7 @@ CREATE TABLE public.system_settings (
 
 COMMENT ON TABLE public.system_settings IS 'System configuration settings';
 
+
 CREATE TABLE public.queue_settings (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
     setting_key VARCHAR UNIQUE NOT NULL,
@@ -1694,386 +2097,6 @@ CREATE TABLE public.queue_settings (
 );
 
 COMMENT ON TABLE public.queue_settings IS 'Queue configuration settings';
-
-CREATE TABLE public.sla_definitions (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    document_type VARCHAR NOT NULL,
-    priority_level VARCHAR NOT NULL,
-    sla_hours INTEGER NOT NULL CHECK (sla_hours >= 0),
-    escalation_hours INTEGER,
-    is_active BOOLEAN DEFAULT TRUE,
-    description TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.sla_definitions IS 'SLA definitions';
-
-CREATE TABLE public.business_hours (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    day_of_week VARCHAR UNIQUE NOT NULL,
-    is_working_day BOOLEAN DEFAULT TRUE,
-    start_time TIME,
-    end_time TIME,
-    is_holiday BOOLEAN DEFAULT FALSE,
-    holiday_name VARCHAR,
-    timezone VARCHAR,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.business_hours IS 'Business hours configuration';
-
--- ============================================================================
--- Additional Tables
--- ============================================================================
-
-CREATE TABLE public.draft_entries (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    file_id UUID,
-    organization_id UUID,
-    user_id UUID,
-    data JSONB,
-    progress INTEGER CHECK (progress IS NULL OR (progress >= 0 AND progress <= 100)),
-    sections_completed JSONB,
-    last_updated TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.draft_entries IS 'Draft entries';
-
-CREATE TABLE public.export_history (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID,
-    user_id UUID,
-    file_name VARCHAR,
-    format VARCHAR,
-    filters JSONB,
-    record_count INTEGER,
-    status VARCHAR,
-    file_url TEXT,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.export_history IS 'Export history';
-
-CREATE TABLE public.upload_batches (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID,
-    batch_name VARCHAR,
-    total_files INTEGER,
-    processed_files INTEGER,
-    status TEXT,
-    created_by_user_id UUID,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    metadata JSONB,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    batch_type VARCHAR,
-    estimated_processing_time TIMESTAMPTZ,
-    error_count INTEGER,
-    manual_extraction_requested BOOLEAN DEFAULT FALSE,
-    manual_extraction_batch_id UUID,
-    created_by UUID,
-    updated_by UUID
-);
-
-COMMENT ON TABLE public.upload_batches IS 'Upload batches';
-
-CREATE TABLE public.user_feedback (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID,
-    user_id UUID,
-    user_email TEXT NOT NULL,
-    type TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    severity TEXT,
-    status TEXT,
-    rating INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
-    screenshot_url TEXT,
-    browser_info TEXT,
-    os_info TEXT,
-    url TEXT,
-    assigned_to UUID,
-    resolved_at TIMESTAMPTZ,
-    resolution_notes TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.user_feedback IS 'User feedback';
-
--- ============================================================================
--- End of Schema
--- ============================================================================
--- ============================================================================
--- MISSING TABLES - Add to baseline schema
--- ============================================================================
-
-CREATE TABLE public.manual_review_queue (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    file_url TEXT NOT NULL,
-    file_name TEXT NOT NULL,
-    file_type TEXT NOT NULL,
-    data_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    auto_extraction_result JSONB,
-    manual_extraction_result JSONB,
-    assigned_to UUID,
-    priority INTEGER,
-    customer_notes TEXT,
-    staff_notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    estimated_completion_hours INTEGER,
-    batch_id UUID,
-    assigned_by UUID,
-    started_at TIMESTAMPTZ,
-    completed_by UUID,
-    data_entry JSONB,
-    review_time_seconds INTEGER,
-    priority_score INTEGER,
-    sla_deadline TIMESTAMPTZ,
-    sla_breached BOOLEAN DEFAULT FALSE,
-    escalation_level INTEGER,
-    customer_notified_at TIMESTAMPTZ,
-    customer_responded_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    customer_document_id UUID
-);
-
-COMMENT ON TABLE public.manual_review_queue IS 'Manual review queue items';
-
-CREATE TABLE public.review_assignment_history (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    review_id UUID,
-    assigned_by UUID,
-    assigned_to UUID,
-    previous_assigned_to UUID,
-    action VARCHAR NOT NULL,
-    note TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.review_assignment_history IS 'Review assignment history';
-
-CREATE TABLE public.review_audit_trail (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    review_id UUID,
-    action TEXT NOT NULL,
-    performed_by UUID,
-    performed_by_email TEXT,
-    assigned_to UUID,
-    old_value JSONB,
-    new_value JSONB,
-    note TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.review_audit_trail IS 'Review audit trail';
-
-CREATE TABLE public.verification_activity_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    verification_id UUID,
-    user_id UUID,
-    action_type TEXT,
-    action_details JSONB,
-    ip_address TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.verification_activity_log IS 'Verification activity log';
-
-CREATE TABLE public.message_activity_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    message_id UUID,
-    conversation_id UUID,
-    user_id UUID,
-    action_type TEXT,
-    action_details JSONB,
-    ip_address TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.message_activity_log IS 'Message activity log';
-
-CREATE TABLE public.conversation_activity_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    conversation_id UUID,
-    user_id UUID,
-    action_type TEXT,
-    action_details JSONB,
-    ip_address TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.conversation_activity_log IS 'Conversation activity log';
-
-CREATE TABLE public.verification_logs (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    document_id UUID NOT NULL,
-    verified_by UUID NOT NULL,
-    verified_at TIMESTAMPTZ,
-    verification_status VARCHAR NOT NULL,
-    verification_notes TEXT,
-    verification_data JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.verification_logs IS 'Verification logs';
-
-CREATE TABLE public.audit_trail (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    action_type VARCHAR NOT NULL,
-    table_name VARCHAR NOT NULL,
-    record_id UUID NOT NULL,
-    performed_by UUID NOT NULL,
-    performed_at TIMESTAMPTZ,
-    old_data JSONB,
-    new_data JSONB,
-    changes JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.audit_trail IS 'Generic audit trail';
-
-CREATE TABLE public.staff_activity_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    staff_id UUID NOT NULL,
-    activity_type VARCHAR NOT NULL,
-    activity_details JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    session_id UUID,
-    duration_seconds INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.staff_activity_log IS 'Staff activity log';
-
-CREATE TABLE public.login_history (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    staff_id UUID NOT NULL,
-    login_at TIMESTAMPTZ,
-    logout_at TIMESTAMPTZ,
-    ip_address INET,
-    user_agent TEXT,
-    session_id UUID,
-    is_successful BOOLEAN,
-    failure_reason TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.login_history IS 'Login history';
-
-CREATE TABLE public.staff_daily_performance (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    staff_id UUID NOT NULL,
-    date DATE NOT NULL,
-    total_assigned INTEGER,
-    completed INTEGER,
-    rejected INTEGER,
-    qc_passed INTEGER,
-    qc_failed INTEGER,
-    total_processing_time_seconds INTEGER,
-    avg_time_per_document_seconds INTEGER,
-    productivity_score NUMERIC,
-    quality_score NUMERIC,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.staff_daily_performance IS 'Staff daily performance';
-
-CREATE TABLE public.team_performance (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    date DATE UNIQUE NOT NULL,
-    total_staff_active INTEGER,
-    total_assigned INTEGER,
-    total_completed INTEGER,
-    total_rejected INTEGER,
-    avg_processing_time_seconds INTEGER,
-    qc_pass_rate NUMERIC,
-    sla_compliance_rate NUMERIC,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.team_performance IS 'Team performance';
-
-CREATE TABLE public.sla_compliance (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    document_type VARCHAR NOT NULL,
-    queue_id UUID NOT NULL,
-    sla_deadline TIMESTAMPTZ NOT NULL,
-    completed_at TIMESTAMPTZ,
-    is_breached BOOLEAN,
-    breach_reason TEXT,
-    breach_time_minutes INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.sla_compliance IS 'SLA compliance tracking';
-
-CREATE TABLE public.reassignment_history (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    assignment_id UUID NOT NULL,
-    previous_staff_id UUID,
-    new_staff_id UUID NOT NULL,
-    reassigned_by UUID NOT NULL,
-    reason VARCHAR,
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.reassignment_history IS 'Reassignment history';
-
-CREATE TABLE public.processing_time_log (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    assignment_id UUID NOT NULL,
-    staff_id UUID NOT NULL,
-    activity_type VARCHAR NOT NULL,
-    start_time TIMESTAMPTZ NOT NULL,
-    end_time TIMESTAMPTZ,
-    duration_seconds INTEGER,
-    paused_duration_seconds INTEGER,
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.processing_time_log IS 'Processing time logs';
-
-CREATE TABLE public.processing_audit_trail (
-    id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
-    queue_id UUID NOT NULL,
-    action VARCHAR NOT NULL,
-    performed_by UUID,
-    performed_by_staff UUID,
-    performed_by_type VARCHAR,
-    previous_value JSONB,
-    new_value JSONB,
-    notes TEXT,
-    duration_ms INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-COMMENT ON TABLE public.processing_audit_trail IS 'Processing audit trail';
 
 CREATE TABLE public.dashboard_metrics (
     id UUID PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
@@ -2107,111 +2130,25 @@ CREATE TABLE public.customer_communication (
 COMMENT ON TABLE public.customer_communication IS 'Customer communication records';
 
 -- ============================================================================
--- MISSING COLUMNS - Add to existing tables
+-- PHASE D5: CONSTRAINTS & INDEXES
 -- ============================================================================
 
--- Add is_active and archived_at to organizations
-ALTER TABLE public.organizations
-    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+-- ----------------------------------------------------------------------------
+-- UNIQUE INDEXES
+-- ----------------------------------------------------------------------------
 
-ALTER TABLE public.organizations
-    ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS organization_members_org_user_uniq
+    ON public.organization_members (organization_id, user_id);
 
--- Add file_checksum to customer_documents
-ALTER TABLE public.customer_documents
-    ADD COLUMN IF NOT EXISTS file_checksum TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS consultant_clients_consultant_org_uniq
+    ON public.consultant_clients (consultant_id, organization_id);
 
-COMMENT ON COLUMN public.customer_documents.file_checksum IS 'SHA-256 hash of file content';
+CREATE UNIQUE INDEX IF NOT EXISTS usage_tracking_org_month_uniq
+    ON public.usage_tracking (organization_id, usage_month);
 
--- Add sort_code to suppliers
-ALTER TABLE public.suppliers
-    ADD COLUMN IF NOT EXISTS sort_code VARCHAR;
+CREATE UNIQUE INDEX IF NOT EXISTS report_versions_report_version_uniq
+    ON public.report_versions (report_id, version_number);
 
-COMMENT ON COLUMN public.suppliers.sort_code IS 'UK bank sort code (digits only)';
-
--- Add total_floor_area_sqm and occupied_floor_area_sqm to organization_metadata
-ALTER TABLE public.organization_metadata
-    ADD COLUMN IF NOT EXISTS total_floor_area_sqm NUMERIC;
-
-ALTER TABLE public.organization_metadata
-    ADD COLUMN IF NOT EXISTS occupied_floor_area_sqm NUMERIC;
-
-COMMENT ON COLUMN public.organization_metadata.total_floor_area_sqm IS 'Total floor area in square metres';
-COMMENT ON COLUMN public.organization_metadata.occupied_floor_area_sqm IS 'Occupied floor area in square metres';
-
--- Add is_anonymised to users
-ALTER TABLE public.users
-    ADD COLUMN IF NOT EXISTS is_anonymised BOOLEAN DEFAULT FALSE;
-
--- ============================================================================
--- MISSING FOREIGN KEY CONSTRAINTS
--- ============================================================================
-
-DO $$
-BEGIN
-    -- emissions_logs -> emission_factors (baseline column is defra_factor_id;
-    -- RC2 renames it to emission_factor_id; the FK follows the column rename)
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'emissions_logs_emission_factor_id_fkey') THEN
-        ALTER TABLE public.emissions_logs
-            ADD CONSTRAINT emissions_logs_emission_factor_id_fkey
-            FOREIGN KEY (defra_factor_id) REFERENCES public.emission_factors(id)
-            ON DELETE NO ACTION NOT VALID;
-    END IF;
-    ALTER TABLE public.emissions_logs VALIDATE CONSTRAINT emissions_logs_emission_factor_id_fkey;
-
-    -- document_processing_queue -> emission_factors (baseline column is
-    -- defra_factor_used; RC2 renames it to emission_factor_used)
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dpq_emission_factor_used_fkey') THEN
-        ALTER TABLE public.document_processing_queue
-            ADD CONSTRAINT dpq_emission_factor_used_fkey
-            FOREIGN KEY (defra_factor_used) REFERENCES public.emission_factors(id)
-            ON DELETE NO ACTION NOT VALID;
-    END IF;
-    ALTER TABLE public.document_processing_queue VALIDATE CONSTRAINT dpq_emission_factor_used_fkey;
-
-    -- document_processing_queue -> facilities
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dpq_ai_mapped_facility_id_fkey') THEN
-        ALTER TABLE public.document_processing_queue
-            ADD CONSTRAINT dpq_ai_mapped_facility_id_fkey
-            FOREIGN KEY (ai_mapped_facility_id) REFERENCES public.facilities(id)
-            ON DELETE SET NULL NOT VALID;
-    END IF;
-    ALTER TABLE public.document_processing_queue VALIDATE CONSTRAINT dpq_ai_mapped_facility_id_fkey;
-
-    -- document_processing_queue -> assets
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dpq_ai_mapped_asset_id_fkey') THEN
-        ALTER TABLE public.document_processing_queue
-            ADD CONSTRAINT dpq_ai_mapped_asset_id_fkey
-            FOREIGN KEY (ai_mapped_asset_id) REFERENCES public.assets(id)
-            ON DELETE SET NULL NOT VALID;
-    END IF;
-    ALTER TABLE public.document_processing_queue VALIDATE CONSTRAINT dpq_ai_mapped_asset_id_fkey;
-
-    -- document_processing_queue -> suppliers
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dpq_ai_mapped_supplier_id_fkey') THEN
-        ALTER TABLE public.document_processing_queue
-            ADD CONSTRAINT dpq_ai_mapped_supplier_id_fkey
-            FOREIGN KEY (ai_mapped_supplier_id) REFERENCES public.suppliers(id)
-            ON DELETE SET NULL NOT VALID;
-    END IF;
-    ALTER TABLE public.document_processing_queue VALIDATE CONSTRAINT dpq_ai_mapped_supplier_id_fkey;
-
-    -- emissions_logs -> units
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'emissions_logs_unit_fkey') THEN
-        ALTER TABLE public.emissions_logs
-            ADD CONSTRAINT emissions_logs_unit_fkey
-            FOREIGN KEY (unit) REFERENCES public.units(code)
-            ON DELETE NO ACTION NOT VALID;
-    END IF;
-    ALTER TABLE public.emissions_logs VALIDATE CONSTRAINT emissions_logs_unit_fkey;
-
-END $$;
-
--- ============================================================================
--- MISSING UNIQUE INDEXES
--- ============================================================================
-
--- suppliers partial unique indexes
 CREATE UNIQUE INDEX IF NOT EXISTS suppliers_org_vat_number_uniq
     ON public.suppliers (organization_id, vat_number)
     WHERE vat_number IS NOT NULL;
@@ -2220,52 +2157,172 @@ CREATE UNIQUE INDEX IF NOT EXISTS suppliers_org_company_number_uniq
     ON public.suppliers (organization_id, company_number)
     WHERE company_number IS NOT NULL;
 
--- emission_factors natural key uniqueness
 CREATE UNIQUE INDEX IF NOT EXISTS emission_factors_year_activity_country_uniq
     ON public.emission_factors (reporting_year, activity_type, country);
 
--- ============================================================================
--- MISSING NOT NULL CONSTRAINTS
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- PERFORMANCE INDEXES
+-- ----------------------------------------------------------------------------
+
+-- Tenant composite family
+CREATE INDEX  IF NOT EXISTS customer_documents_org_created_idx
+    ON public.customer_documents (organization_id, created_at DESC);
+
+CREATE INDEX  IF NOT EXISTS emissions_logs_org_start_date_idx
+    ON public.emissions_logs (organization_id, start_date);
+
+CREATE INDEX  IF NOT EXISTS suppliers_org_idx
+    ON public.suppliers (organization_id);
+
+CREATE INDEX  IF NOT EXISTS facilities_org_idx
+    ON public.facilities (organization_id);
+
+-- Queue-claim partial indexes
+CREATE INDEX  IF NOT EXISTS dpq_claim_idx
+    ON public.document_processing_queue (status, created_at)
+    WHERE status IN ('pending','processing','manual_review','manual_extraction','qc','customer_review');
+
+CREATE INDEX  IF NOT EXISTS processing_queue_claim_idx
+    ON public.processing_queue (queue_status, created_at)
+    WHERE queue_status IN ('pending','assigned','in_progress');
+
+CREATE INDEX  IF NOT EXISTS report_generation_queue_claim_idx
+    ON public.report_generation_queue (status, created_at)
+    WHERE status IN ('pending','queued','processing');
+
+-- Messaging/notifications
+CREATE INDEX  IF NOT EXISTS messages_conversation_created_idx
+    ON public.messages (conversation_id, created_at);
+
+CREATE INDEX  IF NOT EXISTS conversation_participants_conv_user_idx
+    ON public.conversation_participants (conversation_id, user_id);
+
+CREATE INDEX  IF NOT EXISTS notifications_unread_recipient_idx
+    ON public.notifications (recipient_id, created_at)
+    WHERE is_read = false;
+
+-- Consultant access GIN
+CREATE INDEX  IF NOT EXISTS consultant_firm_members_client_access_gin
+    ON public.consultant_firm_members USING gin (client_access);
+
+-- Full text search
+CREATE INDEX  IF NOT EXISTS suppliers_name_trgm_idx
+    ON public.suppliers USING gin (name gin_trgm_ops);
+
+CREATE INDEX  IF NOT EXISTS suppliers_vat_number_trgm_idx
+    ON public.suppliers USING gin (vat_number gin_trgm_ops);
+
+CREATE INDEX  IF NOT EXISTS organizations_name_trgm_idx
+    ON public.organizations USING gin (name gin_trgm_ops);
+
+-- FK support indexes
+CREATE INDEX  IF NOT EXISTS emissions_logs_emission_factor_id_idx
+    ON public.emissions_logs (emission_factor_id);
+
+CREATE INDEX  IF NOT EXISTS emissions_logs_asset_id_idx
+    ON public.emissions_logs (asset_id);
+
+CREATE INDEX  IF NOT EXISTS customer_documents_supplier_id_idx
+    ON public.customer_documents (supplier_id);
+
+CREATE INDEX  IF NOT EXISTS dpq_customer_document_id_idx
+    ON public.document_processing_queue (customer_document_id);
+
+-- Audit indexes
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id ON public.audit_logs (organization_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_table_record ON public.audit_logs (resource_type, resource_id);
+
+-- ----------------------------------------------------------------------------
+-- ADDITIONAL CHECK CONSTRAINTS
+-- ----------------------------------------------------------------------------
+
+-- Country IN ('GB','IE')
+DO $$
+DECLARE t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['organizations','facilities','suppliers','consultant_profiles','emission_factors'] LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = t || '_country_in_list') THEN
+            EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (country IN (''GB'',''IE'')) NOT VALID', t, t || '_country_in_list');
+        END IF;
+    END LOOP;
+END $$;
+
+-- Currency IN ('GBP','EUR')
+DO $$
+DECLARE pair RECORD;
+BEGIN
+    FOR pair IN
+        SELECT * FROM (VALUES
+            ('organizations','currency'),
+            ('suppliers','payment_currency'),
+            ('document_processing_queue','billing_currency'),
+            ('customer_subscriptions','currency'),
+            ('manual_extraction_batches','currency'),
+            ('consultant_profiles','revenue_currency'),
+            ('consultant_billing','currency')
+        ) AS v(tbl, col)
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                       WHERE conname = pair.tbl || '_' || pair.col || '_in_list') THEN
+            EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (%I IN (''GBP'',''EUR'')) NOT VALID',
+                           pair.tbl, pair.tbl || '_' || pair.col || '_in_list', pair.col);
+        END IF;
+    END LOOP;
+END $$;
+
+-- Range constraints for numeric columns
+DO $$
+DECLARE pair RECORD;
+BEGIN
+    FOR pair IN
+        SELECT * FROM (VALUES
+            ('emissions_logs','raw_quantity'),
+            ('emissions_logs','calculated_kg_co2e'),
+            ('emission_factors','co2e_multiplier')
+        ) AS v(tbl, col)
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = pair.tbl || '_' || pair.col || '_nonneg') THEN
+            EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (%I >= 0) NOT VALID',
+                           pair.tbl, pair.tbl || '_' || pair.col || '_nonneg', pair.col);
+        END IF;
+    END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- VALIDATE ALL CONSTRAINTS
+-- ----------------------------------------------------------------------------
 
 DO $$
+DECLARE
+    con RECORD;
 BEGIN
-    -- Set NOT NULL on key columns that were originally NOT NULL
-    ALTER TABLE public.organization_members ALTER COLUMN organization_id SET NOT NULL;
-    ALTER TABLE public.organization_members ALTER COLUMN user_id SET NOT NULL;
-    ALTER TABLE public.organization_members ALTER COLUMN role SET NOT NULL;
-    
-    -- Set NOT NULL on processing queue status columns (already have DEFAULT)
-    ALTER TABLE public.document_processing_queue ALTER COLUMN qc_required SET NOT NULL;
-    ALTER TABLE public.document_processing_queue ALTER COLUMN customer_approved SET NOT NULL;
-    ALTER TABLE public.processing_queue ALTER COLUMN queue_status SET NOT NULL;
-    ALTER TABLE public.processing_queue ALTER COLUMN sla_breached SET NOT NULL;
-    
-    -- Set NOT NULL on customer_documents status
-    ALTER TABLE public.customer_documents ALTER COLUMN status SET NOT NULL;
-EXCEPTION
-    WHEN others THEN
-        RAISE NOTICE 'Some NOT NULL alterations skipped (columns may already be set)';
+    FOR con IN
+        SELECT conname, conrelid::regclass::text AS table_name
+        FROM pg_constraint
+        WHERE convalidated = false
+        AND contype IN ('f', 'c')
+        AND connamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE format('ALTER TABLE %I VALIDATE CONSTRAINT %I', con.table_name, con.conname);
+    END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- RLS ENABLEMENT (All tables)
+-- ----------------------------------------------------------------------------
+
+DO $$
+DECLARE
+    t text;
+BEGIN
+    FOR t IN
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+    LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    END LOOP;
 END $$;
 
 -- ============================================================================
--- MISSING DEFAULTS
+-- END OF COMPLETE SCHEMA
 -- ============================================================================
-
-DO $$
-BEGIN
-    -- Default for customer_documents status
-    ALTER TABLE public.customer_documents ALTER COLUMN status SET DEFAULT 'uploaded';
-    
-    -- Defaults for document_processing_queue
-    ALTER TABLE public.document_processing_queue ALTER COLUMN status SET DEFAULT 'pending';
-    ALTER TABLE public.document_processing_queue ALTER COLUMN qc_required SET DEFAULT FALSE;
-    ALTER TABLE public.document_processing_queue ALTER COLUMN customer_approved SET DEFAULT FALSE;
-    
-    -- Defaults for processing_queue
-    ALTER TABLE public.processing_queue ALTER COLUMN queue_status SET DEFAULT 'pending';
-    ALTER TABLE public.processing_queue ALTER COLUMN sla_breached SET DEFAULT FALSE;
-EXCEPTION
-    WHEN others THEN
-        RAISE NOTICE 'Some DEFAULT alterations skipped (columns may already have defaults)';
-END $$;

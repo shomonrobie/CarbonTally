@@ -6,6 +6,12 @@ engine and infrastructure layers implement against this package.
 """
 
 from .audit import AuditEntry, AuditQuery, AuditTrail
+from .benchmarking import (
+    BenchmarkAvailability,
+    BenchmarkMetric,
+    BenchmarkRequest,
+    BenchmarkResult,
+)
 from .calculation import (
     CalculationMethodology,
     CalculationResult,
@@ -45,6 +51,7 @@ from .provider import (
     RawFactorRow,
 )
 from .report import GeneratedReport, ReportRequest, ReportSection, ReportTemplate
+from .validation import ValidationIssue, ValidationReport, ValidationRequest, ValidationSeverity
 from .workflow import (
     DOCUMENT_PIPELINE,
     CalculationCompleted,
@@ -73,6 +80,10 @@ __all__ = [
     "AuditQuery",
     "AuditTrail",
     "Asset",
+    "BenchmarkAvailability",
+    "BenchmarkMetric",
+    "BenchmarkRequest",
+    "BenchmarkResult",
     "CalculationCompleted",
     "CalculationMethodology",
     "CalculationRequested",
@@ -129,6 +140,10 @@ __all__ = [
     "Suggestion",
     "Transition",
     "ValidationFailed",
+    "ValidationIssue",
+    "ValidationReport",
+    "ValidationRequest",
+    "ValidationSeverity",
     "VerificationResult",
     "WorkflowDefinition",
     "WorkflowStateChanged",
