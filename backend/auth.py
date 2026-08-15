@@ -67,6 +67,7 @@ class AuthUser(BaseModel):
     accuracy_rate: Optional[float] = 100.0
     is_staff: bool = False
     is_org_member: bool = False
+    is_admin: bool = False
     role_name: Optional[str] = None
 
 # ==========================================
@@ -273,7 +274,8 @@ async def get_current_user(
             extraction_count=staff_data.get('extraction_count', 0) if staff_data else 0,
             accuracy_rate=staff_data.get('accuracy_rate', 100.0) if staff_data else 100.0,
             is_staff=is_staff,
-            is_org_member=is_org_member
+            is_org_member=is_org_member,
+            is_admin=(role == 'admin' or role_name == 'admin')
         )
         
     except HTTPException:

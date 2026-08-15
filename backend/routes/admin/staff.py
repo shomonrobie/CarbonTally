@@ -8,7 +8,7 @@ import string
 from auth import AuthUser, require_role, require_admin, require_permission, require_staff, require_org_admin
 
 from database import get_supabase_client, get_supabase_admin
-from supabase import create_client
+from supabase import create_client, Client
 import os
 
 router = APIRouter(prefix="/api/admin/staff", tags=["Admin - Staff Management"])

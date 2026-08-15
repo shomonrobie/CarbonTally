@@ -811,7 +811,7 @@ async def get_batch_status(
             member = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', batch.data['organization_id']) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -920,7 +920,7 @@ async def cancel_batch(
             member = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', batch.data['organization_id']) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -969,7 +969,7 @@ async def get_batch_stats(
         elif not current_user.is_admin:
             orgs = supabase.from_('organization_members') \
                 .select('organization_id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .execute()
             
             if orgs.data:

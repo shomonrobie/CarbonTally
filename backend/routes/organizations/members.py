@@ -71,7 +71,7 @@ class OrganizationMemberListResponse(BaseModel):
 @router.get("/user/{user_id}")
 async def get_organization_by_user(
     user_id: str,
-    current_user: AuthUser = Depends(require_auth)
+    current_user: AuthUser = Depends(require_auth())
 ):
     """
     Get organization details for a specific user.
