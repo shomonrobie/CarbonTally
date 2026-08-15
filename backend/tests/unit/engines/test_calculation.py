@@ -94,6 +94,8 @@ class _MemorySink:
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        factor_kind: Optional[str] = None,
+        customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
         if self.fail_snapshot:
             raise RuntimeError("snapshot persistence failed")
@@ -104,7 +106,7 @@ class _MemorySink:
     async def create(
         self,
         org_id: str,
-        factor_id: str,
+        factor_id: Optional[str],
         quantity: Decimal,
         unit: str,
         scope: Optional[str],

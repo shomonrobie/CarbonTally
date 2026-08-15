@@ -26,16 +26,27 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request, status
 
 # --- existing authentication/RBAC (backend/auth.py) — reused, not duplicated --
-from auth import AuthUser, get_current_user, require_admin  # noqa: F401
+from auth import (
+    AuthUser,
+    get_current_user,
+    require_admin,
+    require_entity_member,  # noqa: F401 — V3 entity-scoped guard
+    require_org_admin,  # noqa: F401 — V3 customer-factor approval (D-cf-3)
+    require_org_member,  # noqa: F401 — V3 org-isolated surfaces
+)
 
 from core.logging import get_logger
 from data.audit import AuditRepository
+from data.customer_factors import CustomerFactorsRepository
+from data.documents import DocumentsRepository
 from data.emission_factors import EmissionFactorsRepository
 from data.emissions_logs import EmissionsLogsRepository
 from data.events import EventsRepository
 from data.factor_aliases import FactorAliasesRepository
 from data.imports import ImportsRepository
+from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
+from data.processing_entities import ProcessingEntitiesRepository
 from data.reports import ReportsRepository
 from domain.matching import MatchingPipelineConfig
 from engines.benchmarking import BenchmarkingEngine
@@ -139,6 +150,9 @@ class RepositoryBundle:
     audit: AuditRepository
     events: EventsRepository
     aliases: FactorAliasesRepository
+    customer_factors: CustomerFactorsRepository
+    entities: ProcessingEntitiesRepository
+    issues: IssuesRepository
 
 
 async def get_pool():
@@ -158,6 +172,9 @@ async def get_repositories() -> RepositoryBundle:
         audit=AuditRepository(pool),
         events=EventsRepository(pool),
         aliases=FactorAliasesRepository(pool),
+        customer_factors=CustomerFactorsRepository(pool),
+        entities=ProcessingEntitiesRepository(pool),
+        issues=IssuesRepository(pool),
     )
 
 
@@ -221,12 +238,18 @@ async def get_factor_search_index() -> FactorSearchIndex:
 
 
 async def get_matching_engine(
+    repos: RepositoryBundle = Depends(get_repositories),
     index: FactorSearchIndex = Depends(get_factor_search_index),
     aliases: FactorAliasesRepository = Depends(get_aliases_repository),
     event_bus: EventBus = Depends(get_event_bus),
     audit_logger: AuditLogger = Depends(get_audit_logger),
 ) -> FactorMatchingEngine:
-    """Per-request :class:`FactorMatchingEngine` over the search index."""
+    """Per-request :class:`FactorMatchingEngine` over the search index.
+
+    The engine is wired with the customer-factor lookup (D-cf-5): approved
+    customer factors are resolved ahead of the CarbonTally pipeline when the
+    request carries an ``organization_id``.
+    """
     config = MatchingPipelineConfig()
     resolver: Optional[RepositoryAliasResolver] = RepositoryAliasResolver(aliases)
     stages = build_matching_pipeline(config, alias_resolver=resolver)
@@ -236,6 +259,7 @@ async def get_matching_engine(
         config=config,
         event_bus=event_bus,
         audit_logger=audit_logger,
+        customer_factor_lookup=repos.customer_factors,
     )
 
 

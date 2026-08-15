@@ -23,6 +23,8 @@ Covered invariants:
 """
 from __future__ import annotations
 
+import uuid
+
 import asyncpg
 import pytest
 
@@ -160,7 +162,7 @@ async def test_customer_factor_create_and_fetch(pool: asyncpg.Pool) -> None:
             factor_id,
         )
         assert row is not None
-        assert row["organization_id"] == org_id
+        assert row["organization_id"] == uuid.UUID(org_id)
         assert str(row["co2e_multiplier"]) == "1.75"
         assert row["status"] == "draft"
         assert row["factor_source"] == "CUSTOMER"
@@ -290,7 +292,7 @@ async def test_snapshot_emission_factor_provenance(pool: asyncpg.Pool) -> None:
             "FROM public.calculation_snapshots WHERE id = $1",
             snapshot_id,
         )
-        assert row["factor_id"] == factor_id
+        assert row["factor_id"] == uuid.UUID(factor_id)
         assert row["factor_kind"] == "emission_factor"
         assert row["customer_factor_id"] is None
 
@@ -314,7 +316,7 @@ async def test_snapshot_customer_factor_provenance(pool: asyncpg.Pool) -> None:
         )
         assert row["factor_id"] is None
         assert row["factor_kind"] == "customer_factor"
-        assert row["customer_factor_id"] == cf_id
+        assert row["customer_factor_id"] == uuid.UUID(cf_id)
 
 
 async def test_snapshot_exactly_one_source_both_null(pool: asyncpg.Pool) -> None:

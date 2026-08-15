@@ -26,10 +26,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.admin_aliases import router as aliases_router
 from api.admin_audit import router as audit_router
+from api.admin_entities import router as admin_entities_router
 from api.admin_imports import router as imports_router
 from api.admin_providers import router as providers_router
 from api.business import router as business_router
 from api.contracts import ErrorDetail, ErrorResponse, HealthResponse
+from api.customer_factors import router as customer_factors_router
+from api.issues import router as issues_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -148,6 +151,9 @@ router.include_router(imports_router)
 router.include_router(providers_router)
 router.include_router(audit_router)
 router.include_router(aliases_router)
+router.include_router(admin_entities_router)
+router.include_router(customer_factors_router)
+router.include_router(issues_router)
 
 
 # ---------------------------------------------------------------------------

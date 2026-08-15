@@ -46,7 +46,7 @@ def _row_to_log(row: Any) -> EmissionLog:
     return EmissionLog(
         id=str(r["id"]),
         organization_id=str(r["organization_id"]),
-        factor_id=str(r["emission_factor_id"]) if r.get("emission_factor_id") else "",
+        factor_id=str(r["emission_factor_id"]) if r.get("emission_factor_id") else None,
         quantity=Decimal(str(r["raw_quantity"])),
         date=r["start_date"],
         unit=r["unit"],
@@ -78,7 +78,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
     async def create(
         self,
         org_id: str,
-        factor_id: str,
+        factor_id: Optional[str],
         quantity: Decimal,
         unit: str,
         scope: Optional[str],
@@ -89,6 +89,8 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
     ) -> EmissionLog:
         """Insert one emissions record and return it.
 
+        ``factor_id`` is ``None`` for customer-factor calculations (O1 — the
+        column is nullable; provenance lives on the snapshot).
         ``calculated_kg_co2e`` is stored as ``0``; the Calculation Engine writes
         the computed figure through :meth:`save` (repositories never compute).
         """
@@ -256,16 +258,22 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        factor_kind: Optional[str] = None,
+        customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
         """Persist an immutable calculation snapshot (Backend v2.1 §13).
 
         The RC2 ``calculation_snapshots`` table stores provenance columns the
         domain model does not carry (``activity``, ``activity_type``,
         ``factor_source``, ``factor_set``, ``import_batch_id``), so they are
-        supplied here alongside the snapshot. ``calculated_at`` defaults to
-        ``NOW()`` and the snapshot's ``match_request_id`` is stored in the
-        table's ``request_id`` column. Snapshots are append-only and are never
-        updated or deleted (ADR-5); a conflict on ``id`` therefore raises.
+        supplied here alongside the snapshot. V3 (O1 / ADR-V3-014): the
+        customer-factor provenance columns ``factor_kind`` and
+        ``customer_factor_id`` are also written; existing emission-factor rows
+        keep ``factor_kind='emission_factor'`` (the V3M-3 NOT NULL DEFAULT).
+        ``calculated_at`` defaults to ``NOW()`` and the snapshot's
+        ``match_request_id`` is stored in the table's ``request_id`` column.
+        Snapshots are append-only and are never updated or deleted (ADR-5); a
+        conflict on ``id`` therefore raises.
         """
         row = await self._fetch_one(
             f"""
@@ -274,9 +282,9 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 quantity_unit, co2e_multiplier, co2e_kg, scope, date,
                 factor_id, factor_source, factor_set, import_batch_id,
                 reporting_year, methodology, algorithm_version, content_hash,
-                calculated_by, request_id
+                calculated_by, request_id, factor_kind, customer_factor_id
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                      $14, $15, $16, $17, $18, $19, $20)
+                      $14, $15, $16, $17, $18, $19, $20, $21, $22)
             RETURNING id
             """,
             snapshot.id,
@@ -299,6 +307,8 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             snapshot.content_hash,
             calculated_by,
             snapshot.match_request_id,
+            factor_kind if factor_kind is not None else snapshot.factor_kind,
+            customer_factor_id if customer_factor_id is not None else snapshot.customer_factor_id,
         )
         if row is None:
             raise RuntimeError("calculation snapshot insert returned no row")

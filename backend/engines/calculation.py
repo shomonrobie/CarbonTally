@@ -28,7 +28,7 @@ from datetime import date as _Date, datetime, timezone
 from decimal import Decimal
 from typing import Optional, Protocol
 
-from core.exceptions import ValidationFailedError
+from core.exceptions import UnitMismatchError, ValidationFailedError
 from core.logging import get_logger
 from domain.calculation import (
     CalculationMethodology,
@@ -37,6 +37,7 @@ from domain.calculation import (
     EmissionLog,
     VerificationResult,
 )
+from domain.customer_factor import CustomerFactor
 from domain.factor import RESULT_PRECISION, EmissionFactor
 from domain.matching import MatchResult
 from domain.workflow import CalculationCompleted, CalculationRequested, DomainEvent
@@ -71,12 +72,14 @@ class CalculationSink(Protocol):
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        factor_kind: Optional[str] = None,
+        customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot: ...
 
     async def create(
         self,
         org_id: str,
-        factor_id: str,
+        factor_id: Optional[str],
         quantity: Decimal,
         unit: str,
         scope: Optional[str],
@@ -93,15 +96,18 @@ class CalculationSink(Protocol):
 class CalculationRequest:
     """Input contract for the Calculation Engine.
 
-    ``factor`` is the Phase 4 matching output; ``match_request_id`` is the id of
-    the Phase 4 :class:`domain.matching.MatchRequest` that produced it. When a
+    ``factor`` is the Phase 4 matching output for CarbonTally-managed factors;
+    ``customer_factor`` is the matched approved customer factor (D-cf-5 /
+    ADR-V3-002). Exactly one of the two is set — the snapshot provenance
+    (O1 / ADR-V3-014) is recorded via ``factor_kind`` +
+    ``customer_factor_id``. ``match_request_id`` is the id of the Phase 4
+    :class:`domain.matching.MatchRequest` that produced the match. When a
     ``log_id`` is supplied the engine updates that existing ``emissions_logs``
     row; otherwise it creates one.
     """
 
     match_request_id: str
     organization_id: str
-    factor: EmissionFactor
     quantity: Decimal
     quantity_unit: str
     date: _Date
@@ -115,12 +121,32 @@ class CalculationRequest:
     log_id: Optional[str] = None
     asset_id: Optional[str] = None
     facility_id: Optional[str] = None
+    factor: Optional[EmissionFactor] = None
+    customer_factor: Optional[CustomerFactor] = None
+
+    @property
+    def factor_kind(self) -> str:
+        """Snapshot provenance discriminator (O1)."""
+        return "customer_factor" if self.customer_factor is not None else "emission_factor"
+
+    @property
+    def customer_factor_id(self) -> Optional[str]:
+        """The customer factor id when a customer factor is used (O1)."""
+        return self.customer_factor.id if self.customer_factor is not None else None
 
     def __post_init__(self) -> None:
         if not self.match_request_id:
             raise ValueError("match_request_id must not be empty")
         if not self.organization_id:
             raise ValueError("organization_id must not be empty")
+        if self.factor is None and self.customer_factor is None:
+            raise ValueError(
+                "a calculation requires a matched factor or a customer factor"
+            )
+        if self.factor is not None and self.customer_factor is not None:
+            raise ValueError(
+                "a calculation cannot use both an emission factor and a customer factor"
+            )
         if self.quantity < 0:
             raise ValueError("quantity must be >= 0")
         if not self.quantity_unit:
@@ -160,21 +186,48 @@ class CalculationRequest:
         log_id: Optional[str] = None,
         asset_id: Optional[str] = None,
         facility_id: Optional[str] = None,
+        customer_factor: Optional[CustomerFactor] = None,
     ) -> CalculationRequest:
         """Build a calculation request from the Phase 4 matching output.
+
+        ``customer_factor`` must be supplied when ``match`` resolved to an
+        approved customer factor (D-cf-5). A CarbonTally-managed match requires
+        ``match.factor``.
 
         Raises:
             ValidationFailedError: When ``match`` did not resolve to a factor.
         """
-        if match.status != "matched" or match.factor is None:
+        if match.status != "matched":
             raise ValidationFailedError(
                 "calculation requires a matched factor from the matching engine",
                 details={"status": match.status},
             )
+        if match.factor_kind == "customer_factor":
+            if customer_factor is None:
+                raise ValidationFailedError(
+                    "a customer-factor match requires the customer factor object",
+                    details={"customer_factor_id": match.customer_factor_id},
+                )
+            if match.customer_factor_id and customer_factor.id != match.customer_factor_id:
+                raise ValidationFailedError(
+                    "customer factor id does not match the match result",
+                    details={
+                        "match_id": match.customer_factor_id,
+                        "supplied_id": customer_factor.id,
+                    },
+                )
+            factor = None
+        else:
+            if match.factor is None:
+                raise ValidationFailedError(
+                    "calculation requires a matched factor from the matching engine",
+                    details={"status": match.status},
+                )
+            factor = match.factor
         return cls(
             match_request_id=match.request_id,
             organization_id=organization_id,
-            factor=match.factor,
+            factor=factor,
             quantity=quantity,
             quantity_unit=quantity_unit,
             date=date,
@@ -188,6 +241,7 @@ class CalculationRequest:
             log_id=log_id,
             asset_id=asset_id,
             facility_id=facility_id,
+            customer_factor=customer_factor,
         )
 
 
@@ -241,18 +295,22 @@ class CalculationEngine:
                 :meth:`EmissionFactor.calculate_emissions`).
         """
         await self._publish_requested(request)
-        co2e_kg = request.factor.calculate_emissions(
-            request.quantity, request.quantity_unit
-        )
+        co2e_kg = self._compute_co2e(request)
         snapshot = self._build_snapshot(request, co2e_kg)
         stored_snapshot = await self._sink.save_snapshot(
             snapshot,
             activity=request.activity,
             activity_type=request.activity_type,
-            factor_source=request.factor.factor_source or None,
-            factor_set=request.factor.factor_set or None,
-            import_batch_id=request.factor.import_batch_id,
+            factor_source=(
+                request.customer_factor.factor_source
+                if request.customer_factor is not None
+                else request.factor.factor_source or None
+            ),
+            factor_set="CUSTOMER" if request.customer_factor is not None else request.factor.factor_set or None,
+            import_batch_id=None if request.customer_factor is not None else request.factor.import_batch_id,
             calculated_by=request.organization_id,
+            factor_kind=request.factor_kind,
+            customer_factor_id=request.customer_factor_id,
         )
         await self._persist_log(request, stored_snapshot, co2e_kg)
         verification = self.verify(stored_snapshot)
@@ -271,6 +329,28 @@ class CalculationEngine:
             snapshot=stored_snapshot,
             factor_used=request.factor,
             methodology=CalculationMethodology(request.methodology),
+            customer_factor=request.customer_factor,
+        )
+
+    def _compute_co2e(self, request: CalculationRequest) -> Decimal:
+        """Apply the active factor (CarbonTally or customer-owned) exactly.
+
+        The customer-factor path applies ``quantity * co2e_multiplier`` with the
+        same ``RESULT_PRECISION`` quantisation as
+        :meth:`EmissionFactor.calculate_emissions`, preserving reproducibility.
+        """
+        if request.customer_factor is not None:
+            customer = request.customer_factor
+            if customer.unit is not None and request.quantity_unit != customer.unit:
+                raise UnitMismatchError(
+                    f"consumption unit {request.quantity_unit!r} does not match "
+                    f"customer factor unit {customer.unit!r} for factor {customer.id}"
+                )
+            return (request.quantity * customer.co2e_multiplier).quantize(
+                RESULT_PRECISION
+            )
+        return request.factor.calculate_emissions(
+            request.quantity, request.quantity_unit
         )
 
     def verify(self, snapshot: CalculationSnapshot) -> VerificationResult:
@@ -296,14 +376,20 @@ class CalculationEngine:
     def _build_snapshot(
         self, request: CalculationRequest, co2e_kg: Decimal
     ) -> CalculationSnapshot:
+        if request.customer_factor is not None:
+            multiplier = request.customer_factor.co2e_multiplier
+            factor_id: Optional[str] = None
+        else:
+            multiplier = request.factor.co2e_multiplier
+            factor_id = request.factor.id
         snapshot = CalculationSnapshot(
             id=str(uuid.uuid4()),
             match_request_id=request.match_request_id,
             organization_id=request.organization_id,
-            factor_id=request.factor.id,
+            factor_id=factor_id,
             quantity=request.quantity,
             quantity_unit=request.quantity_unit,
-            co2e_multiplier=request.factor.co2e_multiplier,
+            co2e_multiplier=multiplier,
             co2e_kg=co2e_kg,
             scope=request.scope,
             date=request.date,
@@ -312,6 +398,8 @@ class CalculationEngine:
             algorithm_version=self._algorithm_version,
             created_at=_Date.today(),
             content_hash="",
+            factor_kind=request.factor_kind,
+            customer_factor_id=request.customer_factor_id,
             source_file=request.source_file,
             source_page=request.source_page,
         )
@@ -325,12 +413,20 @@ class CalculationEngine:
         snapshot: CalculationSnapshot,
         co2e_kg: Decimal,
     ) -> EmissionLog:
-        """Write the calculated figure + snapshot link to the emissions log."""
+        """Write the calculated figure + snapshot link to the emissions log.
+
+        The customer-factor path (O1) stores a NULL ``emission_factor_id`` — the
+        column is nullable in the RC2 schema and the customer factor is not an
+        ``emission_factors`` row (its provenance lives on the snapshot).
+        """
+        log_factor_id = (
+            None if request.customer_factor is not None else request.factor.id
+        )
         if request.log_id is not None:
             log = EmissionLog(
                 id=request.log_id,
                 organization_id=request.organization_id,
-                factor_id=request.factor.id,
+                factor_id=log_factor_id,  # type: ignore[arg-type]
                 quantity=request.quantity,
                 date=request.date,
                 unit=request.quantity_unit,
@@ -343,7 +439,7 @@ class CalculationEngine:
             return await self._sink.save(log)
         created = await self._sink.create(
             org_id=request.organization_id,
-            factor_id=request.factor.id,
+            factor_id=log_factor_id,
             quantity=request.quantity,
             unit=request.quantity_unit,
             scope=request.scope,
@@ -413,6 +509,8 @@ class CalculationEngine:
                     "methodology": snapshot.methodology,
                     "algorithm_version": snapshot.algorithm_version,
                     "factor_id": snapshot.factor_id,
+                    "factor_kind": snapshot.factor_kind,
+                    "customer_factor_id": snapshot.customer_factor_id,
                     "content_hash": snapshot.content_hash,
                 },
             )

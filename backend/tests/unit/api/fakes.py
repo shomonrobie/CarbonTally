@@ -25,7 +25,10 @@ from domain.calculation import (
     EmissionLog,
     EmissionsAggregate,
 )
+from domain.customer_factor import CustomerFactor
+from domain.entity import ProcessingEntity
 from domain.factor import EmissionFactor
+from domain.issue import Issue
 from domain.matching import FactorAlias
 from domain.organization import Asset, Facility, Organization, OrganizationMetadata
 from domain.provider import ImportBatch
@@ -239,6 +242,8 @@ class MemoryLogs:
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        factor_kind: Optional[str] = None,
+        customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
         self._snapshots[snapshot.id] = snapshot
         return snapshot
@@ -246,7 +251,7 @@ class MemoryLogs:
     async def create(
         self,
         org_id: str,
-        factor_id: str,
+        factor_id: Optional[str],
         quantity: Decimal,
         unit: str,
         scope: Optional[str],
@@ -520,6 +525,9 @@ class InMemoryWorld:
         batches: Optional[list[ImportBatch]] = None,
         aliases: Optional[list[FactorAlias]] = None,
         audit: Optional[list[AuditEntry]] = None,
+        customer_factors: Optional[list[CustomerFactor]] = None,
+        entities: Optional[list[ProcessingEntity]] = None,
+        issues: Optional[list[Issue]] = None,
     ) -> None:
         org_a, meta_a, fac_a, asset_a = seed_org_a()
         org_b, meta_b, fac_b, asset_b = seed_org_b()
@@ -609,6 +617,9 @@ class InMemoryWorld:
                 ),
             ]
         )
+        self.customer_factors = MemoryCustomerFactors(customer_factors or [])
+        self.entities = MemoryEntities(entities or [])
+        self.issues = MemoryIssues(issues or [])
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -622,7 +633,157 @@ class InMemoryWorld:
             audit=self.audit,
             events=self.events,
             aliases=self.aliases,
+            customer_factors=self.customer_factors,
+            entities=self.entities,
+            issues=self.issues,
         )
+
+
+class MemoryCustomerFactors:
+    """``CustomerFactorsRepository`` surface (in-memory, V3 ADR-V3-002)."""
+
+    def __init__(self, factors: Optional[list[CustomerFactor]] = None) -> None:
+        self._factors: list[CustomerFactor] = list(factors or [])
+
+    async def get(self, id: str) -> Optional[CustomerFactor]:
+        return next((f for f in self._factors if f.id == id), None)
+
+    async def get_org_factors(self, org_id: str) -> list[CustomerFactor]:
+        return [f for f in self._factors if f.organization_id == org_id]
+
+    async def get_active_for_org(self, org_id: str) -> list[CustomerFactor]:
+        return [
+            f for f in self._factors
+            if f.organization_id == org_id and f.status == "active"
+        ]
+
+    async def get_by_activity(
+        self, org_id: str, activity_type: str
+    ) -> list[CustomerFactor]:
+        return [
+            f for f in self._factors
+            if f.organization_id == org_id and f.activity_type == activity_type
+        ]
+
+    async def save(self, entity: CustomerFactor) -> CustomerFactor:
+        for i, existing in enumerate(self._factors):
+            if existing.id == entity.id:
+                self._factors[i] = entity
+                return entity
+        self._factors.append(entity)
+        return entity
+
+    async def update_status(
+        self, id: str, status: str, *, updated_by: Optional[str] = None
+    ) -> CustomerFactor:
+        existing = await self.get(id)
+        if existing is None:
+            raise RuntimeError(f"customer factor {id!r} does not exist")
+        from dataclasses import replace
+        updated = replace(existing, status=status, updated_by=updated_by)
+        await self.save(updated)
+        return updated
+
+    async def delete(self, id: str) -> None:
+        raise NotImplementedError("customer_factors are never hard-deleted")
+
+
+class MemoryEntities:
+    """``ProcessingEntitiesRepository`` surface (in-memory, V3 ADR-V3-001)."""
+
+    def __init__(self, entities: Optional[list[ProcessingEntity]] = None) -> None:
+        self._entities: list[ProcessingEntity] = list(entities or [])
+
+    async def get(self, id: str) -> Optional[ProcessingEntity]:
+        return next((e for e in self._entities if e.id == id), None)
+
+    async def list_all(self) -> list[ProcessingEntity]:
+        return list(self._entities)
+
+    async def list_by_status(self, status: str) -> list[ProcessingEntity]:
+        return [e for e in self._entities if e.status == status]
+
+    async def save(self, entity: ProcessingEntity) -> ProcessingEntity:
+        for i, existing in enumerate(self._entities):
+            if existing.id == entity.id:
+                self._entities[i] = entity
+                return entity
+        self._entities.append(entity)
+        return entity
+
+    async def update_status(
+        self, id: str, status: str, *, updated_by: Optional[str] = None
+    ) -> ProcessingEntity:
+        existing = await self.get(id)
+        if existing is None:
+            raise RuntimeError(f"processing entity {id!r} does not exist")
+        from dataclasses import replace
+        updated = replace(existing, status=status, updated_by=updated_by)
+        await self.save(updated)
+        return updated
+
+    async def delete(self, id: str) -> None:
+        raise NotImplementedError("processing_entities are never hard-deleted")
+
+
+class MemoryIssues:
+    """``IssuesRepository`` surface (in-memory, V3 ADR-V3-009)."""
+
+    def __init__(self, issues: Optional[list[Issue]] = None) -> None:
+        self._issues: list[Issue] = list(issues or [])
+
+    async def get(self, id: str) -> Optional[Issue]:
+        return next((i for i in self._issues if i.id == id), None)
+
+    async def list_for_org(self, org_id: str) -> list[Issue]:
+        return [
+            i for i in self._issues
+            if i.organization_id == org_id and i.entity_id is None
+        ]
+
+    async def list_for_entity(self, entity_id: str) -> list[Issue]:
+        return [i for i in self._issues if i.entity_id == entity_id]
+
+    async def list_open(self, *, organization_id: Optional[str] = None) -> list[Issue]:
+        active = ("open", "in_progress", "on_hold", "escalated")
+        if organization_id is not None:
+            return [
+                i for i in self._issues
+                if i.status in active and i.organization_id == organization_id
+            ]
+        return [i for i in self._issues if i.status in active]
+
+    async def save(self, entity: Issue) -> Issue:
+        for i, existing in enumerate(self._issues):
+            if existing.id == entity.id:
+                self._issues[i] = entity
+                return entity
+        self._issues.append(entity)
+        return entity
+
+    async def update_status(
+        self,
+        id: str,
+        status: str,
+        *,
+        reopened_at: Optional[datetime] = None,
+        updated_by: Optional[str] = None,
+    ) -> Issue:
+        existing = await self.get(id)
+        if existing is None:
+            raise RuntimeError(f"issue {id!r} does not exist")
+        from dataclasses import replace
+        updated = replace(
+            existing,
+            status=status,
+            reopened_at=reopened_at if reopened_at is not None else existing.reopened_at,
+            updated_by=updated_by,
+        )
+        await self.save(updated)
+        return updated
+
+    async def delete(self, id: str) -> None:
+        raise NotImplementedError("issues are never hard-deleted")
 
 
 def seed_audit_entry(

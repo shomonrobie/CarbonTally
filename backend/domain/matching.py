@@ -112,7 +112,13 @@ class Suggestion:
 
 @dataclass(frozen=True, slots=True)
 class MatchResult:
-    """The final outcome of a matching pipeline run."""
+    """The final outcome of a matching pipeline run.
+
+    V3 (D-cf-5): a match may resolve to a CarbonTally-managed factor
+    (``factor_kind='emission_factor'``) or an approved customer factor
+    (``factor_kind='customer_factor'`` + ``customer_factor_id``). Exactly one
+    source applies per match.
+    """
 
     status: str
     factor: Optional[EmissionFactor] = None
@@ -123,6 +129,8 @@ class MatchResult:
     suggestions: tuple[Suggestion, ...] = ()
     processing_time_ms: int = 0
     request_id: str = ""
+    factor_kind: str = "emission_factor"
+    customer_factor_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.status not in ("matched", "no_match", "ambiguous"):
@@ -131,8 +139,22 @@ class MatchResult:
             )
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError("confidence must be in [0, 1]")
-        if self.status == "matched" and self.factor is None:
-            raise ValueError("a matched result must include the factor")
+        if self.status == "matched" and self.factor is None and not self.customer_factor_id:
+            raise ValueError(
+                "a matched result must include the factor or customer_factor_id"
+            )
+        if self.factor_kind not in ("emission_factor", "customer_factor"):
+            raise ValueError(
+                f"factor_kind {self.factor_kind!r} must be 'emission_factor' or 'customer_factor'"
+            )
+        if self.factor_kind == "customer_factor" and self.status == "matched" and not self.customer_factor_id:
+            raise ValueError(
+                "a customer-factor match must carry customer_factor_id"
+            )
+        if self.factor_kind == "emission_factor" and self.customer_factor_id:
+            raise ValueError(
+                "an emission-factor match must not carry customer_factor_id"
+            )
 
     @staticmethod
     def no_match(

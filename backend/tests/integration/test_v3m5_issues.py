@@ -15,19 +15,21 @@ Covered invariants:
   3. Lifecycle/status rules: the DB enforces the vocabulary; reopening is a
      status transition back to ``open`` recorded via ``reopened_at``.
   4. Processing Entity context: ``entity_id`` FK → ``processing_entities``.
-  5. RLS: enabled; SELECT = org member OR consultant AND entity_id IS NULL;
-     INSERT/UPDATE = org member AND entity_id IS NULL; NO DELETE policy.
+  5. RLS: enabled; org storey SELECT = org member OR consultant AND
+     entity_id IS NULL; INSERT/UPDATE = org member AND entity_id IS NULL; NO DELETE policy.
   6. Customer isolation: org-scope policies reference ``is_org_member`` /
      ``is_org_consultant`` only.
-  7. Processing Entity isolation: entity-scoped policies are NOT created
-     (deferred to ADR-V3-010 — V3M-1 convention); entity rows are excluded
-     from the customer-visible SELECT surface.
+  7. Processing Entity isolation: the V3M-6 entity SELECT storey (issues_entity_select) exists
+     (complementing the V3M-5 org storey); entity rows are excluded
+     from the customer-visible SELECT surface; no entity INSERT/UPDATE/DELETE policies.
   8. CarbonTally internal access: ``service_role`` retains ALL.
   9. Conversations remain separate from Issues (distinct tables; only a
      nullable conversation_id association).
  10. ``emission_factors`` and ``customer_factors`` are untouched.
 """
 from __future__ import annotations
+
+import uuid
 
 import asyncpg
 import pytest
@@ -298,7 +300,7 @@ async def test_issue_entity_context(pool: asyncpg.Pool) -> None:
         row = await conn.fetchrow(
             "SELECT entity_id FROM public.issues WHERE id = $1", issue_id
         )
-        assert row["entity_id"] == entity_id
+        assert row["entity_id"] == uuid.UUID(entity_id)
 
         with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
             await _create_issue(conn, org_id, entity_id=new_id())
@@ -312,7 +314,7 @@ async def test_issue_work_item_fk(pool: asyncpg.Pool) -> None:
         row = await conn.fetchrow(
             "SELECT work_item_id FROM public.issues WHERE id = $1", issue_id
         )
-        assert row["work_item_id"] == work_item_id
+        assert row["work_item_id"] == uuid.UUID(work_item_id)
 
         with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
             await _create_issue(conn, org_id, work_item_id=new_id())
@@ -328,7 +330,7 @@ async def test_issue_document_fk(pool: asyncpg.Pool) -> None:
         row = await conn.fetchrow(
             "SELECT document_id FROM public.issues WHERE id = $1", issue_id
         )
-        assert row["document_id"] == document_id
+        assert row["document_id"] == uuid.UUID(document_id)
 
         with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
             await _create_issue(conn, org_id, document_id=new_id())
@@ -342,7 +344,7 @@ async def test_issue_batch_fk(pool: asyncpg.Pool) -> None:
         row = await conn.fetchrow(
             "SELECT batch_id FROM public.issues WHERE id = $1", issue_id
         )
-        assert row["batch_id"] == batch_id
+        assert row["batch_id"] == uuid.UUID(batch_id)
 
         with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
             await _create_issue(conn, org_id, batch_id=new_id())
@@ -358,7 +360,7 @@ async def test_issue_conversation_fk(pool: asyncpg.Pool) -> None:
         row = await conn.fetchrow(
             "SELECT conversation_id FROM public.issues WHERE id = $1", issue_id
         )
-        assert row["conversation_id"] == conversation_id
+        assert row["conversation_id"] == uuid.UUID(conversation_id)
 
         with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
             await _create_issue(conn, org_id, conversation_id=new_id())
@@ -395,7 +397,7 @@ async def test_issue_conversation_fk_set_null(pool: asyncpg.Pool) -> None:
         assert row["conversation_id"] is None
 
 # ---------------------------------------------------------------------------
-# 4. RLS posture (org-scope storey; entity-scope deferred to ADR-V3-010)
+# 4. RLS posture (V3M-5 org storey + V3M-6 entity SELECT storey)
 # ---------------------------------------------------------------------------
 
 
@@ -410,11 +412,17 @@ async def test_issues_rls_enabled_no_delete(pool: asyncpg.Pool) -> None:
             "SELECT policyname, cmd FROM pg_policies "
             "WHERE schemaname = 'public' AND tablename = 'issues'"
         )
-        by_cmd = {p["cmd"]: p["policyname"] for p in policies}
-        assert by_cmd.get("SELECT") == "issues_select_own"
-        assert by_cmd.get("INSERT") == "issues_insert_own"
-        assert by_cmd.get("UPDATE") == "issues_update_own"
-        assert "DELETE" not in by_cmd, "issues must have NO delete policy"
+        # Resolve policies by name: pg_policies rows are unordered and two
+        # SELECT policies now exist (V3M-5 org storey + V3M-6 entity storey),
+        # so a dict keyed only by cmd cannot represent the inventory.
+        by_name = {p["policyname"]: p["cmd"] for p in policies}
+        assert by_name["issues_select_own"] == "SELECT"
+        assert by_name["issues_insert_own"] == "INSERT"
+        assert by_name["issues_update_own"] == "UPDATE"
+        assert by_name["issues_entity_select"] == "SELECT"
+        assert "DELETE" not in set(by_name.values()), (
+            "issues must have NO delete policy"
+        )
 
 
 async def test_issues_rls_customer_isolation(pool: asyncpg.Pool) -> None:
@@ -425,9 +433,11 @@ async def test_issues_rls_customer_isolation(pool: asyncpg.Pool) -> None:
             "SELECT policyname, cmd, qual, with_check FROM pg_policies "
             "WHERE schemaname = 'public' AND tablename = 'issues'"
         )
-        by_cmd = {p["cmd"]: p for p in policies}
+        # Resolve the org storey by policy name — after V3M-6 two SELECT
+        # policies exist (issues_select_own + issues_entity_select).
+        by_name = {p["policyname"]: p for p in policies}
 
-        select_qual = by_cmd["SELECT"]["qual"]
+        select_qual = by_name["issues_select_own"]["qual"]
         assert "is_org_member" in select_qual
         assert "is_org_consultant" in select_qual
         assert "entity_id" in select_qual, (
@@ -435,34 +445,41 @@ async def test_issues_rls_customer_isolation(pool: asyncpg.Pool) -> None:
             "SELECT surface"
         )
 
-        insert_check = by_cmd["INSERT"]["with_check"]
+        insert_check = by_name["issues_insert_own"]["with_check"]
         assert "is_org_member" in insert_check
         assert "entity_id" in insert_check
 
-        update_qual = by_cmd["UPDATE"]["qual"]
-        update_check = by_cmd["UPDATE"]["with_check"]
+        update_qual = by_name["issues_update_own"]["qual"]
+        update_check = by_name["issues_update_own"]["with_check"]
         assert "is_org_member" in update_qual
         assert "entity_id" in update_qual
         assert "is_org_member" in update_check
         assert "entity_id" in update_check
 
 
-async def test_issues_rls_no_entity_policies(pool: asyncpg.Pool) -> None:
-    """Processing Entity isolation: NO entity-scoped policies exist — the
-    entity scope is deny-by-default for authenticated (ADR-V3-010 deferred,
-    V3M-1 convention)."""
+async def test_issues_rls_entity_storey_select_only(pool: asyncpg.Pool) -> None:
+    """Processing Entity isolation (V3M-6 contract): the ONLY entity-scoped
+    issues policy is the entity SELECT storey (issues_entity_select via
+    is_entity_member). Entity rows remain invisible to customers; no entity
+    INSERT/UPDATE/DELETE policy exists (entity writes stay service-role)."""
     async with pool.acquire() as conn:
         policies = await conn.fetch(
-            "SELECT policyname FROM pg_policies "
+            "SELECT policyname, cmd FROM pg_policies "
             "WHERE schemaname = 'public' AND tablename = 'issues'"
         )
-        names = {p["policyname"] for p in policies}
-        assert names == {
-            "issues_select_own",
-            "issues_insert_own",
-            "issues_update_own",
+        by_name = {p["policyname"]: p["cmd"] for p in policies}
+        assert by_name == {
+            "issues_select_own": "SELECT",
+            "issues_insert_own": "INSERT",
+            "issues_update_own": "UPDATE",
+            "issues_entity_select": "SELECT",
         }
-        assert not any("entity" in name.lower() for name in names)
+        entity_policies = {
+            name: cmd
+            for name, cmd in by_name.items()
+            if "entity" in name.lower()
+        }
+        assert entity_policies == {"issues_entity_select": "SELECT"}
 
 
 async def test_issues_service_role_access(pool: asyncpg.Pool) -> None:

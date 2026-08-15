@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.contracts import (
     BenchmarkIn,
@@ -95,14 +95,38 @@ async def calculate(
     repos: RepositoryBundle = Depends(get_repositories),
     engine: CalculationEngine = Depends(get_calculation_engine),
 ) -> CalculationOut:
-    """Calculate emissions from a matched factor (no matching logic here)."""
+    """Calculate emissions from a matched factor (no matching logic here).
+
+    V3 (O1): ``customer_factor_id`` resolves an approved customer factor and
+    the snapshot records ``factor_kind='customer_factor'`` provenance.
+    """
     ensure_org_access(current_user, payload.organization_id)
-    factor = await repos.factors.get(payload.factor_id)
-    if factor is None:
-        raise FactorNotFoundError(
-            f"factor {payload.factor_id} not found",
-            details={"factor_id": payload.factor_id},
-        )
+    customer_factor = None
+    if payload.customer_factor_id is not None:
+        customer_factor = await repos.customer_factors.get(payload.customer_factor_id)
+        if customer_factor is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"customer factor {payload.customer_factor_id} not found",
+            )
+        if customer_factor.organization_id != payload.organization_id:
+            raise HTTPException(
+                status_code=403,
+                detail="customer factor does not belong to this organisation",
+            )
+        if customer_factor.status != "active":
+            raise HTTPException(
+                status_code=409,
+                detail="only approved customer factors can be used in calculations",
+            )
+        factor = None
+    else:
+        factor = await repos.factors.get(payload.factor_id)  # type: ignore[arg-type]
+        if factor is None:
+            raise FactorNotFoundError(
+                f"factor {payload.factor_id} not found",
+                details={"factor_id": payload.factor_id},
+            )
     request = CalculationRequest(
         match_request_id=str(uuid.uuid4()),
         organization_id=payload.organization_id,
@@ -120,6 +144,7 @@ async def calculate(
         log_id=payload.log_id,
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
+        customer_factor=customer_factor,
     )
     result = await engine.calculate(request)
     return calculation_out(result)
