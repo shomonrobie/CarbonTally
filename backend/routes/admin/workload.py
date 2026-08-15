@@ -146,7 +146,7 @@ async def update_queue_settings(
         
         data = settings.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('queue_settings') \
@@ -317,7 +317,7 @@ from collections import defaultdict
 from auth import AuthUser, require_admin
 from database import get_supabase_client
 
-router = APIRouter(prefix="/api/admin/workload", tags=["Admin - Workload"])
+workload_forecast_router = APIRouter(prefix="/workload", tags=["Admin - Workload Forecast"])
 
 
 # ================================
@@ -353,7 +353,7 @@ class StaffWorkloadForecast(BaseModel):
 # NEW ENDPOINT
 # ================================
 
-@router.get("/forecast", response_model=WorkloadForecastResponse)
+@workload_forecast_router.get("/forecast", response_model=WorkloadForecastResponse)
 async def get_workload_forecast(
     current_user: AuthUser = Depends(require_admin()),
     days: int = Query(30, ge=7, le=90, description="Number of days to forecast"),
@@ -701,7 +701,7 @@ async def get_workload_forecast(
 # ADDITIONAL HELPER ENDPOINTS
 # ================================
 
-@router.get("/forecast/summary")
+@workload_forecast_router.get("/forecast/summary")
 async def get_workload_forecast_summary(
     current_user: AuthUser = Depends(require_admin()),
     days: int = Query(30, ge=7, le=90, description="Number of days to forecast"),
@@ -757,7 +757,7 @@ async def get_workload_forecast_summary(
         )
 
 
-@router.get("/forecast/export")
+@workload_forecast_router.get("/forecast/export")
 async def export_workload_forecast(
     current_user: AuthUser = Depends(require_admin()),
     days: int = Query(30, ge=7, le=90, description="Number of days to forecast"),
@@ -827,7 +827,7 @@ async def export_workload_forecast(
         )
 
 
-@router.get("/forecast/scenarios")
+@workload_forecast_router.get("/forecast/scenarios")
 async def get_workload_scenarios(
     current_user: AuthUser = Depends(require_admin()),
     days: int = Query(30, ge=7, le=90, description="Number of days to forecast"),
@@ -894,3 +894,12 @@ async def get_workload_scenarios(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get workload scenarios: {str(e)}"
         )
+
+# ==========================================
+# REGISTER ALL WORKLOAD ROUTES
+# ==========================================
+# The forecast endpoints (below) were appended to this file as a second module block.
+# They now live on their own router, which is merged into the main workload router so
+# every documented route is registered (block-1 routes were previously shadowed by a
+# second `router` definition in this file).
+router.include_router(workload_forecast_router)
