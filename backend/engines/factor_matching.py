@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional, Protocol, Sequence
 
 from core.logging import get_logger
+from domain.customer_factor import CustomerFactor
 from domain.matching import (
     FactorSearch,
     MatchRequest,
@@ -49,6 +50,17 @@ from infra.event_bus import EventBus
 logger = get_logger(__name__)
 
 
+class CustomerFactorLookup(Protocol):
+    """The customer-factor candidate surface consumed by the matching engine.
+
+    Satisfied structurally by ``CustomerFactorsRepository.get_active_for_org``.
+    D-cf-5: only approved (``status='active'``) customer factors are eligible
+    to be matched ahead of CarbonTally-managed factors.
+    """
+
+    async def get_active_for_org(self, org_id: str) -> list[CustomerFactor]: ...
+
+
 class FactorMatchingEngine:
     """Runs the matching pipeline against a search index.
 
@@ -59,6 +71,9 @@ class FactorMatchingEngine:
         event_bus: Optional bus that receives ``FactorMatched``/``FactorNotFound``
             outcome events (fire-and-forget).
         audit_logger: Optional logger that records every match outcome.
+        customer_factor_lookup: Optional source of approved customer factors
+            (D-cf-5 — checked before the CarbonTally pipeline when the request
+            carries an ``organization_id``).
     """
 
     def __init__(
@@ -69,6 +84,7 @@ class FactorMatchingEngine:
         config: Optional[MatchingPipelineConfig] = None,
         event_bus: Optional[EventBus] = None,
         audit_logger: Optional[AuditLogger] = None,
+        customer_factor_lookup: Optional[CustomerFactorLookup] = None,
     ) -> None:
         if not stages:
             raise ValueError("stages must not be empty")
@@ -77,6 +93,7 @@ class FactorMatchingEngine:
         self._config = config or MatchingPipelineConfig()
         self._event_bus = event_bus
         self._audit_logger = audit_logger
+        self._customer_factor_lookup = customer_factor_lookup
 
     @property
     def stages(self) -> tuple[str, ...]:
@@ -89,7 +106,16 @@ class FactorMatchingEngine:
         return self._config
 
     async def match(self, request: MatchRequest) -> MatchResult:
-        """Run the pipeline and produce the final :class:`MatchResult`."""
+        """Run the pipeline and produce the final :class:`MatchResult`.
+
+        D-cf-5 precedence: an approved customer factor for the request's
+        organisation (exact activity match) is resolved first; only when none
+        exists does the CarbonTally pipeline run.
+        """
+        customer_result = await self._match_customer_factor(request)
+        if customer_result is not None:
+            return await self._finalize(request, customer_result)
+
         stages_executed: list[str] = []
         for stage in self._stages[: request.max_stages]:
             stage_result = await stage.execute(request, self._index)
@@ -121,6 +147,50 @@ class FactorMatchingEngine:
             request_id=request.id,
         )
         return await self._finalize(request, outcome)
+
+    async def _match_customer_factor(
+        self, request: MatchRequest
+    ) -> Optional[MatchResult]:
+        """Resolve an approved customer factor (D-cf-5) ahead of the pipeline.
+
+        Returns ``None`` when the request is not org-scoped, no lookup is
+        configured, or no exact customer-factor candidate exists. A definitive
+        single candidate yields ``matched``; multiple candidates yield
+        ``ambiguous``.
+        """
+        if self._customer_factor_lookup is None or not request.organization_id:
+            return None
+        candidates = await self._customer_factor_lookup.get_active_for_org(
+            request.organization_id
+        )
+        needle = request.activity.casefold()
+        exact = [
+            factor
+            for factor in candidates
+            if factor.activity_type.casefold() == needle
+            and factor.country == request.country
+        ]
+        if not exact:
+            return None
+        if len(exact) > 1:
+            return MatchResult(
+                status="ambiguous",
+                factor_kind="customer_factor",
+                suggestions=tuple(),
+                stages_executed=("customer_factor",),
+                request_id=request.id,
+            )
+        chosen = exact[0]
+        return MatchResult(
+            status="matched",
+            confidence=1.0,
+            methodology="customer_factor",
+            provider=None,
+            stages_executed=("customer_factor",),
+            request_id=request.id,
+            factor_kind="customer_factor",
+            customer_factor_id=chosen.id,
+        )
 
     async def _suggestions(self, request: MatchRequest) -> list[Suggestion]:
         """Collect ranked candidates for a no-match/ambiguous result."""
@@ -165,7 +235,9 @@ class FactorMatchingEngine:
                 correlation_id=request.id,
                 request_id=request.id,
                 factor_id=(
-                    outcome.factor.id if outcome.factor is not None else ""
+                    outcome.factor.id
+                    if outcome.factor is not None
+                    else (outcome.customer_factor_id or "")
                 ),
                 confidence=outcome.confidence,
             )
@@ -204,6 +276,8 @@ class FactorMatchingEngine:
                     "factor_id": (
                         outcome.factor.id if outcome.factor is not None else None
                     ),
+                    "factor_kind": outcome.factor_kind,
+                    "customer_factor_id": outcome.customer_factor_id,
                     "confidence": outcome.confidence,
                     "methodology": outcome.methodology,
                     "stages_executed": list(outcome.stages_executed),

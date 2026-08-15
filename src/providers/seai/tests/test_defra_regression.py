@@ -163,7 +163,8 @@ class _FakeSink:
 
     async def save_snapshot(self, snapshot, *, activity, activity_type,
                             factor_source=None, factor_set=None,
-                            import_batch_id=None, calculated_by=None):
+                            import_batch_id=None, calculated_by=None,
+                            factor_kind=None, customer_factor_id=None):
         self.snapshots.append(snapshot)
         return snapshot
 

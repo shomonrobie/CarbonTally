@@ -1,15 +1,15 @@
 """Shared fixtures for the repository integration suite.
 
-The tests run against a real Supabase Postgres database. By default they use
-the **dedicated integration-test database** ``carbontally_test`` on the local
-Supabase stack, *never* the authoritative application database
-(``postgresql://postgres:postgres@127.0.0.1:54326/postgres``), which holds the
-imported DEFRA-2025 factor dataset and must not be truncated by tests.
+The tests run against the **local Supabase PostgreSQL database**
+(``postgresql://postgres:postgres@127.0.0.1:54326/postgres``). For the current
+V3 verification phase this local database is intentionally the integration-test
+database: it is disposable and rebuildable (``supabase db reset`` replays the
+migration chain; the factor baseline is re-imported), and the remote Supabase
+project is never touched.
 
 The session fixture truncates the tables under test (with CASCADE) inside the
-dedicated test database so every assertion is deterministic and no test data
-ever leaks into the authoritative database. Override ``INTEGRATION_DATABASE_URL``
-to target any other database (e.g. a CI sandbox).
+local database so every assertion is deterministic. Override
+``INTEGRATION_DATABASE_URL`` to target any other database (e.g. a CI sandbox).
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from domain.organization import Organization
 
 TEST_DB_URL = os.getenv(
     "INTEGRATION_DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:54326/carbontally_test",
+    "postgresql://postgres:postgres@127.0.0.1:54326/postgres",
 )
 
 #: Environment used by infra/supabase.py inside the test process.
@@ -60,6 +60,9 @@ _TRUNCATE_TABLES = [
     "facilities",
     "organization_members",
     "organizations",
+    "issues",
+    "customer_factors",
+    "processing_entities",
 ]
 
 

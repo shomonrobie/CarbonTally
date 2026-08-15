@@ -62,6 +62,7 @@ class AuthUser(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     organization_id: Optional[str] = None
+    entity_id: Optional[str] = None
     extraction_count: Optional[int] = 0
     accuracy_rate: Optional[float] = 100.0
     is_staff: bool = False
@@ -195,7 +196,8 @@ async def get_current_user(
                     permissions,
                     extraction_count,
                     accuracy_rate,
-                    last_login
+                    last_login,
+                    entity_id
                 ''') \
                 .eq('id', user_id) \
                 .maybe_single() \
@@ -267,6 +269,7 @@ async def get_current_user(
             first_name=staff_data.get('first_name') if staff_data else user_metadata.get('first_name'),
             last_name=staff_data.get('last_name') if staff_data else user_metadata.get('last_name'),
             organization_id=organization_id,
+            entity_id=staff_data.get('entity_id') if staff_data else None,
             extraction_count=staff_data.get('extraction_count', 0) if staff_data else 0,
             accuracy_rate=staff_data.get('accuracy_rate', 100.0) if staff_data else 100.0,
             is_staff=is_staff,
@@ -452,6 +455,45 @@ def require_org_access(organization_id: str):
         )
     
     return org_access_checker
+
+def require_entity_member(entity_id: str):
+    """
+    Dependency factory for Processing Entity membership (V3, ADR-V3-001).
+
+    Mirrors ``require_org_access``: CarbonTally internal staff/admin may access
+    any entity (entity administration is CarbonTally-internal); Processing
+    Entity staff may only access their own entity. The positive NULL convention
+    is preserved — CarbonTally internal staff carry ``entity_id=None``.
+    """
+    async def entity_member_checker(
+        current_user: AuthUser = Depends(get_current_user)
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # CarbonTally internal staff/admin may act on any entity.
+        if current_user.is_staff and not current_user.entity_id:
+            return current_user
+
+        # Processing Entity staff may only act on their own entity.
+        if current_user.entity_id:
+            if current_user.entity_id != entity_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have access to this Processing Entity",
+                )
+            return current_user
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Processing Entity member access required",
+        )
+
+    return entity_member_checker
 
 def require_role(required_roles: List[str]):
     """

@@ -32,6 +32,7 @@ from core.exceptions import ValidationFailedError
 from core.logging import get_logger
 from core.types import DateRange
 from domain.calculation import CalculationSnapshot, EmissionLog
+from domain.customer_factor import CustomerFactor
 from domain.factor import RESULT_PRECISION, EmissionFactor, gas_coverage
 from domain.matching import MatchRequest, MatchResult
 from domain.organization import Asset, Facility, Organization, OrganizationMetadata
@@ -86,6 +87,7 @@ CODE_ORG_NOT_FOUND = "VAL_ORG_NOT_FOUND"
 CODE_ORG_INACTIVE = "VAL_ORG_INACTIVE"
 CODE_ENTITY_NOT_IN_ORG = "VAL_ENTITY_NOT_IN_ORG"
 CODE_METADATA_MISSING = "VAL_METADATA_MISSING"
+CODE_SOURCE_MISMATCH = "VAL_SOURCE_MISMATCH"
 
 
 def _family_expected_scope(activity_type: str) -> Optional[str]:
@@ -919,6 +921,94 @@ class ValidationEngine:
             logger.exception(
                 "failed to publish ValidationFailed for organization %s", org_id
             )
+
+
+def validate_customer_factor(factor: CustomerFactor) -> ValidationReport:
+    """Customer-factor shape rules (V3 ADR-V3-002, additive to A1–A9).
+
+    The DB enforces the vocabulary (V3M-3 CHECKs); this surface adds the
+    business-level sanity rules:
+
+    * source must be ``CUSTOMER`` (error — a customer factor is never a
+      CarbonTally/provider factor);
+    * multiplier must be a non-negative finite number (error);
+    * unit and scope are strongly recommended (warning when missing);
+    * reporting year must be plausible (error);
+    * country must be GB/IE (error — matches the V3M-3 CHECK).
+
+    Returns:
+        A :class:`ValidationReport` of the findings (no side effects).
+    """
+    issues: list[ValidationIssue] = []
+    factor_id = factor.id
+
+    if factor.factor_source != "CUSTOMER":
+        issues.append(
+            _issue(
+                CODE_SOURCE_MISMATCH,
+                ValidationSeverity.ERROR,
+                f"customer factor source must be 'CUSTOMER', got {factor.factor_source!r}",
+                "customer_factor",
+                factor_id,
+                field="factor_source",
+            )
+        )
+    if factor.co2e_multiplier < 0:
+        issues.append(
+            _issue(
+                CODE_INPUT_QUANTITY_NEGATIVE,
+                ValidationSeverity.ERROR,
+                "customer factor co2e_multiplier must be >= 0",
+                "customer_factor",
+                factor_id,
+                field="co2e_multiplier",
+            )
+        )
+    if not (1990 <= factor.reporting_year <= 2100):
+        issues.append(
+            _issue(
+                CODE_INPUT_YEAR_RANGE,
+                ValidationSeverity.ERROR,
+                f"reporting_year {factor.reporting_year} outside supported range 1990-2100",
+                "customer_factor",
+                factor_id,
+                field="reporting_year",
+            )
+        )
+    if factor.country not in ("GB", "IE"):
+        issues.append(
+            _issue(
+                CODE_MATCH_COUNTRY,
+                ValidationSeverity.ERROR,
+                f"country {factor.country!r} must be GB or IE",
+                "customer_factor",
+                factor_id,
+                field="country",
+            )
+        )
+    if not factor.unit:
+        issues.append(
+            _issue(
+                CODE_INPUT_UNIT_MISSING,
+                ValidationSeverity.WARNING,
+                "customer factor has no unit; calculations will accept any unit",
+                "customer_factor",
+                factor_id,
+                field="unit",
+            )
+        )
+    if not factor.scope:
+        issues.append(
+            _issue(
+                CODE_SCOPE_MISSING,
+                ValidationSeverity.WARNING,
+                "customer factor has no scope label",
+                "customer_factor",
+                factor_id,
+                field="scope",
+            )
+        )
+    return ValidationReport(issues=tuple(issues))
 
 
 

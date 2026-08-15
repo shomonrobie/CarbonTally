@@ -154,7 +154,12 @@ class FactorMatchIn(BaseModel):
 
 
 class FactorMatchOut(BaseModel):
-    """POST /api/v2/factor-match response (explainable match, CT-ARCH-014)."""
+    """POST /api/v2/factor-match response (explainable match, CT-ARCH-014).
+
+    V3 (D-cf-5): ``factor_kind`` discriminates a CarbonTally-managed factor
+    (``emission_factor``) from an approved customer factor
+    (``customer_factor``); ``customer_factor_id`` is populated for the latter.
+    """
 
     status: str
     factor: Optional[FactorOut] = None
@@ -164,6 +169,8 @@ class FactorMatchOut(BaseModel):
     stages_executed: list[str] = Field(default_factory=list)
     request_id: str = ""
     suggestions: list[SuggestionOut] = Field(default_factory=list)
+    factor_kind: str = "emission_factor"
+    customer_factor_id: Optional[str] = None
 
 
 def match_out(result: MatchResult) -> FactorMatchOut:
@@ -180,6 +187,8 @@ def match_out(result: MatchResult) -> FactorMatchOut:
             SuggestionOut(factor=factor_out(s.factor), score=s.score, reason=s.reason, stage=s.stage)
             for s in (result.suggestions or ())
         ],
+        factor_kind=result.factor_kind,
+        customer_factor_id=result.customer_factor_id,
     )
 
 
@@ -193,11 +202,15 @@ class CalculationIn(BaseModel):
 
     ``factor_id`` refers to an existing emission factor; the API resolves it
     through ``EmissionFactorsRepository`` and hands the domain factor to the
-    Calculation Engine (no matching logic is reimplemented here).
+    Calculation Engine (no matching logic is reimplemented here). V3 (O1):
+    ``customer_factor_id`` (mutually exclusive with ``factor_id``) resolves an
+    approved customer factor and records provenance via
+    ``factor_kind='customer_factor'`` on the snapshot.
     """
 
     organization_id: str = Field(..., min_length=1)
-    factor_id: str = Field(..., min_length=1)
+    factor_id: Optional[str] = Field(None, min_length=1)
+    customer_factor_id: Optional[str] = Field(None, min_length=1)
     quantity: Decimal
     quantity_unit: str = Field(..., min_length=1)
     date: date
@@ -214,14 +227,28 @@ class CalculationIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def _exactly_one_factor(self) -> "CalculationIn":
+        has_emission = self.factor_id is not None
+        has_customer = self.customer_factor_id is not None
+        if has_emission == has_customer:
+            raise ValueError(
+                "exactly one of factor_id or customer_factor_id must be provided"
+            )
+        return self
+
 
 class CalculationSnapshotOut(BaseModel):
-    """Immutable calculation snapshot (reproducible figure, §13)."""
+    """Immutable calculation snapshot (reproducible figure, §13).
+
+    V3 (O1): ``factor_kind`` + ``customer_factor_id`` record the exact factor
+    source (exactly-one-source per the V3M-3 CHECK).
+    """
 
     id: str
     match_request_id: str
     organization_id: str
-    factor_id: str
+    factor_id: Optional[str] = None
     quantity: str
     quantity_unit: str
     co2e_multiplier: str
@@ -233,6 +260,8 @@ class CalculationSnapshotOut(BaseModel):
     algorithm_version: str
     created_at: date
     content_hash: str = ""
+    factor_kind: str = "emission_factor"
+    customer_factor_id: Optional[str] = None
     source_file: Optional[str] = None
     source_page: Optional[int] = None
 
@@ -254,6 +283,8 @@ def _snapshot_out(s: CalculationSnapshot) -> CalculationSnapshotOut:
         algorithm_version=s.algorithm_version,
         created_at=s.created_at,
         content_hash=s.content_hash,
+        factor_kind=s.factor_kind,
+        customer_factor_id=s.customer_factor_id,
         source_file=s.source_file,
         source_page=s.source_page,
     )
@@ -263,14 +294,16 @@ class CalculationOut(BaseModel):
     """POST /api/v2/calculate response.
 
     ``gas_coverage`` carries the factor's CO2/CO2e provenance — a SEAI CO2-only
-    figure is never relabelled as CO2e here.
+    figure is never relabelled as CO2e here. V3 (O1): ``factor`` is ``null`` and
+    ``customer_factor`` is populated when an approved customer factor was used.
     """
 
     co2e_kg: str
     co2e_tonnes: str
     gas_coverage: Literal["CO2", "CO2e"] = "CO2e"
     snapshot: CalculationSnapshotOut
-    factor: FactorOut
+    factor: Optional[FactorOut] = None
+    customer_factor: Optional[CustomerFactorOut] = None
     methodology: str
 
 
@@ -279,9 +312,18 @@ def calculation_out(result: CalculationResult) -> CalculationOut:
     return CalculationOut(
         co2e_kg=str(result.co2e_kg),
         co2e_tonnes=str(result.co2e_tonnes),
-        gas_coverage=gas_coverage(result.factor_used),
+        gas_coverage=(
+            gas_coverage(result.factor_used)
+            if result.factor_used is not None
+            else "CO2e"
+        ),
         snapshot=_snapshot_out(result.snapshot),
-        factor=factor_out(result.factor_used),
+        factor=factor_out(result.factor_used) if result.factor_used is not None else None,
+        customer_factor=(
+            customer_factor_out(result.customer_factor)
+            if result.customer_factor is not None
+            else None
+        ),
         methodology=result.methodology.value,
     )
 
@@ -764,5 +806,300 @@ class FactorAliasListOut(BaseModel):
 
     total: int
     aliases: list[FactorAliasOut] = Field(default_factory=list)
+
+
+# ===========================================================================
+# V3 — Processing Entities (ADR-V3-001, DECIDED)
+# ===========================================================================
+
+
+class ProcessingEntityOut(BaseModel):
+    """A Processing Entity as returned by the admin API."""
+
+    id: str
+    name: str
+    status: str
+    description: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+
+def processing_entity_out(entity) -> ProcessingEntityOut:
+    """Serialise a domain ProcessingEntity (or dict row)."""
+    if isinstance(entity, dict):
+        return ProcessingEntityOut(**{k: v for k, v in entity.items() if k in ProcessingEntityOut.model_fields})
+    return ProcessingEntityOut(
+        id=entity.id,
+        name=entity.name,
+        status=entity.status,
+        description=entity.description,
+        metadata=_jsonable(entity.metadata or {}),
+        created_at=entity.created_at,
+        updated_at=entity.updated_at,
+        created_by=entity.created_by,
+        updated_by=entity.updated_by,
+    )
+
+
+class ProcessingEntityCreate(BaseModel):
+    """POST /api/v3/admin/entities payload (CarbonTally-internal onboarding)."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: str = Field("active", pattern="^(active|remediation|suspended|terminated)$")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProcessingEntityUpdate(BaseModel):
+    """PUT /api/v3/admin/entities/{id} payload — at least one field required."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: Optional[str] = Field(None, pattern="^(active|remediation|suspended|terminated)$")
+    metadata: Optional[dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "ProcessingEntityUpdate":
+        if not any(
+            v is not None
+            for v in (self.name, self.description, self.status, self.metadata)
+        ):
+            raise ValueError("at least one field must be provided to update an entity")
+        return self
+
+
+class ProcessingEntityListOut(BaseModel):
+    """Entity listing response."""
+
+    total: int
+    entities: list[ProcessingEntityOut] = Field(default_factory=list)
+
+
+# ===========================================================================
+# V3 — Customer Factors (ADR-V3-002, DECIDED)
+# ===========================================================================
+
+
+class CustomerFactorOut(BaseModel):
+    """A customer-owned emission factor as returned by the API."""
+
+    id: str
+    organization_id: str
+    name: str
+    activity_type: str
+    co2e_multiplier: str
+    reporting_year: int
+    unit: Optional[str] = None
+    scope: Optional[str] = None
+    country: str = "GB"
+    factor_source: str = "CUSTOMER"
+    status: str = "draft"
+    version: int = 1
+    description: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+
+def customer_factor_out(factor) -> CustomerFactorOut:
+    """Serialise a domain CustomerFactor (or dict row)."""
+    if isinstance(factor, dict):
+        return CustomerFactorOut(**{k: v for k, v in factor.items() if k in CustomerFactorOut.model_fields})
+    return CustomerFactorOut(
+        id=factor.id,
+        organization_id=factor.organization_id,
+        name=factor.name,
+        activity_type=factor.activity_type,
+        co2e_multiplier=str(factor.co2e_multiplier),
+        reporting_year=factor.reporting_year,
+        unit=factor.unit,
+        scope=factor.scope,
+        country=factor.country,
+        factor_source=factor.factor_source,
+        status=factor.status,
+        version=factor.version,
+        description=factor.description,
+        metadata=_jsonable(factor.metadata or {}),
+        created_at=factor.created_at,
+        updated_at=factor.updated_at,
+        created_by=factor.created_by,
+        updated_by=factor.updated_by,
+    )
+
+
+class CustomerFactorCreate(BaseModel):
+    """POST /api/v3/customer-factors payload (D-cf-3: created as draft)."""
+
+    organization_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=255)
+    activity_type: str = Field(..., min_length=1, max_length=500)
+    co2e_multiplier: str = Field(..., min_length=1)
+    reporting_year: int = Field(..., ge=1990, le=2100)
+    unit: Optional[str] = None
+    scope: Optional[str] = None
+    country: str = Field("GB", pattern="^(GB|IE)$")
+    description: Optional[str] = Field(None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CustomerFactorUpdate(BaseModel):
+    """PUT /api/v3/customer-factors/{id} payload — drafts only; approved factors
+    are changed by creating a new version (D-cf-4)."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    activity_type: Optional[str] = Field(None, min_length=1, max_length=500)
+    co2e_multiplier: Optional[str] = Field(None, min_length=1)
+    unit: Optional[str] = None
+    scope: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=2000)
+    metadata: Optional[dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "CustomerFactorUpdate":
+        if not any(
+            v is not None
+            for v in (self.name, self.activity_type, self.co2e_multiplier,
+                      self.unit, self.scope, self.description, self.metadata)
+        ):
+            raise ValueError("at least one field must be provided to update a factor")
+        return self
+
+
+class CustomerFactorListOut(BaseModel):
+    """Customer-factor listing response."""
+
+    total: int
+    factors: list[CustomerFactorOut] = Field(default_factory=list)
+
+
+# ===========================================================================
+# V3 — Issues (ADR-V3-009, DECIDED)
+# ===========================================================================
+
+
+class IssueOut(BaseModel):
+    """A first-class Issue as returned by the API."""
+
+    id: str
+    issue_type: str
+    severity: str
+    priority: int
+    status: str
+    title: str
+    description: Optional[str] = None
+    organization_id: Optional[str] = None
+    entity_id: Optional[str] = None
+    work_item_id: Optional[str] = None
+    document_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    assignee_id: Optional[str] = None
+    escalation_level: int = 0
+    sla_deadline: Optional[datetime] = None
+    sla_breached: Optional[bool] = None
+    reopened_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+
+def issue_out(issue) -> IssueOut:
+    """Serialise a domain Issue (or dict row)."""
+    if isinstance(issue, dict):
+        return IssueOut(**{k: v for k, v in issue.items() if k in IssueOut.model_fields})
+    return IssueOut(
+        id=issue.id,
+        issue_type=issue.issue_type,
+        severity=issue.severity,
+        priority=issue.priority,
+        status=issue.status,
+        title=issue.title,
+        description=issue.description,
+        organization_id=issue.organization_id,
+        entity_id=issue.entity_id,
+        work_item_id=issue.work_item_id,
+        document_id=issue.document_id,
+        batch_id=issue.batch_id,
+        conversation_id=issue.conversation_id,
+        assignee_id=issue.assignee_id,
+        escalation_level=issue.escalation_level,
+        sla_deadline=issue.sla_deadline,
+        sla_breached=issue.sla_breached,
+        reopened_at=issue.reopened_at,
+        created_at=issue.created_at,
+        updated_at=issue.updated_at,
+        created_by=issue.created_by,
+        updated_by=issue.updated_by,
+    )
+
+
+class IssueCreate(BaseModel):
+    """POST /api/v3/issues payload (customer-facing surface: entity_id stays
+    NULL; entity-scoped issues are CarbonTally-internal)."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+    issue_type: str = Field("exception", pattern="^(defect|exception|escalation)$")
+    severity: str = Field("medium", pattern="^(low|medium|high|critical)$")
+    priority: int = Field(0, ge=0)
+    description: Optional[str] = Field(None, max_length=4000)
+    organization_id: Optional[str] = None
+    entity_id: Optional[str] = None
+    work_item_id: Optional[str] = None
+    document_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    assignee_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class IssueUpdate(BaseModel):
+    """PUT /api/v3/issues/{id} payload — at least one field required."""
+
+    issue_type: Optional[str] = Field(None, pattern="^(defect|exception|escalation)$")
+    severity: Optional[str] = Field(None, pattern="^(low|medium|high|critical)$")
+    priority: Optional[int] = Field(None, ge=0)
+    status: Optional[str] = Field(
+        None, pattern="^(open|in_progress|on_hold|escalated|resolved|closed)$"
+    )
+    title: Optional[str] = Field(None, min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=4000)
+    assignee_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "IssueUpdate":
+        if not any(
+            v is not None
+            for v in (self.issue_type, self.severity, self.priority, self.status,
+                      self.title, self.description, self.assignee_id)
+        ):
+            raise ValueError("at least one field must be provided to update an issue")
+        return self
+
+
+class IssueListOut(BaseModel):
+    """Issue listing response."""
+
+    total: int
+    issues: list[IssueOut] = Field(default_factory=list)
+
+
+
 
 

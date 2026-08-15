@@ -13,6 +13,7 @@ from enum import StrEnum
 from typing import Optional
 
 from core.types import DateRange
+from domain.customer_factor import CustomerFactor
 from domain.factor import EmissionFactor
 
 
@@ -31,13 +32,16 @@ class CalculationSnapshot:
     """An immutable record of a single emissions calculation.
 
     Stored in the RC2 ``calculation_snapshots`` table so every reported figure
-    can be reproduced and audited.
+    can be reproduced and audited. V3 (O1 / ADR-V3-014): a snapshot references
+    exactly one factor source — ``factor_kind='emission_factor'`` +
+    ``factor_id``, or ``factor_kind='customer_factor'`` +
+    ``customer_factor_id`` (DB exactly-one-source CHECK).
     """
 
     id: str
     match_request_id: str
     organization_id: str
-    factor_id: str
+    factor_id: Optional[str]
     quantity: Decimal
     quantity_unit: str
     co2e_multiplier: Decimal
@@ -49,6 +53,8 @@ class CalculationSnapshot:
     algorithm_version: str
     created_at: datetime.date
     content_hash: str = ""
+    factor_kind: str = "emission_factor"
+    customer_factor_id: Optional[str] = None
     source_file: Optional[str] = None
     source_page: Optional[int] = None
 
@@ -59,7 +65,9 @@ class CalculationSnapshot:
                 str(self.quantity),
                 self.quantity_unit,
                 str(self.co2e_multiplier),
-                self.factor_id,
+                self.factor_kind,
+                self.factor_id or "",
+                self.customer_factor_id or "",
                 self.scope or "",
                 self.date.isoformat(),
                 str(self.reporting_year),
@@ -83,13 +91,19 @@ class CalculationSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class CalculationResult:
-    """The outcome of a calculation, including the exact inputs used."""
+    """The outcome of a calculation, including the exact inputs used.
+
+    ``factor_used`` is the CarbonTally-managed factor (emission-factor path);
+    ``customer_factor`` is populated when the calculation used a customer-owned
+    factor (O1 — exactly one of the two sources applies).
+    """
 
     co2e_kg: Decimal
     co2e_tonnes: Decimal
     snapshot: CalculationSnapshot
-    factor_used: EmissionFactor
     methodology: CalculationMethodology
+    factor_used: Optional[EmissionFactor] = None
+    customer_factor: Optional[CustomerFactor] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,14 +120,17 @@ class EmissionLog:
     """An operational emissions record (RC2 ``emissions_logs`` row).
 
     Represents one logged consumption event. ``quantity`` is the raw consumption
-    figure and ``calculated_kg_co2e`` the resulting emissions. The repository
-    layer persists the record; the Calculation Engine (Phase 6) writes the
-    calculated figure through ``save``.
+    figure and ``calculated_kg_co2e`` the resulting emissions. ``factor_id`` is
+    the ``emission_factors`` id for CarbonTally-managed factors; it is ``None``
+    for customer-factor calculations (O1 — the snapshot carries
+    ``customer_factor_id``; the column is nullable in the RC2 schema). The
+    repository layer persists the record; the Calculation Engine (Phase 6)
+    writes the calculated figure through ``save``.
     """
 
     id: str
     organization_id: str
-    factor_id: str
+    factor_id: Optional[str]
     quantity: Decimal
     date: datetime.date
     unit: Optional[str] = None

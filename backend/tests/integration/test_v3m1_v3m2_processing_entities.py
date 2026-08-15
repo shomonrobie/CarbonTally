@@ -16,12 +16,14 @@ Covered invariants:
   5. Entity relationships preserve existing data (no NULL/row mutation).
   6. Existing organization isolation still works (tenant RLS unchanged).
   7. Processing Entity isolation: ``processing_entities`` is deny-by-default
-     for ``authenticated`` (no policies; ADR-V3-010 deferred).
+     for ``authenticated`` (deny-by-default for non-members; the V3M-6 entity SELECT storey is the only policy).
   8. Existing staff access does not regress.
   9. Existing work records remain valid (rows untouched by the migration).
  10. Factor baseline remains exactly 7,049 (DEFRA 7,029 · SEAI 20).
 """
 from __future__ import annotations
+
+import uuid
 
 import asyncpg
 import pytest
@@ -120,7 +122,7 @@ async def test_staff_can_reference_entity(pool: asyncpg.Pool) -> None:
             "SELECT entity_id FROM public.staff_profiles WHERE id = $1", staff_id
         )
         assert row is not None
-        assert row["entity_id"] == entity_id
+        assert row["entity_id"] == uuid.UUID(entity_id)
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +233,11 @@ async def test_org_tenant_rls_still_present(pool: asyncpg.Pool) -> None:
 
 
 async def test_processing_entities_deny_by_default(pool: asyncpg.Pool) -> None:
-    """processing_entities has RLS enabled and NO policies (deny-by-default for
-    authenticated); entity-scoped access policies are deferred to ADR-V3-010."""
+    """processing_entities RLS posture under the V3 contract (V3M-6): RLS
+    enabled; the ONLY policy is the entity SELECT storey
+    (processing_entities_entity_select via is_entity_member); no
+    INSERT/UPDATE/DELETE policy — non-members and writes are deny-by-default
+    for authenticated."""
     async with pool.acquire() as conn:
         rls_on = await conn.fetchval(
             "SELECT relrowsecurity FROM pg_class "
@@ -241,10 +246,11 @@ async def test_processing_entities_deny_by_default(pool: asyncpg.Pool) -> None:
         assert rls_on is True
 
         policies = await conn.fetch(
-            "SELECT policyname FROM pg_policies "
+            "SELECT policyname, cmd FROM pg_policies "
             "WHERE schemaname = 'public' AND tablename = 'processing_entities'"
         )
-        assert len(policies) == 0, policies
+        by_name = {p["policyname"]: p["cmd"] for p in policies}
+        assert by_name == {"processing_entities_entity_select": "SELECT"}
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +295,9 @@ async def test_entity_fks_and_indexes_exist(pool: asyncpg.Pool) -> None:
             "manual_review_queue_entity_id_fkey",
             "upload_batches_entity_id_fkey",
         }
-        # confdeltype 'r' = ON DELETE RESTRICT
-        assert all(f["confdeltype"] == "r" for f in fks), fks
+        # confdeltype 'r' = ON DELETE RESTRICT (asyncpg decodes PostgreSQL's
+        # internal "char" type to bytes: b'r')
+        assert all(f["confdeltype"] == b"r" for f in fks), fks
 
         idx = await conn.fetch(
             "SELECT indexname FROM pg_indexes "

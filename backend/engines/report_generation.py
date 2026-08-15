@@ -679,6 +679,12 @@ class ReportGenerationEngine:
             if factor.country:
                 countries.add(factor.country)
             coverages.add(gas_coverage(factor))
+        # V3 customer-factor calculations store a NULL emission_factor_id on the
+        # log (O1); their provenance lives on the calculation_snapshot. Tag the
+        # CUSTOMER source so reports never relabel or drop it.
+        if any(log.factor_id is None for log in logs):
+            sources.add("CUSTOMER")
+            factor_sets.add("CUSTOMER")
         if coverages == {"CO2"}:
             coverage = "CO2"
         elif coverages == {"CO2e"}:

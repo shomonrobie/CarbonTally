@@ -1,4 +1,1 @@
-SELECT table_name
-FROM information_schema.tables
-WHERE table_schema = 'public'
-ORDER BY table_name;
+select * from emission_factors limit 50

@@ -20,6 +20,12 @@ from .calculation import (
     EmissionsAggregate,
     VerificationResult,
 )
+from .customer_factor import (
+    CUSTOMER_FACTOR_COUNTRIES,
+    CUSTOMER_FACTOR_SOURCE,
+    CUSTOMER_FACTOR_STATUSES,
+    CustomerFactor,
+)
 from .document import (
     Document,
     ExtractionField,
@@ -27,7 +33,14 @@ from .document import (
     ExtractedPage,
     ExtractedTable,
 )
+from .entity import ENTITY_STATUSES, ProcessingEntity
 from .factor import EmissionFactor, FactorSet, FactorSetMetadata
+from .issue import (
+    ISSUE_SEVERITIES,
+    ISSUE_STATUSES,
+    ISSUE_TYPES,
+    Issue,
+)
 from .matching import (
     FactorAlias,
     FactorSearch,
@@ -84,17 +97,22 @@ __all__ = [
     "BenchmarkMetric",
     "BenchmarkRequest",
     "BenchmarkResult",
+    "CUSTOMER_FACTOR_COUNTRIES",
+    "CUSTOMER_FACTOR_SOURCE",
+    "CUSTOMER_FACTOR_STATUSES",
     "CalculationCompleted",
     "CalculationMethodology",
     "CalculationRequested",
     "CalculationResult",
     "CalculationSnapshot",
+    "CustomerFactor",
     "DOCUMENT_PIPELINE",
     "DiscoveredSheet",
     "DiscoveryResult",
     "Document",
     "DocumentUploaded",
     "DomainEvent",
+    "ENTITY_STATUSES",
     "EmissionFactor",
     "EmissionLog",
     "EmissionsAggregate",
@@ -113,12 +131,16 @@ __all__ = [
     "FieldsExtracted",
     "Facility",
     "GeneratedReport",
+    "ISSUE_SEVERITIES",
+    "ISSUE_STATUSES",
+    "ISSUE_TYPES",
     "ImportBatch",
     "ImportCompleted",
     "ImportError",
     "ImportResult",
     "ImportRolledBack",
     "ImportStarted",
+    "Issue",
     "MatchRequest",
     "MatchResult",
     "MatchingPipelineConfig",
@@ -127,6 +149,7 @@ __all__ = [
     "Organization",
     "OrganizationMember",
     "OrganizationMetadata",
+    "ProcessingEntity",
     "ProviderInfo",
     "ProviderVersion",
     "RawFactorRow",
