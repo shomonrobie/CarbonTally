@@ -12,6 +12,7 @@ import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
 import PrivacyPolicy from './PrivacyPolicy';
+import PricingPage from './PricingPage';
 import CookiePolicy from './CookiePolicy';
 import TermsPage from './TermsPage';
 import LandingPage from './LandingPage';
@@ -25,6 +26,8 @@ import OnboardingWizard from './OnboardingWizard';
 import CompanyNamePrompt from './CompanyNamePrompt';
 import AuthCallback from './AuthCallback';
 import BetaSignup from './BetaSignup';
+import SelfServiceSignup from './SelfServiceSignup';
+import OnboardingPage from './OnboardingPage';
 import BetaLogin from './BetaLogin';
 import Glossary from './Glossary';
 import MagicLink from './MagicLink';
@@ -34,6 +37,22 @@ import UploadManager from './UploadManager';
 import ManualEntryStandalone from './components/ManualEntryStandalone';
 import { ReferenceDataProvider } from './context/ReferenceDataContext';
 import ChatWidget from './components/chat/ChatWidget';
+import ReportsPage from './v3/reports/ReportsPage';
+import ReportDetailPage from './v3/reports/ReportDetailPage';
+import AdminPage from './v3/admin/AdminPage';
+import BillingPage from './v3/customer/BillingPage';
+import ConsultantPage from './v3/consultant/ConsultantPage';
+import OperationsPage from './v3/ops/OperationsPage';
+import DashboardPage from './v3/customer/DashboardPage';
+import EmissionsPage from './v3/customer/EmissionsPage';
+import DocumentsPage from './v3/customer/DocumentsPage';
+import ProcessingPage from './v3/customer/ProcessingPage';
+import IssuesPage from './v3/customer/IssuesPage';
+import ExistingDataDiscoveryPage from './v3/customer/ExistingDataDiscoveryPage';
+import MessagingPage from './v3/customer/MessagingPage';
+import NotificationsPage from './v3/NotificationsPage';
+import RoleRoute from './v3/components/RoleRoute';
+import V3Layout from './v3/components/V3Layout';
 
 // ✅ Import Realtime
 import { 
@@ -404,7 +423,7 @@ function NotificationBell() {
               backgroundColor: '#f8fafc',
             }}>
               <Link
-                to="/dashboard/notifications"
+                to="/notifications"
                 style={{
                   fontSize: '0.85rem',
                   color: '#3b82f6',
@@ -1677,6 +1696,24 @@ function Dashboard({ user }){
           >
             📈 History & Trends
           </button>
+          <button 
+            className={`nav-btn ${activeTab === 'reports' ? 'active' : ''}`} 
+            onClick={() => { setActiveTab('reports'); setIsMenuOpen(false); navigate('/reports'); }}
+          >
+            📑 Reports (V3)
+          </button>
+          <button 
+            className={`nav-btn ${activeTab === 'org-admin' ? 'active' : ''}`} 
+            onClick={() => { setActiveTab('org-admin'); setIsMenuOpen(false); navigate('/organization'); }}
+          >
+            🏛️ Organization (V3)
+          </button>
+          <button 
+            className={`nav-btn ${activeTab === 'consultant' ? 'active' : ''}`} 
+            onClick={() => { setActiveTab('consultant'); setIsMenuOpen(false); navigate('/consultant'); }}
+          >
+            🧑‍💼 Consultant (V3)
+          </button>
           {userRole === 'admin' && (
             <>
               <button 
@@ -1919,20 +1956,152 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/privacy" element={<PricingPage />} />            
             <Route path="/cookies" element={<CookiePolicy />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/about" element={<AboutUs />} />
             <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/signup" element={<BetaSignup />} />
+            <Route path="/signup" element={<SelfServiceSignup />} />
+            <Route path="/beta/signup" element={<BetaSignup />} />
             <Route path="/beta-login" element={<BetaLogin />} />
             <Route path="/glossary" element={<Glossary />} />
             <Route path="/auth/magic" element={<MagicLink />} />
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard/*" element={<Navigate to="/home" replace />} />
             <Route path="/dashboard/*" element={
               <ProtectedRoute>
                 <DashboardLayout>
                   <Dashboard />
                 </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/home" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <DashboardPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/emissions" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <EmissionsPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/documents" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <DocumentsPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/processing" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ProcessingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/existing-data" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ExistingDataDiscoveryPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/messaging" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <MessagingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/issues" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <IssuesPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/notifications" element={
+              <ProtectedRoute>
+                <V3Layout>
+                  <NotificationsPage />
+                </V3Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ReportsPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/reports/:id" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ReportDetailPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/billing" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <BillingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/organization" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <AdminPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/consultant" element={
+              <ProtectedRoute>
+                <RoleRoute requireConsultant>
+                  <V3Layout>
+                    <ConsultantPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/ops" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <V3Layout>
+                    <OperationsPage />
+                  </V3Layout>
+                </RoleRoute>
               </ProtectedRoute>
             } />
             <Route path="*" element={<Navigate to="/" replace />} />

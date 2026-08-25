@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import { resolvePostLoginPath } from './v3/api';
 import './css/BetaSignup.css';
 
 export default function BetaSignup() {
@@ -147,7 +148,11 @@ export default function BetaSignup() {
         .eq('email', email);
 
       setSuccess(true);
-      setTimeout(() => navigate('/dashboard'), 2000);
+      // D35 — never land a customer on the legacy /dashboard. Route through
+      // the server-authoritative resolver (new users go to /onboarding).
+      setTimeout(() => {
+        resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+      }, 2000);
 
     } catch (err) {
       console.error('Signup error:', err);

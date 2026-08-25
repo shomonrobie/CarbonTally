@@ -28,6 +28,7 @@ DEFAULT_STAFF_PERMISSIONS = {
     "can_view_all": False,
     "can_manage_staff": False,
     "can_manage_roles": False,
+    "can_manage_billing": False,
     "can_view_organizations": False,
     "can_manage_organizations": False,
     "can_extract": False,
@@ -69,6 +70,20 @@ class AuthUser(BaseModel):
     is_org_member: bool = False
     is_admin: bool = False
     role_name: Optional[str] = None
+
+    # D20 (APPROVED 2026-08-20) — scope-aware authorization dimension:
+    # ``staff_profiles.entity_id IS NULL`` = CarbonTally internal staff;
+    # ``entity_id IS NOT NULL`` = Processing Entity staff. Role names are NOT
+    # sufficient authority; scope is evaluated before any role/permission.
+    @property
+    def is_internal_staff(self) -> bool:
+        """CarbonTally internal staff (``entity_id IS NULL``)."""
+        return self.is_staff and not self.entity_id
+
+    @property
+    def is_entity_staff(self) -> bool:
+        """Processing Entity staff (``entity_id IS NOT NULL``)."""
+        return self.is_staff and bool(self.entity_id)
 
 # ==========================================
 # SUPABASE CLIENT
@@ -132,6 +147,7 @@ async def get_current_user(
     try:
         token = credentials.credentials
         supabase_client = get_supabase_client()
+        user = None
         
         print(f"🔍 Authenticating user...")
         
@@ -187,20 +203,8 @@ async def get_current_user(
         
         try:
             staff_result = supabase_client.from_('staff_profiles') \
-                .select('''
-                    id,
-                    role,
-                    role_id,
-                    is_active,
-                    first_name,
-                    last_name,
-                    permissions,
-                    extraction_count,
-                    accuracy_rate,
-                    last_login,
-                    entity_id
-                ''') \
-                .eq('id', user_id) \
+                .select('id, user_id, role_id, is_active, first_name, last_name, entity_id') \
+                .eq('user_id', user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -208,6 +212,26 @@ async def get_current_user(
                 staff_data = staff_result.data
                 is_staff = True
                 print(f"✅ Found staff profile for user: {user_email}")
+
+                # Resolve the authoritative staff role (staff_roles) so the
+                # caller's role_name/permissions reflect the real permission
+                # model (operator/reviewer/qc/admin). staff_profiles has no
+                # `role` column (schema fact) — the role lives on staff_roles.
+                staff_data['role_name'] = None
+                staff_data['permissions'] = {}
+                role_id = staff_data.get('role_id')
+                if role_id:
+                    try:
+                        role_result = supabase_client.from_('staff_roles') \
+                            .select('name, permissions') \
+                            .eq('id', role_id) \
+                            .maybe_single() \
+                            .execute()
+                        if role_result and role_result.data:
+                            staff_data['role_name'] = role_result.data.get('name')
+                            staff_data['permissions'] = role_result.data.get('permissions') or {}
+                    except Exception as role_error:
+                        print(f"⚠️ Staff role query error: {role_error}")
                 
         except Exception as staff_error:
             print(f"⚠️ Staff profile query error: {staff_error}")
@@ -239,9 +263,10 @@ async def get_current_user(
             print(f"⚠️ Organization member query error: {org_error}")
         
         # ✅ RETURN: Allow all authenticated users
-        # Get user metadata from auth
+        # Get user metadata from auth (GoTrue path only — the manual JWT-decode
+        # fallback has no `user` object; metadata stays empty).
         user_metadata = {}
-        if hasattr(user, 'user_metadata'):
+        if user is not None and hasattr(user, 'user_metadata'):
             user_metadata = user.user_metadata
         elif isinstance(user, dict) and user.get('user_metadata'):
             user_metadata = user.get('user_metadata', {})
@@ -252,9 +277,9 @@ async def get_current_user(
         permissions = {}
         
         if is_staff and staff_data:
-            role = staff_data.get('role', 'staff')
+            role = staff_data.get('role_name') or 'staff'
             role_name = role
-            permissions = staff_data.get('permissions', {})
+            permissions = staff_data.get('permissions') or {}
         elif is_org_member and org_member_data:
             role = f"org_{org_role}" if org_role else "org_viewer"
             role_name = role
@@ -275,7 +300,14 @@ async def get_current_user(
             accuracy_rate=staff_data.get('accuracy_rate', 100.0) if staff_data else 100.0,
             is_staff=is_staff,
             is_org_member=is_org_member,
-            is_admin=(role == 'admin' or role_name == 'admin')
+            # D20: ``is_admin`` (global CarbonTally admin) is scoped to internal
+            # staff only — a Processing Entity staff profile with an
+            # ``admin``-named role must never become a global admin.
+            is_admin=(
+                is_staff
+                and (staff_data.get('entity_id') if staff_data else None) is None
+                and (role == 'admin' or role_name == 'admin')
+            )
         )
         
     except HTTPException:
@@ -327,6 +359,14 @@ def require_admin():
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # D20 (scope-first): Processing Entity staff never hold internal
+        # CarbonTally admin authority, regardless of the role name.
+        if current_user.is_entity_staff:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Processing Entity staff cannot hold internal admin authority",
+            )
+
         if current_user.role != 'admin' and current_user.role_name != 'admin':
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -391,6 +431,12 @@ def require_org_admin():
     """
     Dependency factory for organization admin privileges.
     Works with both: Depends(require_org_admin) and Depends(require_org_admin())
+
+    Organisation administrators are the roles the schema's RLS treats as
+    administrators of their own organisation: ``owner`` and ``admin``
+    (``organization_members.role`` CHECK constraint; the RLS admin policies
+    ``om_insert_admin`` / ``om_update_admin`` / ``om_select_self_or_admin`` use
+    ``role IN ('owner','admin')``). Global CarbonTally admins pass too.
     """
     async def org_admin_checker(
         current_user: AuthUser = Depends(get_current_user)
@@ -401,14 +447,24 @@ def require_org_admin():
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        # Check if user is system admin
-        if current_user.role == 'admin' or current_user.role_name == 'admin':
+
+        # Global CarbonTally admin — D20 (scope-first): the global-admin path is
+        # limited to CarbonTally INTERNAL staff (``entity_id IS NULL``). A
+        # Processing Entity staff profile with an ``admin``-named role must
+        # never pass as a global admin.
+        if current_user.is_internal_staff and (current_user.role == 'admin' or current_user.role_name == 'admin'):
             return current_user
-        
-        # Check if user is org admin
-        if current_user.is_org_member:
-            # Check role in organization_members
+
+        # Org member holding the owner/admin role. ``get_current_user`` derives
+        # ``role`` as ``org_<org_role>`` (e.g. ``org_owner``); the authoritative
+        # fallback below re-reads the membership row.
+        if current_user.is_org_member and current_user.organization_id:
+            if (
+                current_user.role in ('org_owner', 'org_admin')
+                or current_user.role_name in ('owner', 'admin')
+            ):
+                return current_user
+            # Authoritative fallback: resolve the membership role directly.
             supabase = get_supabase_client()
             try:
                 result = supabase.from_('organization_members') \
@@ -417,17 +473,17 @@ def require_org_admin():
                     .eq('organization_id', current_user.organization_id) \
                     .maybe_single() \
                     .execute()
-                
-                if result and result.data and result.data.get('role') == 'admin':
+
+                if result and result.data and result.data.get('role') in ('admin', 'owner'):
                     return current_user
             except Exception:
                 pass
-        
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Organization admin privileges required"
         )
-    
+
     return org_admin_checker
 
 def require_org_access(organization_id: str):
@@ -438,8 +494,10 @@ def require_org_access(organization_id: str):
     async def org_access_checker(
         current_user: AuthUser = Depends(get_current_user)
     ) -> AuthUser:
-        # Staff can access any organization
-        if current_user.is_staff:
+        # CarbonTally INTERNAL staff may access any organization (operational
+        # access). D20: Processing Entity staff never get customer-organization
+        # access — they fall through to the org-membership check (denied).
+        if current_user.is_internal_staff:
             return current_user
         
         # Organization members can only access their own
@@ -504,6 +562,14 @@ def require_role(required_roles: List[str]):
     async def role_checker(
         current_user: AuthUser = Depends(get_current_user)
     ) -> AuthUser:
+        # D20 (scope-first): Processing Entity staff never pass role-name
+        # authorization guards, regardless of the role name.
+        if current_user.is_entity_staff:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Processing Entity staff cannot hold role-name authority",
+            )
+
         if current_user.role not in required_roles and current_user.role_name not in required_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

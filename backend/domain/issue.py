@@ -55,6 +55,9 @@ class Issue:
         work_item_id: Optional work-item context (FK, ON DELETE RESTRICT).
         document_id: Optional document context (FK, ON DELETE RESTRICT).
         batch_id: Optional batch context (FK, ON DELETE RESTRICT).
+        manual_extraction_batch_id: Optional manual-extraction batch context
+            (FK -> manual_extraction_batches, ON DELETE RESTRICT; D22
+            clarification/rework link).
         conversation_id: Optional linked conversation (FK, ON DELETE SET NULL).
         assignee_id: Optional assignee (staff/user).
         escalation_level: Non-negative escalation counter.
@@ -77,6 +80,7 @@ class Issue:
     work_item_id: Optional[str] = None
     document_id: Optional[str] = None
     batch_id: Optional[str] = None
+    manual_extraction_batch_id: Optional[str] = None
     conversation_id: Optional[str] = None
     assignee_id: Optional[str] = None
     escalation_level: int = 0

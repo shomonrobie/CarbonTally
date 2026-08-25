@@ -28,7 +28,7 @@ export default function AppFooter() {
             <h4>Product</h4>
             <ul>
               <li><a href="/#features">Features</a></li>
-              <li><a href="/#pricing">Pricing</a></li>
+              <li><a href="/PricingPage">Pricing</a></li>
               <li><a href="#">Integrations</a></li>
               <li><a href="#">Changelog</a></li>
               <li><a href="#">Roadmap</a></li>

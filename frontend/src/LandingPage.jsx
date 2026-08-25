@@ -1,60 +1,19 @@
-// src/LandingPage.jsx - Slideshow without overlay text
+// src/LandingPage.jsx - Enhanced with traceability messaging (NO SVG imports)
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from './components/AppHeader';
 import AppFooter from './components/AppFooter';
-import './css/LandingPage.css';
-
-// Import your dashboard images
-import carbonTallyUpload from './images/carbon_tally_upload_main.png';
-import uploadImage from './images/carbon_tally_upload.gif';
-import emissionsTrendImage from './images/emissions_trend.png';
-import executiveOverviewImage from './images/executive_overview.png';
 import CarbonTallyDemo from './components/CarbonTallyDemo';
-
+import './css/lp2.css';
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
-  const [fullName, setFullName] = useState('');
-
-  // Slides data
-  const slides = [
-    {
-      image: carbonTallyUpload,
-      alt: 'CarbonTally Dashboard Preview',
-    },
-    {
-      image: emissionsTrendImage,
-      alt: 'CarbonTally Emission Report',
-    },
-    {
-      image: executiveOverviewImage,
-      alt: 'CarbonTally Executive Overview',
-    }
-  ];
-
-  // Auto-slide every 5 seconds
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [slides.length]);
-
-  // Navigation functions
-  const plusSlides = (n) => {
-    setCurrentSlide((prev) => (prev + n + slides.length) % slides.length);
-  };
-
-  const goToSlide = (index) => {
-    setCurrentSlide(index);
-  };
 
   // Animation observer
   useEffect(() => {
@@ -77,77 +36,23 @@ export default function LandingPage() {
   }, []);
 
   const handleJoinWaitlist = (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     setShowWaitlistModal(true);
   };
-// src/LandingPage.jsx - Add debugging to handleSubmitEmail
 
-const handleSubmitEmail = async (e) => {
-  e.preventDefault();
-  
-  console.log('🔍 DEBUG: Starting handleSubmitEmail');
-  console.log('📧 Email:', email);
-  console.log('👤 Full Name:', fullName);
-  
-  if (!email || !email.includes('@')) {
-    console.log('❌ DEBUG: Invalid email validation failed');
-    setError('Please enter a valid email address');
-    return;
-  }
-
-  setIsSubmitting(true);
-  setError('');
-
-  try {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-    const endpoint = `${apiUrl}/api/waitlist`;
+  const handleSubmitEmail = async (e) => {
+    e.preventDefault();
     
-    console.log('🌐 DEBUG: API URL:', endpoint);
-    console.log('📦 DEBUG: Request body:', { 
-      email: email.trim(), 
-      full_name: fullName.trim(), 
-      source: 'landing_page' 
-    });
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        email: email.trim(),
-        full_name: fullName.trim(),
-        source: 'landing_page'
-      }),
-    });
-
-    console.log('📡 DEBUG: Response status:', response.status);
-    console.log('📡 DEBUG: Response OK:', response.ok);
-
-    // Try to get response text first for debugging
-    const responseText = await response.text();
-    console.log('📄 DEBUG: Raw response:', responseText);
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-      console.log('✅ DEBUG: Parsed data:', data);
-    } catch (parseError) {
-      console.error('❌ DEBUG: Failed to parse JSON:', parseError);
-      console.log('📄 DEBUG: Raw response was:', responseText);
-      setError('Server error. Please try again later.');
-      setIsSubmitting(false);
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address');
       return;
     }
 
-    if (response.ok && data.success) {
-      console.log('✅ DEBUG: Success!');
-      // Analytics tracking
-      if (window.gtag) {
-        window.gtag('event', 'beta_signup', {
-          'email': email.trim()
-        });
-      }
+    setIsSubmitting(true);
+    setError('');
+
+    // Simulate API call for demo
+    setTimeout(() => {
       setIsSubmitted(true);
       setEmail('');
       setFullName('');
@@ -155,75 +60,9 @@ const handleSubmitEmail = async (e) => {
         setShowWaitlistModal(false);
         setIsSubmitted(false);
       }, 2000);
-    } else {
-      console.log('❌ DEBUG: API returned error:', data);
-      if (data.error === 'Already on waitlist') {
-        setError('This email is already on our waitlist!');
-      } else {
-        setError(data.error || data.message || 'Failed to join waitlist. Please try again.');
-      }
-    }
-  } catch (error) {
-    console.error('❌ DEBUG: Network/Fetch error:', error);
-    setError('Failed to connect to server. Please check your internet connection and try again.');
-  } finally {
-    console.log('🏁 DEBUG: Finished handleSubmitEmail');
-    setIsSubmitting(false);
-  }
-};
-
-const handleSubmitEmail2 = async (e) => {
-  e.preventDefault();
-  
-  if (!email || !email.includes('@')) {
-    setError('Please enter a valid email address');
-    return;
-  }
-
-  setIsSubmitting(true);
-  setError('');
-
-  try {
-    const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/waitlist`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        email: email.trim(),
-        full_name: fullName.trim(),
-        source: 'landing_page'
-      }),
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      if (window.gtag) {
-        window.gtag('event', 'beta_signup', {
-          'email': email.trim()
-        });
-      }
-      setIsSubmitted(true);
-      setEmail('');
-      setTimeout(() => {
-        setShowWaitlistModal(false);
-        setIsSubmitted(false);
-      }, 2000);
-    } else {
-      if (data.error === 'Already on waitlist') {
-        setError('This email is already on our waitlist!');
-      } else {
-        setError(data.error || 'Failed to join waitlist. Please try again.');
-      }
-    }
-  } catch (error) {
-    console.error('Waitlist error:', error);
-    setError('Failed to join waitlist. Please try again.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      setIsSubmitting(false);
+    }, 1500);
+  };
 
   const handleGetStarted = () => {
     setShowWaitlistModal(true);
@@ -246,36 +85,406 @@ const handleSubmitEmail2 = async (e) => {
           </button>
         </div>
       </div>
-      <section className="hero-section">
-        
+
+      {/* --- HERO SECTION --- */}
+      <section className="hero-section" id="hero">
+        <div className="hero-container">
           <div className="hero-content">
             <div className="landing-badge animate-on-scroll">
               🧪 Limited Beta — All Features Available
             </div>
             <h1 className="headline-animated animate-on-scroll">
-              Carbon Accounting, <br />
-              <span className="gradient-text">Simplified.</span>
+              Turn messy carbon data into <br />
+              <span className="gradient-text">traceable emissions</span>
             </h1>
             <p className="hero-description animate-on-scroll">
-              Stop using messy spreadsheets. Automate your Scope 1, 2, and 3 emissions
-              tracking with official UK DEFRA factors. Audit-ready reports in one click.
+              CarbonTally transforms invoices, PDFs, spreadsheets, CSVs and other source data 
+              into structured, calculated carbon data — with evidence linking each result back to its source.
             </p>
             
+            <div className="hero-cta animate-on-scroll">
+              <button className="btn-primary btn-large" onClick={handleGetStarted}>
+                Start processing →
+              </button>
+              <button className="btn-secondary btn-large" onClick={() => document.getElementById('features').scrollIntoView({ behavior: 'smooth' })}>
+                Talk to us
+              </button>
+            </div>
+
             <div className="trust-indicators animate-on-scroll">
-              <span>✓ All Features Ready</span>
+              <span>✓ Traceable Evidence</span>
+              <span>✓ Audit-Ready Reports</span>
               <span>✓ UK SECR & EU CSRD</span>
-              <span>✓ AI-Powered</span>
             </div>
           </div>
-        
-               
+          
+          <div className="hero-visual">
+            <CarbonTallyDemo />
+          </div>
+        </div>
       </section>
-      <section className="hero-section">
-         <CarbonTallyDemo />
-               
+
+      {/* --- TRACEABILITY SECTION --- */}
+      <section className="traceability-section" id="traceability">
+        <div className="container">
+          <div className="section-header animate-on-scroll">
+            <span className="section-badge">🔍 Full Traceability</span>
+            <h2>Know where every number came from</h2>
+            <p className="section-subtitle">
+              Every emission has a story. CarbonTally keeps the evidence.
+            </p>
+          </div>
+
+          <div className="traceability-content">
+            <div className="traceability-text animate-on-scroll">
+              <p className="lead-text">
+                A carbon number is only useful when you can explain it.
+              </p>
+              <p>
+                With CarbonTally, customers can trace an emission from the final CO₂e result back through:
+              </p>
+              <ul className="trace-steps">
+                <li>
+                  <span className="step-number">1</span>
+                  <div className="step-content">
+                    <strong>Calculation</strong>
+                    <span className="step-example">500 kWh × 0.00028 kg CO₂e/kWh</span>
+                  </div>
+                </li>
+                <li>
+                  <span className="step-number">2</span>
+                  <div className="step-content">
+                    <strong>Emission factor</strong>
+                    <span className="step-example">DEFRA 2025 — 0.00028 kg CO₂e/kWh</span>
+                  </div>
+                </li>
+                <li>
+                  <span className="step-number">3</span>
+                  <div className="step-content">
+                    <strong>Mapped activity</strong>
+                    <span className="step-example">Electricity — 500 kWh</span>
+                  </div>
+                </li>
+                <li>
+                  <span className="step-number">4</span>
+                  <div className="step-content">
+                    <strong>Source document</strong>
+                    <span className="step-example">INV-10482.pdf</span>
+                  </div>
+                </li>
+              </ul>
+              
+              <div className="trace-result">
+                <span className="result-label">Result:</span>
+                <span className="result-value">0.140 kg CO₂e</span>
+              </div>
+
+              <button className="btn-outline" onClick={() => document.getElementById('evidence').scrollIntoView({ behavior: 'smooth' })}>
+                See how evidence traceability works →
+              </button>
+            </div>
+
+            <div className="traceability-visual animate-on-scroll">
+              <div className="trace-diagram">
+                <div className="trace-node">
+                  <span className="trace-icon">📄</span>
+                  <span>Your document</span>
+                  <span className="trace-arrow">↓</span>
+                </div>
+                <div className="trace-node">
+                  <span className="trace-icon">🔍</span>
+                  <span>Extracted data</span>
+                  <span className="trace-arrow">↓</span>
+                </div>
+                <div className="trace-node">
+                  <span className="trace-icon">🗺️</span>
+                  <span>Mapped activity</span>
+                  <span className="trace-arrow">↓</span>
+                </div>
+                <div className="trace-node">
+                  <span className="trace-icon">⚡</span>
+                  <span>Emission factor</span>
+                  <span className="trace-arrow">↓</span>
+                </div>
+                <div className="trace-node">
+                  <span className="trace-icon">📊</span>
+                  <span>Calculation</span>
+                  <span className="trace-arrow">↓</span>
+                </div>
+                <div className="trace-node trace-final">
+                  <span className="trace-icon">✅</span>
+                  <span>CO₂e result</span>
+                  <span className="trace-badge">Traceable</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
-    
-     {/* --- FEATURES SECTION --- */}
+
+      {/* --- SOURCE CONNECTION SECTION --- */}
+      <section className="source-connection-section" id="source-connection">
+        <div className="container">
+          <div className="section-header animate-on-scroll">
+            <span className="section-badge">🔗 Stay Connected</span>
+            <h2>Your source data stays connected</h2>
+            <p className="section-subtitle">
+              Don't lose the connection between carbon data and the documents behind it.
+            </p>
+          </div>
+
+          <div className="connection-content">
+            <div className="connection-example animate-on-scroll">
+              <div className="connection-flow">
+                <div className="flow-step">
+                  <span className="flow-icon">📄</span>
+                  <span>Upload a document</span>
+                </div>
+                <div className="flow-arrow">↓</div>
+                <div className="flow-step">
+                  <span className="flow-icon">🔎</span>
+                  <span>Extracted data</span>
+                </div>
+                <div className="flow-arrow">↓</div>
+                <div className="flow-step">
+                  <span className="flow-icon">🗺️</span>
+                  <span>Mapped activity</span>
+                </div>
+                <div className="flow-arrow">↓</div>
+                <div className="flow-step">
+                  <span className="flow-icon">⚡</span>
+                  <span>Emission factor</span>
+                </div>
+                <div className="flow-arrow">↓</div>
+                <div className="flow-step">
+                  <span className="flow-icon">📊</span>
+                  <span>Calculation</span>
+                </div>
+                <div className="flow-arrow">↓</div>
+                <div className="flow-step flow-result">
+                  <span className="flow-icon">✅</span>
+                  <span>CO₂e result</span>
+                </div>
+              </div>
+
+              <div className="connection-bidirectional">
+                <p>← You can work backwards too →</p>
+              </div>
+            </div>
+
+            <div className="connection-text animate-on-scroll">
+              <div className="connection-quote">
+                <blockquote>
+                  "Where did this emission come from?"
+                </blockquote>
+                <p>— You'll always have an answer.</p>
+              </div>
+              
+              <div className="connection-benefits">
+                <div className="benefit-item">
+                  <span className="benefit-icon">✓</span>
+                  <span>Trace every emission back to its source</span>
+                </div>
+                <div className="benefit-item">
+                  <span className="benefit-icon">✓</span>
+                  <span>Maintain audit-ready evidence trails</span>
+                </div>
+                <div className="benefit-item">
+                  <span className="benefit-icon">✓</span>
+                  <span>Build trust with stakeholders</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- MESSY DATA SECTION --- */}
+      <section className="messy-data-section" id="messy-data">
+        <div className="container">
+          <div className="section-header animate-on-scroll">
+            <span className="section-badge">📂 Real-World Ready</span>
+            <h2>Built for messy real-world data</h2>
+            <p className="section-subtitle">
+              Your data doesn't have to be clean before you start.
+            </p>
+          </div>
+
+          <div className="messy-data-content">
+            <div className="data-types animate-on-scroll">
+              <h3>CarbonTally can process:</h3>
+              <div className="type-grid">
+                <div className="type-item">
+                  <span className="type-icon">📄</span>
+                  <span>PDF invoices</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-icon">📷</span>
+                  <span>Scanned documents & images</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-icon">📊</span>
+                  <span>Excel spreadsheets</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-icon">📋</span>
+                  <span>CSV files</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-icon">🔗</span>
+                  <span>JSON data</span>
+                </div>
+                <div className="type-item">
+                  <span className="type-icon">✏️</span>
+                  <span>Manual extraction</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="processing-pipeline animate-on-scroll">
+              <h3>Then CarbonTally can:</h3>
+              <div className="pipeline-steps">
+                <span className="pipeline-step">Extract</span>
+                <span className="pipeline-arrow">→</span>
+                <span className="pipeline-step">Normalize</span>
+                <span className="pipeline-arrow">→</span>
+                <span className="pipeline-step">Map</span>
+                <span className="pipeline-arrow">→</span>
+                <span className="pipeline-step">Calculate</span>
+                <span className="pipeline-arrow">→</span>
+                <span className="pipeline-step">Validate</span>
+                <span className="pipeline-arrow">→</span>
+                <span className="pipeline-step pipeline-final">Preserve evidence</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- HUMAN PROCESSING SECTION --- */}
+      <section className="human-processing-section" id="human-processing">
+        <div className="container">
+          <div className="human-processing-content">
+            <div className="human-text animate-on-scroll">
+              <span className="section-badge">🤝 Human + AI</span>
+              <h2>Human processing when automation isn't enough</h2>
+              <p>
+                When the document is too messy for automation, humans can help.
+              </p>
+              <p>
+                Poor scans. Complicated invoices. Unstructured supplier documents.
+              </p>
+              <p className="highlight-text">
+                CarbonTally combines automated processing with human extraction 
+                and quality control through its Processing Entity network.
+              </p>
+              <div className="human-pipeline">
+                <span>Human extraction</span>
+                <span className="arrow">→</span>
+                <span>Mapping</span>
+                <span className="arrow">→</span>
+                <span>Validation</span>
+                <span className="arrow">→</span>
+                <span>Calculation</span>
+                <span className="arrow">→</span>
+                <span>Evidence</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- PLATFORM SECTION --- */}
+      <section className="platform-section" id="platforms">
+        <div className="container">
+          <div className="platform-content animate-on-scroll">
+            <span className="section-badge">🏗️ Built for Platforms</span>
+            <h2>For carbon platforms and consultants</h2>
+            <p className="platform-subtitle">
+              Don't build another data-processing team. Plug into CarbonTally.
+            </p>
+            
+            <div className="platform-benefits">
+              <div className="platform-benefit">
+                <span className="benefit-icon">📄</span>
+                <h4>Document extraction</h4>
+                <p>Automated extraction from any document format</p>
+              </div>
+              <div className="platform-benefit">
+                <span className="benefit-icon">👤</span>
+                <h4>Manual data processing</h4>
+                <p>Human-in-the-loop for complex documents</p>
+              </div>
+              <div className="platform-benefit">
+                <span className="benefit-icon">⚡</span>
+                <h4>Emission-factor mapping</h4>
+                <p>Automatic mapping to official factors</p>
+              </div>
+              <div className="platform-benefit">
+                <span className="benefit-icon">✅</span>
+                <h4>Validation & evidence</h4>
+                <p>Quality control with full traceability</p>
+              </div>
+            </div>
+
+            <div className="platform-cta">
+              <p className="platform-tagline">
+                Your platform. <strong>CarbonTally underneath.</strong>
+              </p>
+              <button className="btn-outline" onClick={handleGetStarted}>
+                Talk to us about integration →
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- EVIDENCE RECORD SECTION --- */}
+      <section className="evidence-section" id="evidence">
+        <div className="container">
+          <div className="section-header animate-on-scroll">
+            <span className="section-badge">📋 Evidence Record</span>
+            <h2>See the data behind the calculation</h2>
+            <p className="section-subtitle">
+              For each emission, CarbonTally presents the underlying evidence record.
+            </p>
+          </div>
+
+          <div className="evidence-card animate-on-scroll">
+            <div className="evidence-header">
+              <span className="evidence-result">0.140 kg CO₂e</span>
+              <span className="evidence-source">INV-10482.pdf</span>
+            </div>
+            <div className="evidence-details">
+              <div className="evidence-row">
+                <span className="evidence-label">Original source data</span>
+                <span className="evidence-value">Electricity — 500 kWh</span>
+              </div>
+              <div className="evidence-row">
+                <span className="evidence-label">Mapped activity</span>
+                <span className="evidence-value">Electricity</span>
+              </div>
+              <div className="evidence-row">
+                <span className="evidence-label">Emission factor</span>
+                <span className="evidence-value">DEFRA 2025 — 0.00028 kg CO₂e/kWh</span>
+              </div>
+              <div className="evidence-row">
+                <span className="evidence-label">Calculation</span>
+                <span className="evidence-value">500 × 0.00028</span>
+              </div>
+              <div className="evidence-row evidence-result-row">
+                <span className="evidence-label">Result</span>
+                <span className="evidence-value evidence-final">0.140 kg CO₂e</span>
+              </div>
+            </div>
+            <div className="evidence-note">
+              <p>This lets your team investigate the number without asking support to explain it.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- FEATURES SECTION --- */}
       <section className="coming-soon-features" id="features">
         <div className="container">
           <div className="coming-soon-header animate-on-scroll">
@@ -429,14 +638,12 @@ const handleSubmitEmail2 = async (e) => {
         <div className="container">
           <div className="cta-box animate-on-scroll">
             <div className="cta-icon">🧪</div>
-            <h2>Ready to try CarbonTally?</h2>
+            <h2>Your carbon data should be more than a number.</h2>
             <p>
-              All features are fully functional and ready for testing.
-              <br />
-              <strong>Limited beta spots available — request yours today.</strong>
+              It should be: <strong>Structured. Calculated. Traceable.</strong>
             </p>
             <button className="btn-primary btn-large" onClick={handleGetStarted}>
-              Request Beta Access
+              Start processing your data →
             </button>
             <p className="cta-subtext">✅ Full features. Limited spots. No credit card required.</p>
           </div>

@@ -14,6 +14,26 @@ from config import Config
 from database import get_supabase_client
 
 # ==========================================
+# V3 (v2.1) API — single composition root
+# Mounted alongside the legacy surface during the transition.
+# If the V3 layer cannot import (e.g. a missing dependency), the legacy
+# app still starts and logs a clear warning.
+# ==========================================
+try:
+    from api.router import (
+        router as api_router,
+        carbon_tally_error_handler,
+    )
+    from core.exceptions import CarbonTallyError
+    V3_API_AVAILABLE = True
+except Exception as _v3_import_error:  # pragma: no cover - defensive fallback
+    V3_API_AVAILABLE = False
+    api_router = None
+    carbon_tally_error_handler = None
+    CarbonTallyError = Exception
+    print(f"⚠️ V3 (v2.1) API unavailable (legacy app only): {_v3_import_error!r}")
+
+# ==========================================
 # IMPORT ALL ROUTERS
 # ==========================================
 # Public/General routes
@@ -235,6 +255,13 @@ app.include_router(exports.router)
 app.include_router(org_bulk.router)
 
 # ==========================================
+# V3 (v2.1) API — mounted on the single composition root
+# ==========================================
+if V3_API_AVAILABLE:
+    app.include_router(api_router)
+    app.add_exception_handler(CarbonTallyError, carbon_tally_error_handler)
+
+# ==========================================
 # ROOT ENDPOINTS
 # ==========================================
 
@@ -336,6 +363,11 @@ async def generic_exception_handler(request, exc):
 async def shutdown_event():
     """Clean up on application shutdown."""
     print("🛑 Shutting down CarbonTally API...")
+    try:
+        from infra.supabase import close_service_pool
+        close_service_pool()
+    except Exception:
+        pass
 
 # ==========================================
 # RUN APPLICATION

@@ -1005,6 +1005,7 @@ class IssueOut(BaseModel):
     work_item_id: Optional[str] = None
     document_id: Optional[str] = None
     batch_id: Optional[str] = None
+    manual_extraction_batch_id: Optional[str] = None
     conversation_id: Optional[str] = None
     assignee_id: Optional[str] = None
     escalation_level: int = 0
@@ -1034,6 +1035,7 @@ def issue_out(issue) -> IssueOut:
         work_item_id=issue.work_item_id,
         document_id=issue.document_id,
         batch_id=issue.batch_id,
+        manual_extraction_batch_id=issue.manual_extraction_batch_id,
         conversation_id=issue.conversation_id,
         assignee_id=issue.assignee_id,
         escalation_level=issue.escalation_level,
@@ -1061,6 +1063,7 @@ class IssueCreate(BaseModel):
     work_item_id: Optional[str] = None
     document_id: Optional[str] = None
     batch_id: Optional[str] = None
+    manual_extraction_batch_id: Optional[str] = None
     conversation_id: Optional[str] = None
     assignee_id: Optional[str] = None
 

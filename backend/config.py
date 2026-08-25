@@ -21,6 +21,7 @@ class Config:
     
     # CORS Configuration
     ALLOWED_ORIGINS = [
+        "http://localhost:3000",  # ✅ local V3 frontend (CRA dev server)
         "http://localhost:3001",
         "http://localhost:3002",
         "https://carbontally.co.uk",

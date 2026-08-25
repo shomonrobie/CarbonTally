@@ -29,6 +29,15 @@ _LOG_COLUMNS = """
     metadata
 """
 
+#: Same columns as a single-line comma list (for ``l.<cols>`` qualified refs).
+_LOG_COLUMNS_LIST = (
+    "id, organization_id, asset_id, emission_factor_id, start_date, end_date, "
+    "raw_quantity, calculated_kg_co2e, created_at, unit, scope, snapshot_id, metadata"
+)
+
+#: Every log column explicitly qualified with ``l.`` (JOIN-safe).
+_LOG_COLUMNS_L = ", ".join(f"l.{c}" for c in _LOG_COLUMNS_LIST.split(", "))
+
 #: Allowed ``group_by`` dimensions mapped to SQL expressions (SQL-injection safe).
 _GROUP_EXPRESSIONS: dict[str, str] = {
     "scope": "scope",
@@ -37,6 +46,16 @@ _GROUP_EXPRESSIONS: dict[str, str] = {
     "asset": "COALESCE(asset_id::text, 'none')",
     "facility": "COALESCE(metadata->>'facility_id', 'none')",
 }
+
+#: Explicit ``calculation_snapshots`` column list for the Phase 4 read surface
+#: (immutable forensic record — read-only; never ``SELECT *``).
+_SNAPSHOT_COLUMNS = """
+    id, organization_id, activity, activity_type, quantity, quantity_unit,
+    co2e_multiplier, co2e_kg, scope, date, factor_id, factor_source, factor_set,
+    import_batch_id, reporting_year, methodology, algorithm_version, content_hash,
+    calculated_at, calculated_by, request_id, factor_kind, customer_factor_id,
+    source_item_id, source_file, source_page
+"""
 
 
 def _row_to_log(row: Any) -> EmissionLog:
@@ -204,6 +223,133 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         return {str(r["scope_key"]): int(r["count"]) for r in rows}
 
 
+    # -- Phase 4 read surfaces (emissions intelligence) ---------------------
+    async def aggregate_by_supplier(self, org_id: str, period: DateRange) -> list[dict]:
+        """Supplier breakdown for ``org_id`` over ``period`` (raw rows)."""
+        rows = await self._fetch_all(
+            """
+            SELECT COALESCE(l.supplier_id::text, 'none') AS supplier_id,
+                   COALESCE(s.name, 'Unassigned') AS supplier_name,
+                   COUNT(*) AS row_count,
+                   SUM(l.raw_quantity) AS quantity,
+                   SUM(l.calculated_kg_co2e) AS co2e_kg
+            FROM public.emissions_logs l
+            LEFT JOIN public.suppliers s ON s.id = l.supplier_id
+            WHERE l.organization_id = $1
+              AND l.start_date BETWEEN $2 AND $3
+            GROUP BY l.supplier_id, s.name
+            ORDER BY co2e_kg DESC
+            """,
+            org_id,
+            period.start_date,
+            period.end_date,
+        )
+        return [dict(r) for r in rows]
+
+    async def aggregate_by_activity(self, org_id: str, period: DateRange) -> list[dict]:
+        """Activity/category breakdown via the immutable snapshots (raw rows)."""
+        rows = await self._fetch_all(
+            """
+            SELECT cs.activity_type, COUNT(*) AS row_count,
+                   SUM(cs.quantity) AS quantity,
+                   SUM(cs.co2e_kg) AS co2e_kg
+            FROM public.calculation_snapshots cs
+            JOIN public.emissions_logs l ON l.snapshot_id = cs.id
+            WHERE cs.organization_id = $1
+              AND l.start_date BETWEEN $2 AND $3
+            GROUP BY cs.activity_type
+            ORDER BY co2e_kg DESC
+            """,
+            org_id,
+            period.start_date,
+            period.end_date,
+        )
+        return [dict(r) for r in rows]
+
+    async def count_snapshots(self, org_id: str, period: DateRange) -> int:
+        """Count calculation snapshots for ``org_id`` over ``period``."""
+        row = await self._fetch_one(
+            f"SELECT COUNT(*) AS n FROM public.calculation_snapshots "
+            "WHERE organization_id = $1 AND date BETWEEN $2 AND $3",
+            org_id,
+            period.start_date,
+            period.end_date,
+        )
+        return int(row["n"]) if row is not None else 0
+
+    async def list_snapshots(
+        self,
+        org_id: str,
+        period: DateRange,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Calculation history rows for ``org_id`` over ``period`` (newest first)."""
+        rows = await self._fetch_all(
+            f"SELECT {_SNAPSHOT_COLUMNS} FROM public.calculation_snapshots "
+            "WHERE organization_id = $1 AND date BETWEEN $2 AND $3 "
+            "ORDER BY calculated_at DESC "
+            "LIMIT $4 OFFSET $5",
+            org_id,
+            period.start_date,
+            period.end_date,
+            int(limit),
+            int(offset),
+        )
+        return [dict(r) for r in rows]
+
+    async def list_for_file(self, file_id: str) -> list[dict]:
+        """D33 — every emission derived from one source document.
+
+        Chain: emissions_logs.snapshot_id -> calculation_snapshots.source_item_id
+        -> manual_extraction_items.file_id -> organization_files.id.
+        """
+        rows = await self._fetch_all(
+            f"""
+            SELECT {_LOG_COLUMNS_L}, s.source_file, s.source_page
+              FROM public.emissions_logs l
+              JOIN public.calculation_snapshots s ON s.id = l.snapshot_id
+              JOIN public.manual_extraction_items i ON i.id = s.source_item_id
+             WHERE i.file_id = $1
+             ORDER BY l.created_at
+            """,
+            file_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def get_snapshot(self, snapshot_id: str) -> Optional[dict]:
+        """One immutable calculation-snapshot row (raw dict), or ``None``."""
+        row = await self._fetch_one(
+            f"SELECT {_SNAPSHOT_COLUMNS} FROM public.calculation_snapshots "
+            "WHERE id = $1",
+            snapshot_id,
+        )
+        return dict(row) if row is not None else None
+
+    async def snapshot_count_for_factor(self, factor_id: str) -> int:
+        """Number of calculations that used ``factor_id`` (provenance/usage)."""
+        row = await self._fetch_one(
+            "SELECT COUNT(*) AS n FROM public.calculation_snapshots "
+            "WHERE factor_id = $1",
+            factor_id,
+        )
+        return int(row["n"]) if row is not None else 0
+
+    async def factor_usage_span(self, factor_id: str) -> Optional[dict]:
+        """First/last ``calculated_at`` for ``factor_id`` (provenance/usage)."""
+        row = await self._fetch_one(
+            "SELECT MIN(calculated_at) AS first_calculated_at, "
+            "       MAX(calculated_at) AS last_calculated_at "
+            "FROM public.calculation_snapshots WHERE factor_id = $1",
+            factor_id,
+        )
+        if row is None:
+            return None
+        return {
+            "first_calculated_at": row["first_calculated_at"],
+            "last_calculated_at": row["last_calculated_at"],
+        }
+
     async def get(self, id: str) -> Optional[EmissionLog]:
         """Return the single log with ``id``, or ``None``."""
         row = await self._fetch_one(
@@ -282,9 +428,10 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 quantity_unit, co2e_multiplier, co2e_kg, scope, date,
                 factor_id, factor_source, factor_set, import_batch_id,
                 reporting_year, methodology, algorithm_version, content_hash,
-                calculated_by, request_id, factor_kind, customer_factor_id
+                calculated_by, request_id, factor_kind, customer_factor_id,
+                source_item_id, source_file, source_page
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                      $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
             RETURNING id
             """,
             snapshot.id,
@@ -309,6 +456,9 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             snapshot.match_request_id,
             factor_kind if factor_kind is not None else snapshot.factor_kind,
             customer_factor_id if customer_factor_id is not None else snapshot.customer_factor_id,
+            snapshot.source_item_id,
+            snapshot.source_file,
+            snapshot.source_page,
         )
         if row is None:
             raise RuntimeError("calculation snapshot insert returned no row")

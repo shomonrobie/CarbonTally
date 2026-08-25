@@ -128,7 +128,7 @@ export default function AppHeader({ showAuthButtons = true, isBetaMode = true })
           <nav className={`landing-nav ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
             <ul className="nav-links">
               <li><a href="/#features" onClick={() => setIsMobileMenuOpen(false)}>Features</a></li>
-              <li><a href="/#pricing" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a></li>
+              <li><a href="/PricingPage" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a></li>
               <li><Link to="/about" onClick={() => setIsMobileMenuOpen(false)}>About</Link></li>
               <li><Link to="/carbon-reduction-plan" onClick={() => setIsMobileMenuOpen(false)}>Carbon Plan</Link></li>
             </ul>
