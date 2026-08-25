@@ -154,6 +154,8 @@ class ReportsStore(Protocol):
         content: Optional[dict[str, Any]] = None,
     ) -> GeneratedReport: ...
 
+    async def get(self, id: str) -> Optional[GeneratedReport]: ...
+
 
 class OrgSource(Protocol):
     """The organisations surface the engine reads (``OrganizationsRepository``)."""
@@ -247,8 +249,16 @@ class ReportGenerationEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    async def generate(self, request: ReportRequest) -> ReportGenerationResult:
+    async def generate(
+        self, request: ReportRequest, report_id: Optional[str] = None
+    ) -> ReportGenerationResult:
         """Build, persist and publish a structured report for ``request``.
+
+        When ``report_id`` is provided the generation completes that existing
+        queue row (created by the caller — the V3 reports surface's queued
+        lifecycle) instead of creating a new one. The default (``None``)
+        preserves the original behaviour: a fresh ``pending`` row is created
+        and completed within the same call.
 
         Raises:
             ValidationFailedError: When strict validation is configured and
@@ -273,12 +283,19 @@ class ReportGenerationEngine:
 
         rendered = content.render()
         content_dict = content.to_dict()
-        report = await self._reports.create_generation_request(
-            request.organization_id,
-            request.report_type,
-            request.reporting_year,
-            request.template_id,
-        )
+        if report_id is not None:
+            report = await self._reports.get(report_id)
+            if report is None:
+                raise ReportGenerationFailedError(
+                    f"report request {report_id!r} does not exist"
+                )
+        else:
+            report = await self._reports.create_generation_request(
+                request.organization_id,
+                request.report_type,
+                request.reporting_year,
+                request.template_id,
+            )
         completed = await self._reports.complete_generation(
             report.id,
             storage_url="",

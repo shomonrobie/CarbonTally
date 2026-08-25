@@ -19,8 +19,9 @@ from domain.issue import Issue
 _ISSUE_COLUMNS = """
     id, issue_type, severity, priority, status, title, description,
     organization_id, entity_id, work_item_id, document_id, batch_id,
-    conversation_id, assignee_id, escalation_level, sla_deadline,
-    sla_breached, reopened_at, created_at, updated_at, created_by, updated_by
+    manual_extraction_batch_id, conversation_id, assignee_id, escalation_level,
+    sla_deadline, sla_breached, reopened_at, created_at, updated_at,
+    created_by, updated_by
 """
 
 
@@ -39,6 +40,11 @@ def _row_to_issue(row: Any) -> Issue:
         work_item_id=str(r["work_item_id"]) if r.get("work_item_id") else None,
         document_id=str(r["document_id"]) if r.get("document_id") else None,
         batch_id=str(r["batch_id"]) if r.get("batch_id") else None,
+        manual_extraction_batch_id=(
+            str(r["manual_extraction_batch_id"])
+            if r.get("manual_extraction_batch_id")
+            else None
+        ),
         conversation_id=str(r["conversation_id"]) if r.get("conversation_id") else None,
         assignee_id=str(r["assignee_id"]) if r.get("assignee_id") else None,
         escalation_level=int(r["escalation_level"]) if r.get("escalation_level") is not None else 0,
@@ -62,16 +68,32 @@ class IssuesRepository(AbstractRepository[Issue]):
         )
         return _row_to_issue(row) if row is not None else None
 
-    async def list_for_org(self, org_id: str) -> list[Issue]:
+    async def list_for_org(
+        self, org_id: str, limit: int = 100, offset: int = 0
+    ) -> list[Issue]:
         """Return customer-facing issues for ``org_id`` (``entity_id IS NULL`` —
-        entity-scoped issues are never customer-visible, V3M-5 storey)."""
+        entity-scoped issues are never customer-visible, V3M-5 storey).
+
+        ``limit``/``offset`` bound the page (the API layer clamps ``limit`` to
+        1..500); ordering is always ``created_at DESC, id`` for stable pagination.
+        """
         rows = await self._fetch_all(
             f"SELECT {_ISSUE_COLUMNS} FROM public.issues "
             "WHERE organization_id = $1 AND entity_id IS NULL "
-            "ORDER BY created_at DESC, id",
+            "ORDER BY created_at DESC, id "
+            f"LIMIT {int(limit)} OFFSET {int(offset)}",
             org_id,
         )
         return [_row_to_issue(r) for r in rows]
+
+    async def count_for_org(self, org_id: str) -> int:
+        """Total customer-facing issues for ``org_id`` (pagination totals)."""
+        row = await self._fetch_one(
+            "SELECT COUNT(*) FROM public.issues "
+            "WHERE organization_id = $1 AND entity_id IS NULL",
+            org_id,
+        )
+        return int(row[0]) if row is not None else 0
 
     async def list_for_entity(self, entity_id: str) -> list[Issue]:
         """Return issues scoped to one processing entity (internal surface)."""
@@ -99,6 +121,24 @@ class IssuesRepository(AbstractRepository[Issue]):
             )
         return [_row_to_issue(r) for r in rows]
 
+    async def list_for_work_item(self, work_item_id: str) -> list[Issue]:
+        """Return every issue linked to a processing work item (pipeline order)."""
+        rows = await self._fetch_all(
+            f"SELECT {_ISSUE_COLUMNS} FROM public.issues "
+            "WHERE work_item_id = $1 ORDER BY created_at DESC, id",
+            work_item_id,
+        )
+        return [_row_to_issue(r) for r in rows]
+
+    async def list_for_batch(self, batch_id: str) -> list[Issue]:
+        """Return every issue linked to a processing batch."""
+        rows = await self._fetch_all(
+            f"SELECT {_ISSUE_COLUMNS} FROM public.issues "
+            "WHERE batch_id = $1 ORDER BY created_at DESC, id",
+            batch_id,
+        )
+        return [_row_to_issue(r) for r in rows]
+
     async def save(self, entity: Issue) -> Issue:
         """Insert or update an issue (status/assignee/priority/severity etc.)."""
         now = datetime.now(timezone.utc)
@@ -107,11 +147,11 @@ class IssuesRepository(AbstractRepository[Issue]):
             INSERT INTO public.issues (
                 id, issue_type, severity, priority, status, title, description,
                 organization_id, entity_id, work_item_id, document_id, batch_id,
-                conversation_id, assignee_id, escalation_level, sla_deadline,
-                sla_breached, reopened_at, created_at, updated_at,
-                created_by, updated_by
+                manual_extraction_batch_id, conversation_id, assignee_id,
+                escalation_level, sla_deadline, sla_breached, reopened_at,
+                created_at, updated_at, created_by, updated_by
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                      $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             ON CONFLICT (id)
             DO UPDATE SET
                 issue_type = EXCLUDED.issue_type,
@@ -141,6 +181,7 @@ class IssuesRepository(AbstractRepository[Issue]):
             entity.work_item_id,
             entity.document_id,
             entity.batch_id,
+            entity.manual_extraction_batch_id,
             entity.conversation_id,
             entity.assignee_id,
             entity.escalation_level,

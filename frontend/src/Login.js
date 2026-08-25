@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { resolvePostLoginPath } from './v3/api';
 import './css/Login.css';
 
 function Login() {
@@ -31,7 +32,8 @@ function Login() {
         
         if (session) {
           console.log('✅ User already logged in:', session.user.email);
-          navigate('/dashboard', { replace: true });
+          // D29/F5 — land on the actor's server-authoritative workspace.
+          resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
           return;
         }
 
@@ -62,7 +64,8 @@ function Login() {
           
           if (newSession) {
             console.log('✅ OAuth callback successful! User:', newSession.user.email);
-            navigate('/dashboard', { replace: true });
+            // D29/F5 — land on the actor's server-authoritative workspace.
+            resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
           } else {
             console.log('⏳ Session not ready yet, waiting for auth state change...');
           }
@@ -81,7 +84,8 @@ function Login() {
         
         if (event === 'SIGNED_IN' && session) {
           console.log('✅ User signed in:', session.user.email);
-          navigate('/dashboard', { replace: true });
+          // D29/F5 — land on the actor's server-authoritative workspace.
+          resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
         } else if (event === 'SIGNED_OUT') {
           console.log('👋 User signed out');
         }
@@ -134,7 +138,9 @@ function Login() {
         });
 
         if (error) throw error;
-        navigate('/dashboard');
+        // D29/F5 — land on the actor's server-authoritative workspace
+        // (org member -> /home, staff -> /ops, consultant -> /consultant).
+        navigate(await resolvePostLoginPath());
       }
     } catch (err) {
       console.error("FULL ERROR OBJECT:", err);
@@ -158,8 +164,13 @@ const handleGoogleSignIn = async () => {
   setError('');
   
   try {
-    // Use exact production URL
-    const redirectUrl = 'https://carbontally.co.uk/dashboard';
+    // Environment-driven redirect: defaults to the app's own origin + the V3
+    // auth callback so every OAuth session resolves through the
+    // server-authoritative post-login path (D29/D35) — never the legacy
+    // /dashboard. Override with REACT_APP_OAUTH_REDIRECT_URL when needed.
+    const redirectUrl =
+      process.env.REACT_APP_OAUTH_REDIRECT_URL ||
+      `${window.location.origin}/auth/callback`;
     
     console.log('📍 Using Client ID:', process.env.REACT_APP_GOOGLE_CLIENT_ID || 'Not set');
     console.log('📍 Redirect URL:', redirectUrl);

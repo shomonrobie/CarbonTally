@@ -19,6 +19,7 @@ class Organization:
     country: str
     is_active: bool
     created_at: datetime
+    billing_mode: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

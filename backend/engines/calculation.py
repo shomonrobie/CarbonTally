@@ -118,6 +118,7 @@ class CalculationRequest:
     methodology: str = CalculationMethodology.DIRECT_MULTIPLY.value
     source_file: Optional[str] = None
     source_page: Optional[int] = None
+    source_item_id: Optional[str] = None
     log_id: Optional[str] = None
     asset_id: Optional[str] = None
     facility_id: Optional[str] = None
@@ -402,6 +403,7 @@ class CalculationEngine:
             customer_factor_id=request.customer_factor_id,
             source_file=request.source_file,
             source_page=request.source_page,
+            source_item_id=request.source_item_id,
         )
         return dataclasses.replace(
             snapshot, content_hash=snapshot.build_content_hash()

@@ -8,7 +8,24 @@ from __future__ import annotations
 
 import pytest
 
+def test_notification_domain_matches_real_schema(client):
+    """D25 regression guard — the notifications repository was broken against
+    the real ``notifications`` schema (referenced a non-existent ``user_id``
+    column). The domain model must expose the schema's per-recipient shape."""
+    from domain.operations import Notification
+    import dataclasses
+
+    fields = {f.name for f in dataclasses.fields(Notification)}
+    assert "recipient_type" in fields
+    assert "recipient_id" in fields
+    assert "user_id" not in fields
+    n = Notification(id="n1", recipient_id="user-1")
+    assert n.recipient_type == "user"
+    assert n.recipient_id == "user-1"
+
+
 from tests.unit.api.fakes import member_user
+from tests.unit.api.route_paths import flatten_router_paths
 
 EXPECTED_PATHS = {
     "/api/v2/health",
@@ -33,7 +50,7 @@ EXPECTED_PATHS = {
 
 def test_router_registration(app):
     """The single router exposes the full Phase 10 surface, no double prefix."""
-    paths = {route.path for route in app.routes}
+    paths = flatten_router_paths(app)
     missing = EXPECTED_PATHS - paths
     assert not missing, f"missing routes: {sorted(missing)}"
     assert not any("/api/v2/api/v2" in p for p in paths), "double prefix detected"

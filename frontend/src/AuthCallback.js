@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import { resolvePostLoginPath } from './v3/api';
 import toast from 'react-hot-toast';
 
 function AuthCallback() {
@@ -30,7 +31,8 @@ function AuthCallback() {
           console.log('✅ OAuth callback successful!');
           console.log('👤 User:', session.user.email);
           toast.success(`Welcome ${session.user.email || 'to CarbonTally'}!`);
-          navigate('/dashboard', { replace: true });
+          // D29/F5 — land on the actor's server-authoritative workspace.
+          navigate(await resolvePostLoginPath(), { replace: true });
         } else {
           console.log('⏳ No session found, waiting...');
           // Wait and retry
@@ -40,7 +42,7 @@ function AuthCallback() {
           
           if (retrySession) {
             console.log('✅ Retry successful!');
-            navigate('/dashboard', { replace: true });
+            navigate(await resolvePostLoginPath(), { replace: true });
           } else {
             console.error('❌ No session after retry');
             setError('Authentication failed - no session');

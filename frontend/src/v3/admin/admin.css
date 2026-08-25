@@ -1,0 +1,202 @@
+/* frontend/src/v3/admin/admin.css — CarbonTally V3 Customer Administration */
+
+.v3-admin-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #1a202c;
+}
+
+.v3-admin-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.v3-admin-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.v3-admin-header .subtitle {
+  margin: 4px 0 0;
+  color: #718096;
+  font-size: 14px;
+}
+
+.v3-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.v3-tab {
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.v3-tab:hover { color: #1a202c; }
+
+.v3-tab.active {
+  color: #2f855a;
+  border-bottom-color: #2f855a;
+}
+
+.v3-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.v3-form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #4a5568;
+}
+
+.v3-form-group input,
+.v3-form-group select,
+.v3-form-group textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.v3-form-group input:focus,
+.v3-form-group select:focus,
+.v3-form-group textarea:focus {
+  outline: none;
+  border-color: #2f855a;
+  box-shadow: 0 0 0 3px rgba(47, 133, 90, 0.12);
+}
+
+.v3-form-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.v3-form-check input {
+  width: auto;
+}
+
+.v3-admin-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.v3-admin-card h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.v3-admin-card h3 {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.v3-admin-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.v3-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.v3-badge.active { background: #c6f6d5; color: #22543d; }
+.v3-badge.inactive { background: #fed7d7; color: #9b2c2c; }
+.v3-badge.pending { background: #feebc8; color: #c05621; }
+.v3-badge.revoked { background: #e2e8f0; color: #4a5568; }
+
+.v3-role-select {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.v3-note {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #ebf8ff;
+  color: #2b6cb0;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.v3-note.warn {
+  background: #fffaf0;
+  color: #c05621;
+}
+
+.v3-actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.v3-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.v3-row:last-child { border-bottom: none; }
+
+.v3-row .primary {
+  font-weight: 600;
+}
+
+.v3-row .secondary {
+  color: #718096;
+  font-size: 13px;
+}
+
+.v3-search-input {
+  padding: 7px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.v3-confirm-modal .v3-modal h2 { margin-bottom: 8px; }

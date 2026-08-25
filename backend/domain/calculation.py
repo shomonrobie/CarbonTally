@@ -57,6 +57,7 @@ class CalculationSnapshot:
     customer_factor_id: Optional[str] = None
     source_file: Optional[str] = None
     source_page: Optional[int] = None
+    source_item_id: Optional[str] = None
 
     def _canonical(self) -> str:
         """Canonical serialisation of every input that affects the result."""

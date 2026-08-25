@@ -44,10 +44,40 @@ from data.emissions_logs import EmissionsLogsRepository
 from data.events import EventsRepository
 from data.factor_aliases import FactorAliasesRepository
 from data.imports import ImportsRepository
+from data.invitations import InvitationsRepository
 from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
 from data.processing_entities import ProcessingEntitiesRepository
 from data.reports import ReportsRepository
+from data.report_versions import ReportVersionsRepository
+from data.exports import ExportsRepository
+from data.notifications import NotificationsRepository
+from data.organization_files import OrganizationFilesRepository
+from data.queue_settings import QueueSettingsRepository
+from data.review_queue import ReviewQueueRepository
+from data.roles import RolesRepository
+from data.tenant import TenantRepository
+from data.upload_batches import UploadBatchesRepository
+from data.verifications import VerificationsRepository
+from data.consultants import ConsultantsRepository
+from data.billing import (
+    BillingCommercialConfigRepository,
+    BillingCreditLedgerRepository,
+    BillingOrdersRepository,
+    BillingPlansRepository,
+    IdempotencyRepository,
+    PaymentRecordsRepository,
+    StorageUsageRepository,
+    SubscriptionsRepository,
+    UsageTrackingRepository,
+)
+from data.discovery import DiscoveryRepository
+from data.messaging import MessagingRepository
+from data.whitelabel import WhiteLabelRepository
+from data.manual_extraction import ManualExtractionRepository
+from data.staff import StaffRepository
+from data.suppliers import SuppliersRepository
+from data.reporting import ReportingRepository
 from domain.matching import MatchingPipelineConfig
 from engines.benchmarking import BenchmarkingEngine
 from engines.calculation import CalculationEngine
@@ -114,19 +144,37 @@ async def get_audit_context(
 
 
 def ensure_org_access(current_user: AuthUser, organization_id: str) -> None:
-    """Enforce organisation isolation on business endpoints.
+    """Enforce organisation isolation on business endpoints (scope-aware, D20).
 
-    An organisation member may only act on their own organisation; staff/admin
-    users (no bound organisation) may act on any organisation. This mirrors the
-    existing ``organization_members`` ownership model without touching RLS.
+    * CarbonTally INTERNAL staff (``entity_id IS NULL``) may act on any
+      organisation (operational access — preserved).
+    * Processing Entity staff (``entity_id IS NOT NULL``) NEVER receive
+      customer-organisation access (work-scoped only).
+    * Organisation members may only act on their own organisation.
+    * Any other user (no org membership, not internal staff) is denied.
     """
     if not organization_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="organization_id is required",
         )
+    # D20: Processing Entity staff must not gain Customer Organisation access
+    # simply because they are staff.
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Processing Entity staff cannot access customer organisations",
+        )
+    # CarbonTally internal staff keep the operational any-org bypass.
+    if current_user.is_internal_staff:
+        return
     bound_org = getattr(current_user, "organization_id", None)
-    if bound_org and bound_org != organization_id:
+    if not bound_org:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization access denied",
+        )
+    if bound_org != organization_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Organization access denied",
@@ -146,13 +194,41 @@ class RepositoryBundle:
     logs: EmissionsLogsRepository
     organizations: OrganizationsRepository
     imports: ImportsRepository
+    invitations: InvitationsRepository
     reports: ReportsRepository
+    report_versions: ReportVersionsRepository
     audit: AuditRepository
     events: EventsRepository
     aliases: FactorAliasesRepository
     customer_factors: CustomerFactorsRepository
     entities: ProcessingEntitiesRepository
     issues: IssuesRepository
+    tenant: TenantRepository
+    files: OrganizationFilesRepository
+    batches: UploadBatchesRepository
+    review_queue: ReviewQueueRepository
+    queue_settings: QueueSettingsRepository
+    roles: RolesRepository
+    verifications: VerificationsRepository
+    notifications: NotificationsRepository
+    exports: ExportsRepository
+    consultants: ConsultantsRepository
+    discovery: DiscoveryRepository
+    messaging: MessagingRepository
+    whitelabel: WhiteLabelRepository
+    manual_extraction: ManualExtractionRepository
+    suppliers: SuppliersRepository
+    staff: StaffRepository
+    reporting: ReportingRepository
+    billing_plans: BillingPlansRepository
+    billing_config: BillingCommercialConfigRepository
+    billing_ledger: BillingCreditLedgerRepository
+    billing_subscriptions: SubscriptionsRepository
+    billing_orders: BillingOrdersRepository
+    billing_storage: StorageUsageRepository
+    billing_payments: PaymentRecordsRepository
+    billing_idempotency: IdempotencyRepository
+    billing_usage: UsageTrackingRepository
 
 
 async def get_pool():
@@ -168,13 +244,41 @@ async def get_repositories() -> RepositoryBundle:
         logs=EmissionsLogsRepository(pool),
         organizations=OrganizationsRepository(pool),
         imports=ImportsRepository(pool),
+        invitations=InvitationsRepository(pool),
         reports=ReportsRepository(pool),
+        report_versions=ReportVersionsRepository(pool),
         audit=AuditRepository(pool),
         events=EventsRepository(pool),
         aliases=FactorAliasesRepository(pool),
         customer_factors=CustomerFactorsRepository(pool),
         entities=ProcessingEntitiesRepository(pool),
         issues=IssuesRepository(pool),
+        tenant=TenantRepository(pool),
+        files=OrganizationFilesRepository(pool),
+        batches=UploadBatchesRepository(pool),
+        review_queue=ReviewQueueRepository(pool),
+        queue_settings=QueueSettingsRepository(pool),
+        roles=RolesRepository(pool),
+        verifications=VerificationsRepository(pool),
+        notifications=NotificationsRepository(pool),
+        exports=ExportsRepository(pool),
+        consultants=ConsultantsRepository(pool),
+        discovery=DiscoveryRepository(pool),
+        messaging=MessagingRepository(pool),
+        whitelabel=WhiteLabelRepository(pool),
+        manual_extraction=ManualExtractionRepository(pool),
+        suppliers=SuppliersRepository(pool),
+        staff=StaffRepository(pool),
+        reporting=ReportingRepository(pool),
+        billing_plans=BillingPlansRepository(pool),
+        billing_config=BillingCommercialConfigRepository(pool),
+        billing_ledger=BillingCreditLedgerRepository(pool),
+        billing_subscriptions=SubscriptionsRepository(pool),
+        billing_orders=BillingOrdersRepository(pool),
+        billing_storage=StorageUsageRepository(pool),
+        billing_payments=PaymentRecordsRepository(pool),
+        billing_idempotency=IdempotencyRepository(pool),
+        billing_usage=UsageTrackingRepository(pool),
     )
 
 

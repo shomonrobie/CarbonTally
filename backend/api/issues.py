@@ -52,14 +52,20 @@ router = APIRouter(prefix="/api/v3/issues", tags=["V3 — Issues"])
 @router.get("", response_model=IssueListOut)
 async def list_issues(
     organization_id: str,
+    limit: int = Query(100, ge=1, le=500, description="Page size (1..500)"),
+    offset: int = Query(0, ge=0, description="Page offset"),
     current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> IssueListOut:
     """List customer-facing issues for an organisation (entity-scoped rows are
-    never included — V3M-5 storey)."""
+    never included — V3M-5 storey). Bounded pagination (D26 scale hardening):
+    stable ``created_at DESC, id`` ordering; ``total`` is the full count."""
     ensure_org_access(current_user, organization_id)
-    issues = await repos.issues.list_for_org(organization_id)
-    return IssueListOut(total=len(issues), issues=[issue_out(i) for i in issues])
+    issues = await repos.issues.list_for_org(organization_id, limit=limit, offset=offset)
+    return IssueListOut(
+        total=await repos.issues.count_for_org(organization_id),
+        issues=[issue_out(i) for i in issues],
+    )
 
 
 @router.get("/{issue_id}", response_model=IssueOut)

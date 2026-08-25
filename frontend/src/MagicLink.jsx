@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import { resolvePostLoginPath } from './v3/api';
 import toast from 'react-hot-toast';
 
 export default function MagicLink() {
@@ -59,7 +60,8 @@ export default function MagicLink() {
           if (data.session) {
             await supabase.auth.setSession(data.session);
             toast.success('🎉 Welcome to CarbonTally Beta! Your account has been created.');
-            navigate('/dashboard');
+            // D29/F5 — land on the actor's server-authoritative workspace.
+            navigate(await resolvePostLoginPath());
             return;
           }
 

@@ -119,13 +119,22 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         country: Optional[str] = None,
         provider: Optional[str] = None,
         limit: int = 20,
+        unit_substring: bool = False,
     ) -> list[EmissionFactor]:
-        """Keyword/activity search with optional filters (case-insensitive)."""
+        """Keyword/activity search with optional filters (case-insensitive).
+
+        ``unit_substring`` (D23): match the unit with a substring instead of an
+        exact value so a human operator typing "kWh" also finds "kWh (Gross CV)"
+        candidates in the extraction mapping picker.
+        """
         clauses = ["ef.activity_type ILIKE '%' || $1 || '%'"]
         params: list[object] = [activity]
         if unit is not None:
             params.append(unit)
-            clauses.append(f"ef.unit = ${len(params)}")
+            if unit_substring:
+                clauses.append(f"ef.unit ILIKE '%' || ${len(params)} || '%'")
+            else:
+                clauses.append(f"ef.unit = ${len(params)}")
         if year is not None:
             params.append(year)
             clauses.append(f"ef.reporting_year = ${len(params)}")

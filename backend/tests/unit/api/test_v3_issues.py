@@ -61,6 +61,57 @@ class TestV3Issues:
         assert body["total"] == 1
         assert body["issues"][0]["id"] == "issue-1"
 
+    def test_list_issues_paginated_bounds_and_total(
+        self, world: InMemoryWorld, client, user_provider
+    ) -> None:
+        """D26 scale hardening — customer issue list is bounded with an
+        accurate full ``total`` (stable ordering ``created_at DESC, id``)."""
+        for i in range(5):
+            _await(world.issues.save(_seed_issue(issue_id=f"issue-{i}")))
+        user_provider.set_user(member_user("org-a", "member-1", "m@test"))
+
+        # Page 1: 2 rows, total reflects the full org count.
+        resp = client.get(
+            "/api/v3/issues",
+            params={"organization_id": "org-a", "limit": 2, "offset": 0},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 5
+        assert len(body["issues"]) == 2
+
+        # Page 3: offset past the end -> empty page, total unchanged.
+        resp = client.get(
+            "/api/v3/issues",
+            params={"organization_id": "org-a", "limit": 2, "offset": 4},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 5
+        assert len(body["issues"]) == 1
+
+    def test_list_issues_pagination_params_validated(
+        self, world: InMemoryWorld, client, user_provider
+    ) -> None:
+        """Out-of-range limit/offset are rejected by the API (1..500 / >=0)."""
+        _await(world.issues.save(_seed_issue()))
+        user_provider.set_user(member_user("org-a", "member-1", "m@test"))
+        resp = client.get(
+            "/api/v3/issues",
+            params={"organization_id": "org-a", "limit": 9999},
+        )
+        assert resp.status_code == 422
+        resp = client.get(
+            "/api/v3/issues",
+            params={"organization_id": "org-a", "limit": 0},
+        )
+        assert resp.status_code == 422
+        resp = client.get(
+            "/api/v3/issues",
+            params={"organization_id": "org-a", "offset": -1},
+        )
+        assert resp.status_code == 422
+
     def test_update_status_transition(self, world: InMemoryWorld, client, user_provider) -> None:
         _await(world.issues.save(_seed_issue()))
         user_provider.set_user(member_user("org-a", "member-1", "m@test"))

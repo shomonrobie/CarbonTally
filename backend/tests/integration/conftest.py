@@ -1,15 +1,22 @@
 """Shared fixtures for the repository integration suite.
 
-The tests run against the **local Supabase PostgreSQL database**
-(``postgresql://postgres:postgres@127.0.0.1:54326/postgres``). For the current
-V3 verification phase this local database is intentionally the integration-test
-database: it is disposable and rebuildable (``supabase db reset`` replays the
-migration chain; the factor baseline is re-imported), and the remote Supabase
-project is never touched.
+**D31 fix (test-infrastructure footgun):** the integration suite previously
+defaulted ``INTEGRATION_DATABASE_URL`` to the LOCAL SUPABASE MAIN database
+(``...:54326/postgres``) and TRUNCATEd ~22 tables there — which wiped the
+local demo data (see D30 report §12). The suite now defaults to a DEDICATED
+test database (``carbontally_test``) and refuses to run against the main
+application database:
 
-The session fixture truncates the tables under test (with CASCADE) inside the
-local database so every assertion is deterministic. Override
-``INTEGRATION_DATABASE_URL`` to target any other database (e.g. a CI sandbox).
+- if the connected database is the main app database (``postgres`` /
+  ``supabase_db_carbon_ledger``), the session fixture RAISES and no truncation
+  happens;
+- if the dedicated ``carbontally_test`` database is unreachable, the session
+  fixture SKIPS the suite (fail-safe — integration tests never silently fall
+  back to the application database).
+
+Create the dedicated test database with:
+``createdb -h 127.0.0.1 -p 54326 -U postgres carbontally_test`` and restore the
+schema (``pg_dump --schema-only`` from the main DB) so the RLS policies exist.
 """
 from __future__ import annotations
 
@@ -27,17 +34,21 @@ from domain.organization import Organization
 # Test database configuration
 # ---------------------------------------------------------------------------
 
+#: DEDICATED integration-test database (never the main app database).
 TEST_DB_URL = os.getenv(
     "INTEGRATION_DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:54326/postgres",
+    "postgresql://postgres:postgres@127.0.0.1:54426/carbontally_test",
 )
+
+#: Database names that are OFF-LIMITS — the suite must never TRUNCATE them.
+FORBIDDEN_MAIN_DB_NAMES = ("postgres", "supabase_db_carbon_ledger")
 
 #: Environment used by infra/supabase.py inside the test process.
 #: ``DATABASE_URL`` is *forced* (not ``setdefault``) so a stale ``DATABASE_URL``
 #: exported in the outer shell can never redirect repository pools at the
 #: authoritative database; the test process always talks to the test database.
 os.environ["DATABASE_URL"] = TEST_DB_URL
-os.environ.setdefault("SUPABASE_URL", "http://127.0.0.1:54325")
+os.environ.setdefault("SUPABASE_URL", "http://127.0.0.1:54425")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 
 #: Service-role placeholder referenced by repository NOT NULL actor/user
@@ -52,6 +63,12 @@ _TRUNCATE_TABLES = [
     "domain_events",
     "audit_trail",
     "customer_documents",
+    "consultant_tasks",
+    "consultant_clients",
+    "consultant_firm_members",
+    "consultant_profiles",
+    "user_invitations",
+    "report_versions",
     "report_generation_queue",
     "import_batches",
     "emission_factors",
@@ -68,9 +85,35 @@ _TRUNCATE_TABLES = [
 
 @pytest.fixture(scope="session")
 async def pool() -> asyncpg.Pool:
-    """A connection pool to the test database, reset before the suite runs."""
-    p = await asyncpg.create_pool(dsn=TEST_DB_URL, min_size=1, max_size=5)
+    """A connection pool to the DEDICATED test database, reset before the suite.
+
+    Fail-safe (D31): the suite never runs against the main application database.
+    - If the database cannot be reached -> pytest.skip (unavailable).
+    - If it resolves to a FORBIDDEN main app database -> RuntimeError, no TRUNCATE.
+    - If the schema is absent -> pytest.skip (schema not provisioned).
+    """
     try:
+        p = await asyncpg.create_pool(dsn=TEST_DB_URL, min_size=1, max_size=5)
+    except Exception as exc:  # noqa: BLE001 - connection refused / unknown db
+        pytest.skip(f"dedicated integration database unavailable: {exc}")
+    try:
+        async with p.acquire() as conn:
+            db_name = await conn.fetchval("SELECT current_database()")
+            if db_name in FORBIDDEN_MAIN_DB_NAMES:
+                raise RuntimeError(
+                    f"refusing to run integration suite against the main application "
+                    f"database ({db_name!r}). Point INTEGRATION_DATABASE_URL at the "
+                    f"dedicated test database (carbontally_test)."
+                )
+            has_schema = await conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_name='organizations')"
+            )
+            if not has_schema:
+                pytest.skip(
+                    "dedicated integration database has no public schema; "
+                    "restore it (pg_dump --schema-only) before running the suite"
+                )
         tables = ", ".join(f"public.{t}" for t in _TRUNCATE_TABLES)
         async with p.acquire() as conn:
             await conn.execute(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")

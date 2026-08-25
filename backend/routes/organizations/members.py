@@ -74,48 +74,59 @@ async def get_organization_by_user(
     current_user: AuthUser = Depends(require_auth())
 ):
     """
-    Get organization details for a specific user.
-    
-    Returns:
-        - Single organization object with role (current implementation)
-        - In future: Can return multiple organizations for consultants
-    
-    The response format is designed to be extensible:
-    - 'mode': 'single' or 'multi' (future)
-    - 'organizations': Array of org objects with roles
+    Resolve the caller's own primary organization membership.
+
+    Security model:
+    - SELF-ONLY — an authenticated caller may only resolve their own
+      membership. Resolving another user's membership is rejected with 403 so
+      organization membership cannot be enumerated (no cross-organization
+      information disclosure).
+    - No membership (or no ACTIVE membership) → 404, never a 500.
+    - The response never bypasses authorization: callers still need RLS-gated
+      data access to act inside the returned organization.
     """
+    if str(user_id) != str(current_user.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You may only resolve your own organization membership",
+        )
     try:
         supabase = get_supabase_client()
-        
-        # Get the user's organization membership
+
+        # Get the user's ACTIVE organization membership (matches the active-
+        # membership semantics used by auth.get_current_user).
         member_result = supabase.from_('organization_members') \
             .select('organization_id, role') \
             .eq('user_id', user_id) \
+            .eq('is_active', True) \
             .maybe_single() \
             .execute()
-        
-        if not member_result.data:
+
+        # supabase-py 2.9.0 returns None (not an APIResponse) when a
+        # maybe_single query has no matching row. Both shapes mean
+        # "no active membership".
+        if member_result is None or not member_result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User is not a member of any organization"
+                detail="User is not an active member of any organization"
             )
-        
+
         org_id = member_result.data['organization_id']
         role = member_result.data['role']
-        
+
         # Get organization details
         org_result = supabase.from_('organizations') \
             .select('*') \
             .eq('id', org_id) \
             .maybe_single() \
             .execute()
-        
-        if not org_result.data:
+
+        if org_result is None or not org_result.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Organization not found"
             )
-        
+
         # ✅ Return format that can be extended for multi-org support
         return {
             "mode": "single",  # Future: "multi" for consultants
@@ -129,14 +140,15 @@ async def get_organization_by_user(
                 }
             ]
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"❌ Error fetching organization by user: {e}")
+        # Generic message — never leak internal exception details to callers.
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch organization: {str(e)}"
+            detail="Failed to resolve organization membership"
         )
     
 def validate_role(role: str) -> bool:
