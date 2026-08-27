@@ -61,6 +61,11 @@ base. No decision was reopened or contradicted.
   clarification path).
 - **N2** Locations — first-class UX concept over the Facilities representation,
   no schema redesign.
+- **N3** retention — configurable (Settings/Admin), "Not configured" when unset,
+  no invented durations, dry-run CLI, audit/evidence exclusions.
+- **AI Assistant** — the promoted public assistant is the deterministic local
+  knowledge module (no provider credentials, no network, no DB access); no
+  unauthorised AI backend was introduced.
 
 ## 4. D32 Security Remediation
 
@@ -123,6 +128,18 @@ base. No decision was reopened or contradicted.
   `ct-*` tokens (accent/info/processing blues, primary greens, neutrals,
   borders, error/warning/success, evidence palette, nav) where a token existed.
   `var(...)` fallback values and token definitions were protected.
+- **Legacy `#2563eb` removed** from all active CarbonTally styling (V3 `ops.css`
+  and the legacy active files incl. `App.css`, `App.js` chart strokes,
+  `MobileMenu.css`, `css/*`), unified on `#2b6cb0` (`--ct-color-accent`). Only
+  the obsolete `App copy.*` files still contained it; those files were removed
+  (see §11).
+- **Remaining raw values (52, justified exceptions):** distinct tints/shades
+  with no corresponding token — darker slate/blue tints (e.g. `#2d3748`,
+  `#334155`, `#475569`, `#64748b`), amber/orange tints (`#975a16`, `#c05621`,
+  `#d69e2e`), red error shades (`#c53030`, `#e53e3e`), teal/emerald tints
+  (`#0f766e`, `#115e59`, `#9ae6b4`), data-viz/status blues (`#3182ce`,
+  `#1e40af`). Each has documented semantic meaning and no existing token.
+- No second design system was introduced.
 
 ## 7. D17 Master Data
 
@@ -177,6 +194,18 @@ documented deployment concern (§16).
 - **Assistant:** the public Assistant widget is the deterministic local
   knowledge module consistent with the approved three-tier architecture (no
   provider, no credentials, no DB access).
+
+## 11. Codebase Cleanup
+
+- Removed obsolete tracked backup copies (never imported): `frontend/src/App
+  copy.css`, `App copy.js`, `LandingPage copy.jsx`,
+  `components/CarbonTallyDemo copy.jsx`, `components/FileUploadHero copy.jsx`,
+  `backend/main copy.py`, `backend/main copy 2.py`, `backend/glossary copy.py`,
+  `backend/requirements copy.txt`.
+- Added `website_candidate/` to `.gitignore` (superseded by the promotion into
+  `frontend/`; kept on disk, not committed).
+- No speculative refactors of working architecture; no dead-import surgery on
+  the preserved legacy `App.js`.
 
 ## 12. Tests
 
@@ -250,37 +279,21 @@ API/unit/RLS coverage is the substitute evidence.
   docs 299, tools 2, database 2, supabase 1, .gitignore 1) — reviewed, no
   secrets, no node_modules/build/caches/screenshots/generated artifacts.
 - Backup: `frontend_backup_pre_v3_public_20260827/` (committed).
-- Push result: ###PUSH###; remote: origin -> https://github.com/shomonrobie/CarbonTally.git; working tree after push:
-  ###TREE###.
-
-
-## 11. Codebase Cleanup
-
-- Removed obsolete tracked backup copies (never imported): `frontend/src/App
-  copy.css`, `App copy.js`, `LandingPage copy.jsx`,
-  `components/CarbonTallyDemo copy.jsx`, `components/FileUploadHero copy.jsx`,
-  `backend/main copy.py`, `backend/main copy 2.py`, `backend/glossary copy.py`,
-  `backend/requirements copy.txt`.
-- Added `website_candidate/` to `.gitignore` (superseded by the promotion into
-  `frontend/`; kept on disk, not committed).
-- No speculative refactors of working architecture; no dead-import surgery on
-  the preserved legacy `App.js`.
-
-- **Legacy `#2563eb` removed** from all active CarbonTally styling (V3 `ops.css`
-  and the legacy active files incl. `App.css`, `App.js` chart strokes,
-  `MobileMenu.css`, `css/*`), unified on `#2b6cb0` (`--ct-color-accent`). Only
-  the obsolete `App copy.*` files still contained it; those files were removed
-  (see §11).
-- **Remaining raw values (52, justified exceptions):** distinct tints/shades
-  with no corresponding token — darker slate/blue tints (e.g. `#2d3748`,
-  `#334155`, `#475569`, `#64748b`), amber/orange tints (`#975a16`, `#c05621`,
-  `#d69e2e`), red error shades (`#c53030`, `#e53e3e`), teal/emerald tints
-  (`#0f766e`, `#115e59`, `#9ae6b4`), data-viz/status blues (`#3182ce`,
-  `#1e40af`). Each has documented semantic meaning and no existing token.
-- No second design system was introduced.
-
-- **N3** retention — configurable (Settings/Admin), "Not configured" when unset,
-  no invented durations, dry-run CLI, audit/evidence exclusions.
-- **AI Assistant** — the promoted public assistant is the deterministic local
-  knowledge module (no provider credentials, no network, no DB access); no
-  unauthorised AI backend was introduced.
+- Push result: **REJECTED — remote diverged (non-fast-forward).** `git push
+  origin main` failed: "Updates were rejected because the tip of your current
+  branch is behind its remote counterpart." The remote `main` history was
+  rewritten/replaced at some point — `origin/main` contains a different commit
+  with the same message "feat(v3): commit D20-D37 commercial platform release"
+  (`d4dcca1`) built on a different parent line, and the local baseline
+  `9458067` is not in `origin/main`. Per the operating rules no force-push and
+  no unilateral rebase was performed; the local commits `077c866` (feat) and
+  `045668e` (docs) remain on local `main` intact and verified. Integration with
+  the remote history requires an explicit Product Owner decision (rebase onto
+  `origin/main` or force-push authorization).
+- Remote: origin -> https://github.com/shomonrobie/CarbonTally.git
+- Working tree after commit: the remaining uncommitted entries are unrelated
+  tool-skill directories (`.agents/skills`, `.claude/skills`, `.windsurf/`,
+  `.openhands/`) plus excluded generated artifacts (`output/`, `screenshots/`,
+  `probe_out*.txt`, `v3_schema.sql`, `backend/test_results.json`,
+  `admin-dashboard.zip`, `supabase/snippets/`, `docs/ChatGPT/`,
+  `website_candidate/`) — none part of the CarbonTally commit.
