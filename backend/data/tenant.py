@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
-from domain.operations import AssetDetail, FacilityDetail, MemberRecord
+from domain.operations import AssetDetail, FacilityDetail, MemberRecord, VehicleDetail
 
 _FACILITY_COLUMNS = (
     "id, organization_id, name, postcode, country, type, is_active, "
@@ -19,6 +19,12 @@ _FACILITY_COLUMNS = (
 _ASSET_COLUMNS = (
     "id, organization_id, facility_id, name, type, description, "
     "serial_number, is_active, created_at, metadata"
+)
+
+_VEHICLE_COLUMNS = (
+    "id, organization_id, name, registration, make, model, fuel_type, "
+    "vehicle_type, capacity, capacity_unit, is_active, created_at, "
+    "updated_at, metadata"
 )
 
 _MEMBER_COLUMNS = (
@@ -67,6 +73,26 @@ def _row_to_asset(row: Any) -> AssetDetail:
         serial_number=r.get("serial_number"),
         is_active=bool(r.get("is_active", True)),
         created_at=r.get("created_at"),
+        metadata=loads_jsonb(r.get("metadata")) or {},
+    )
+
+
+def _row_to_vehicle(row: Any) -> VehicleDetail:
+    r = dict(row)
+    return VehicleDetail(
+        id=str(r["id"]),
+        organization_id=str(r["organization_id"]),
+        name=str(r["name"]),
+        registration=r.get("registration"),
+        make=r.get("make"),
+        model=r.get("model"),
+        fuel_type=r.get("fuel_type"),
+        vehicle_type=r.get("vehicle_type"),
+        capacity=float(r["capacity"]) if r.get("capacity") is not None else None,
+        capacity_unit=r.get("capacity_unit"),
+        is_active=bool(r.get("is_active", True)),
+        created_at=r.get("created_at"),
+        updated_at=r.get("updated_at"),
         metadata=loads_jsonb(r.get("metadata")) or {},
     )
 
@@ -236,6 +262,114 @@ class TenantRepository(AbstractRepository[dict]):
         await self._execute(
             "UPDATE public.assets SET is_active = FALSE WHERE id = $1",
             asset_id,
+        )
+
+    # -- vehicles (D17) -----------------------------------------------------
+    async def list_vehicles(self, org_id: str) -> list[VehicleDetail]:
+        rows = await self._fetch_all(
+            f"SELECT {_VEHICLE_COLUMNS} FROM public.vehicles "
+            "WHERE organization_id = $1 ORDER BY name, id",
+            org_id,
+        )
+        return [_row_to_vehicle(r) for r in rows]
+
+    async def get_vehicle(self, vehicle_id: str) -> Optional[VehicleDetail]:
+        row = await self._fetch_one(
+            f"SELECT {_VEHICLE_COLUMNS} FROM public.vehicles WHERE id = $1",
+            vehicle_id,
+        )
+        return _row_to_vehicle(row) if row is not None else None
+
+    async def add_vehicle(
+        self,
+        org_id: str,
+        name: str,
+        registration: Optional[str],
+        make: Optional[str],
+        model: Optional[str],
+        fuel_type: Optional[str],
+        vehicle_type: Optional[str],
+        capacity: Optional[float],
+        capacity_unit: Optional[str],
+        metadata: dict,
+    ) -> VehicleDetail:
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.vehicles (
+                organization_id, name, registration, make, model, fuel_type,
+                vehicle_type, capacity, capacity_unit, is_active,
+                created_at, updated_at, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW(), NOW(), $10)
+            RETURNING {_VEHICLE_COLUMNS}
+            """,
+            org_id,
+            name,
+            registration,
+            make,
+            model,
+            fuel_type,
+            vehicle_type,
+            capacity,
+            capacity_unit,
+            dumps_jsonb(metadata),
+        )
+        if row is None:
+            raise RuntimeError("vehicles insert returned no row")
+        return _row_to_vehicle(row)
+
+    async def update_vehicle(
+        self,
+        vehicle_id: str,
+        name: Optional[str] = None,
+        registration: Optional[str] = None,
+        make: Optional[str] = None,
+        model: Optional[str] = None,
+        fuel_type: Optional[str] = None,
+        vehicle_type: Optional[str] = None,
+        capacity: Optional[float] = None,
+        capacity_unit: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        metadata: Optional[dict] = None,
+    ) -> Optional[VehicleDetail]:
+        sets, args = ["updated_at = NOW()"], [vehicle_id]
+
+        def add(col: str, value: Any) -> None:
+            sets.append(f"{col} = ${len(args) + 1}")
+            args.append(value)
+
+        if name is not None:
+            add("name", name)
+        if registration is not None:
+            add("registration", registration)
+        if make is not None:
+            add("make", make)
+        if model is not None:
+            add("model", model)
+        if fuel_type is not None:
+            add("fuel_type", fuel_type)
+        if vehicle_type is not None:
+            add("vehicle_type", vehicle_type)
+        if capacity is not None:
+            add("capacity", capacity)
+        if capacity_unit is not None:
+            add("capacity_unit", capacity_unit)
+        if is_active is not None:
+            add("is_active", is_active)
+        if metadata is not None:
+            add("metadata", dumps_jsonb(metadata))
+        if len(sets) == 1:
+            return await self.get_vehicle(vehicle_id)
+        row = await self._fetch_one(
+            f"UPDATE public.vehicles SET {', '.join(sets)} "
+            f"WHERE id = $1 RETURNING {_VEHICLE_COLUMNS}",
+            *args,
+        )
+        return _row_to_vehicle(row) if row is not None else None
+
+    async def remove_vehicle(self, vehicle_id: str) -> None:
+        await self._execute(
+            "UPDATE public.vehicles SET is_active = FALSE WHERE id = $1",
+            vehicle_id,
         )
 
     # AbstractRepository contract (this repository is method-driven).

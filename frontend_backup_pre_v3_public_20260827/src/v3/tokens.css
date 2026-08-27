@@ -1,0 +1,155 @@
+/* ==========================================================================
+   frontend/src/v3/tokens.css — CarbonTally V3 unified design tokens (D21).
+
+   Single source of truth for the `ct-*` design-token vocabulary shared by
+   every V3 surface (customer, consultant, Processing Entity, CarbonTally
+   staff and CarbonTally admin).
+
+   Consolidation (D21.1 / G-P0-9):
+     * the historical dual-green primary (`#2f855a` in v3.css vs `#2d6a4f` in
+       App.css) is unified on `#2f855a`; `#1b4332` is retained as the darkest
+       shade (`--ct-color-primary-dark`).
+     * the several historical blues are unified on `#2b6cb0` as the accent /
+       information colour (`--ct-color-accent`).
+   No new visual identity is introduced — these tokens codify the existing
+   CarbonTally palette, typography, spacing, radii and shadows (evidence:
+   frontend/src/v3/v3.css, frontend/src/App.css).
+   ========================================================================== */
+
+:root {
+  /* --- Colour · D21.1 --- */
+  --ct-color-primary: #2f855a;
+  --ct-color-primary-hover: #276749;
+  --ct-color-primary-dark: #1b4332;
+  --ct-color-primary-light: #52b788;
+  --ct-color-primary-soft: #f0fff4;
+  --ct-color-primary-border: #bee3d8;
+  --ct-color-accent: #2b6cb0;
+
+  --ct-color-bg: #f7fafc;
+  --ct-color-surface: #ffffff;
+  --ct-color-border: #e2e8f0;
+  --ct-color-border-strong: #cbd5e0;
+  --ct-color-border-dashed: #cbd5e0;
+
+  --ct-color-text: #1a202c;
+  --ct-color-text-secondary: #4a5568;
+  --ct-color-text-muted: #718096;
+
+  --ct-color-focus-ring: rgba(47, 133, 90, 0.15);
+  --ct-color-focus-border: #2f855a;
+
+  --ct-color-success-bg: #c6f6d5;
+  --ct-color-success-text: #22543d;
+  --ct-color-success-result: #276749;
+  --ct-color-warning-bg: #fefcbf;
+  --ct-color-warning-text: #744210;
+  --ct-color-warning-bg-soft: #fffaf0;
+  --ct-color-warning-border: #fbd38d;
+  --ct-color-error-bg: #fed7d7;
+  --ct-color-error-text: #822727;
+  --ct-color-error-bg-soft: #fff5f5;
+  --ct-color-error-border: #fc8181;
+  --ct-color-error-text-strong: #9b2c2c;
+  --ct-color-info-bg: #ebf8ff;
+  --ct-color-info-border: #90cdf4;
+  --ct-color-info-text: #2b6cb0;
+  --ct-color-processing-bg: #bee3f8;
+  --ct-color-processing-text: #2b6cb0;
+
+  /* navigation (dark rail) */
+  --ct-color-nav: #0f172a;
+  --ct-color-nav-text: #e2e8f0;
+  --ct-color-nav-link: #cbd5e0;
+  --ct-color-nav-active: rgba(255, 255, 255, 0.14);
+
+  /* evidence · D33 */
+  --ct-color-evidence-complete-bg: #e3f6e8;
+  --ct-color-evidence-complete-text: #1b7f3b;
+  --ct-color-evidence-complete-border: #b7e4c3;
+  --ct-color-evidence-partial-bg: #fdf3e3;
+  --ct-color-evidence-partial-text: #9a6b1f;
+  --ct-color-evidence-partial-border: #f0d9a8;
+  --ct-color-evidence-unavailable-bg: #f1f1f1;
+  --ct-color-evidence-unavailable-text: #666666;
+  --ct-color-evidence-unavailable-border: #dddddd;
+
+  /* disabled */
+  --ct-disabled-opacity: 0.5;
+
+  /* --- Typography · D21.2 --- */
+  --ct-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --ct-font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Courier New', monospace;
+
+  --ct-type-h1: 26px;
+  --ct-type-h2: 18px;
+  --ct-type-h3: 15px;
+  --ct-type-body: 14px;
+  --ct-type-sm: 13px;
+  --ct-type-label: 12px;
+  --ct-type-weight-normal: 400;
+  --ct-type-weight-medium: 500;
+  --ct-type-weight-semibold: 600;
+  --ct-type-weight-bold: 700;
+
+  /* --- Spacing (geometry) --- */
+  --ct-space-1: 4px;
+  --ct-space-2: 6px;
+  --ct-space-3: 8px;
+  --ct-space-4: 10px;
+  --ct-space-5: 12px;
+  --ct-space-6: 14px;
+  --ct-space-7: 16px;
+  --ct-space-8: 18px;
+  --ct-space-9: 20px;
+  --ct-space-10: 22px;
+  --ct-space-11: 24px;
+  --ct-page-gutter: 20px;
+  --ct-page-max: 1200px;
+
+  /* --- Radii --- */
+  --ct-radius-sm: 6px;
+  --ct-radius-md: 8px;
+  --ct-radius-lg: 10px;
+  --ct-radius-xl: 12px;
+  --ct-radius-full: 999px;
+
+  /* --- Shadows --- */
+  --ct-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --ct-shadow-md: 0 2px 8px rgba(47, 133, 90, 0.15);
+  --ct-shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.25);
+  --ct-focus-ring: 0 0 0 2px var(--ct-color-focus-ring);
+
+  /* --- Breakpoints · D20 --- */
+  --ct-breakpoint-tablet: 900px;
+  --ct-breakpoint-mobile: 640px;
+
+  /* --- z-index --- */
+  --ct-z-nav: 50;
+  --ct-z-drawer: 60;
+  --ct-z-modal: 70;
+  --ct-z-toast: 80;
+}
+
+/* Focus-visible is always visible and uses the shared focus ring (D21.9). */
+:focus-visible {
+  outline: 2px solid var(--ct-color-focus-border);
+  outline-offset: 2px;
+  box-shadow: var(--ct-focus-ring);
+}
+
+/* Respect users who ask for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Layout overflow guard: no horizontal overflow from the shell. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}

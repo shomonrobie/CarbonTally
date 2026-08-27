@@ -58,6 +58,26 @@ class AssetDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class VehicleDetail:
+    """A row of ``vehicles`` (D17 organisation master data)."""
+
+    id: str
+    organization_id: str
+    name: str
+    registration: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
+    fuel_type: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    capacity: Optional[float] = None
+    capacity_unit: Optional[str] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class OrganizationFile:
     """A row of ``organization_files`` (upload/document record)."""
 

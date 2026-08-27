@@ -9,9 +9,12 @@ Covers:
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from data.reporting import STAGE_BY_STATUS, completed_ratio, stage_distribution
+from domain.entity import ProcessingEntity
 from tests.unit.api.fakes import (
     consultant_user,
     entity_operator_user,
@@ -234,6 +237,9 @@ def test_qc_reporting_requires_can_review(client, world, user_provider):
 
 def test_entity_performance_own_entity_allowed(client, world, user_provider):
     _seed_staff(world, "u-ent", {"can_process": True}, entity_id="ent-x")
+    asyncio.run(
+        world.entities.save(ProcessingEntity(id="ent-x", name="Entity X", status="active"))
+    )
     world.reporting.entity_performance_result = {"items": {"total": 3}}
     user_provider.set_user(entity_operator_user("ent-x", "u-ent"))
     resp = client.get("/api/v3/ops/entities/ent-x/performance")
@@ -243,9 +249,39 @@ def test_entity_performance_own_entity_allowed(client, world, user_provider):
 
 def test_entity_performance_other_entity_denied(client, world, user_provider):
     _seed_staff(world, "u-ent", {"can_process": True}, entity_id="ent-x")
+    asyncio.run(
+        world.entities.save(ProcessingEntity(id="ent-x", name="Entity X", status="active"))
+    )
     user_provider.set_user(entity_operator_user("ent-x", "u-ent"))
     resp = client.get("/api/v3/ops/entities/ent-y/performance")
     assert resp.status_code == 403
+
+
+def test_entity_performance_suspended_entity_denied_for_entity_staff(
+    client, world, user_provider
+):
+    """F1 — entity staff must not read performance once their entity leaves active."""
+    _seed_staff(world, "u-ent", {"can_process": True}, entity_id="ent-x")
+    asyncio.run(
+        world.entities.save(ProcessingEntity(id="ent-x", name="Entity X", status="suspended"))
+    )
+    user_provider.set_user(entity_operator_user("ent-x", "u-ent"))
+    resp = client.get("/api/v3/ops/entities/ent-x/performance")
+    assert resp.status_code == 403
+
+
+def test_entity_performance_suspended_entity_allowed_for_internal_staff(
+    client, world, user_provider
+):
+    """F1 — CarbonTally internal staff keep read access for administration."""
+    _seed_staff(world, "u-int", {"can_process": True}, entity_id=None)
+    asyncio.run(
+        world.entities.save(ProcessingEntity(id="ent-x", name="Entity X", status="suspended"))
+    )
+    world.reporting.entity_performance_result = {"items": {"total": 1}}
+    user_provider.set_user(staff_user("u-int", email="int@carbontally.test"))
+    resp = client.get("/api/v3/ops/entities/ent-x/performance")
+    assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +476,9 @@ def test_qc_reporting_includes_processor_performance(client, world, user_provide
 
 def test_entity_performance_includes_sla_and_quality(client, world, user_provider):
     _seed_staff(world, "u-ent", {"can_process": True}, entity_id="ent-x")
+    asyncio.run(
+        world.entities.save(ProcessingEntity(id="ent-x", name="Entity X", status="active"))
+    )
     world.reporting.entity_performance_result = {
         "batches": {"total": 2, "by_status": {"open": 2}, "sla_breached": 1, "overdue": 1},
         "items": {"total": 3, "by_stage": {"source": 3}, "complete_pct": 0.0},

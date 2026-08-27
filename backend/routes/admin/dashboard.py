@@ -1468,7 +1468,7 @@ async def resolve_admin_alert(
                 metadata = result.data.get('metadata', {})
                 metadata['resolved'] = True
                 metadata['resolved_at'] = now
-                metadata['resolved_by'] = current_user.id
+                metadata['resolved_by'] = current_user.user_id
                 metadata['resolution_notes'] = notes
                 
                 update_result = supabase.from_('manual_review_queue') \
@@ -1494,7 +1494,7 @@ async def resolve_admin_alert(
                 metadata = result.data.get('metadata', {})
                 metadata['resolved'] = True
                 metadata['resolved_at'] = now
-                metadata['resolved_by'] = current_user.id
+                metadata['resolved_by'] = current_user.user_id
                 metadata['resolution_notes'] = notes
                 
                 update_result = supabase.from_('audit_logs') \
@@ -1520,7 +1520,7 @@ async def resolve_admin_alert(
                 metadata = result.data.get('metadata', {})
                 metadata['alert_resolved'] = True
                 metadata['alert_resolved_at'] = now
-                metadata['alert_resolved_by'] = current_user.id
+                metadata['alert_resolved_by'] = current_user.user_id
                 metadata['resolution_notes'] = notes
                 
                 update_result = supabase.from_('customer_documents') \
@@ -1548,13 +1548,13 @@ async def resolve_admin_alert(
         # Create audit log for resolution
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'action_type': 'alert_resolved',
                 'resource_type': 'admin_alert',
                 'resource_id': alert_id,
                 'action': 'resolve',
                 'description': f"Resolved admin alert: {alert_id} - {notes if notes else 'No notes provided'}",
-                'new_data': {'resolved_at': now, 'resolved_by': current_user.id},
+                'new_data': {'resolved_at': now, 'resolved_by': current_user.user_id},
                 'created_at': now
             }
             supabase.from_('audit_logs').insert(audit_data).execute()
@@ -1566,7 +1566,7 @@ async def resolve_admin_alert(
             "message": "Alert resolved successfully",
             "alert_id": alert_id,
             "resolved_at": now,
-            "resolved_by": current_user.id
+            "resolved_by": current_user.user_id
         }
         
     except HTTPException:

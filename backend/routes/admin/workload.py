@@ -267,7 +267,7 @@ async def reassign_review(
         # Update review
         update_data = {
             'assigned_to': request.assigned_to,
-            'assigned_by': current_user.id,
+            'assigned_by': current_user.user_id,
             'status': 'assigned',
             'updated_at': datetime.utcnow().isoformat()
         }
@@ -280,7 +280,7 @@ async def reassign_review(
         # Log reassignment
         log_data = {
             'review_id': request.review_id,
-            'assigned_by': current_user.id,
+            'assigned_by': current_user.user_id,
             'assigned_to': request.assigned_to,
             'previous_assigned_to': review.data.get('assigned_to'),
             'action': 'reassigned',

@@ -1,0 +1,91 @@
+// frontend/src/v3/components/ui/Icon.jsx
+// D21.3 — single icon vocabulary for the V3 surface. Wraps the existing
+// react-icons library so every surface uses one icon set (no ad-hoc emoji in
+// new primitives). Components must still provide a text label or aria-label.
+import React from 'react';
+import * as Fi from 'react-icons/fi';
+
+const ICONS = {
+  home: Fi.FiHome,
+  documents: Fi.FiFileText,
+  processing: Fi.FiLayers,
+  emissions: Fi.FiActivity,
+  reports: Fi.FiFile,
+  issues: Fi.FiAlertTriangle,
+  billing: Fi.FiCreditCard,
+  organisation: Fi.FiBriefcase,
+  messaging: Fi.FiMessageSquare,
+  notifications: Fi.FiBell,
+  search: Fi.FiSearch,
+  plus: Fi.FiPlus,
+  check: Fi.FiCheck,
+  checkCircle: Fi.FiCheckCircle,
+  x: Fi.FiX,
+  xCircle: Fi.FiXCircle,
+  clock: Fi.FiClock,
+  eye: Fi.FiEye,
+  lock: Fi.FiLock,
+  unlock: Fi.FiUnlock,
+  loader: Fi.FiLoader,
+  alert: Fi.FiAlertTriangle,
+  info: Fi.FiInfo,
+  calendar: Fi.FiCalendar,
+  upload: Fi.FiUpload,
+  download: Fi.FiDownload,
+  edit: Fi.FiEdit2,
+  trash: Fi.FiTrash2,
+  save: Fi.FiSave,
+  link: Fi.FiLink,
+  filter: Fi.FiFilter,
+  menu: Fi.FiMenu,
+  chevronLeft: Fi.FiChevronLeft,
+  chevronRight: Fi.FiChevronRight,
+  chevronDown: Fi.FiChevronDown,
+  chevronUp: Fi.FiChevronUp,
+  settings: Fi.FiSettings,
+  users: Fi.FiUsers,
+  user: Fi.FiUser,
+  map: Fi.FiMapPin,
+  truck: Fi.FiTruck,
+  box: Fi.FiBox,
+  building: Fi.FiHome,
+  supplier: Fi.FiPackage,
+  activity: Fi.FiActivity,
+  calculator: Fi.FiHash,
+  evidence: Fi.FiShield,
+  external: Fi.FiExternalLink,
+  more: Fi.FiMoreHorizontal,
+  refresh: Fi.FiRefreshCw,
+  logout: Fi.FiLogOut,
+  arrowLeft: Fi.FiArrowLeft,
+  arrowRight: Fi.FiArrowRight,
+  paperclip: Fi.FiPaperclip,
+  send: Fi.FiSend,
+  copy: Fi.FiCopy,
+  grid: Fi.FiGrid,
+  layers: Fi.FiLayers,
+  list: Fi.FiList,
+  pause: Fi.FiPauseCircle,
+  help: Fi.FiHelpCircle,
+  db: Fi.FiDatabase,
+  shield: Fi.FiShield,
+  flag: Fi.FiFlag,
+  award: Fi.FiAward,
+  key: Fi.FiKey,
+  briefcase: Fi.FiBriefcase,
+  userCheck: Fi.FiUserCheck,
+  userX: Fi.FiUserX,
+  tool: Fi.FiTool,
+  zap: Fi.FiZap,
+  star: Fi.FiStar,
+  folder: Fi.FiFolder,
+  tag: Fi.FiTag,
+};
+
+/** Render a named icon. `name` falls back to a help glyph when unknown. */
+export default function Icon({ name, size = 16, color, 'aria-hidden': ariaHidden = true, ...rest }) {
+  const Glyph = ICONS[name] || Fi.FiHelpCircle;
+  return <Glyph size={size} color={color} aria-hidden={ariaHidden} {...rest} />;
+}
+
+export { ICONS };

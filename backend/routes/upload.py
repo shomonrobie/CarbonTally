@@ -660,7 +660,10 @@ async def upload_document(
         
         if file_type in ['PDF', 'IMAGE']:
             try:
-                # Call PDF extraction
+                # Call the correct extraction method per file type. The legacy
+                # consolidation previously called the PDF path for images too,
+                # which made JPG/PNG OCR unreachable (pdfplumber cannot open a
+                # bitmap). extract_and_parse_image performs PIL decode + OCR.
                 from pdf_engine import PDFExtractor
                 pdf_extractor = PDFExtractor()
                 
@@ -672,12 +675,20 @@ async def upload_document(
                 organization_assets = assets_result.data or []
                 
                 # Extract data
-                extraction_result = pdf_extractor.extract_and_parse(
-                    file_bytes,
-                    file.filename,
-                    data_type,
-                    organization_assets
-                )
+                if file_type == 'IMAGE':
+                    extraction_result = pdf_extractor.extract_and_parse_image(
+                        file_bytes,
+                        file.filename,
+                        data_type,
+                        organization_assets
+                    )
+                else:
+                    extraction_result = pdf_extractor.extract_and_parse(
+                        file_bytes,
+                        file.filename,
+                        data_type,
+                        organization_assets
+                    )
                 
                 if extraction_result.get('status') == 'success':
                     status = 'ready_for_review'
@@ -815,7 +826,9 @@ async def get_batch_status(
                 .maybe_single() \
                 .execute()
             
-            if not member.data:
+            # supabase-py 2.9.0 returns None (not an APIResponse) for an empty
+            # maybe_single result — guard before reading .data (fail closed 403).
+            if not member or not member.data:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to view this batch"
@@ -855,7 +868,7 @@ async def get_batch_progress(
         supabase = get_supabase_client()
         
         batch = supabase.from_('upload_batches') \
-            .select('total_files, processed_files, status, created_at, completed_at') \
+            .select('total_files, processed_files, status, created_at, completed_at, organization_id') \
             .eq('id', batch_id) \
             .maybe_single() \
             .execute()
@@ -865,6 +878,23 @@ async def get_batch_progress(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Batch not found"
             )
+        
+        # F2 (IDOR fix): progress must not leak to callers outside the owning
+        # organisation. Mirrors the membership scope on GET .../status.
+        if not current_user.is_admin:
+            member = supabase.from_('organization_members') \
+                .select('id') \
+                .eq('organization_id', batch.data['organization_id']) \
+                .eq('user_id', current_user.user_id) \
+                .maybe_single() \
+                .execute()
+            
+            # supabase-py 2.9.0 returns None for an empty maybe_single result.
+            if not member or not member.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view this batch"
+                )
         
         total = batch.data.get('total_files', 0)
         processed = batch.data.get('processed_files', 0)
@@ -924,7 +954,7 @@ async def cancel_batch(
                 .maybe_single() \
                 .execute()
             
-            if not member.data:
+            if not member or not member.data:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to cancel this batch"
@@ -965,6 +995,22 @@ async def get_batch_stats(
         query = supabase.from_('upload_batches').select('*')
         
         if organization_id:
+            # F2 (IDOR fix): an explicit organization_id is only honoured when
+            # the caller is a global admin or a member of that organisation.
+            # Previously any authenticated user could read another org's stats.
+            if not current_user.is_admin:
+                member = supabase.from_('organization_members') \
+                    .select('id') \
+                    .eq('organization_id', organization_id) \
+                    .eq('user_id', current_user.user_id) \
+                    .maybe_single() \
+                    .execute()
+                # supabase-py 2.9.0 returns None for an empty maybe_single result.
+                if not member or not member.data:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to view this organization's batches"
+                    )
             query = query.eq('organization_id', organization_id)
         elif not current_user.is_admin:
             orgs = supabase.from_('organization_members') \
@@ -998,8 +1044,10 @@ async def get_batch_stats(
         
         total_files = 0
         for batch in result.data:
-            status = batch.get('status', 'unknown')
-            stats['by_status'][status] = stats['by_status'].get(status, 0) + 1
+            batch_status = batch.get('status', 'unknown')
+            # Note: must not shadow the module-level ``status`` from fastapi —
+            # the except handler below references ``status.HTTP_500_...``.
+            stats['by_status'][batch_status] = stats['by_status'].get(batch_status, 0) + 1
             total_files += batch.get('total_files', 0)
         
         stats['total_files'] = total_files
@@ -1007,6 +1055,8 @@ async def get_batch_stats(
         
         return {"success": True, "data": stats}
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

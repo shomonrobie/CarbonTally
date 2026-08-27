@@ -352,7 +352,7 @@ async def create_beta_user(
             'email': user_data.email,
             'beta_code': user_data.beta_code,
             'access_level': user_data.access_level,
-            'invited_by': current_user.id,
+            'invited_by': current_user.user_id,
             'created_at': datetime.utcnow().isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         }

@@ -690,7 +690,7 @@ async def create_extraction_template(
             'rules': rules,
             'is_active': is_active,
             'version': 1,
-            'created_by': current_user.id,
+            'created_by': current_user.user_id,
             'created_at': datetime.now().isoformat()
         }
         
@@ -775,7 +775,7 @@ async def update_extraction_template(
             template_data['is_active'] = is_active
         
         template_data['version'] = template_data.get('version', 0) + 1
-        template_data['updated_by'] = current_user.id
+        template_data['updated_by'] = current_user.user_id
         template_data['updated_at'] = datetime.now().isoformat()
         
         # Update document type

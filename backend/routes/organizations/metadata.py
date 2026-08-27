@@ -96,7 +96,7 @@ async def update_financial_metadata(
         
         data = update_data.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \
@@ -160,7 +160,7 @@ async def update_employee_metadata(
         
         data = update_data.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \
@@ -224,7 +224,7 @@ async def update_sustainability_metadata(
         
         data = update_data.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \
@@ -288,7 +288,7 @@ async def update_contact_metadata(
         
         data = update_data.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \
@@ -352,7 +352,7 @@ async def update_industry_metadata(
         
         data = update_data.dict(exclude_none=True)
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \
@@ -416,7 +416,7 @@ async def update_custom_metrics(
         
         data = {'custom_metrics': update_data.custom_metrics}
         data['updated_at'] = datetime.utcnow().isoformat()
-        data['updated_by'] = current_user.id
+        data['updated_by'] = current_user.user_id
         
         if existing.data:
             result = supabase.from_('organization_metadata') \

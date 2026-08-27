@@ -1,0 +1,447 @@
+/* workspace-demos.css — full-workspace demos (Organization + Consultant).
+   These styles render the two interactive "product screen" demonstrations.
+   They follow the site's professional B2B palette (slate/teal, thin lines,
+   restrained motion) and are fully responsive. */
+
+.ws-app {
+  --ws-line: #e2e8f0;
+  --ws-soft: #f7fafc;
+  --ws-brand: #2f855a;
+  --ws-brand-strong: #276749;
+  --ws-brand-soft: #e6f4ec;
+  --ws-ink: #1a202c;
+  --ws-muted: #718096;
+  --ws-ok-bg: #c6f6d5;
+  --ws-ok-ink: #22543d;
+  --ws-warn-bg: #fefcbf;
+  --ws-warn-ink: #744210;
+  --ws-danger-bg: #fed7d7;
+  --ws-danger-ink: #822727;
+  border: 1px solid var(--ws-line);
+  border-radius: 16px;
+  background: var(--ws-soft);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 18px 44px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--ws-ink);
+}
+
+/* ---------- header ---------- */
+.ws-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--ws-line);
+}
+.ws-header-id { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.ws-app-name { font-weight: 700; letter-spacing: 0.02em; color: var(--ws-brand-strong); }
+.ws-header-divider { color: var(--ws-muted); }
+.ws-org-name { font-weight: 650; white-space: nowrap; }
+.ws-header-meta { color: var(--ws-muted); font-size: 12.5px; }
+.ws-org-switch { display: flex; gap: 6px; flex-wrap: wrap; }
+.ws-org-switch button,
+.ws-select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+.ws-org-switch button.is-active {
+  background: var(--ws-brand);
+  border-color: var(--ws-brand);
+  color: #fff;
+  font-weight: 600;
+}
+.ws-org-switch button:hover:not(.is-active) { border-color: var(--ws-brand); color: var(--ws-brand-strong); }
+.ws-select { color: var(--ws-ink); }
+
+/* ---------- badges ---------- */
+.ws-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.ws-badge-ok { background: var(--ws-ok-bg); color: var(--ws-ok-ink); }
+.ws-badge-warn { background: var(--ws-warn-bg); color: var(--ws-warn-ink); }
+.ws-badge-danger { background: var(--ws-danger-bg); color: var(--ws-danger-ink); }
+.ws-badge-neutral { background: var(--ws-soft); color: var(--ws-muted); border-color: var(--ws-line); }
+.ws-badge-demo {
+  background: var(--ws-brand-soft);
+  color: var(--ws-brand-strong);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- dashboard layout ---------- */
+.ws-dash { padding: 16px; display: grid; gap: 16px; }
+.ws-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.ws-stat {
+  background: #fff;
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ws-stat-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ws-muted); }
+.ws-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--ws-ink); }
+.ws-stat-value small { font-size: 12px; font-weight: 600; color: var(--ws-muted); margin-left: 4px; }
+.ws-stat-sub { font-size: 11.5px; color: var(--ws-muted); }
+
+.ws-grid { display: grid; gap: 16px; }
+.ws-grid-2 { grid-template-columns: 1fr 1fr; }
+.ws-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.ws-panel {
+  background: #fff;
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.ws-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.ws-panel-head h3, .ws-panel-head h4 { margin: 0; font-size: 13.5px; letter-spacing: 0.01em; color: var(--ws-ink); }
+.ws-client-head h3, .ws-client-head h4 { margin: 0; font-size: 17px; }
+.ws-panel-sub { font-size: 11.5px; color: var(--ws-muted); }
+.ws-kicker {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ws-muted); font-weight: 700;
+}
+.ws-muted-note { font-size: 12px; color: var(--ws-muted); line-height: 1.55; margin: 10px 0 0; }
+
+/* ---------- scopes ---------- */
+.ws-scopes { display: grid; gap: 10px; }
+.ws-scope-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+.ws-scope-name { font-weight: 600; }
+.ws-scope-value small { color: var(--ws-muted); font-size: 11px; }
+.ws-track { background: var(--ws-soft); border-radius: 999px; height: 8px; overflow: hidden; margin: 4px 0 2px; }
+.ws-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ws-brand), var(--ct-accent, #2b6cb0));
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ws-scope-note { font-size: 11.5px; color: var(--ws-muted); }
+.ws-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--ws-line); font-size: 13px; color: var(--ws-muted); display: flex; justify-content: space-between; }
+.ws-total strong { color: var(--ws-ink); }
+
+/* ---------- pipeline ---------- */
+.ws-pipeline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ws-pipeline li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.ws-pipeline-bar { height: 72px; width: 100%; max-width: 26px; background: var(--ws-soft); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+.ws-pipeline-fill {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  background: var(--ws-brand);
+  opacity: 0.85;
+  transition: height 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ws-pipeline-count { font-size: 12.5px; font-weight: 700; }
+.ws-pipeline-stage { font-size: 10.5px; color: var(--ws-muted); text-align: center; line-height: 1.2; }
+
+/* ---------- lists ---------- */
+.ws-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ws-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--ws-soft);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.ws-list-main { font-size: 13px; font-weight: 550; min-width: 0; }
+.ws-list-meta { font-size: 12px; color: var(--ws-muted); flex: 1 1 auto; }
+
+/* ---------- Processing Work ---------- */
+.ws-work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ws-work-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ws-ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ws-work-row:hover { border-color: var(--ws-brand); box-shadow: 0 2px 10px rgba(15, 118, 110, 0.10); }
+.ws-work-row:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; }
+.ws-work-batch {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ws-brand-strong);
+  background: var(--ws-brand-soft);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.ws-work-title { font-weight: 650; font-size: 13.5px; }
+.ws-work-meta { font-size: 12px; color: var(--ws-muted); flex: 1 1 auto; }
+.ws-work-open { font-size: 12.5px; font-weight: 600; color: var(--ws-brand); }
+.ws-panel-work .ws-badge { text-transform: capitalize; }
+
+/* ---------- client list (consultant) ---------- */
+.ws-client-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ws-client-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) auto minmax(120px, 1fr) minmax(190px, 1.6fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ws-ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ws-client-row:hover { border-color: var(--ws-brand); box-shadow: 0 2px 10px rgba(15, 118, 110, 0.10); }
+.ws-client-row:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; }
+.ws-client-row.is-active { border-color: var(--ws-brand); }
+.ws-client-name { font-weight: 650; font-size: 13.5px; }
+.ws-client-progress { display: flex; align-items: center; gap: 8px; }
+.ws-client-progress .ws-track { flex: 1; }
+.ws-client-progress-val { font-size: 12px; font-weight: 600; color: var(--ws-ink); min-width: 34px; text-align: right; }
+.ws-client-meta { font-size: 12px; color: var(--ws-muted); }
+
+.ws-client-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ws-client-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ws-client-head h4 { margin: 0; font-size: 17px; }
+.ws-client-tag { margin: 2px 0 0; font-size: 12.5px; color: var(--ws-muted); }
+
+.ws-link-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-brand-strong);
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.ws-link-btn:hover { text-decoration: underline; }
+.ws-link-btn:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------- workflow ---------- */
+.ws-work { display: grid; gap: 14px; padding: 16px; }
+.ws-work-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ws-work-loc { font-size: 12.5px; color: var(--ws-muted); }
+
+.ws-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.ws-stepper li { flex: 1 0 auto; }
+.ws-stepper button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ws-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ws-stepper button:hover { border-color: var(--ws-brand); color: var(--ws-brand-strong); }
+.ws-stepper button:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; }
+.ws-stepper li.current button { background: var(--ws-brand); border-color: var(--ws-brand); color: #fff; }
+.ws-stepper li.done button { border-color: var(--ws-brand); color: var(--ws-brand-strong); }
+.ws-stepper-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ws-soft);
+  border: 1px solid var(--ws-line);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ws-stepper li.current .ws-stepper-dot { background: #fff; color: var(--ws-brand); border-color: #fff; }
+.ws-stepper li.done .ws-stepper-dot { background: var(--ws-brand-soft); border-color: var(--ws-brand); color: var(--ws-brand-strong); }
+
+.ws-work-panel {
+  background: #fff;
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  padding: 18px;
+  outline: none;
+}
+.ws-work-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.ws-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--ws-line);
+  background: #fff;
+  color: var(--ws-ink);
+  cursor: pointer;
+}
+.ws-btn:hover:not(:disabled) { border-color: var(--ws-brand); color: var(--ws-brand-strong); }
+.ws-btn:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; }
+.ws-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ws-btn-primary { background: var(--ws-brand); border-color: var(--ws-brand); color: #fff; }
+.ws-btn-primary:hover:not(:disabled) { background: var(--ws-brand-strong); color: #fff; }
+.ws-btn-ghost { background: transparent; border-color: var(--ws-line); color: var(--ws-muted); }
+.ws-btn-ghost.is-guided { border-color: var(--ws-brand); color: var(--ws-brand-strong); background: var(--ws-brand-soft); }
+
+/* ---------- workflow step content ---------- */
+.ws-doc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.ws-doc-card h4 { margin: 0 0 10px; font-size: 16px; }
+.ws-dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ws-dl > div { background: var(--ws-soft); border-radius: 8px; padding: 8px 10px; }
+.ws-dl dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ws-muted); }
+.ws-dl dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; }
+
+.ws-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ws-table th, .ws-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--ws-line); vertical-align: top; }
+.ws-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ws-muted); }
+.ws-table td:last-child { text-align: right; white-space: nowrap; }
+
+.ws-factor-card { border: 1px solid var(--ws-brand); background: var(--ws-brand-soft); border-radius: 10px; padding: 12px 14px; }
+.ws-factor-card h4 { margin: 0 0 10px; font-size: 15px; color: var(--ws-brand-strong); }
+.ws-factor-card .ws-dl dd { color: var(--ws-ink); }
+
+.ws-formula {
+  font-size: 15px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--ws-soft);
+  border: 1px solid var(--ws-line);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 0;
+}
+.ws-formula span { color: var(--ws-muted); padding: 0 6px; }
+.ws-formula strong { color: var(--ws-brand-strong); }
+
+.ws-evidence { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.ws-evidence li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--ws-line); }
+.ws-evidence li:last-child { border-bottom: none; }
+.ws-evidence-dot {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ws-brand-soft);
+  color: var(--ws-brand-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ws-evidence-body { display: flex; flex-direction: column; gap: 1px; }
+.ws-evidence-body strong { font-size: 13px; }
+.ws-evidence-body span { font-size: 12.5px; color: var(--ws-muted); }
+
+.ws-result { text-align: center; padding: 8px 0 2px; }
+.ws-result-number { font-size: clamp(34px, 6vw, 52px); font-weight: 800; letter-spacing: -0.02em; color: var(--ws-brand-strong); }
+.ws-result-number span { display: block; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--ws-muted); }
+.ws-result-sub { font-size: 13.5px; color: var(--ws-muted); margin: 8px 0 16px; }
+.ws-result-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ws-btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1024px) {
+  .ws-grid-3 { grid-template-columns: 1fr 1fr; }
+  .ws-client-row { grid-template-columns: minmax(140px, 1fr) auto minmax(110px, 0.8fr) auto; }
+  .ws-client-meta { grid-column: 1 / -1; }
+}
+@media (max-width: 768px) {
+  .ws-stats { grid-template-columns: 1fr 1fr; }
+  .ws-grid-2, .ws-grid-3 { grid-template-columns: 1fr; }
+  .ws-client-row { grid-template-columns: 1fr auto; }
+  .ws-client-progress { grid-column: 1 / -1; order: 2; }
+  .ws-client-meta { grid-column: 1 / -1; }
+  .ws-work-open { display: none; }
+  .ws-pipeline-bar { height: 52px; }
+}
+@media (max-width: 480px) {
+  .ws-dash { padding: 12px; }
+  .ws-stats { grid-template-columns: 1fr; }
+  .ws-work-actions .ws-btn { flex: 1 1 auto; }
+  .ws-table th, .ws-table td { padding: 6px 6px; }
+  .ws-stepper button { padding: 6px 8px; font-size: 12px; }
+}
+
+/* Respect reduced-motion preferences: no width/height transitions, no hovers
+   that imply movement. The JS count-ups already skip animation for these
+   users; this removes the remaining CSS transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .ws-fill,
+  .ws-pipeline-fill,
+  .ws-work-row,
+  .ws-client-row,
+  .ws-btn,
+  .ws-org-switch button {
+    transition: none;
+  }
+  .ws-fill,
+  .ws-pipeline-fill { animation: none; }
+}
+
+/* ---------- organisation workspace tabs ---------- */
+.ws-tabs {
+  display: flex; gap: 2px; align-items: center;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--ws-line);
+  overflow-x: auto;
+}
+.ws-tabs button {
+  font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--ws-ink-soft);
+  background: transparent; border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 10px 12px 9px; cursor: pointer;
+  white-space: nowrap;
+}
+.ws-tabs button:hover { color: var(--ws-brand-strong); background: var(--ws-brand-soft); }
+.ws-tabs button.is-active { color: var(--ws-brand-strong); border-bottom-color: var(--ws-brand); }
+.ws-tabs button:focus-visible { outline: 2px solid var(--ws-brand); outline-offset: -2px; }

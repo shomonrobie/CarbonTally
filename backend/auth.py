@@ -465,8 +465,10 @@ def require_org_admin():
             ):
                 return current_user
             # Authoritative fallback: resolve the membership role directly.
-            supabase = get_supabase_client()
+            # ``get_supabase_client()`` raises HTTPException(500) when Supabase
+            # is not configured; that must not mask a 403 authz decision.
             try:
+                supabase = get_supabase_client()
                 result = supabase.from_('organization_members') \
                     .select('role') \
                     .eq('user_id', current_user.user_id) \
@@ -476,6 +478,9 @@ def require_org_admin():
 
                 if result and result.data and result.data.get('role') in ('admin', 'owner'):
                     return current_user
+            except HTTPException:
+                # Supabase unavailable → fail closed with 403 (never 500).
+                pass
             except Exception:
                 pass
 

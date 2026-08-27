@@ -53,13 +53,13 @@ async def get_draft_sections(
             )
         
         # Check access
-        if draft.data['user_id'] != current_user.id and not current_user.is_admin:
+        if draft.data['user_id'] != current_user.user_id and not current_user.is_admin:
             # Check if user is organization member
             if draft.data.get('organization_id'):
                 member = supabase.from_('organization_members') \
                     .select('id') \
                     .eq('organization_id', draft.data['organization_id']) \
-                    .eq('user_id', current_user.id) \
+                    .eq('user_id', current_user.user_id) \
                     .maybe_single() \
                     .execute()
                 
@@ -130,7 +130,7 @@ async def update_draft_section(
             )
         
         # Check access
-        if draft.data['user_id'] != current_user.id and not current_user.is_admin:
+        if draft.data['user_id'] != current_user.user_id and not current_user.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to edit this draft"
@@ -205,7 +205,7 @@ async def delete_draft_section(
             )
         
         # Check access
-        if draft.data['user_id'] != current_user.id and not current_user.is_admin:
+        if draft.data['user_id'] != current_user.user_id and not current_user.is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to edit this draft"

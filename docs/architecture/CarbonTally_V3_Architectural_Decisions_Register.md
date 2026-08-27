@@ -1289,19 +1289,3 @@ baseline unchanged (DEFRA 7,029 · SEAI 20 · TOTAL 7,049).
 10. The document is a concise decision register (16 ADRs), not an audit — **yes**.
 
 *End of register. Documentation-only — no implementation performed.*
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

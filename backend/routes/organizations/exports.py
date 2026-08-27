@@ -97,7 +97,7 @@ async def export_emissions_data(
         # Store export record
         export_data = {
             'organization_id': org_id,
-            'user_id': current_user.id,
+            'user_id': current_user.user_id,
             'file_name': file_name,
             'format': request.format,
             'filters': request.filters,

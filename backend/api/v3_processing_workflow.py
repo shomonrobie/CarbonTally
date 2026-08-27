@@ -498,13 +498,17 @@ async def calculate_item(
 async def customer_review_item(
     item_id: str,
     payload: CustomerReviewPayload,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Customer verification: approve or reject a processed item.
 
     A rejection records the reason and routes the item back to ``mapping``
     (rework loop). The verification decision is stamped with reviewer/time.
+
+    D5 — the approval gate is org OWNER/ADMIN only (``require_org_admin``).
+    Review (read) stays open to all org members; the approval action is the
+    distinct approver responsibility and is never a frontend-only decision.
 
     D37: an APPROVAL of a subscribed organisation's item triggers the
     authoritative credit consumption BEFORE the item is marked approved
@@ -566,6 +570,17 @@ async def item_workspace(
     issues = await repos.issues.list_for_work_item(item.id)
     # D32 (P0): documents are served only via short-lived signed URLs.
     signed = signed_item(item)
+    # OCR text + deterministic field suggestions persisted at upload time —
+    # surfaced for human confirmation. ``ocr_suggestions`` are SUGGESTIONS only;
+    # confirmed values live in ``data.extracted_data`` (set via /extract).
+    ocr_text = None
+    ocr_suggestions = None
+    if item.file_id:
+        src = await repos.files.get(item.file_id)
+        if src is not None:
+            ocr = (src.metadata or {}).get("ocr") or {}
+            ocr_text = ocr.get("text")
+            ocr_suggestions = ocr.get("suggested_data") or None
     return {
         "item": signed,
         "batch": batch,
@@ -575,6 +590,8 @@ async def item_workspace(
             "document_type": item.document_type,
             "page_count": item.page_count,
             "viewer_url": signed.file_url,
+            "ocr_text": ocr_text,
+            "ocr_suggestions": ocr_suggestions,
         },
         "data": {
             "extracted_data": item.extracted_data or {},

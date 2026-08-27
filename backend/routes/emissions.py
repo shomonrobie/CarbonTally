@@ -358,7 +358,7 @@ async def update_emission_record(
             member = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', existing.data['organization_id']) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -423,7 +423,7 @@ async def bulk_create_emissions(
                     member = supabase.from_('organization_members') \
                         .select('id') \
                         .eq('organization_id', emission['organization_id']) \
-                        .eq('user_id', current_user.id) \
+                        .eq('user_id', current_user.user_id) \
                         .maybe_single() \
                         .execute()
                     
@@ -436,7 +436,7 @@ async def bulk_create_emissions(
                         continue
                 
                 # Add created_by
-                emission['created_by_user_id'] = current_user.id
+                emission['created_by_user_id'] = current_user.user_id
                 emission['created_at'] = datetime.utcnow().isoformat()
                 
                 result = supabase.from_('emissions_logs') \
@@ -489,7 +489,7 @@ async def get_emission_stats(
             # Get user's organizations
             orgs = supabase.from_('organization_members') \
                 .select('organization_id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .execute()
             
             if orgs.data:
@@ -552,7 +552,7 @@ async def export_emissions(
         elif not current_user.is_admin:
             orgs = supabase.from_('organization_members') \
                 .select('organization_id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .execute()
             
             if orgs.data:
@@ -651,7 +651,7 @@ async def verify_emissions(
                 result = supabase.from_('emissions_logs') \
                     .update({
                         'verified_at': datetime.utcnow().isoformat(),
-                        'verified_by': current_user.id,
+                        'verified_by': current_user.user_id,
                         'updated_at': datetime.utcnow().isoformat()
                     }) \
                     .eq('id', record_id) \
@@ -749,7 +749,7 @@ async def get_emissions_by_document_type(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -872,7 +872,7 @@ async def get_emissions_verification_history(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1012,7 +1012,7 @@ async def bulk_approve_emissions(
                     member_check = supabase.from_('organization_members') \
                         .select('id') \
                         .eq('organization_id', org_id) \
-                        .eq('user_id', current_user.id) \
+                        .eq('user_id', current_user.user_id) \
                         .maybe_single() \
                         .execute()
                     
@@ -1059,7 +1059,7 @@ async def bulk_approve_emissions(
                     # Create audit log
                     try:
                         audit_data = {
-                            'user_id': current_user.id,
+                            'user_id': current_user.user_id,
                             'organization_id': org_id,
                             'action_type': 'bulk_approval',
                             'resource_type': 'emissions_log',
@@ -1148,7 +1148,7 @@ async def bulk_reject_emissions(
                     member_check = supabase.from_('organization_members') \
                         .select('id') \
                         .eq('organization_id', org_id) \
-                        .eq('user_id', current_user.id) \
+                        .eq('user_id', current_user.user_id) \
                         .maybe_single() \
                         .execute()
                     
@@ -1195,7 +1195,7 @@ async def bulk_reject_emissions(
                     # Create audit log
                     try:
                         audit_data = {
-                            'user_id': current_user.id,
+                            'user_id': current_user.user_id,
                             'organization_id': org_id,
                             'action_type': 'bulk_rejection',
                             'resource_type': 'emissions_log',
@@ -1265,7 +1265,7 @@ async def get_emissions_summary(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -1365,7 +1365,7 @@ async def get_emissions_by_asset(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -1451,7 +1451,7 @@ async def get_pending_emissions_verifications(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:

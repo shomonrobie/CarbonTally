@@ -169,6 +169,22 @@ class TestV3Issues:
         resp = client.get("/api/v3/issues/admin/entity/pe-1")
         assert resp.status_code == 403
 
+    def test_entity_issue_listing_denied_when_entity_suspended(
+        self, world: InMemoryWorld, client, user_provider
+    ) -> None:
+        """F1 — entity staff lose issues read access once their entity leaves active."""
+        _await(
+            world.entities.save(
+                ProcessingEntity(id="pe-1", name="Babui", status="suspended")
+            )
+        )
+        entity_staff = member_user("org-a", "entity-staff", "e@test")
+        entity_staff.is_staff = True
+        entity_staff.entity_id = "pe-1"
+        user_provider.set_user(entity_staff)
+        resp = client.get("/api/v3/issues/admin/entity/pe-1")
+        assert resp.status_code == 403
+
     def test_admin_open_triage(self, world: InMemoryWorld, client) -> None:
         _await(world.issues.save(_seed_issue()))
         _await(world.issues.save(

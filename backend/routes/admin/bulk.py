@@ -89,7 +89,7 @@ async def bulk_update_organization_status(
                     # Log the action
                     log_data = {
                         'organization_id': org_id,
-                        'user_id': current_user.id,
+                        'user_id': current_user.user_id,
                         'action': 'bulk_status_update',
                         'resource_type': 'organization',
                         'resource_id': org_id,
@@ -172,10 +172,10 @@ async def bulk_update_document_status(
                 
                 if status == 'approved':
                     update_data['approved_at'] = datetime.utcnow().isoformat()
-                    update_data['approved_by'] = current_user.id
+                    update_data['approved_by'] = current_user.user_id
                 elif status == 'rejected':
                     update_data['rejected_at'] = datetime.utcnow().isoformat()
-                    update_data['rejected_by'] = current_user.id
+                    update_data['rejected_by'] = current_user.user_id
                 
                 result = supabase.from_('organization_files') \
                     .update(update_data) \

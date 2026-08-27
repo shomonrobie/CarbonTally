@@ -1,8 +1,9 @@
 #backennd\pdf_engine.py
 
+import os
 import pdfplumber
 import pytesseract
-from pdf2image import convert_from_path
+from pdf2image import convert_from_bytes
 import io
 import re
 import uuid
@@ -14,13 +15,14 @@ class PDFExtractor:
     Hybrid PDF extraction engine that handles both digital and scanned PDFs.
     Returns granular data streams with confidence scores for the Ingestion Portal.
     """
-    
+
     def __init__(self):
-        # Tesseract path (will be overridden on Render)
-        try:
-            pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        except:
-            pass  # Will use system PATH on Linux/Render
+        # Tesseract path: prefer an explicit TESSERACT_CMD override; otherwise let
+        # pytesseract resolve ``tesseract`` from the system PATH (Linux/Render).
+        # Never force a Windows-only path unconditionally — that broke OCR on Linux.
+        tesseract_cmd = os.environ.get("TESSERACT_CMD")
+        if tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
     
     def extract_and_parse(self, file_bytes: bytes, filename: str, data_type: str, organization_assets: list = None) -> dict:
         extraction_method = "Digital PDF (Text)"
@@ -70,13 +72,22 @@ class PDFExtractor:
         return text
     
     def _extract_text_ocr(self, pdf_bytes: bytes) -> str:
-        """Extract text from scanned PDFs using OCR"""
+        """Extract text from scanned PDFs using OCR.
+
+        Renders each page with pdf2image (poppler) and runs Tesseract over every
+        rendered page. ``pdf2image`` requires ``convert_from_bytes`` for in-memory
+        input — ``convert_from_path`` only accepts a filesystem path and raised a
+        TypeError here, which silently left scanned-PDF OCR returning nothing.
+        """
         text = ""
         try:
-            images = convert_from_path(io.BytesIO(pdf_bytes), dpi=300)
-            for img in images:
+            images = convert_from_bytes(pdf_bytes, dpi=300)
+            for page_no, img in enumerate(images, start=1):
                 page_text = pytesseract.image_to_string(img)
-                text += page_text + "\n"
+                if page_text:
+                    # Page boundary markers keep multi-page OCR output separable
+                    # while leaving the raw page text intact for the parsers.
+                    text += f"\n[page {page_no}]\n{page_text}\n"
         except Exception as e:
             print(f"OCR extraction failed: {e}")
             return ""
@@ -302,10 +313,18 @@ class PDFExtractor:
             }],
             "extracted_fields": {}
         }]
+    def extract_image_text(self, file_bytes: bytes) -> str:
+        """Raw OCR text for an image (PIL decode + Tesseract).
+
+        Additive primitive used by the V3 upload/OCR wiring and reused by
+        :meth:`extract_and_parse_image`. Raises on unreadable images.
+        """
+        image = Image.open(io.BytesIO(file_bytes))
+        return pytesseract.image_to_string(image)
+
     def extract_and_parse_image(self, file_bytes: bytes, filename: str, data_type: str, organization_assets: list = None) -> dict:
         try:
-            image = Image.open(io.BytesIO(file_bytes))
-            text = pytesseract.image_to_string(image)
+            text = self.extract_image_text(file_bytes)
         except Exception as e:
             return {
                 "status": "error",

@@ -1,87 +1,83 @@
+// src/components/AppFooter.jsx — Pre-launch public website footer.
 import React from 'react';
 import { Link } from 'react-router-dom';
 
+const COLUMNS = [
+  {
+    title: 'Platform',
+    links: [
+      { to: '/platform', label: 'Platform overview' },
+      { to: '/processing-services', label: 'Processing services' },
+      { to: '/consultants', label: 'For consultants' },
+      { to: '/pricing', label: 'Pricing' },
+      { to: '/glossary', label: 'Glossary' },
+      { to: '/faq', label: 'Frequently asked questions' },
+    ],
+  },
+  {
+    title: 'Services',
+    links: [
+      { to: '/services', label: 'Services overview' },
+      { to: '/platform', label: 'Evidence & traceability' },
+      { to: '/platform', label: 'Reporting' },
+      { to: '/processing-services', label: 'Managed processing' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { to: '/about', label: 'About CarbonTally' },
+      { to: '/contact', label: 'Contact' },
+      { to: '/carbon-reduction-plan', label: 'Carbon Reduction Plan' },
+    ],
+  },
+];
+
 export default function AppFooter() {
   return (
-    <footer className="main-footer">
-      <div className="footer-container">
-        <div className="footer-grid">
-          {/* Brand Column */}
-          <div className="footer-column brand-column">
-            <div className="footer-logo">
-              <span className="logo-icon">🌱</span>
-              <span className="logo-text">CarbonTally</span>
+    <footer className="ct-footer">
+      <div className="ct-container">
+        <div className="ct-footer-grid">
+          <div className="ct-footer-brand">
+            <div className="ct-brand" style={{ color: '#fff' }}>
+              <span className="ct-brand-mark" aria-hidden="true">🌱</span>
+              <span>CarbonTally</span>
             </div>
-            <p className="footer-description">
-              Simplified carbon accounting for UK businesses. Track, report, and reduce 
-              your carbon footprint with confidence.
+            <p>
+              Carbon data processing infrastructure: turning messy source data
+              into structured, mapped, calculated and traceable emissions data.
             </p>
-            <div className="social-links">
-              <a href="#" aria-label="LinkedIn">in</a>
-              <a href="#" aria-label="Twitter">𝕏</a>
-              <a href="#" aria-label="YouTube">▶</a>
+            <span className="ct-pre-launch">
+              <span className="dot" aria-hidden="true" /> Preparing for commercial launch
+            </span>
+          </div>
+
+          {COLUMNS.map((col) => (
+            <div key={col.title}>
+              <h3 className="ct-footer-col-title">{col.title}</h3>
+              <ul>
+                {col.links.map((l) => (
+                  <li key={l.label}><Link to={l.to}>{l.label}</Link></li>
+                ))}
+              </ul>
             </div>
-          </div>
+          ))}
 
-          {/* Product Column */}
-          <div className="footer-column">
-            <h4>Product</h4>
+          <div>
+            <h3 className="ct-footer-col-title">Contact</h3>
             <ul>
-              <li><a href="/#features">Features</a></li>
-              <li><a href="/PricingPage">Pricing</a></li>
-              <li><a href="#">Integrations</a></li>
-              <li><a href="#">Changelog</a></li>
-              <li><a href="#">Roadmap</a></li>
-            </ul>
-          </div>
-
-          {/* Solutions Column */}
-          <div className="footer-column">
-            <h4>Solutions</h4>
-            <ul>
-              <li><a href="#">SECR Reporting</a></li>
-              <li><a href="#">ESG Compliance</a></li>
-              <li><a href="#">Supply Chain</a></li>
-              <li><a href="#">Real Estate</a></li>
-              <li><a href="#">Manufacturing</a></li>
-            </ul>
-          </div>
-
-          {/* Resources Column */}
-          <div className="footer-column">
-            <h4>Resources</h4>
-            <ul>
-              <li><a href="#">Blog</a></li>
-              <li><a href="#">Documentation</a></li>
-              <li><a href="#">Help Center</a></li>
-              <li><Link to="/glossary">Glossary</Link></li>
-              <li><a href="#">Community</a></li>
-            </ul>
-          </div>
-
-          {/* Company Column */}
-          <div className="footer-column">
-            <h4>Company</h4>
-            <ul>
-              <li><a href="#">About</a></li>
-              <li><a href="#">Careers</a></li>
-              <li><a href="#">Contact</a></li>
-              <li><Link to="/carbon-reduction-plan">Carbon Reduction Plan</Link></li>
-              <li><Link to="/privacy">Privacy Policy</Link></li>
-              <li><Link to="/terms">Terms of Service</Link></li>
+              <li><a href="mailto:hello@carbontally.co.uk">hello@carbontally.co.uk</a></li>
+              <li><Link to="/contact">Request launch information</Link></li>
             </ul>
           </div>
         </div>
 
-        {/* Footer Bottom with GDPR Links */}
-        <div className="footer-bottom">
-          <div className="footer-bottom-content">
-            <p>© {new Date().getFullYear()} CarbonTally Ltd. All rights reserved.</p>
-            <div className="footer-legal-links">
-              <Link to="/privacy">Privacy Policy</Link>
-              <Link to="/cookies">Cookie Policy</Link>
-              <Link to="/terms">Terms</Link>
-            </div>
+        <div className="ct-footer-bottom">
+          <p>© {new Date().getFullYear()} CarbonTally Ltd. All rights reserved.</p>
+          <div className="ct-footer-legal">
+            <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/cookies">Cookie Policy</Link>
+            <Link to="/terms">Terms of Service</Link>
           </div>
         </div>
       </div>

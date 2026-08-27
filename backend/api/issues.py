@@ -187,6 +187,17 @@ async def list_entity_issues(
     """List issues scoped to one processing entity (entity staff see their own
     entity only; CarbonTally internal staff see any)."""
     await require_entity_member(entity_id)(current_user)
+    # F1 (PE security audit): entity-staff read surfaces require an ACTIVE
+    # entity. Internal staff keep read access for administration/oversight.
+    if current_user.is_entity_staff:
+        entity = await repos.entities.get(entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="processing entity not found")
+        if entity.status != "active":
+            raise HTTPException(
+                status_code=403,
+                detail=f"processing entity is {entity.status}; only active entities may access this surface",
+            )
     issues = await repos.issues.list_for_entity(entity_id)
     return IssueListOut(total=len(issues), issues=[issue_out(i) for i in issues])
 

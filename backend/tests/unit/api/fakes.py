@@ -1740,6 +1740,7 @@ class MemoryManualExtraction:
         page_count: int = 1,
         document_type: Optional[str] = None,
         status: str = "pending",
+        file_id: Optional[str] = None,
     ) -> ManualExtractionItem:
         item = ManualExtractionItem(
             id=f"item-{uuid.uuid4()}",
@@ -1749,6 +1750,7 @@ class MemoryManualExtraction:
             page_count=page_count,
             document_type=document_type,
             status=status,
+            file_id=file_id,
             created_at=datetime.now(timezone.utc),
         )
         self._items[item.id] = item
@@ -2190,6 +2192,18 @@ class MemoryFiles:
                 return f
         return None
 
+    async def update_metadata(self, id: str, metadata: dict):
+        from dataclasses import replace
+
+        f = self._by_id.get(str(id))
+        if f is not None:
+            try:
+                f = replace(f, metadata=metadata)
+            except Exception:  # pragma: no cover - plain-object fallback
+                return None
+            self._by_id[str(id)] = f
+        return f
+
     async def save(self, entity):
         return entity
 
@@ -2214,6 +2228,55 @@ class _StubRepo:
 
     async def count_for_user(self, user_id: str, unread_only: bool = False) -> int:
         return 0
+
+
+class _SettingsStub:
+    """In-memory settings stub for the platform retention surface (N3)."""
+
+    async def get_retention(self) -> dict:
+        return {
+            "audit_log_retention_days": None,
+            "data_retention_days": None,
+            "document_retention_days": None,
+            "backup_retention_days": None,
+            "updated_at": None,
+            "updated_by": None,
+        }
+
+    async def update_retention(self, **kwargs) -> dict:
+        return {
+            "audit_log_retention_days": kwargs.get("audit_log_retention_days"),
+            "data_retention_days": kwargs.get("data_retention_days"),
+            "document_retention_days": kwargs.get("document_retention_days"),
+            "backup_retention_days": kwargs.get("backup_retention_days"),
+            "updated_at": None,
+            "updated_by": kwargs.get("updated_by"),
+        }
+
+    async def get(self, id: str):
+        return await self.get_retention()
+
+    async def save(self, entity):
+        return entity
+
+    async def delete(self, id: str) -> None:
+        return None
+
+
+class _SearchStub:
+    """In-memory search stub returning no results (G-P1-1)."""
+
+    async def search_org(self, org_id: str, query: str, limit: int = 20) -> list:
+        return []
+
+    async def get(self, id: str):
+        return None
+
+    async def save(self, entity):
+        return entity
+
+    async def delete(self, id: str) -> None:
+        return None
 
 
 class MemoryExports:
@@ -3424,6 +3487,8 @@ class InMemoryWorld:
             batches=_StubRepo(),
             review_queue=self.review_queue,
             queue_settings=self.queue_settings,
+            settings=_SettingsStub(),
+            search=_SearchStub(),
             verifications=_StubRepo(),
             notifications=_StubRepo(),
             exports=self.exports,

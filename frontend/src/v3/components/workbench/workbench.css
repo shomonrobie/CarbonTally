@@ -1,0 +1,253 @@
+/* ==========================================================================
+   frontend/src/v3/components/workbench/workbench.css — D19 workbench shell.
+
+   The processing workbench: TOP WORKFLOW NAVIGATION + adjustable split panes
+   with 40/60 · 50/50 · 60/40 presets + secure view-only source pane + status
+   /lock/autosave indicators. No permanent left sidebar (D19).
+   ========================================================================== */
+
+.ct-wb {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 58px);
+}
+
+/* --- Top workflow navigation (D19) -------------------------------------- */
+.ct-wb-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  flex-wrap: wrap;
+  padding: var(--ct-space-3) var(--ct-space-5);
+  background: var(--ct-color-nav);
+  color: var(--ct-color-nav-text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 58px;
+  z-index: var(--ct-z-nav);
+}
+.ct-wb-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ct-wb-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-2);
+  background: none;
+  border: none;
+  color: var(--ct-color-nav-link);
+  font-family: var(--ct-font-ui);
+  font-size: var(--ct-type-sm);
+  font-weight: var(--ct-type-weight-medium);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  border-radius: var(--ct-radius-md);
+  cursor: pointer;
+}
+.ct-wb-step:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.ct-wb-step:disabled { opacity: var(--ct-disabled-opacity); cursor: not-allowed; }
+.ct-wb-step[aria-current='step'] { color: #fff; background: var(--ct-color-primary); }
+.ct-wb-step--complete { color: var(--ct-color-primary-light); }
+.ct-wb-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: var(--ct-type-weight-bold);
+  flex: none;
+}
+.ct-wb-step[aria-current='step'] .ct-wb-step__num { background: rgba(255, 255, 255, 0.25); }
+.ct-wb-step--complete .ct-wb-step__num { background: var(--ct-color-primary); color: #fff; }
+.ct-wb-sep { color: rgba(226, 232, 240, 0.35); font-size: 11px; }
+
+/* --- Pane preset controls (D19: 40/60 · 50/50 · 60/40) ------------------ */
+.ct-wb-presets {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+}
+.ct-wb-preset {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--ct-color-nav-text);
+  border-radius: var(--ct-radius-sm);
+  font-family: var(--ct-font-ui);
+  font-size: 11px;
+  font-weight: var(--ct-type-weight-semibold);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.ct-wb-preset:hover { background: rgba(255, 255, 255, 0.16); }
+.ct-wb-preset[aria-pressed='true'] { background: var(--ct-color-primary); border-color: var(--ct-color-primary); color: #fff; }
+.ct-wb-preset-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ct-color-nav-link); }
+
+/* --- Workbench status cluster ------------------------------------------- */
+.ct-wb-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-4);
+  flex-wrap: wrap;
+}
+
+/* --- Split panes -------------------------------------------------------- */
+.ct-wb-panes {
+  display: flex;
+  gap: var(--ct-space-5);
+  padding: var(--ct-space-5);
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.ct-wb-panes > .ct-pane { flex: 1 1 0; min-width: 0; }
+.ct-wb-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  color: var(--ct-color-text-muted);
+  background: transparent;
+  border: none;
+  width: 20px;
+  align-self: stretch;
+  flex: none;
+  font-size: 14px;
+  padding: 0;
+}
+.ct-wb-resize-handle:hover { color: var(--ct-color-primary); }
+
+/* --- Secure document viewer (D19/D32) ------------------------------------ */
+.ct-wb-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+}
+.ct-wb-viewer__frame {
+  flex: 1;
+  border: none;
+  background: var(--ct-color-bg);
+  width: 100%;
+  min-height: 440px;
+}
+.ct-wb-viewer__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  color: var(--ct-color-text-muted);
+  font-size: var(--ct-type-sm);
+  background: var(--ct-color-bg);
+}
+.ct-wb-viewer__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  flex-wrap: wrap;
+  padding: var(--ct-space-3) var(--ct-space-4);
+  border-top: 1px solid var(--ct-color-border);
+  background: var(--ct-color-surface);
+  font-size: var(--ct-type-sm);
+  color: var(--ct-color-text-secondary);
+}
+.ct-wb-viewer__no-download {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  color: var(--ct-color-warning-text);
+  background: var(--ct-color-warning-bg);
+  padding: var(--ct-space-1) var(--ct-space-3);
+  border-radius: var(--ct-radius-full);
+}
+
+/* --- Confidence badge (D16/D19) ------------------------------------------ */
+.ct-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  font-weight: var(--ct-type-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--ct-radius-full);
+  border: 1px solid transparent;
+}
+.ct-confidence--high { background: var(--ct-color-evidence-complete-bg); color: var(--ct-color-evidence-complete-text); border-color: var(--ct-color-evidence-complete-border); }
+.ct-confidence--medium { background: var(--ct-color-evidence-partial-bg); color: var(--ct-color-evidence-partial-text); border-color: var(--ct-color-evidence-partial-border); }
+.ct-confidence--low { background: var(--ct-color-error-bg); color: var(--ct-color-error-text); }
+
+/* --- Autosave / lock indicators (D19) ------------------------------------ */
+.ct-wb-autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  color: var(--ct-color-text-muted);
+}
+.ct-wb-autosave--saving { color: var(--ct-color-accent); }
+.ct-wb-autosave--saved { color: var(--ct-color-success-result); }
+.ct-wb-autosave--error { color: var(--ct-color-error-text); }
+.ct-wb-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  font-weight: var(--ct-type-weight-semibold);
+  color: var(--ct-color-text-secondary);
+}
+.ct-wb-lock--locked { color: var(--ct-color-warning-text); }
+
+/* --- Action area --------------------------------------------------------- */
+.ct-wb-actions {
+
+/* --- Responsive · D20 -----------------------------------------------------
+   Tablet (<=900px): panes become a tray flow — a Source/Data toggle switches
+   the visible pane (no squeezed split view). Mobile (<=640px): stacked tray. */
+.ct-wb-tray-toggle-row { display: none; }
+.ct-wb-tray-toggle { display: none; }
+@media (max-width: 900px) {
+  .ct-wb-panes { flex-direction: column; }
+  .ct-wb-panes > .ct-pane { flex: 1 1 auto !important; max-width: none !important; width: 100%; }
+  .ct-wb-resize-handle { display: none; }
+  .ct-wb-viewer, .ct-wb-pane-data { display: none; }
+  .ct-wb-tray--source .ct-wb-viewer { display: flex; }
+  .ct-wb-tray--data .ct-wb-pane-data { display: block; }
+  .ct-wb-tray-toggle-row {
+    display: flex;
+    gap: var(--ct-space-2);
+    padding: var(--ct-space-4) var(--ct-space-5) 0;
+  }
+  .ct-wb-tray-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ct-space-2);
+    border: 1px solid var(--ct-color-border-strong);
+    background: var(--ct-color-surface);
+    color: var(--ct-color-text);
+    border-radius: var(--ct-radius-md);
+    padding: var(--ct-space-2) var(--ct-space-4);
+    font-family: var(--ct-font-ui);
+    font-size: var(--ct-type-sm);
+    cursor: pointer;
+  }
+  .ct-wb-tray-toggle[aria-pressed='true'] { background: var(--ct-color-primary-soft); border-color: var(--ct-color-primary); color: var(--ct-color-primary-hover); }
+}
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ct-space-3);
+  flex-wrap: wrap;
+  padding: var(--ct-space-4) var(--ct-space-5);
+  border-top: 1px solid var(--ct-color-border);
+  background: var(--ct-color-surface);
+}
+
+.ct-wb-panes--60-40 { grid-template-columns: 3fr 2fr; }

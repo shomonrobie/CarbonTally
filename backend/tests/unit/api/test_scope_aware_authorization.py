@@ -353,3 +353,74 @@ def test_l_entity_staff_denied_consultant_surface(client, world, user_provider) 
 
     user_provider.set_user(entity_operator_user("entity-a", "u-ent-op"))
     assert client.get("/api/v3/consultants/me").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# D5 — Customer approval gate: owner/admin only, never a frontend-only decision
+# ---------------------------------------------------------------------------
+
+
+def _route_dependencies(router, path_fragment: str) -> list:
+    """Return every dependency callable for the first route whose path contains
+    ``path_fragment`` (recursing through lazy included routers)."""
+    found: list = []
+    for route in getattr(router, "routes", []):
+        path = getattr(route, "path", None)
+        original = getattr(route, "original_router", None)
+        if path and path_fragment in path:
+            dependant = getattr(route, "dependant", None)
+            if dependant is not None:
+                for dep in dependant.dependencies:
+                    found.append(dep.call)
+        if original is not None:
+            found.extend(_route_dependencies(original, path_fragment))
+    return found
+
+
+def test_d5_customer_review_requires_org_admin() -> None:
+    """The customer-review approve/reject endpoint must use the org-admin gate
+    (D5). A plain org member or entity staff must never approve. Review reads
+    stay open to members — only the decision is approver-gated."""
+    from api.v3_processing_workflow import router as wf_router
+
+    deps = _route_dependencies(wf_router, "/api/v3/processing/items/{item_id}/customer-review")
+    assert deps, "customer-review route not found"
+    # require_org_admin() returns a checker named org_admin_checker; the old
+    # member gate was org_member_checker. Assert the approver gate is wired.
+    names = {getattr(d, "__name__", "") for d in deps}
+    assert "org_admin_checker" in names, f"customer-review gate must be require_org_admin, got {names}"
+
+
+async def test_d5_org_admin_dependency_allows_owner_and_admin() -> None:
+    """The org-admin dependency accepts owner/admin org members and internal
+    CarbonTally admins; it rejects plain members and entity staff (D5/D4)."""
+    member = AuthUser(
+        user_id="u-member",
+        email="member@example.test",
+        role="org_member",
+        role_name="org_member",
+        is_org_member=True,
+        organization_id="org-a",
+    )
+    with pytest.raises(HTTPException) as exc:
+        await require_org_admin()(member)
+    assert exc.value.status_code == 403
+
+    owner = AuthUser(
+        user_id="u-owner",
+        email="owner@example.test",
+        role="org_owner",
+        role_name="org_owner",
+        is_org_member=True,
+        organization_id="org-a",
+    )
+    assert await require_org_admin()(owner) is owner
+
+    # Internal CarbonTally admin passes (D4); entity staff with an admin-named
+    # role does not.
+    internal_admin = _internal_admin()
+    assert await require_org_admin()(internal_admin) is internal_admin
+    with pytest.raises(HTTPException) as exc2:
+        await require_org_admin()(_entity_admin())
+    assert exc2.value.status_code == 403
+

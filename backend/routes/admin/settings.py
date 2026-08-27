@@ -143,7 +143,7 @@ async def reset_settings(
             'session_timeout_minutes': 60,
             'max_login_attempts': 5,
             'updated_at': datetime.utcnow().isoformat(),
-            'updated_by': current_user.id
+            'updated_by': current_user.user_id
         }
         
         # Update settings

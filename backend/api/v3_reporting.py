@@ -300,4 +300,15 @@ async def entity_performance_report(
 ):
     """Entity-scoped performance (entity staff own entity; internal staff any)."""
     require_entity_scope(context, entity_id)
+    # F1 (PE security audit): entity-staff read surfaces require an ACTIVE
+    # entity. Internal staff keep read access for administration/oversight.
+    if context.profile.entity_id is not None:
+        entity = await repos.entities.get(entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="processing entity not found")
+        if entity.status != "active":
+            raise HTTPException(
+                status_code=403,
+                detail=f"processing entity is {entity.status}; only active entities may access this surface",
+            )
     return await repos.reporting.entity_performance(entity_id)

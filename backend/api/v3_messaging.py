@@ -1,13 +1,15 @@
-"""V3 consultant-client messaging (D27 / D19 §16).
+"""V3 consultant-client messaging (D27 / D19 §16) + N1 support messaging.
 
-Consultants ARE allowed to communicate with their clients through CarbonTally,
-using the existing Supabase Realtime messaging tables. Authorization:
+Authorization:
 
 * participants: org members of the conversation's organisation, plus
   consultant firm members holding an ACTIVE consultant-client grant (D15) for
   the organisation;
-* Processing Entity staff are structurally denied (they are neither org
-  members nor consultants; RLS has no entity messaging storey) — the D18
+* N1 — CarbonTally Support / Authorised Admin: INTERNAL staff (entity_id IS
+  NULL) holding the staff-admin permission (``can_manage_staff``) may message
+  authorised organisations as a ``staff`` participant. General employees and
+  Processing Entity staff never get messaging access (entity staff are neither
+  org members nor consultants; RLS has no entity messaging storey) — the D18
   boundary is absolute (D19 §17).
 
 Realtime: the API persists rows through the service role; the frontend
@@ -28,6 +30,7 @@ from api.dependencies import (
 )
 from auth import AuthUser, get_current_user
 from api.consultant_auth import ensure_consultant_org_access
+from api.operations_auth import _resolve_context, ensure_staff_permission
 
 router = APIRouter(prefix="/api/v3/messaging", tags=["V3 — Messaging (D19)"])
 
@@ -50,8 +53,15 @@ async def _authorize_org_actor(
 ) -> str:
     """Authorize the caller for messaging in ``organization_id``.
 
-    Returns the caller's participant role: ``org_member`` or ``consultant``.
-    Raises 403 for anyone else (including Processing Entity staff).
+    Returns the caller's participant role: ``org_member``, ``consultant`` or
+    ``staff``. Raises 403 for anyone else (including Processing Entity staff
+    and general CarbonTally employees).
+
+    N1 — staff path: only INTERNAL CarbonTally staff (``entity_id IS NULL``)
+    holding the staff-admin permission (``can_manage_staff``) may message an
+    organisation. This is the "CarbonTally Support / Authorised Admin" gate;
+    the permission is resolved from the authoritative ``staff_roles`` catalog,
+    never from a client claim.
     """
     # Org members (customer workspace) may message their own org.
     if current_user.is_org_member and getattr(current_user, "organization_id", None) == organization_id:
@@ -62,11 +72,21 @@ async def _authorize_org_actor(
         return "consultant"
     except HTTPException:
         pass
+    # N1 — CarbonTally support/admin (internal staff, staff-admin permission).
+    if current_user.is_staff:
+        context = await _resolve_context(current_user, repos)
+        if context is not None and context.profile.entity_id is None:
+            try:
+                ensure_staff_permission(context, "can_manage_staff")
+                return "staff"
+            except HTTPException:
+                pass
     raise HTTPException(
         status_code=403,
         detail=(
-            "Messaging requires an active membership in the organisation or an "
-            "active consultant-client grant (D19 §16)"
+            "Messaging requires an active membership in the organisation, an "
+            "active consultant-client grant, or CarbonTally support/admin "
+            "authority (N1)"
         ),
     )
 

@@ -20,9 +20,106 @@ from api.dependencies import (
 )
 from auth import AuthUser, require_org_member
 from infra.supabase import get_service_client
-from services.storage import DOCUMENTS_BUCKET, storage_signed_url
+from services.storage import DOCUMENTS_BUCKET, path_from_url, storage_signed_url
 
 router = APIRouter(prefix="/api/v3", tags=["V3 — Documents"])
+
+
+#: Minimum usable text length below which extraction is treated as "no text".
+_OCR_MIN_TEXT = 20
+
+#: Cap on OCR text persisted/surfaced per file (raw text stays on the object;
+#: the JSONB copy is for the review workspace pre-fill).
+_OCR_TEXT_CAP = 200_000
+
+
+def _extract_document_text(content: bytes, filename: str, mime: str) -> dict:
+    """Best-effort text/OCR extraction using the existing extraction engine.
+
+    The engine (``pdf_engine.PDFExtractor``) performs:
+      - PDF: pdfplumber text extraction, falling back to Tesseract OCR for
+        scanned pages (the historical recovery fixes);
+      - JPG/PNG: PIL decode + Tesseract OCR.
+
+    When text is extracted, a DETERMINISTIC field-suggestion pass
+    (``services.extraction_suggestions.suggest``) is also applied. Suggestions
+    are for human-review pre-fill only — they are never written into
+    ``manual_extraction_items.extracted_data`` automatically.
+
+    Returns a JSON-safe summary — never raises. OCR failure must never fail an
+    upload; the item still enters the manual-extraction queue for human review.
+
+    Output shape::
+
+        {"status": "ok"|"no_text"|"unsupported"|"error",
+         "method": "pdf_text"|"tesseract_ocr"|None,
+         "text": str, "page_count": int, "detail": str|None,
+         "suggested_data": dict|None, "unresolved": list[str]|None}
+    """
+    try:
+        from pdf_engine import PDFExtractor
+
+        extractor = PDFExtractor()
+        ftype = _classify(filename, mime)
+        if ftype == "PDF":
+            text = extractor._extract_text_direct(content)
+            method = "pdf_text"
+            if not text or len(text.strip()) < _OCR_MIN_TEXT:
+                ocr = extractor._extract_text_ocr(content)
+                if ocr and len(ocr.strip()) >= _OCR_MIN_TEXT:
+                    text, method = ocr, "tesseract_ocr"
+            page_count = extractor._get_page_count(content)
+        elif ftype == "IMAGE":
+            text = extractor.extract_image_text(content)
+            method = "tesseract_ocr"
+            page_count = 1
+        else:
+            return {
+                "status": "unsupported",
+                "method": None,
+                "text": "",
+                "page_count": 0,
+                "detail": f"unsupported file type {ftype}",
+            }
+    except Exception as exc:  # pragma: no cover - defensive; never fails upload
+        print(f"⚠️ OCR/extraction failed for {filename}: {exc!r}")
+        return {
+            "status": "error",
+            "method": None,
+            "text": "",
+            "page_count": 0,
+            "detail": str(exc)[:500],
+        }
+    if not text or len(text.strip()) < _OCR_MIN_TEXT:
+        return {
+            "status": "no_text",
+            "method": method,
+            "text": "",
+            "page_count": page_count,
+            "detail": "no usable text extracted (blank page, or image too low quality)",
+        }
+    truncated = len(text) > _OCR_TEXT_CAP
+    clipped = text[:_OCR_TEXT_CAP]
+    result = {
+        "status": "ok",
+        "method": method,
+        "text": clipped,
+        "page_count": page_count,
+        "truncated": truncated,
+        "detail": None,
+    }
+    # Deterministic suggestion pass (human-review pre-fill; never auto-approved).
+    try:
+        from services.extraction_suggestions import suggest
+
+        suggestion = suggest(clipped)
+        result["suggested_data"] = suggestion.get("suggested_data") or {}
+        result["unresolved"] = suggestion.get("unresolved") or []
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"⚠️ field-suggestion pass failed for {filename}: {exc!r}")
+        result["suggested_data"] = {}
+        result["unresolved"] = []
+    return result
 
 
 def _pdf_page_count(content: bytes) -> int:
@@ -143,7 +240,50 @@ async def upload_document(
     except Exception as exc:  # pragma: no cover - enqueue is best-effort
         print(f"⚠️ extraction enqueue failed: {exc}")
 
+    # OCR/extraction wiring: best-effort, deterministic, server-side. The
+    # extracted text is persisted on the organization_files metadata JSONB (no
+    # schema change) and surfaced in the item workspace for human review. OCR
+    # failure never fails the upload — the item stays pending for manual entry.
+    try:
+        ocr = _extract_document_text(content, filename, file.content_type or "")
+        if ocr["status"] in ("ok", "no_text"):
+            await repos.files.update_metadata(record.id, {**record.metadata, "ocr": ocr})
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"⚠️ OCR persistence failed for {filename}: {exc!r}")
+
     return record
+
+
+@router.post("/uploads/{file_id}/ocr")
+async def run_ocr(
+    file_id: str,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Run (or re-run) deterministic text/OCR extraction on an uploaded file.
+
+    Organisation-scoped: the caller must be a member of the owning organisation.
+    Reads the private storage object server-side (never returns the object; only
+    the extraction summary). Persists the result on ``organization_files.metadata``
+    and returns it for immediate surfacing.
+    """
+    doc = await repos.files.get(file_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="document not found")
+    ensure_org_access(current_user, doc.organization_id)
+    client = get_service_client()
+    try:
+        content = client.storage.from_(DOCUMENTS_BUCKET).download(path_from_url(doc.path))
+    except Exception as exc:  # pragma: no cover - storage read failure
+        raise HTTPException(status_code=404, detail=f"document object not found: {exc}")
+    if isinstance(content, bytes):
+        raw = content
+    else:
+        raw = bytes(getattr(content, "read", lambda: b"")()) if hasattr(content, "read") else b""
+    ocr = _extract_document_text(raw, doc.name, doc.mime_type)
+    merged = {**doc.metadata, "ocr": ocr}
+    await repos.files.update_metadata(file_id, merged)
+    return {"file_id": file_id, "ocr": ocr}
 
 
 @router.get("/documents")

@@ -578,6 +578,14 @@ async def entity_dashboard(
     entity = await repos.entities.get(entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="processing entity not found")
+    # F1 (PE security audit): processing-entity staff must not retain read
+    # access once their entity leaves ``active``. CarbonTally internal staff
+    # keep read access for administration/oversight of suspended entities.
+    if context.profile.entity_id is not None and entity.status != "active":
+        raise HTTPException(
+            status_code=403,
+            detail=f"processing entity is {entity.status}; only active entities may access this surface",
+        )
     agg = await repos.staff.entity_dashboard(entity_id)
     review_items = await repos.review_queue.list_items(status=None, limit=100)
     review_items = [r for r in review_items if r.entity_id == entity_id]
@@ -675,10 +683,17 @@ async def entity_extraction_batch_items(
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """The items of one entity-assigned batch (minimum work information)."""
+    """The items of one entity-assigned batch (minimum work information).
+
+    D32: items carry a SHORT-LIVED SIGNED ``file_url`` (view-only) — raw
+    persisted storage paths are never returned to entity staff. The signed URL
+    is issued by the service-role client after authorization and expires per the
+    existing signed-URL convention.
+    """
     await _entity_workspace_guard(context, repos, entity_id)
     batch = await ensure_entity_batch_access(context, repos, entity_id, batch_id)
-    return {"batch": batch, "items": await repos.manual_extraction.list_items(batch_id)}
+    items = await repos.manual_extraction.list_items(batch_id)
+    return {"batch": batch, "items": [signed_item(i) for i in items]}
 
 
 @router.get("/entities/{entity_id}/extraction/items/{item_id}")
@@ -688,10 +703,27 @@ async def entity_extraction_item_workspace(
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """One item + its batch (the processing workspace payload)."""
+    """One item + its batch (the processing workspace payload).
+
+    D19/D32: the item carries a SHORT-LIVED SIGNED ``file_url`` (view-only, PE
+    no-download boundary), the deterministic OCR field SUGGESTIONS (for human
+    confirmation — never auto-written) and the server validation findings. The
+    same helpers/engines as the internal ops workspace are reused.
+    """
     await _entity_workspace_guard(context, repos, entity_id)
     item, batch = await _entity_checked_item(context, repos, entity_id, item_id)
-    return {"item": item, "batch": batch}
+    ocr_suggestions = None
+    if item.file_id:
+        src = await repos.files.get(item.file_id)
+        if src is not None:
+            ocr = (src.metadata or {}).get("ocr") or {}
+            ocr_suggestions = ocr.get("suggested_data") or None
+    return {
+        "item": signed_item(item),
+        "batch": batch,
+        "suggestions": ocr_suggestions,
+        "validation": {"findings": _findings_out(validate_processing_item(item))},
+    }
 
 
 @router.get("/entities/{entity_id}/extraction/items/{item_id}/mapping-options")
@@ -1063,6 +1095,18 @@ async def item_workspace(
     findings = validate_processing_item(item)
     # D32 (P0): documents are served only via short-lived signed URLs.
     signed = signed_item(item)
+    # OCR text + deterministic field suggestions persisted at upload time
+    # (organization_files.metadata) — surfaced so the human reviewer can
+    # confirm/correct. ``ocr_suggestions`` are SUGGESTIONS only; the confirmed
+    # values live in ``data.extracted_data`` (set via the /extract endpoint).
+    ocr_text = None
+    ocr_suggestions = None
+    if item.file_id:
+        src = await repos.files.get(item.file_id)
+        if src is not None:
+            ocr = (src.metadata or {}).get("ocr") or {}
+            ocr_text = ocr.get("text")
+            ocr_suggestions = ocr.get("suggested_data") or None
     return {
         "item": signed,
         "batch": batch,
@@ -1073,6 +1117,8 @@ async def item_workspace(
             "document_type": item.document_type,
             "page_count": item.page_count,
             "viewer_url": signed.file_url,
+            "ocr_text": ocr_text,
+            "ocr_suggestions": ocr_suggestions,
         },
         "data": {
             "extracted_data": item.extracted_data or {},
@@ -1386,12 +1432,17 @@ async def ops_batch_items(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """The items of one batch (internal operators/reviewers; entity staff use
-    their own workspace surface)."""
+    their own workspace surface).
+
+    D32: items carry a SHORT-LIVED SIGNED ``file_url`` (view-only) — raw
+    persisted storage paths are never returned.
+    """
     require_internal_staff(context)
     batch = await repos.manual_extraction.get_batch(batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
-    return {"batch": batch, "items": await repos.manual_extraction.list_items(batch_id)}
+    items = await repos.manual_extraction.list_items(batch_id)
+    return {"batch": batch, "items": [signed_item(i) for i in items]}
 
 
 @router.post("/batches/{batch_id}/assign")

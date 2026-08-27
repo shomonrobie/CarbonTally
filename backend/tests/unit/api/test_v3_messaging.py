@@ -67,6 +67,71 @@ class TestMessaging:
         )
         assert resp.status_code == 403
 
+
+    def test_staff_admin_can_message_org_n1(self, world, client, user_provider) -> None:
+        """N1 — CarbonTally support/admin (internal staff, can_manage_staff) may
+        message an authorised organisation."""
+        import asyncio
+
+        from domain.staff import StaffProfile, StaffRole
+
+        world.staff.seed_role(
+            StaffRole(id="role-admin", name="admin", permissions={"can_manage_staff": True})
+        )
+        asyncio.run(
+            world.staff.save(
+                StaffProfile(
+                    id="sp-support",
+                    user_id="u-support",
+                    first_name="Support",
+                    last_name="One",
+                    email="support@carbontally.test",
+                    role_id="role-admin",
+                    entity_id=None,
+                )
+            )
+        )
+        from tests.unit.api.fakes import staff_user
+
+        user_provider.set_user(staff_user("u-support", email="support@carbontally.test"))
+        resp = client.post(
+            "/api/v3/messaging/conversations",
+            json={"organization_id": "org-a", "subject": "Support thread"},
+        )
+        assert resp.status_code == 201
+
+    def test_general_staff_cannot_message_n1(self, world, client, user_provider) -> None:
+        """N1 — general CarbonTally employees do NOT automatically receive
+        messaging access (no can_manage_staff permission)."""
+        import asyncio
+
+        from domain.staff import StaffProfile, StaffRole
+
+        world.staff.seed_role(
+            StaffRole(id="role-operator", name="operator", permissions={"can_process": True})
+        )
+        asyncio.run(
+            world.staff.save(
+                StaffProfile(
+                    id="sp-op",
+                    user_id="u-op",
+                    first_name="Op",
+                    last_name="One",
+                    email="op@carbontally.test",
+                    role_id="role-operator",
+                    entity_id=None,
+                )
+            )
+        )
+        from tests.unit.api.fakes import staff_user
+
+        user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+        resp = client.post(
+            "/api/v3/messaging/conversations",
+            json={"organization_id": "org-a", "subject": "Operator attempt"},
+        )
+        assert resp.status_code == 403
+
     def test_send_and_list_messages(self, world, client, user_provider) -> None:
         import asyncio
 

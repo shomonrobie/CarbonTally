@@ -38,6 +38,9 @@ backend/__pycache__/
 .supabase/
 supabase/.temp/
 supabase/functions/.import_map.json
+
+# --- Public website candidate (superseded by the promotion into frontend/) ---
+website_candidate/
 # --- Local database backups ---
 /backups/*.dump
 /backups/*.backup
@@ -94,3 +97,6 @@ backend/carbon_tally_backup_data.sql
 # --- Local Database / Recovery Backups ---
 /backups/
 /current_project_structure.txt
+/local_backups/
+# Local-only demo credentials (NEVER commit — contains local dev passwords)
+/.local-demo-credentials.md

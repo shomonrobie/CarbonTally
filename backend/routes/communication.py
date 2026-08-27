@@ -152,7 +152,7 @@ async def send_message(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', message_data.organization_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -187,7 +187,7 @@ async def send_message(
                 'organization_id': message_data.organization_id,
                 'subject': message_data.subject or 'New Conversation',
                 'status': 'active',
-                'created_by': current_user.id,
+                'created_by': current_user.user_id,
                 'created_at': now,
                 'updated_at': now
             }
@@ -228,7 +228,7 @@ async def send_message(
         # Create message
         msg_data = {
             'conversation_id': conversation_id,
-            'sender_id': current_user.id,
+            'sender_id': current_user.user_id,
             'receiver_id': message_data.receiver_id,
             'organization_id': message_data.organization_id,
             'subject': message_data.subject,
@@ -263,7 +263,7 @@ async def send_message(
         # Get sender and receiver details for response
         sender_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -335,7 +335,7 @@ async def get_messages(
             ''')
         
         # Filter messages where user is sender or receiver
-        query = query.or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}')
+        query = query.or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}')
         
         if conversation_id:
             query = query.eq('conversation_id', conversation_id)
@@ -349,7 +349,7 @@ async def get_messages(
         # Get total count
         count_query = supabase.from_('messages') \
             .select('id', count='exact') \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}')
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}')
         
         if conversation_id:
             count_query = count_query.eq('conversation_id', conversation_id)
@@ -465,7 +465,7 @@ async def get_message_detail(
         msg = result.data
         
         # Verify user has access (sender or receiver)
-        if msg['sender_id'] != current_user.id and msg['receiver_id'] != current_user.id:
+        if msg['sender_id'] != current_user.user_id and msg['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this message"
@@ -552,7 +552,7 @@ async def mark_message_read(
         msg = result.data
         
         # Verify user is the receiver
-        if msg['receiver_id'] != current_user.id:
+        if msg['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the receiver can mark this message as read"
@@ -618,7 +618,7 @@ async def delete_message(
         msg = result.data
         
         # Verify user is sender or receiver
-        if msg['sender_id'] != current_user.id and msg['receiver_id'] != current_user.id:
+        if msg['sender_id'] != current_user.user_id and msg['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to delete this message"
@@ -675,7 +675,7 @@ async def get_conversations(
         # First get all messages where user is sender or receiver
         messages_result = supabase.from_('messages') \
             .select('conversation_id') \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .execute()
         
         if not messages_result.data:
@@ -792,7 +792,7 @@ async def get_conversations(
             unread_result = supabase.from_('messages') \
                 .select('id', count='exact') \
                 .eq('conversation_id', conv['id']) \
-                .eq('receiver_id', current_user.id) \
+                .eq('receiver_id', current_user.user_id) \
                 .eq('is_read', False) \
                 .execute()
             
@@ -838,7 +838,7 @@ async def get_conversation(
         msg_check = supabase.from_('messages') \
             .select('id') \
             .eq('conversation_id', conversation_id) \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .limit(1) \
             .execute()
         
@@ -950,7 +950,7 @@ async def get_conversation(
         unread_result = supabase.from_('messages') \
             .select('id', count='exact') \
             .eq('conversation_id', conversation_id) \
-            .eq('receiver_id', current_user.id) \
+            .eq('receiver_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         unread_count = unread_result.count if hasattr(unread_result, 'count') else 0
@@ -995,7 +995,7 @@ async def start_conversation(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', conversation_data.organization_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1007,7 +1007,7 @@ async def start_conversation(
         
         # Verify all participants belong to the organization
         participant_ids = set(conversation_data.participant_ids)
-        participant_ids.add(current_user.id)  # Add current user as participant
+        participant_ids.add(current_user.user_id)  # Add current user as participant
         
         for user_id in participant_ids:
             user_check = supabase.from_('organization_members') \
@@ -1032,7 +1032,7 @@ async def start_conversation(
             'status': 'active',
             'is_urgent': conversation_data.is_urgent,
             'priority': conversation_data.priority,
-            'created_by': current_user.id,
+            'created_by': current_user.user_id,
             'created_at': now,
             'updated_at': now
         }
@@ -1051,12 +1051,12 @@ async def start_conversation(
         
         # Send initial message to all participants
         for receiver_id in participant_ids:
-            if receiver_id == current_user.id:
+            if receiver_id == current_user.user_id:
                 continue  # Skip sending to self
             
             msg_data = {
                 'conversation_id': conversation_id,
-                'sender_id': current_user.id,
+                'sender_id': current_user.user_id,
                 'receiver_id': receiver_id,
                 'organization_id': conversation_data.organization_id,
                 'subject': conversation_data.subject,
@@ -1105,7 +1105,7 @@ async def close_conversation(
         msg_check = supabase.from_('messages') \
             .select('id') \
             .eq('conversation_id', conversation_id) \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .limit(1) \
             .execute()
         
@@ -1140,7 +1140,7 @@ async def close_conversation(
         update_result = supabase.from_('conversations') \
             .update({
                 'status': 'closed',
-                'closed_by': current_user.id,
+                'closed_by': current_user.user_id,
                 'closed_at': now,
                 'updated_at': now
             }) \
@@ -1157,7 +1157,7 @@ async def close_conversation(
             "success": True,
             "message": "Conversation closed successfully",
             "conversation_id": conversation_id,
-            "closed_by": current_user.id,
+            "closed_by": current_user.user_id,
             "closed_at": now
         }
         
@@ -1183,7 +1183,7 @@ async def archive_conversation(
         msg_check = supabase.from_('messages') \
             .select('id') \
             .eq('conversation_id', conversation_id) \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .limit(1) \
             .execute()
         
@@ -1266,7 +1266,7 @@ async def get_notifications(
                 id, user_id, organization_id, type, title, message,
                 link, is_read, read_at, priority, created_at
             ''') \
-            .eq('user_id', current_user.id)
+            .eq('user_id', current_user.user_id)
         
         if not include_read:
             query = query.eq('is_read', False)
@@ -1311,7 +1311,7 @@ async def get_unread_notification_count(
     try:
         result = supabase.from_('notifications') \
             .select('id', count='exact') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         
@@ -1319,7 +1319,7 @@ async def get_unread_notification_count(
         
         return {
             "unread_count": unread_count,
-            "user_id": current_user.id
+            "user_id": current_user.user_id
         }
         
     except Exception as e:
@@ -1354,7 +1354,7 @@ async def mark_notification_read(
         notif = result.data
         
         # Verify user owns the notification
-        if notif['user_id'] != current_user.id:
+        if notif['user_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to mark this notification as read"
@@ -1413,7 +1413,7 @@ async def mark_all_notifications_read(
                 'read_at': now,
                 'updated_at': now
             }) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         
@@ -1446,7 +1446,7 @@ async def get_unread_message_count(
     try:
         result = supabase.from_('messages') \
             .select('id', count='exact') \
-            .eq('receiver_id', current_user.id) \
+            .eq('receiver_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         
@@ -1454,7 +1454,7 @@ async def get_unread_message_count(
         
         return {
             "unread_count": unread_count,
-            "user_id": current_user.id
+            "user_id": current_user.user_id
         }
         
     except Exception as e:
@@ -1562,7 +1562,7 @@ async def add_message_attachment(
         msg = msg_result.data
         
         # Verify user is sender or receiver
-        if msg['sender_id'] != current_user.id and msg['receiver_id'] != current_user.id:
+        if msg['sender_id'] != current_user.user_id and msg['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this message"
@@ -1590,7 +1590,7 @@ async def add_message_attachment(
             'file_size': attachment_data.file_size,
             'mime_type': attachment_data.mime_type,
             'metadata': attachment_data.metadata,
-            'created_by': current_user.id,
+            'created_by': current_user.user_id,
             'created_at': now
         }
         
@@ -1615,7 +1615,7 @@ async def add_message_attachment(
         created_by_name = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1632,7 +1632,7 @@ async def add_message_attachment(
             mime_type=attachment.get('mime_type'),
             metadata=attachment.get('metadata'),
             created_at=datetime.fromisoformat(attachment['created_at']),
-            created_by=current_user.id,
+            created_by=current_user.user_id,
             created_by_name=created_by_name
         )
         
@@ -1670,7 +1670,7 @@ async def get_message_attachments(
         msg = msg_result.data
         
         # Verify user is sender or receiver
-        if msg['sender_id'] != current_user.id and msg['receiver_id'] != current_user.id:
+        if msg['sender_id'] != current_user.user_id and msg['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this message"
@@ -1735,7 +1735,7 @@ async def get_conversation_participants(
         msg_check = supabase.from_('messages') \
             .select('id') \
             .eq('conversation_id', conversation_id) \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .limit(1) \
             .execute()
         
@@ -1833,7 +1833,7 @@ async def update_conversation_participants(
         msg_check = supabase.from_('messages') \
             .select('id') \
             .eq('conversation_id', conversation_id) \
-            .eq('sender_id', current_user.id) \
+            .eq('sender_id', current_user.user_id) \
             .limit(1) \
             .execute()
         
@@ -1884,7 +1884,7 @@ async def update_conversation_participants(
                 # Create a system message for adding participant
                 msg_data = {
                     'conversation_id': conversation_id,
-                    'sender_id': current_user.id,
+                    'sender_id': current_user.user_id,
                     'receiver_id': user_id,
                     'organization_id': org_id,
                     'subject': 'Added to conversation',
@@ -1911,7 +1911,7 @@ async def update_conversation_participants(
         if remove_participants:
             for user_id in remove_participants.user_ids:
                 # Don't remove the creator
-                if user_id == current_user.id:
+                if user_id == current_user.user_id:
                     errors.append({
                         'user_id': user_id,
                         'error': 'Cannot remove conversation creator'
@@ -1976,7 +1976,7 @@ async def search_messages(
                 subject, content, is_read, sent_at, delivered_at, read_at,
                 created_at
             ''') \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}')
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}')
         
         # Search in content or subject
         query = query.ilike('content', f'%{q}%')
@@ -1996,7 +1996,7 @@ async def search_messages(
         # Get total count
         count_query = supabase.from_('messages') \
             .select('id', count='exact') \
-            .or_(f'sender_id.eq.{current_user.id},receiver_id.eq.{current_user.id}') \
+            .or_(f'sender_id.eq.{current_user.user_id},receiver_id.eq.{current_user.user_id}') \
             .ilike('content', f'%{q}%')
         
         if conversation_id:
@@ -2115,7 +2115,7 @@ async def get_message_replies(
         parent = parent_result.data
         
         # Verify user has access to parent message
-        if parent['sender_id'] != current_user.id and parent['receiver_id'] != current_user.id:
+        if parent['sender_id'] != current_user.user_id and parent['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this message"
@@ -2219,7 +2219,7 @@ async def reply_to_message(
         parent = parent_result.data
         
         # Verify user has access to parent message
-        if parent['sender_id'] != current_user.id and parent['receiver_id'] != current_user.id:
+        if parent['sender_id'] != current_user.user_id and parent['receiver_id'] != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this message"
@@ -2237,7 +2237,7 @@ async def reply_to_message(
         # Create reply
         msg_data = {
             'conversation_id': parent['conversation_id'],
-            'sender_id': current_user.id,
+            'sender_id': current_user.user_id,
             'receiver_id': reply_data.receiver_id,
             'organization_id': parent['organization_id'],
             'subject': f"Re: {parent.get('subject', 'Message')}",
@@ -2273,7 +2273,7 @@ async def reply_to_message(
         # Get sender and receiver details
         sender_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         

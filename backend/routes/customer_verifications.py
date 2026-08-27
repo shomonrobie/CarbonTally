@@ -116,7 +116,7 @@ async def list_verifications(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -329,7 +329,7 @@ async def get_verification_detail(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -459,7 +459,7 @@ async def submit_verification(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', org_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -493,7 +493,7 @@ async def submit_verification(
             'status': 'submitted',
             'notes': verification_data.notes,
             'submitted_at': now,
-            'submitted_by': current_user.id,
+            'submitted_by': current_user.user_id,
             'metadata': verification_data.metadata or {},
             'created_at': now,
             'updated_at': now
@@ -521,7 +521,7 @@ async def submit_verification(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'verification_submission',
                 'resource_type': 'customer_verification',
@@ -583,7 +583,7 @@ async def approve_verification(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -612,7 +612,7 @@ async def approve_verification(
         update_data_dict = {
             'status': 'verified',
             'verified_at': now,
-            'verified_by': current_user.id,
+            'verified_by': current_user.user_id,
             'updated_at': now
         }
         
@@ -639,7 +639,7 @@ async def approve_verification(
                 .update({
                     'status': 'approved',
                     'verified_at': now,
-                    'verified_by': current_user.id,
+                    'verified_by': current_user.user_id,
                     'updated_at': now
                 }) \
                 .eq('id', verif['customer_document_id']) \
@@ -648,7 +648,7 @@ async def approve_verification(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'verification_approval',
                 'resource_type': 'customer_verification',
@@ -668,7 +668,7 @@ async def approve_verification(
             message="Verification approved successfully",
             verification_id=verification_id,
             new_status='verified',
-            actioned_by=current_user.id,
+            actioned_by=current_user.user_id,
             actioned_at=datetime.utcnow()
         )
         
@@ -715,7 +715,7 @@ async def reject_verification(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -744,7 +744,7 @@ async def reject_verification(
         update_data_dict = {
             'status': 'rejected',
             'rejected_at': now,
-            'rejected_by': current_user.id,
+            'rejected_by': current_user.user_id,
             'rejected_reason': update_data.reason or update_data.notes or "No reason provided",
             'updated_at': now
         }
@@ -779,7 +779,7 @@ async def reject_verification(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'verification_rejection',
                 'resource_type': 'customer_verification',
@@ -799,7 +799,7 @@ async def reject_verification(
             message="Verification rejected successfully",
             verification_id=verification_id,
             new_status='rejected',
-            actioned_by=current_user.id,
+            actioned_by=current_user.user_id,
             actioned_at=datetime.utcnow()
         )
         
@@ -846,7 +846,7 @@ async def request_revision(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -881,7 +881,7 @@ async def request_revision(
         update_data_dict = {
             'status': 'revision_requested',
             'revision_requested_at': now,
-            'revision_requested_by': current_user.id,
+            'revision_requested_by': current_user.user_id,
             'revision_notes': update_data.reason or update_data.notes or "Revision requested",
             'updated_at': now
         }
@@ -916,7 +916,7 @@ async def request_revision(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'verification_revision',
                 'resource_type': 'customer_verification',
@@ -936,7 +936,7 @@ async def request_revision(
             message="Revision requested successfully",
             verification_id=verification_id,
             new_status='revision_requested',
-            actioned_by=current_user.id,
+            actioned_by=current_user.user_id,
             actioned_at=datetime.utcnow()
         )
         
@@ -982,7 +982,7 @@ async def get_verification_stats(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -1136,7 +1136,7 @@ async def get_verification_history(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1380,7 +1380,7 @@ async def bulk_submit_verifications(
                 member_check = supabase.from_('organization_members') \
                     .select('id') \
                     .eq('organization_id', org_id) \
-                    .eq('user_id', current_user.id) \
+                    .eq('user_id', current_user.user_id) \
                     .maybe_single() \
                     .execute()
                 
@@ -1414,7 +1414,7 @@ async def bulk_submit_verifications(
                     'status': 'submitted',
                     'notes': bulk_data.notes,
                     'submitted_at': now,
-                    'submitted_by': current_user.id,
+                    'submitted_by': current_user.user_id,
                     'metadata': bulk_data.metadata or {},
                     'created_at': now,
                     'updated_at': now
@@ -1503,7 +1503,7 @@ async def bulk_approve_verifications(
                     member_check = supabase.from_('organization_members') \
                         .select('id') \
                         .eq('organization_id', org_id) \
-                        .eq('user_id', current_user.id) \
+                        .eq('user_id', current_user.user_id) \
                         .maybe_single() \
                         .execute()
                     
@@ -1525,7 +1525,7 @@ async def bulk_approve_verifications(
                 update_data = {
                     'status': 'verified',
                     'verified_at': now,
-                    'verified_by': current_user.id,
+                    'verified_by': current_user.user_id,
                     'updated_at': now
                 }
                 
@@ -1544,7 +1544,7 @@ async def bulk_approve_verifications(
                             .update({
                                 'status': 'approved',
                                 'verified_at': now,
-                                'verified_by': current_user.id,
+                                'verified_by': current_user.user_id,
                                 'updated_at': now
                             }) \
                             .eq('id', verif['customer_document_id']) \
@@ -1596,7 +1596,7 @@ async def get_verification_timeline(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -1685,7 +1685,7 @@ async def get_detailed_verification_stats(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:

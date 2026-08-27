@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
 import './css/realtime.css';
+import './public/demos/demos.css'; // D21 — shared demo base styles (public demos)
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
@@ -18,6 +19,13 @@ import TermsPage from './TermsPage';
 import LandingPage from './LandingPage';
 import CarbonReductionPlan from './CarbonReductionPlan';
 import AboutUs from './AboutUs';
+import PlatformPage from './public/PlatformPage';
+import ServicesPage from './public/ServicesPage';
+import ProcessingServicesPage from './public/ProcessingPage';
+import ConsultantsPage from './public/ConsultantsPage';
+import ContactPage from './public/ContactPage';
+import FaqPage from './public/FaqPage';
+import AssistantWidget from './public/assistant/AssistantWidget';
 import BulkUpload from './BulkUpload';
 import RecentProcessedData from './RecentProcessedData';
 import PDFIngestionPortal from './PDFIngestionPortal';
@@ -47,6 +55,8 @@ import DashboardPage from './v3/customer/DashboardPage';
 import EmissionsPage from './v3/customer/EmissionsPage';
 import DocumentsPage from './v3/customer/DocumentsPage';
 import ProcessingPage from './v3/customer/ProcessingPage';
+import ReviewPage from './v3/customer/ReviewPage';
+import ReviewDetailPage from './v3/customer/ReviewDetailPage';
 import IssuesPage from './v3/customer/IssuesPage';
 import ExistingDataDiscoveryPage from './v3/customer/ExistingDataDiscoveryPage';
 import MessagingPage from './v3/customer/MessagingPage';
@@ -1582,7 +1592,7 @@ function Dashboard({ user }){
                   tickFormatter={(value) => `${value}t`} 
                 />
                 <Tooltip formatter={(value) => [`${value} tonnes CO2e`, 'Emissions']} />
-                <Line type="monotone" dataKey="tonnes" stroke="#2563eb" strokeWidth={3} dot={{ r: 6 }} />
+                <Line type="monotone" dataKey="tonnes" stroke="#2b6cb0" strokeWidth={3} dot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1956,10 +1966,16 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/privacy" element={<PricingPage />} />            
             <Route path="/cookies" element={<CookiePolicy />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/about" element={<AboutUs />} />
+            <Route path="/platform" element={<PlatformPage />} />
+            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/processing-services" element={<ProcessingServicesPage />} />
+            <Route path="/consultants" element={<ConsultantsPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/faq" element={<FaqPage />} />
             <Route path="/carbon-reduction-plan" element={<CarbonReductionPlan />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/signup" element={<SelfServiceSignup />} />
@@ -1973,13 +1989,6 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/dashboard/*" element={<Navigate to="/home" replace />} />
-            <Route path="/dashboard/*" element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Dashboard />
-                </DashboardLayout>
-              </ProtectedRoute>
-            } />
             <Route path="/home" element={
               <ProtectedRoute>
                 <RoleRoute requireOrg>
@@ -2012,6 +2021,24 @@ export default function App() {
                 <RoleRoute requireOrg>
                   <V3Layout>
                     <ProcessingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/review" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ReviewPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/review/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ReviewDetailPage />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>
@@ -2107,6 +2134,9 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <CookieBanner />
+          {/* Public CarbonTally Assistant — deterministic local knowledge module
+              (no AI provider, no credentials, no network). */}
+          <AssistantWidget />
         </RealtimeProviderWrapper>
       </ReferenceDataProvider>
     </BrowserRouter>

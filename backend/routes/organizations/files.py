@@ -635,7 +635,7 @@ async def upload_file(
         # ✅ Create customer_document record with type
         customer_doc_data = {
             'organization_id': org_id,
-            'organization_member_id': current_user.id,
+            'organization_member_id': current_user.user_id,
             'asset_id': asset_id,
             'file_name': file.filename,
             'file_url': path,
@@ -645,7 +645,7 @@ async def upload_file(
             'upload_date': now,
             'status': 'pending',
             'organization_classification': 'staff_assigned' if current_user.is_staff else 'customer_provided',
-            'classification_by': current_user.id,
+            'classification_by': current_user.user_id,
             'classification_at': now,
             'confidence_score': classification['confidence'],
             'organization_notes': notes,
@@ -1161,7 +1161,7 @@ async def verify_file_access(
     member_check = supabase.from_('organization_members') \
         .select('id') \
         .eq('organization_id', org_id) \
-        .eq('user_id', current_user.id) \
+        .eq('user_id', current_user.user_id) \
         .maybe_single() \
         .execute()
     
@@ -1322,7 +1322,7 @@ async def create_file_version(
             'version': len(versions),
             'timestamp': now,
             'changes': version_data.changes,
-            'created_by': current_user.id
+            'created_by': current_user.user_id
         }]
         update_data['metadata'] = metadata
         
@@ -1341,7 +1341,7 @@ async def create_file_version(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'file_version_created',
                 'resource_type': 'organization_file',
@@ -1359,7 +1359,7 @@ async def create_file_version(
         created_by_name = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1376,7 +1376,7 @@ async def create_file_version(
             file_size=version_data.file_size,
             mime_type=version_data.mime_type,
             changes=version_data.changes or 'New version',
-            created_by=current_user.id,
+            created_by=current_user.user_id,
             created_by_name=created_by_name,
             created_at=datetime.utcnow(),
             is_current=True
@@ -1492,7 +1492,7 @@ async def add_file_comment(
         # Create comment
         comment = {
             'id': str(uuid.uuid4()),
-            'user_id': current_user.id,
+            'user_id': current_user.user_id,
             'content': comment_data.content,
             'parent_comment_id': comment_data.parent_comment_id,
             'created_at': now,
@@ -1523,7 +1523,7 @@ async def add_file_comment(
         user_email = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1535,7 +1535,7 @@ async def add_file_comment(
         return FileCommentResponse(
             id=comment['id'],
             file_id=file_id,
-            user_id=current_user.id,
+            user_id=current_user.user_id,
             user_name=user_name,
             user_email=user_email,
             content=comment['content'],
@@ -1676,7 +1676,7 @@ async def update_file_comment(
             )
         
         # Verify user owns the comment
-        if comment.get('user_id') != current_user.id:
+        if comment.get('user_id') != current_user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to update this comment"
@@ -1713,7 +1713,7 @@ async def update_file_comment(
         user_email = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1725,7 +1725,7 @@ async def update_file_comment(
         return FileCommentResponse(
             id=comment['id'],
             file_id=file_id,
-            user_id=current_user.id,
+            user_id=current_user.user_id,
             user_name=user_name,
             user_email=user_email,
             content=comment['content'],
@@ -1783,11 +1783,11 @@ async def delete_file_comment(
             )
         
         # Verify user owns the comment or is admin
-        if comment.get('user_id') != current_user.id:
+        if comment.get('user_id') != current_user.user_id:
             # Check if user is staff/admin
             staff_check = supabase.from_('staff_profiles') \
                 .select('id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .eq('role', 'admin') \
                 .maybe_single() \
                 .execute()

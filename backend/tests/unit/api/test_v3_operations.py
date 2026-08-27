@@ -9,6 +9,7 @@ server-side (frontend visibility is never the barrier).
 from __future__ import annotations
 
 import asyncio
+import json
 
 from domain.entity import ProcessingEntity
 from domain.partners import ManualExtractionBatch, ManualExtractionItem
@@ -69,6 +70,10 @@ def _seed_ops_world(world) -> None:
     world.staff.seed_role(
         StaffRole(id="role-reviewer", name="reviewer", permissions={"can_review": True})
     )
+    # Entity operator: can_process within the entity scope (extraction workspaces).
+    world.staff.seed_role(
+        StaffRole(id="role-entity-op", name="entity_operator", permissions={"can_process": True})
+    )
     # Supervisor = manager with the full ops permission set (review + process +
     # manage staff + view-all). This matches the batch/review assignment gates,
     # which require two permissions at once.
@@ -120,6 +125,15 @@ def _seed_ops_world(world) -> None:
             last_name="One",
             email="ent@carbontally.test",
             role_id="role-reviewer",
+            entity_id="entity-1",
+        ),
+        StaffProfile(
+            id="sp-ent-op",
+            user_id="u-ent-op",
+            first_name="EntOp",
+            last_name="One",
+            email="entop@carbontally.test",
+            role_id="role-entity-op",
             entity_id="entity-1",
         ),
     ]
@@ -181,6 +195,20 @@ def test_entity_staff_entity_dashboard_denied_cross_entity(client, world, user_p
     assert client.get("/api/v3/ops/entities/entity-2/dashboard").status_code == 403
 
 
+def test_entity_staff_entity_dashboard_denied_when_entity_suspended(
+    client, world, user_provider
+) -> None:
+    """F1 — entity staff lose dashboard read access once their entity leaves active."""
+    _seed_ops_world(world)
+    asyncio.run(
+        world.entities.save(
+            ProcessingEntity(id="entity-1", name="Entity Beta", status="suspended")
+        )
+    )
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent"))
+    assert client.get("/api/v3/ops/entities/entity-1/dashboard").status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Ops dashboard + staff roster (manager role)
 # ---------------------------------------------------------------------------
@@ -207,7 +235,9 @@ def test_staff_list_manager(client, world, user_provider) -> None:
     user_provider.set_user(staff_user("u-mgr", email="mgr@carbontally.test"))
     response = client.get("/api/v3/ops/staff")
     assert response.status_code == 200
-    assert response.json()["total"] == 4
+    # 5 seeded staff profiles (operator, reviewer, manager, entity staff,
+    # entity operator) — the roster is server-authoritative.
+    assert response.json()["total"] == 5
 
 
 def test_staff_roles_catalog(client, world, user_provider) -> None:
@@ -554,4 +584,95 @@ def _seed_review_item(world, entity_id):
         )
 
     return asyncio.run(_seed())
+
+
+
+# ---------------------------------------------------------------------------
+# D32 — operator/PE item endpoints must return SIGNED URLs, never raw paths
+# ---------------------------------------------------------------------------
+
+
+def _patch_signed_item(monkeypatch, signed_url: str = "https://signed.example/doc?v=abc"):
+    """Patch ``signed_item`` to a deterministic signed marker so the test can
+    assert the endpoint returns the signed value and never the raw path."""
+
+    def _fake_signed(item):
+        import dataclasses
+
+        try:
+            return dataclasses.replace(item, file_url=signed_url)
+        except (TypeError, ValueError):  # pragma: no cover
+            return item
+
+    monkeypatch.setattr("api.v3_operations.signed_item", _fake_signed)
+
+
+def test_ops_batch_items_returns_signed_urls_not_raw_paths(
+    monkeypatch, client, world, user_provider
+) -> None:
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    _patch_signed_item(monkeypatch, signed_url="https://signed.example/invoice?exp=3600")
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    resp = client.get(f"/api/v3/ops/batches/{batch.id}/items")
+    assert resp.status_code == 200
+    body = resp.json()
+    raw_text = json.dumps(body)
+    # The persisted raw storage path must never appear.
+    assert "storage/docs/invoice-2025.pdf" not in raw_text
+    items = body["items"]
+    assert len(items) == 1
+    assert items[0]["file_url"] == "https://signed.example/invoice?exp=3600"
+
+
+def test_entity_batch_items_returns_signed_urls_not_raw_paths(
+    monkeypatch, client, world, user_provider
+) -> None:
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    asyncio.run(
+        world.manual_extraction.update_batch(batch.id, status="in_progress", entity_id="entity-1")
+    )
+    _patch_signed_item(monkeypatch, signed_url="https://signed.example/entity-invoice?exp=3600")
+    user_provider.set_user(staff_user("u-ent-op", email="entop@carbontally.test", entity_id="entity-1"))
+    resp = client.get(
+        f"/api/v3/ops/entities/entity-1/extraction/batches/{batch.id}/items"
+    )
+    assert resp.status_code == 200
+    raw_text = json.dumps(resp.json())
+    assert "storage/docs/invoice-2025.pdf" not in raw_text
+    assert resp.json()["items"][0]["file_url"] == "https://signed.example/entity-invoice?exp=3600"
+
+
+def test_entity_item_workspace_returns_signed_url_not_raw_path(
+    monkeypatch, client, world, user_provider
+) -> None:
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    asyncio.run(
+        world.manual_extraction.update_batch(batch.id, status="in_progress", entity_id="entity-1")
+    )
+    _patch_signed_item(monkeypatch, signed_url="https://signed.example/item-view?exp=3600")
+    user_provider.set_user(staff_user("u-ent-op", email="entop@carbontally.test", entity_id="entity-1"))
+    resp = client.get(f"/api/v3/ops/entities/entity-1/extraction/items/{item.id}")
+    assert resp.status_code == 200
+    raw_text = json.dumps(resp.json())
+    assert "storage/docs/invoice-2025.pdf" not in raw_text
+    assert resp.json()["item"]["file_url"] == "https://signed.example/item-view?exp=3600"
+
+
+def test_entity_item_workspace_still_denies_wrong_assignment(
+    client, world, user_provider
+) -> None:
+    """D32 does not weaken PE assignment isolation: an item in a batch NOT
+    assigned to the caller's entity is still denied (403)."""
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    # Batch assigned to a different entity (entity-2) -> entity-1 staff denied.
+    asyncio.run(
+        world.manual_extraction.update_batch(batch.id, status="in_progress", entity_id="entity-2")
+    )
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent"))
+    resp = client.get(f"/api/v3/ops/entities/entity-1/extraction/items/{item.id}")
+    assert resp.status_code in (403, 404)
 

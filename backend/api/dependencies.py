@@ -56,6 +56,8 @@ from data.organization_files import OrganizationFilesRepository
 from data.queue_settings import QueueSettingsRepository
 from data.review_queue import ReviewQueueRepository
 from data.roles import RolesRepository
+from data.search import SearchRepository
+from data.settings import SettingsRepository
 from data.tenant import TenantRepository
 from data.upload_batches import UploadBatchesRepository
 from data.verifications import VerificationsRepository
@@ -208,6 +210,8 @@ class RepositoryBundle:
     batches: UploadBatchesRepository
     review_queue: ReviewQueueRepository
     queue_settings: QueueSettingsRepository
+    settings: SettingsRepository
+    search: SearchRepository
     roles: RolesRepository
     verifications: VerificationsRepository
     notifications: NotificationsRepository
@@ -258,6 +262,8 @@ async def get_repositories() -> RepositoryBundle:
         batches=UploadBatchesRepository(pool),
         review_queue=ReviewQueueRepository(pool),
         queue_settings=QueueSettingsRepository(pool),
+        settings=SettingsRepository(pool),
+        search=SearchRepository(pool),
         roles=RolesRepository(pool),
         verifications=VerificationsRepository(pool),
         notifications=NotificationsRepository(pool),

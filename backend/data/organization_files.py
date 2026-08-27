@@ -122,11 +122,57 @@ class OrganizationFilesRepository(AbstractRepository[OrganizationFile]):
         )
         return _row_to_file(row) if row is not None else None
 
+    async def update_metadata(self, file_id: str, metadata: dict) -> Optional[OrganizationFile]:
+        """Replace the ``metadata`` JSONB on an organization_files row.
+
+        Used to persist OCR/extraction output without a schema change (the
+        row-level traceability chain keeps pointing at ``organization_files``).
+        """
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.organization_files
+            SET metadata = $2
+            WHERE id = $1
+            RETURNING {_FILES_COLUMNS}
+            """,
+            file_id,
+            dumps_jsonb(metadata),
+        )
+        return _row_to_file(row) if row is not None else None
+
     async def delete(self, file_id: str) -> None:
         await self._execute(
             "UPDATE public.organization_files SET is_active = FALSE WHERE id = $1",
             file_id,
         )
+
+    async def expire_documents_older_than(
+        self, cutoff, *, dry_run: bool = True
+    ) -> dict[str, int]:
+        """N3 — soft-expire documents created before ``cutoff`` (retention).
+
+        Soft-delete only (``deleted_at = NOW()``); rows are never hard-deleted.
+        ``dry_run=True`` (default) reports the eligible count without applying.
+        """
+        if dry_run:
+            row = await self._fetch_one(
+                "SELECT COUNT(*) AS n FROM public.organization_files "
+                "WHERE deleted_at IS NULL AND created_at < $1",
+                cutoff,
+            )
+            return {"eligible": int(row["n"]) if row else 0, "applied": 0}
+        row = await self._fetch_one(
+            """
+            WITH expired AS (
+                UPDATE public.organization_files SET deleted_at = NOW()
+                WHERE deleted_at IS NULL AND created_at < $1
+                RETURNING id
+            )
+            SELECT COUNT(*) AS n FROM expired
+            """,
+            cutoff,
+        )
+        return {"eligible": 0, "applied": int(row["n"]) if row else 0}
 
     async def save(self, entity: OrganizationFile) -> OrganizationFile:
         return entity

@@ -462,7 +462,7 @@ async def get_documents_for_asset(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -564,7 +564,7 @@ async def get_customer_document(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -679,7 +679,7 @@ async def get_extraction_details(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', org_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -772,7 +772,7 @@ async def verify_document(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', org_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -794,7 +794,7 @@ async def verify_document(
         update_data = {
             'status': verification_data.status,
             'verified_at': now,
-            'verified_by': current_user.id,
+            'verified_by': current_user.user_id,
             'updated_at': now
         }
         
@@ -814,7 +814,7 @@ async def verify_document(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'verification',
                 'resource_type': 'customer_document',
@@ -878,7 +878,7 @@ async def request_staff_review(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', org_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -929,7 +929,7 @@ async def request_staff_review(
             'status': 'pending' if not assigned_to else 'assigned',
             'priority': review_request.priority or 1,
             'assigned_to': assigned_to,
-            'assigned_by': current_user.id if assigned_to else None,
+            'assigned_by': current_user.user_id if assigned_to else None,
             'customer_notes': review_request.notes,
             'created_at': now,
             'updated_at': now
@@ -960,7 +960,7 @@ async def request_staff_review(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'review_request',
                 'resource_type': 'customer_document',
@@ -1286,7 +1286,7 @@ async def download_document(
         member_check = supabase.from_('organization_members') \
             .select('id') \
             .eq('organization_id', org_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1300,7 +1300,7 @@ async def download_document(
         try:
             now = datetime.utcnow().isoformat()
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'download',
                 'resource_type': 'customer_document',
@@ -1358,7 +1358,7 @@ async def get_document_history(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1464,7 +1464,7 @@ async def get_document_notes(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1479,7 +1479,7 @@ async def get_document_notes(
         if include_internal:
             staff_check = supabase.from_('staff_profiles') \
                 .select('id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             is_staff = bool(staff_check.data)
@@ -1573,7 +1573,7 @@ async def add_document_note(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1587,7 +1587,7 @@ async def add_document_note(
         if note_data.is_internal:
             staff_check = supabase.from_('staff_profiles') \
                 .select('id') \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1602,7 +1602,7 @@ async def add_document_note(
         # Create note
         note = {
             'id': str(uuid.uuid4()),
-            'user_id': current_user.id,
+            'user_id': current_user.user_id,
             'content': note_data.content,
             'is_internal': note_data.is_internal,
             'created_at': now,
@@ -1634,7 +1634,7 @@ async def add_document_note(
         user_email = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1646,7 +1646,7 @@ async def add_document_note(
         return DocumentNoteResponse(
             id=note['id'],
             document_id=document_id,
-            user_id=current_user.id,
+            user_id=current_user.user_id,
             user_name=user_name,
             user_email=user_email,
             content=note['content'],
@@ -1693,7 +1693,7 @@ async def get_document_versions(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1794,7 +1794,7 @@ async def create_document_version(
             member_check = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', org_id) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -1837,7 +1837,7 @@ async def create_document_version(
             'version': len(versions),
             'timestamp': now,
             'changes': version_data.changes,
-            'created_by': current_user.id
+            'created_by': current_user.user_id
         }]
         
         update_data['metadata'] = metadata
@@ -1857,7 +1857,7 @@ async def create_document_version(
         created_by_name = None
         user_result = supabase.from_('auth.users') \
             .select('email, raw_user_meta_data') \
-            .eq('id', current_user.id) \
+            .eq('id', current_user.user_id) \
             .maybe_single() \
             .execute()
         
@@ -1868,7 +1868,7 @@ async def create_document_version(
         # Create audit log
         try:
             audit_data = {
-                'user_id': current_user.id,
+                'user_id': current_user.user_id,
                 'organization_id': org_id,
                 'action_type': 'version_created',
                 'resource_type': 'customer_document',
@@ -1890,7 +1890,7 @@ async def create_document_version(
             file_name=version_data.file_name,
             file_size=version_data.file_size,
             changes=version_data.changes,
-            created_by=current_user.id,
+            created_by=current_user.user_id,
             created_by_name=created_by_name,
             created_at=datetime.utcnow()
         )
@@ -1917,7 +1917,7 @@ async def get_detailed_document_stats(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:

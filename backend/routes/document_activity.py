@@ -55,7 +55,7 @@ async def get_document_activity(
             member = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', doc.data['organization_id']) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -222,7 +222,7 @@ async def respond_to_review(
             member = supabase.from_('organization_members') \
                 .select('id') \
                 .eq('organization_id', doc.data['organization_id']) \
-                .eq('user_id', current_user.id) \
+                .eq('user_id', current_user.user_id) \
                 .maybe_single() \
                 .execute()
             
@@ -236,7 +236,7 @@ async def respond_to_review(
         data = {
             'file_id': file_id,
             'organization_id': doc.data['organization_id'],
-            'user_id': current_user.id,
+            'user_id': current_user.user_id,
             'status': response.status,
             'notes': response.notes,
             'created_at': datetime.utcnow().isoformat()

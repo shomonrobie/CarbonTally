@@ -653,12 +653,13 @@ Task	Duration	Depends On	Deliverable
 10.3	Admin endpoints (imports, providers, audit, aliases)	1d	Phases 5, 8
 10.4	Contract tests	1d	10.1–10.3
 
-Phase 12 — Additional Providers (ongoing, 5 days each)
+Phase 11 — Additional Providers (ongoing, 5 days each)
 Provider	Duration	Depends On
 SEAI (Ireland)	5d	Phase 5
 EPA (Ireland)	5d	Phase 5
 ADEME (France)	5d	Phase 5
 IPCC (Global)	5d	Phase 5
+
 7. Traceability Matrix
 Mapping every section of the Architecture v2.1 specification to its implementation phase.
 

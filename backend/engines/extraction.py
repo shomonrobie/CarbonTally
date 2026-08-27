@@ -264,6 +264,18 @@ class DocumentExtractionEngine:
                 )
         return tuple(fields.values())
 
+    def suggest_fields(self, text: str) -> dict[str, str]:
+        """Deterministic key/value field suggestions for ``text`` (no side effects).
+
+        Reuses the same generic ``Key: value`` and named-field patterns as
+        :meth:`extract`, but has NO status/event/audit side effects. Intended for
+        the human-review pre-fill path: the returned values are SUGGESTIONS and
+        must never be treated as human-confirmed extracted data.
+        """
+        if not text or not text.strip():
+            return {}
+        return {f.field_name: f.value for f in self._extract_fields(text)}
+
     async def _set_status(self, doc_id: str, status: str) -> None:
         await self._documents_repo.update_status(doc_id, status)
 

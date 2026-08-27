@@ -101,7 +101,7 @@ async def get_dashboard_stats(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -189,7 +189,7 @@ async def get_document_status_overview(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -262,7 +262,7 @@ async def get_asset_performance(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -347,7 +347,7 @@ async def get_emissions_overview(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -466,7 +466,7 @@ async def get_pending_actions(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -540,7 +540,7 @@ async def get_pending_actions(
         # 3. Unread notifications
         notifications = supabase.from_('notifications') \
             .select('id, title, message, type, created_at, link') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .eq('is_read', False) \
             .order('created_at', desc=True) \
             .limit(10) \
@@ -585,7 +585,7 @@ async def get_recent_activity(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -648,7 +648,7 @@ async def get_notifications(
         # Build query
         query = supabase.from_('notifications') \
             .select('id, title, message, type, is_read, created_at, link') \
-            .eq('user_id', current_user.id)
+            .eq('user_id', current_user.user_id)
         
         if not include_read:
             query = query.eq('is_read', False)
@@ -720,7 +720,7 @@ async def get_dashboard_trends(
         # Get user's organizations
         orgs_result = supabase.from_('organization_members') \
             .select('organization_id') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not orgs_result.data:
@@ -914,7 +914,7 @@ async def get_dashboard_alerts(
                 id, title, message, type, is_read, created_at, 
                 link, priority, metadata, read_at
             ''') \
-            .eq('user_id', current_user.id)
+            .eq('user_id', current_user.user_id)
         
         if not include_read:
             query = query.eq('is_read', False)
@@ -968,7 +968,7 @@ async def get_dashboard_alerts(
             system_alerts = supabase.from_('audit_logs') \
                 .select('id, action_type, description, created_at') \
                 .eq('action_type', 'error') \
-                .eq('organization_id', current_user.id) \
+                .eq('organization_id', current_user.user_id) \
                 .order('created_at', desc=True) \
                 .limit(limit - len(alerts)) \
                 .execute()
@@ -1115,7 +1115,7 @@ async def get_alert_summary(
         # Get notifications by priority
         result = supabase.from_('notifications') \
             .select('priority, id', count='exact') \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         
@@ -1173,7 +1173,7 @@ async def dismiss_alert(
                 'updated_at': now
             }) \
             .eq('id', alert_id) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .execute()
         
         if not result.data:
@@ -1219,7 +1219,7 @@ async def clear_all_alerts(
                 'dismissed_at': now,
                 'updated_at': now
             }) \
-            .eq('user_id', current_user.id) \
+            .eq('user_id', current_user.user_id) \
             .eq('is_read', False) \
             .execute()
         
