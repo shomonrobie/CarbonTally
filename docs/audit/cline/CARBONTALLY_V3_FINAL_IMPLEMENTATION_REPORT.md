@@ -245,7 +245,7 @@ API/unit/RLS coverage is the substitute evidence.
 
 - Baseline commit: `9458067`.
 - Branch: `main`.
-- Final commit: `6d5199d` — "feat: finalize v3 ux and promote public website".
+- Final commit: `077c866` — "feat: finalize v3 ux and promote public website".
 - Files changed in final commit: ≈830 (backend 121, frontend 179 + backup 235,
   docs 299, tools 2, database 2, supabase 1, .gitignore 1) — reviewed, no
   secrets, no node_modules/build/caches/screenshots/generated artifacts.
