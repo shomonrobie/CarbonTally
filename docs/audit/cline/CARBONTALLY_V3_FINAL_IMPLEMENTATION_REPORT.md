@@ -291,9 +291,12 @@ API/unit/RLS coverage is the substitute evidence.
   the remote history requires an explicit Product Owner decision (rebase onto
   `origin/main` or force-push authorization).
 - Remote: origin -> https://github.com/shomonrobie/CarbonTally.git
-- Working tree after commit: the remaining uncommitted entries are unrelated
+- Working tree after commit: 397 entries remain uncommitted — (a) unrelated
   tool-skill directories (`.agents/skills`, `.claude/skills`, `.windsurf/`,
-  `.openhands/`) plus excluded generated artifacts (`output/`, `screenshots/`,
+  `.openhands/`); (b) excluded generated artifacts (`output/`, `screenshots/`,
   `probe_out*.txt`, `v3_schema.sql`, `backend/test_results.json`,
   `admin-dashboard.zip`, `supabase/snippets/`, `docs/ChatGPT/`,
-  `website_candidate/`) — none part of the CarbonTally commit.
+  `website_candidate/`); (c) pre-existing legacy working-tree modifications
+  preserved but not part of the reviewed V3 commit (`admin/` dashboard, root
+  helper files, `demodatagen/`). None of these are required for the V3 final
+  state and none were discarded.
