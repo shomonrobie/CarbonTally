@@ -181,6 +181,12 @@
 .v3-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 @media (max-width: 900px) { .v3-grid-2 { grid-template-columns: 1fr; } }
 .v3-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 22px; }
+/* CL-38/UH-3 — mobile: never stack the six stat cards into one tall column;
+   a 2-column grid keeps "Reporting overview" inside the first viewport. */
+@media (max-width: 640px) {
+  .v3-stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .v3-stat-card { padding: 12px 14px; }
+}
 .v3-stat-card { display: block; background: var(--ct-color-surface); border: 1px solid var(--ct-color-border); border-radius: 12px; padding: 16px 18px; text-decoration: none; color: var(--ct-color-text); transition: border-color 0.15s, box-shadow 0.15s; }
 .v3-stat-card:hover { border-color: var(--ct-color-primary); box-shadow: 0 2px 8px rgba(47, 133, 90, 0.15); }
 .v3-stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ct-color-text-muted); }

@@ -1759,6 +1759,20 @@ class MemoryManualExtraction:
     async def get_item(self, item_id: str) -> Optional[ManualExtractionItem]:
         return self._items.get(item_id)
 
+    async def find_item_by_file(
+        self, org_id: str, file_name: str
+    ) -> Optional[ManualExtractionItem]:
+        """Mirror of the repository — resolve an item by file name within an org."""
+        for item in self._items.values():
+            batch = self._batches.get(item.batch_id)
+            if (
+                batch is not None
+                and batch.organization_id == org_id
+                and item.file_name == file_name
+            ):
+                return item
+        return None
+
     async def list_items(self, batch_id: str) -> list[ManualExtractionItem]:
         return [i for i in self._items.values() if i.batch_id == batch_id]
 
@@ -1926,12 +1940,16 @@ class MemoryManualExtraction:
         ][:limit]
 
     async def list_customer_review(self, org_id: str) -> list:
+        # CL-1 — the customer review queue exposes both `customer_review` and
+        # `calculated` items (a calculated item may be approved directly) and
+        # never items from cancelled batches.
         return [
             i
             for i in self._items.values()
-            if i.status == "customer_review"
+            if i.status in ("customer_review", "calculated")
             and self._batches.get(i.batch_id) is not None
             and self._batches[i.batch_id].organization_id == org_id
+            and self._batches[i.batch_id].status != "cancelled"
         ]
 
     async def workflow_dashboard(self, org_id: str) -> dict:
@@ -3665,6 +3683,32 @@ class MemoryIssues:
         )
         await self.save(updated)
         return updated
+
+    async def resolve_open_for_item(
+        self, item_id: str, updated_by: Optional[str] = None
+    ) -> int:
+        """Mirror of the repository — resolve every open issue for a work item."""
+        from dataclasses import replace
+        count = 0
+        for i, existing in enumerate(self._issues):
+            if existing.work_item_id == item_id and existing.status == "open":
+                updated = replace(existing, status="resolved", updated_by=updated_by)
+                self._issues[i] = updated
+                count += 1
+        return count
+
+    async def resolve_open_for_batch(
+        self, batch_id: str, updated_by: Optional[str] = None
+    ) -> int:
+        """Mirror of the repository — resolve issues linked to an extraction batch."""
+        from dataclasses import replace
+        count = 0
+        for i, existing in enumerate(self._issues):
+            if existing.manual_extraction_batch_id == batch_id and existing.status == "open":
+                updated = replace(existing, status="resolved", updated_by=updated_by)
+                self._issues[i] = updated
+                count += 1
+        return count
 
     async def delete(self, id: str) -> None:
         raise NotImplementedError("issues are never hard-deleted")

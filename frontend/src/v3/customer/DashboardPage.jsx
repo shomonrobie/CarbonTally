@@ -83,6 +83,21 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!org) return;
     let active = true;
+    const loadActivity = () =>
+      getMemberActivity(org.id)
+        .then((r) => { if (active) { setActivity(r); setActivityError(''); } })
+        .catch((e) => {
+          // CL-39/UH-5 — the member-activity request intermittently fails on
+          // first paint with a 0-status network error; retry once before
+          // surfacing the error card.
+          if (active && e && e.status === 0) {
+            return getMemberActivity(org.id)
+              .then((r) => { if (active) { setActivity(r); setActivityError(''); } })
+              .catch((e2) => { if (active) setActivityError(e2.message || 'Activity unavailable'); });
+          }
+          if (active) setActivityError(e.message || 'Activity unavailable');
+          return undefined;
+        });
     getCustomerDashboardReport(org.id)
       .then((r) => { if (active) { setReport(r); setReportError(''); } })
       .catch((e) => { if (active) setReportError(e.message || 'Reporting unavailable'); });
@@ -90,9 +105,7 @@ export default function DashboardPage() {
     getEmissionsTrend(org.id, 12)
       .then((r) => { if (active) setTrend(r); })
       .catch(() => undefined);
-    getMemberActivity(org.id)
-      .then((r) => { if (active) { setActivity(r); setActivityError(''); } })
-      .catch((e) => { if (active) setActivityError(e.message || 'Activity unavailable'); });
+    loadActivity();
     return () => { active = false; };
   }, [org]);
 
@@ -106,7 +119,7 @@ export default function DashboardPage() {
   return (
     <div className="v3-page">
       <div className="v3-page-header">
-        <h1>Dashboard</h1>
+        <h1>Home</h1>
         <p className="v3-subtitle">{org.name} · V3 customer workspace</p>
       </div>
 

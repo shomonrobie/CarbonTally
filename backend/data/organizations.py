@@ -94,10 +94,13 @@ _METADATA_UPDATE_FIELDS = (
 
 _FACILITY_COLUMNS = """
     id, organization_id, name, address_line1, address_line2, city, county,
-    postcode
+    postcode, is_active, type, country
 """
 
-_ASSET_COLUMNS = "id, facility_id, organization_id, name, type AS asset_type"
+_ASSET_COLUMNS = (
+    "a.id, a.facility_id, a.organization_id, a.name, a.type AS asset_type, "
+    "a.is_active, f.name AS facility_name"
+)
 
 
 def _row_to_org(row: Any) -> Organization:
@@ -276,6 +279,9 @@ def _row_to_facility(row: Any) -> Facility:
         name=str(r["name"]),
         address=", ".join(p for p in parts if p),
         postcode=r.get("postcode"),
+        is_active=bool(r.get("is_active", True)),
+        type=r.get("type"),
+        country=str(r.get("country") or "GB"),
     )
 
 
@@ -287,6 +293,8 @@ def _row_to_asset(row: Any) -> Asset:
         organization_id=str(r["organization_id"]) if r.get("organization_id") else "",
         name=str(r["name"]),
         asset_type=str(r.get("asset_type") or "other"),
+        facility_name=r.get("facility_name"),
+        is_active=bool(r.get("is_active", True)),
     )
 
 
@@ -474,12 +482,18 @@ class OrganizationsRepository(AbstractRepository[Organization]):
         return [_row_to_facility(r) for r in rows]
 
     async def get_assets(self, org_id: str) -> list[Asset]:
-        """Return every asset belonging to the organisation."""
+        """Return every asset belonging to the organisation.
+
+        ISC-4 / CL-19 — the list joins ``facilities`` so the human-readable
+        facility name is available to the UI (never a bare UUID).
+        """
         rows = await self._fetch_all(
             f"""
-            SELECT {_ASSET_COLUMNS} FROM public.assets
-            WHERE organization_id = $1
-            ORDER BY name, id
+            SELECT {_ASSET_COLUMNS}
+            FROM public.assets a
+            LEFT JOIN public.facilities f ON f.id = a.facility_id
+            WHERE a.organization_id = $1
+            ORDER BY a.name, a.id
             """,
             org_id,
         )

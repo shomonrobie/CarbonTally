@@ -106,6 +106,10 @@ export default function OperatorQueue() {
     setItem(null);
     setNotice('');
     try {
+      // UH-1/UH-2 — the workbench is the primary workspace: open items move the
+      // page to the top so the split-screen workbench appears immediately
+      // (previously the 53-row queue wall pushed it ~3,100 px below).
+      window.scrollTo({ top: 0, behavior: 'auto' });
       // Load the full signed workspace payload: signed source URL + OCR field
       // suggestions + server validation findings (D19/D32). The list row is
       // used only for selection.
@@ -116,6 +120,14 @@ export default function OperatorQueue() {
     } catch (e) {
       setError(e.message || 'Failed to open item workspace');
     }
+  };
+
+  const closeItem = () => {
+    setActiveItemId(null);
+    setItem(null);
+    setSuggestions(null);
+    setValidation([]);
+    window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
   useEffect(() => {
@@ -178,6 +190,26 @@ export default function OperatorQueue() {
       {error && <div className="v3-ops-error">{error}</div>}
       {notice && <div className="v3-ops-notice">{notice}</div>}
 
+      {item ? (
+        // UH-1/UH-2 — WORKBENCH-FIRST: with an item open the giant queue wall is
+        // collapsed to a compact summary strip so the D19 split-screen workbench
+        // becomes the primary workspace and appears immediately (canonical
+        // ASCII E1 → E2: queue hub → standalone item workbench). Previous/Next
+        // navigate within the open item (ExtractionPanel) without returning to
+        // the queue.
+        <div className="ct-workbench-context" style={{ marginBottom: 12 }}>
+          <div className="v3-ops-notice" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <strong>{item.file_name || item.id}</strong>
+            <span className="v3-muted">
+              {batches.find((b) => b.batch.id === activeBatchId)?.batch.batch_name || 'batch'}
+              {' · '}{items.length} item{items.length === 1 ? '' : 's'}
+            </span>
+            <span style={{ flex: 1 }} />
+            <button className="v3-btn v3-btn-sm" onClick={closeItem}>Back to queue</button>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
         <h3>Assigned / self-serve batches ({batches.length})</h3>
         <table className="v3-ops-table">
@@ -319,6 +351,8 @@ export default function OperatorQueue() {
           </table>
         )}
       </div>
+        </>
+      )}
 
       {item ? (
         <ExtractionPanel

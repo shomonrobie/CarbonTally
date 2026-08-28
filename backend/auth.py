@@ -344,6 +344,13 @@ def require_auth():
     
     return auth_checker
 
+#: Role names that carry CarbonTally-internal admin authority (ISC-10 /
+#: PO Decision 2). The seeded ``system_admin`` role is a full
+#: system-administration role and must pass the legacy ``/api/v2/admin/*``
+#: authorizer that historically only recognised the literal role name ``admin``.
+ADMIN_ROLE_NAMES: tuple[str, ...] = ("admin", "system_admin")
+
+
 def require_admin():
     """
     Dependency factory for admin privileges.
@@ -367,10 +374,14 @@ def require_admin():
                 detail="Processing Entity staff cannot hold internal admin authority",
             )
 
-        if current_user.role != 'admin' and current_user.role_name != 'admin':
+        if (
+            current_user.role not in ADMIN_ROLE_NAMES
+            and current_user.role_name not in ADMIN_ROLE_NAMES
+            and not current_user.permissions.get("is_superuser", False)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin privileges required"
+                detail="Admin privileges required",
             )
         
         return current_user
@@ -451,8 +462,13 @@ def require_org_admin():
         # Global CarbonTally admin — D20 (scope-first): the global-admin path is
         # limited to CarbonTally INTERNAL staff (``entity_id IS NULL``). A
         # Processing Entity staff profile with an ``admin``-named role must
-        # never pass as a global admin.
-        if current_user.is_internal_staff and (current_user.role == 'admin' or current_user.role_name == 'admin'):
+        # never pass as a global admin. PO Decision 2: ``system_admin`` is a
+        # full system-administration role and passes here too.
+        if current_user.is_internal_staff and (
+            current_user.role in ADMIN_ROLE_NAMES
+            or current_user.role_name in ADMIN_ROLE_NAMES
+            or current_user.permissions.get("is_superuser", False)
+        ):
             return current_user
 
         # Org member holding the owner/admin role. ``get_current_user`` derives
@@ -564,6 +580,13 @@ def require_role(required_roles: List[str]):
     """
     Dependency factory for role requirements.
     """
+    # PO Decision 2 — ``system_admin`` is a full system-administration role: it
+    # satisfies every legacy gate that requires the ``admin`` role (superset
+    # semantics) without granting the less-privileged role names.
+    accepted = set(required_roles)
+    if "admin" in accepted:
+        accepted.update(ADMIN_ROLE_NAMES)
+
     async def role_checker(
         current_user: AuthUser = Depends(get_current_user)
     ) -> AuthUser:
@@ -575,7 +598,7 @@ def require_role(required_roles: List[str]):
                 detail="Processing Entity staff cannot hold role-name authority",
             )
 
-        if current_user.role not in required_roles and current_user.role_name not in required_roles:
+        if current_user.role not in accepted and current_user.role_name not in accepted:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Required roles: {', '.join(required_roles)}. User has role: {current_user.role}"

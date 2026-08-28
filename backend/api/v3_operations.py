@@ -54,6 +54,7 @@ from api.operations_auth import (
     require_internal_staff,
     require_staff,
 )
+from core.units import mapping_no_factors_reason, resolve_unit_for_factor
 from domain.audit import AuditEntry
 from domain.issue import Issue
 from domain.partners import (
@@ -323,22 +324,19 @@ async def _record_batch_assignment_audit(
 def _resolve_unit_for_factor(extracted_unit: str, factor) -> str:
     """Normalise a human-typed unit against the selected factor's unit.
 
-    DEFRA units carry qualifiers (e.g. "kWh (Gross CV)"). When the operator
-    types "kWh" and selects a "kWh (Gross CV)" factor, the quantity is in the
-    factor's unit; the request uses the factor's canonical unit so the engine's
-    exact-unit check passes and the multiplier applies 1:1. A genuine mismatch
-    (e.g. "m3" vs "kWh") is left untouched and the engine rejects it with a
-    clear UNIT_MISMATCH error.
+    CL-3 / PRC-2: extracted/entered units use abbreviations (``L``, ``t``,
+    ``kg``, ``kWh``) while DEFRA/SEAI factors are keyed canonically (``litres``,
+    ``tonnes``, ``kilograms``, ``kWh (Gross CV)``…). The normalisation is:
+
+    1. exact alias match (``L`` ↔ ``litres``) — resolves to the factor unit;
+    2. substring/qualifier match (``kWh`` vs ``kWh (Gross CV)``) — resolves to
+       the factor unit (the quantity is in the factor's unit);
+    3. otherwise the value is passed through unchanged so the authoritative
+       engine still raises a clear ``UNIT_MISMATCH`` for genuine mismatches.
     """
-    unit = str(extracted_unit or "").strip()
-    factor_unit = str(getattr(factor, "unit", "") or "").strip()
-    if not unit or not factor_unit:
-        return unit or factor_unit
-    if unit == factor_unit:
-        return unit
-    if unit in factor_unit or factor_unit in unit:
-        return factor_unit
-    return unit
+    return resolve_unit_for_factor(
+        extracted_unit, getattr(factor, "unit", None)
+    )
 
 
 async def _run_line_calculation(
@@ -432,6 +430,7 @@ async def _run_line_calculation(
             scope=scope,
             methodology=payload.methodology,
             source_file=item.file_name,
+            source_item_id=item.id,  # D33: snapshot → extraction-item link
             asset_id=payload.asset_id,
             facility_id=payload.facility_id,
             factor=factor,
@@ -1182,6 +1181,11 @@ async def mapping_options(
         "assets": await repos.organizations.get_assets(batch.organization_id),
         "suppliers": await repos.suppliers.list_for_org(batch.organization_id),
         "factors": factors,
+        # ISC-9 / CL-32 — honest spend-based mapping state (see the Phase 3
+        # surface for the full reasoning).
+        "no_factors_reason": mapping_no_factors_reason(
+            search_activity, search_unit, bool(factors)
+        ),
     }
 
 
@@ -1290,6 +1294,9 @@ async def validate_item(
             "findings": _findings_out(findings),
         }
     await repos.manual_extraction.set_item_status(item.id, "validated")
+    # ISC-2 / CL-26 — a clean run resolves previously blocking findings
+    # (internal issues are batch-linked through manual_extraction_batch_id).
+    await repos.issues.resolve_open_for_batch(batch.id, context.profile.user_id)
     return {
         "status": "validated",
         "blocking": False,
@@ -1379,6 +1386,7 @@ async def calculate_item(
         scope=scope,
         methodology=payload.methodology,
         source_file=item.file_name,
+        source_item_id=item.id,  # D33: snapshot → extraction-item link
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
         factor=factor,
@@ -1656,6 +1664,13 @@ async def review_queue(
 
     * Entity staff: only their entity's ``manual_review_queue`` rows.
     * Internal staff: items assigned to them, or everything with ``can_view_all``.
+
+    UH-7/CL-36 — the queue only exposes RESOLVABLE review items: each
+    ``manual_review_queue`` row is resolved to a real ``manual_extraction_item``
+    (by file name within the row's organisation) and rows that cannot resolve to
+    a real item are dropped (legacy phantom rows never surface). Each returned
+    row carries ``item_id`` (the extraction item the workbench opens) and the
+    reviewer's display name instead of a raw UUID.
     """
     ensure_staff_permission(context, "can_review")
     items = await repos.review_queue.list_items(
@@ -1665,7 +1680,42 @@ async def review_queue(
         items = [r for r in items if r.entity_id == context.profile.entity_id]
     elif not context.permissions.get("can_view_all") and assigned_to is None:
         items = [r for r in items if r.assigned_to == context.profile.user_id]
-    return {"queued": len(items), "items": items}
+
+    staff_by_user = await repos.staff.list_profiles() if items else []
+
+    resolved: list[dict] = []
+    for row in items:
+        extraction_item = None
+        if row.organization_id and row.file_name:
+            extraction_item = await repos.manual_extraction.find_item_by_file(
+                row.organization_id, row.file_name
+            )
+        if extraction_item is None:
+            # UH-7 — drop phantom/legacy rows that do not resolve to a real item.
+            continue
+        assigned_name = None
+        if row.assigned_to:
+            for profile in staff_by_user:
+                if str(profile.user_id) == row.assigned_to:
+                    assigned_name = f"{profile.first_name} {profile.last_name}".strip() or profile.email
+                    break
+            if assigned_name is None:
+                assigned_name = row.assigned_to  # very unlikely; keep a resolvable id
+        resolved.append(
+            {
+                "id": row.id,
+                "item_id": extraction_item.id,
+                "organization_id": row.organization_id,
+                "file_name": row.file_name,
+                "status": row.status,
+                "priority": row.priority,
+                "entity_id": row.entity_id,
+                "assigned_to": row.assigned_to,
+                "assigned_to_name": assigned_name,
+                "created_at": row.created_at,
+            }
+        )
+    return {"queued": len(resolved), "items": resolved}
 
 
 @router.get("/queues/qc")

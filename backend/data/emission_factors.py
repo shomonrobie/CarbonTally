@@ -126,15 +126,26 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         ``unit_substring`` (D23): match the unit with a substring instead of an
         exact value so a human operator typing "kWh" also finds "kWh (Gross CV)"
         candidates in the extraction mapping picker.
+
+        CL-3/CL-14: the supplied unit is alias-normalised first (``L`` →
+        ``litres``, ``m3`` → ``cubic metres`` …) so the search matches the
+        canonical factor-unit vocabulary, and results are ordered with exact
+        unit matches first so the correct factor surfaces on the first page.
         """
+        from core.units import normalize_unit
+
         clauses = ["ef.activity_type ILIKE '%' || $1 || '%'"]
         params: list[object] = [activity]
+        unit_match_clause = "1=1"
         if unit is not None:
-            params.append(unit)
+            unit_norm = normalize_unit(unit) or unit
+            params.append(unit_norm)
             if unit_substring:
                 clauses.append(f"ef.unit ILIKE '%' || ${len(params)} || '%'")
             else:
                 clauses.append(f"ef.unit = ${len(params)}")
+            # Relevance: exact (normalised) unit match first, then activity.
+            unit_match_clause = f"(ef.unit = ${len(params)}) DESC"
         if year is not None:
             params.append(year)
             clauses.append(f"ef.reporting_year = ${len(params)}")
@@ -148,7 +159,7 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         query = (
             f"SELECT {_FACTOR_COLUMNS} {_FACTOR_FROM}"
             " WHERE " + " AND ".join(clauses)
-            + " ORDER BY ef.reporting_year DESC, ef.activity_type"
+            + f" ORDER BY {unit_match_clause}, ef.reporting_year DESC, ef.activity_type"
             + f" LIMIT ${len(params)}"
         )
         rows = await self._fetch_all(query, *params)

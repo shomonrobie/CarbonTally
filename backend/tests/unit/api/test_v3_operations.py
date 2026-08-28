@@ -535,6 +535,96 @@ async def _create_review_item(world):
 
 
 # ---------------------------------------------------------------------------
+# Phase 1 regressions (CL-1/ISC-2/UH-7)
+# ---------------------------------------------------------------------------
+
+
+def test_issue_lifecycle_clean_validation_resolves_open_issues(client, world, user_provider) -> None:
+    """ISC-2/CL-26 — a clean validation run resolves previously open blocking
+    issues so an approved item never carries stale EXTRACTION_MISSING_FIELD
+    issues (dashboard open-issue counts reflect reality)."""
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)
+
+    # Operator extracts with missing quantity/unit -> blocking findings.
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    client.post(f"/api/v3/ops/items/{item.id}/start", json={"stage": "extraction"})
+    client.post(f"/api/v3/ops/items/{item.id}/extract", json={"extracted_data": {"activity": "X"}})
+    client.post(
+        f"/api/v3/ops/items/{item.id}/map",
+        json={"mapped_data": {}, "emission_factor_used": "factor-defra-gas"},
+    )
+
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    blocking = client.post(f"/api/v3/ops/items/{item.id}/validate")
+    assert blocking.json()["blocking"] is True
+
+    # Issues were opened (batch-linked through manual_extraction_batch_id).
+    open_issues = asyncio.run(world.issues.list_open())
+    assert open_issues, "blocking validation must open first-class issues"
+
+    # Operator corrects the fields, reviewer re-validates clean.
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    client.post(
+        f"/api/v3/ops/items/{item.id}/extract",
+        json={
+            "extracted_data": {
+                "activity": "Natural gas",
+                "quantity": "1000",
+                "unit": "kWh",
+                "supplier": "British Gas",
+                "date": "2025-06-01",
+            }
+        },
+    )
+    client.post(
+        f"/api/v3/ops/items/{item.id}/map",
+        json={"mapped_data": {"activity_type": "Natural gas"}, "emission_factor_used": "factor-defra-gas"},
+    )
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    clean = client.post(f"/api/v3/ops/items/{item.id}/validate")
+    assert clean.status_code == 200
+    assert clean.json()["blocking"] is False
+    assert clean.json()["status"] == "validated"
+
+    # ISC-2 — the previously open issues are now resolved.
+    remaining = asyncio.run(world.issues.list_open())
+    assert all(i.status != "open" for i in open_issues) or not remaining
+
+
+def test_review_queue_drops_unresolvable_rows_and_exposes_item_id(client, world, user_provider) -> None:
+    """UH-7/CL-36 — the ops review queue only exposes RESOLVABLE review items:
+    rows that resolve to a real extraction item carry ``item_id``; legacy
+    phantom rows are dropped (no fake 1111/2222 UUIDs reach the reviewer)."""
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)  # item.file_name = "invoice-2025.pdf"
+
+    async def _seed_review_rows():
+        resolvable = await world.review_queue.create_item(
+            org_id="org-a", file_name=item.file_name, status="pending", priority=1
+        )
+        phantom = await world.review_queue.create_item(
+            org_id="org-a", file_name="does-not-exist.pdf", status="pending", priority=1
+        )
+        return resolvable, phantom
+
+    resolvable, _phantom = asyncio.run(_seed_review_rows())
+
+    # Manager has can_view_all so every resolvable queue row is returned.
+    user_provider.set_user(staff_user("u-mgr", email="mgr@carbontally.test"))
+    response = client.get("/api/v3/ops/queues/review")
+    assert response.status_code == 200
+    body = response.json()
+    items = body["items"]
+    # The phantom row must not surface.
+    assert all(r["file_name"] != "does-not-exist.pdf" for r in items)
+    # The resolvable row surfaces with the real item id the workbench opens.
+    match = [r for r in items if r["id"] == resolvable.id]
+    assert len(match) == 1
+    assert match[0]["item_id"] == item.id
+
+
+# ---------------------------------------------------------------------------
 # STEP 10 — server-side security: manipulated IDs / cross-company denial
 # ---------------------------------------------------------------------------
 

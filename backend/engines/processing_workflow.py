@@ -50,22 +50,32 @@ def _findings(
     """Build the finding list (keeps the rule function readable)."""
     out: list[ValidationFinding] = []
     for field in missing_fields or []:
+        label = field.replace("_", " ").capitalize()
         out.append(
             ValidationFinding(
                 "EXTRACTION_MISSING_FIELD",
                 "error",
-                f"missing extracted field '{field}'",
+                f"{label} is missing — enter it manually from the document",
                 field,
             )
         )
     if quantity_error:
         code = "NEGATIVE_QUANTITY" if quantity_error == "negative" else "INVALID_QUANTITY"
+        message = {
+            "missing": "Quantity is missing — enter it manually from the document",
+            "negative": "Quantity must be zero or greater",
+            "invalid": "Quantity is not a valid number",
+        }.get(quantity_error, quantity_error)
         out.append(
-            ValidationFinding(code, "error", quantity_error, "quantity")
+            ValidationFinding(code, "error", message, "quantity")
         )
     if missing_unit:
         out.append(
-            ValidationFinding("MISSING_UNIT", "error", "missing unit", "unit")
+            ValidationFinding(
+                "MISSING_UNIT", "error",
+                "Unit is missing — enter the unit from the document (e.g. litres, kWh, tonnes)",
+                "unit",
+            )
         )
     if mapping_missing:
         out.append(
@@ -169,7 +179,7 @@ def _validate_line_items(
         findings.append(
             ValidationFinding(
                 "EXTRACTION_MISSING_FIELD", "error",
-                "missing extracted field 'supplier'", "supplier",
+                "Supplier is missing — enter it manually from the document", "supplier",
             )
         )
 
@@ -178,7 +188,7 @@ def _validate_line_items(
         findings.append(
             ValidationFinding(
                 "EXTRACTION_MISSING_FIELD", "error",
-                "missing extracted field 'invoice_date'", "invoice_date",
+                "Invoice date is missing — enter it manually from the document", "invoice_date",
             )
         )
 
@@ -196,7 +206,8 @@ def _validate_line_items(
             findings.append(
                 ValidationFinding(
                     "EXTRACTION_MISSING_FIELD", "error",
-                    f"line {idx + 1} missing activity", f"{prefix}.activity",
+                    f"Line {idx + 1} activity is missing — enter it manually from the document",
+                    f"{prefix}.activity",
                 )
             )
         raw_qty = line.get("quantity")
@@ -204,7 +215,8 @@ def _validate_line_items(
             findings.append(
                 ValidationFinding(
                     "EXTRACTION_MISSING_FIELD", "error",
-                    f"line {idx + 1} missing quantity", f"{prefix}.quantity",
+                    f"Line {idx + 1} quantity is missing — enter it manually from the document",
+                    f"{prefix}.quantity",
                 )
             )
         else:
@@ -214,21 +226,22 @@ def _validate_line_items(
                     findings.append(
                         ValidationFinding(
                             "NEGATIVE_QUANTITY", "error",
-                            f"line {idx + 1} quantity is negative", f"{prefix}.quantity",
+                            f"Line {idx + 1} quantity must be zero or greater", f"{prefix}.quantity",
                         )
                     )
             except (InvalidOperation, ValueError, TypeError):
                 findings.append(
                     ValidationFinding(
                         "INVALID_QUANTITY", "error",
-                        f"line {idx + 1} quantity is invalid", f"{prefix}.quantity",
+                        f"Line {idx + 1} quantity is not a valid number", f"{prefix}.quantity",
                     )
                 )
         if not str(line.get("unit") or "").strip():
             findings.append(
                 ValidationFinding(
                     "MISSING_UNIT", "error",
-                    f"line {idx + 1} missing unit", f"{prefix}.unit",
+                    f"Line {idx + 1} unit is missing — enter the unit from the document",
+                    f"{prefix}.unit",
                 )
             )
         raw_amount = line.get("amount")

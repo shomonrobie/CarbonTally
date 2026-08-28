@@ -56,25 +56,27 @@ async def get_fuel_types(
     """
     try:
         supabase = get_supabase_client()
-        
-        # Get distinct fuel types from defra_conversion_factors
-        result = supabase.from_('defra_conversion_factors') \
+
+        # CL-15/CAL-3 — the reference query referenced the removed
+        # `defra_conversion_factors` table (PGRST205). The authoritative fuel
+        # vocabulary lives in `emission_factors.activity_type`.
+        result = supabase.from_('emission_factors') \
             .select('activity_type') \
             .execute()
-        
+
         fuel_types = []
         if result.data:
             all_types = list(set([r['activity_type'] for r in result.data]))
             fuel_keywords = ['Diesel', 'Petrol', 'LPG', 'CNG', 'AdBlue', 'Fuel', 'Gasoline']
             fuel_types = [t for t in all_types if any(kw.lower() in t.lower() for kw in fuel_keywords)]
             fuel_types.sort()
-        
+
         return {
             "success": True,
             "data": fuel_types,
             "total": len(fuel_types)
         }
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

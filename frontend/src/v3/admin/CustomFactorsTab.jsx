@@ -80,7 +80,7 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
         flash('Factor updated.');
       } else {
         await createCustomerFactor(payload);
-        flash('Factor draft created. An organisation admin can approve it.');
+        flash('Factor draft created. As the organisation owner you can approve it; an admin can also approve it.');
       }
       setShowForm(false);
       setEditing(null);
@@ -227,7 +227,7 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
           title={confirm.action === 'approve' ? 'Approve this factor?' : 'Deactivate this factor?'}
           message={
             confirm.action === 'approve'
-              ? 'Approval activates the factor for matching (approved customer factor takes precedence). No self-approval is allowed — the backend enforces this.'
+              ? 'Approval activates the factor for matching (approved customer factor takes precedence). As the organisation owner you may approve your own factor; other actors may not self-approve — the backend enforces this.'
               : 'Deactivation is a soft disable; the factor and its history are preserved.'
           }
           confirmLabel={confirm.action === 'approve' ? 'Approve' : 'Deactivate'}

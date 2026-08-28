@@ -289,6 +289,12 @@ export const createFacility = (organizationId, payload) =>
     body: JSON.stringify(payload),
   });
 
+export const updateFacility = (facilityId, payload) =>
+  v3Fetch(`/api/v3/organizations/facilities/${facilityId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
 export const removeFacility = (facilityId) =>
   v3Fetch(`/api/v3/organizations/facilities/${facilityId}`, { method: 'DELETE' });
 
@@ -301,6 +307,12 @@ export const getAsset = (assetId) =>
 export const createAsset = (organizationId, payload) =>
   v3Fetch(`/api/v3/organizations/${organizationId}/assets`, {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const updateAsset = (assetId, payload) =>
+  v3Fetch(`/api/v3/organizations/assets/${assetId}`, {
+    method: 'PUT',
     body: JSON.stringify(payload),
   });
 

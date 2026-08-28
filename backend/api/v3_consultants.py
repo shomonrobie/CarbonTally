@@ -10,10 +10,11 @@ without this server-side check.
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from api.consultant_auth import (
     CLIENT_STATUSES,
@@ -376,6 +377,96 @@ async def add_client(
     )
 
 
+class CustomerCreate(BaseModel):
+    """PO Decision 3 — a consultant creates a new customer organisation.
+
+    ``name`` is the organisation name; ``owner_email``/``owner_name`` identify
+    the customer's owner (created as the organisation OWNER). ``client_name``
+    is the display label on the consultant's client list.
+    """
+
+    name: str
+    owner_email: str
+    owner_name: Optional[str] = None
+    client_name: Optional[str] = None
+    country: str = "GB"
+    industry: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/me/customers", status_code=201)
+async def create_customer(
+    payload: CustomerCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """PO Decision 3 (CON-1) — create a customer organisation for the firm.
+
+    The consultant firm's own customers are first-class organisations owned by
+    the customer owner. This endpoint:
+
+    1. creates (or reuses) the owner's auth identity (GoTrue admin);
+    2. creates the organisation with the owner membership (server-authoritative,
+       same transaction as self-service onboarding);
+    3. links the firm via ``consultant_clients`` (active grant) so the
+       consultant's existing client workspace / isolation applies unchanged.
+
+    Cross-firm and unrelated-customer isolation is unchanged — the new
+    organisation is only reachable by its members and firms with an active
+    ``consultant_clients`` grant.
+    """
+    ensure_consultant_permission(context, "manage_clients")
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="customer name must not be empty")
+    owner_email = payload.owner_email.strip().lower()
+    if not owner_email or "@" not in owner_email:
+        raise HTTPException(status_code=422, detail="a valid owner_email is required")
+
+    owner_user_id = await _resolve_or_create_owner_identity(
+        owner_email, payload.owner_name
+    )
+    if owner_user_id is None:
+        raise HTTPException(
+            status_code=502,
+            detail="customer owner identity could not be provisioned (auth is unavailable)",
+        )
+
+    # 2. Create the organisation with the owner membership (one transaction).
+    org_id = str(uuid.uuid4())
+    default_billing_mode = await repos.billing_config.get_default_billing_mode()
+    created = await repos.organizations.create_with_owner(
+        org_id=org_id,
+        name=name,
+        country=payload.country or None,
+        owner_user_id=owner_user_id,
+        primary_contact_email=owner_email,
+        billing_mode=default_billing_mode,
+    )
+
+    # 3. Link the firm (active grant) — the consultant's client workspace.
+    await repos.consultants.add_client(
+        context.profile.id,
+        org_id,
+        client_name=(payload.client_name or name),
+        client_industry=payload.industry,
+        client_contact_email=owner_email,
+        client_contact_name=payload.owner_name,
+    )
+
+    await _audit_consultant_created_customer(repos, context, org_id, name, owner_email)
+
+    return {
+        "organization": created["organization"],
+        "owner_email": owner_email,
+        "owner_user_id": owner_user_id,
+        "client_linked": True,
+    }
+
+
 @router.get("/clients/{client_id}")
 async def get_client(
     client_id: str,
@@ -521,6 +612,87 @@ async def _audit_client_lifecycle(
             )
         )
     except Exception:  # noqa: BLE001
+        pass
+
+
+async def _resolve_or_create_owner_identity(
+    owner_email: str, owner_name: Optional[str]
+) -> Optional[str]:
+    """Resolve (or create) the customer owner's auth identity (GoTrue admin).
+
+    CON-1 — consultants provision their own customers' owners. Runs with the
+    service key (server-side only); never returns the generated password.
+    Idempotent: an existing email resolves to the existing identity.
+    """
+    import os
+    import secrets
+
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    service_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    if not supabase_url or not service_key:
+        return None
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    async with httpx.AsyncClient(timeout=30) as http:
+        list_resp = await http.get(
+            f"{supabase_url}/auth/v1/admin/users?per_page=1000", headers=admin_headers
+        )
+        if list_resp.status_code == 200:
+            for u in list_resp.json().get("users", []):
+                if str(u.get("email", "")).lower() == owner_email:
+                    return str(u["id"])
+        generated_password = secrets.token_urlsafe(18)
+        create_resp = await http.post(
+            f"{supabase_url}/auth/v1/admin/users",
+            headers={**admin_headers, "Content-Type": "application/json"},
+            json={
+                "email": owner_email,
+                "password": generated_password,
+                "email_confirm": True,
+                "user_metadata": {"full_name": owner_name} if owner_name else {},
+            },
+        )
+        if create_resp.status_code in (200, 201):
+            return str(create_resp.json()["id"])
+        if create_resp.status_code in (409, 422):
+            list2 = await http.get(
+                f"{supabase_url}/auth/v1/admin/users?per_page=1000", headers=admin_headers
+            )
+            if list2.status_code == 200:
+                for u in list2.json().get("users", []):
+                    if str(u.get("email", "")).lower() == owner_email:
+                        return str(u["id"])
+        return None
+
+
+async def _audit_consultant_created_customer(
+    repos: RepositoryBundle,
+    context: ConsultantContext,
+    org_id: str,
+    name: str,
+    owner_email: str,
+) -> None:
+    """Best-effort audit of consultant-created customers (never breaks)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="organization",
+                entity_id=org_id,
+                action="consultant.customer.created",
+                actor=context.profile.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"name": name, "owner_email": owner_email},
+                before=None,
+                after={"name": name, "owner_email": owner_email},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the customer journey
         pass
 
 

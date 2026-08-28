@@ -457,9 +457,8 @@ class ReportingRepository(AbstractRepository[dict]):
                 "supported": int(qc_errors_n["n"]) > 0 if qc_errors_n else False,
                 "source": "qc_errors",
                 "note": (
-                    "qc_errors is not populated by the current workflow; "
-                    "recurring-quality identification is NOT SUPPORTED BY "
-                    "CURRENT DATA MODEL."
+                    "Recurring-quality identification becomes available as quality "
+                    "records accumulate on reviewed items."
                 ),
             },
         }

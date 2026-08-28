@@ -183,6 +183,47 @@ def ensure_org_access(current_user: AuthUser, organization_id: str) -> None:
         )
 
 
+async def ensure_processing_org_access(
+    current_user: AuthUser,
+    repos: "RepositoryBundle",
+    organization_id: str,
+) -> None:
+    """Authorize the caller for the organisation-scoped PROCESSING workflow.
+
+    PO Decision 3 — a consultant firm operates its own customers: an org member
+    passes (as today); a consultant with an ACTIVE ``consultant_clients`` grant
+    for ``organization_id`` also passes. Cross-firm and unrelated-customer
+    isolation is unchanged — the grant is resolved server-side and re-checked on
+    every request. Processing Entity staff and everyone else stay denied.
+    """
+    if not organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="organization_id is required",
+        )
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Processing Entity staff cannot access customer organisations",
+        )
+    if current_user.is_internal_staff:
+        return
+    if current_user.is_org_member:
+        ensure_org_access(current_user, organization_id)
+        return
+    # Consultant path (active grant) — same isolation boundary as RLS.
+    from api.consultant_auth import ensure_consultant_org_access
+
+    try:
+        await ensure_consultant_org_access(current_user, repos, organization_id)
+        return
+    except HTTPException:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization member or authorized consultant access required",
+        )
+
+
 # ===========================================================================
 # Repository bundle (per-request, prep-pack §4.1)
 # ===========================================================================

@@ -1341,7 +1341,7 @@ tr:hover {
   font-weight: 800;
   line-height: 1.2;
   margin-bottom: 1.5rem;
-  background: linear-gradient(135deg, #1a1a2e 0%, #2d6a4f 30%, #52b788 60%, #2d6a4f 100%);
+  background: linear-gradient(135deg, #1a1a2e 0%, #2f855a 30%, #52b788 60%, #2f855a 100%);
   background-size: 300% 300%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1350,7 +1350,7 @@ tr:hover {
 }
 
 .headline-animated .highlight {
-  background: linear-gradient(135deg, #1b4332, #2d6a4f);
+  background: linear-gradient(135deg, #1b4332, #2f855a);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1359,7 +1359,7 @@ tr:hover {
 
 /* Animated Logo */
 .logo-text-animated {
-  background: linear-gradient(135deg, #2d6a4f 0%, #52b788 50%, #2d6a4f 100%);
+  background: linear-gradient(135deg, #2f855a 0%, #52b788 50%, #2f855a 100%);
   background-size: 200% 200%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;

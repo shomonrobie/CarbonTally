@@ -76,9 +76,15 @@ class ExportsRepository(AbstractRepository[dict]):
         # name / page reference from the authoritative lineage chain.
         query = (
             f"SELECT {_LOG_COLUMNS_L}, "
-            "s.source_item_id, s.source_file, s.source_page "
+            "s.source_item_id, s.source_file, s.source_page, "
+            # ISC-3 — the emissions list is self-describing evidence: the
+            # activity/factor that produced the emission come from the snapshot
+            # join (never fabricated).
+            "s.activity, s.activity_type, s.factor_id AS snapshot_factor_id, "
+            "ef.activity_type AS factor_name "
             "FROM public.emissions_logs l "
             "LEFT JOIN public.calculation_snapshots s ON s.id = l.snapshot_id "
+            "LEFT JOIN public.emission_factors ef ON ef.id = s.factor_id "
             "WHERE l.organization_id = $1"
         )
         args: list[Any] = [org_id]

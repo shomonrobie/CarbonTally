@@ -58,6 +58,14 @@ def _row_to_issue(row: Any) -> Issue:
     )
 
 
+def _rowcount(status: str) -> int:
+    """Parse the ``N`` row-count out of an asyncpg command-status string."""
+    try:
+        return int(status.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 class IssuesRepository(AbstractRepository[Issue]):
     """Issue persistence with org/entity/CarbonTally-internal scoped queries."""
 
@@ -222,6 +230,42 @@ class IssuesRepository(AbstractRepository[Issue]):
         if row is None:
             raise RuntimeError(f"issue {id!r} does not exist")
         return _row_to_issue(row)
+
+    async def resolve_open_for_item(
+        self, item_id: str, updated_by: Optional[str] = None
+    ) -> int:
+        """Close every open issue linked to a work item (ISC-2 / CL-26).
+
+        Called when an item's blocking validation finding is corrected and a
+        clean validation run (or an approval) proves the finding is resolved.
+        The transition ``open -> resolved`` is the permitted lifecycle step
+        (spec §14.2); issue history/audit rows are preserved.
+        """
+        status = await self._execute(
+            "UPDATE public.issues SET status = 'resolved', updated_at = NOW(), "
+            "updated_by = $2 WHERE work_item_id = $1 AND status = 'open'",
+            item_id,
+            updated_by,
+        )
+        return _rowcount(status)
+
+    async def resolve_open_for_batch(
+        self, batch_id: str, updated_by: Optional[str] = None
+    ) -> int:
+        """Close every open issue linked to a manual-extraction batch.
+
+        Internal (ops) validation issues are linked through
+        ``manual_extraction_batch_id``; a clean validation run or an approval
+        resolves them so dashboard open-issue counts reflect reality.
+        """
+        status = await self._execute(
+            "UPDATE public.issues SET status = 'resolved', updated_at = NOW(), "
+            "updated_by = $2 WHERE manual_extraction_batch_id = $1 "
+            "AND status = 'open'",
+            batch_id,
+            updated_by,
+        )
+        return _rowcount(status)
 
     async def delete(self, id: str) -> None:
         """Issues are never hard-deleted (V3M-5 has no DELETE policy; soft

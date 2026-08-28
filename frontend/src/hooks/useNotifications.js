@@ -3,6 +3,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { notificationService } from '../services/NotificationService';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const getToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || localStorage.getItem('access_token');
+};
+
 export function useNotifications() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -53,16 +60,19 @@ export function useNotifications() {
   const fetchNotifications = async () => {
     try {
       const token = await getToken();
-      const response = await fetch(`${API_URL}/api/notifications?limit=50`, {
+      // ISC-6 — the V3 notification surface is the authoritative endpoint; the
+      // legacy `/api/notifications` route was removed (404 on every page).
+      const response = await fetch(`${API_URL}/api/v3/notifications?limit=50`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       if (!response.ok) throw new Error('Failed to fetch notifications');
-      
+
       const data = await response.json();
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unread_count || 0);
-      
+      const items = data.notifications || [];
+      setNotifications(items);
+      setUnreadCount(items.filter((n) => !n.is_read).length);
+
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
@@ -92,8 +102,8 @@ export function useNotifications() {
   const markAsRead = useCallback(async (notificationId) => {
     try {
       const token = await getToken();
-      await fetch(`${API_URL}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
+      await fetch(`${API_URL}/api/v3/notifications/${notificationId}/read`, {
+        method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -110,8 +120,8 @@ export function useNotifications() {
   const markAllAsRead = useCallback(async () => {
     try {
       const token = await getToken();
-      await fetch(`${API_URL}/api/notifications/mark-all-read`, {
-        method: 'PUT',
+      await fetch(`${API_URL}/api/v3/notifications/read-all`, {
+        method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       

@@ -33,11 +33,12 @@ from pydantic import BaseModel
 from api.contracts import calculation_out
 from api.dependencies import (
     RepositoryBundle,
-    ensure_org_access,
+    ensure_processing_org_access,
     get_calculation_engine,
     get_repositories,
 )
-from auth import AuthUser, require_org_admin, require_org_member
+from auth import AuthUser, require_auth, require_org_admin
+from core.units import mapping_no_factors_reason, resolve_unit_for_factor
 from domain.issue import Issue
 from domain.partners import (
     ITEM_STATUS_FLOW,
@@ -130,14 +131,18 @@ async def _get_checked_item(
     repos: RepositoryBundle,
     item_id: str,
 ) -> tuple:
-    """Load an item + its batch and enforce organisation isolation."""
+    """Load an item + its batch and enforce organisation isolation.
+
+    PO Decision 3 — consultants with an ACTIVE grant may operate their own
+    customers' processing items (the grant is re-checked server-side).
+    """
     item = await repos.manual_extraction.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")
     batch = await repos.manual_extraction.get_batch(item.batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
-    ensure_org_access(current_user, batch.organization_id)
+    await ensure_processing_org_access(current_user, repos, batch.organization_id)
     return item, batch
 
 
@@ -181,10 +186,10 @@ async def _open_validation_issues(
     return created
 
 
-def _org_checked_batch(current_user, batch):
+async def _org_checked_batch(current_user, repos, batch):
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
-    ensure_org_access(current_user, batch.organization_id)
+    await ensure_processing_org_access(current_user, repos, batch.organization_id)
     return batch
 
 
@@ -196,34 +201,34 @@ def _org_checked_batch(current_user, batch):
 @router.get("/dashboard")
 async def processing_dashboard(
     organization_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Processing dashboard — batches, items per stage, queue lengths."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     return await repos.manual_extraction.workflow_dashboard(organization_id)
 
 
 @router.get("/status")
 async def processing_status(
     organization_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Processing status — per-stage pipeline counts + overall progress."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     return await repos.manual_extraction.workflow_status(organization_id)
 
 
 @router.get("/batches/{batch_id}/progress")
 async def batch_progress(
     batch_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Real-time progress of one batch across the pipeline stages."""
     batch = await repos.manual_extraction.get_batch(batch_id)
-    _org_checked_batch(current_user, batch)
+    await _org_checked_batch(current_user, repos, batch)
     progress = await repos.manual_extraction.batch_progress(batch_id)
     if progress is None:
         raise HTTPException(status_code=404, detail="batch not found")
@@ -244,7 +249,7 @@ async def start_batch(
 ):
     """Start (and optionally assign) a batch; items become eligible for work."""
     batch = await repos.manual_extraction.get_batch(batch_id)
-    _org_checked_batch(current_user, batch)
+    await _org_checked_batch(current_user, repos, batch)
     if batch.status not in ("open", "in_progress"):
         raise HTTPException(
             status_code=409,
@@ -268,7 +273,7 @@ async def complete_batch(
 ):
     """Complete a batch (completion stamps + actual completion date)."""
     batch = await repos.manual_extraction.get_batch(batch_id)
-    _org_checked_batch(current_user, batch)
+    await _org_checked_batch(current_user, repos, batch)
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(
             status_code=409, detail=f"batch is already {batch.status}"
@@ -284,7 +289,7 @@ async def cancel_batch(
 ):
     """Cancel a batch (terminal state; items are left untouched)."""
     batch = await repos.manual_extraction.get_batch(batch_id)
-    _org_checked_batch(current_user, batch)
+    await _org_checked_batch(current_user, repos, batch)
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(
             status_code=409, detail=f"batch is already {batch.status}"
@@ -301,7 +306,7 @@ async def cancel_batch(
 async def start_item(
     item_id: str,
     payload: ItemStart,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Claim an item for a stage (operator data-entry workflow)."""
@@ -326,7 +331,7 @@ async def start_item(
 async def extract_item(
     item_id: str,
     payload: ExtractPayload,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Data-entry: save extracted fields and advance the item to ``extracted``."""
@@ -341,7 +346,7 @@ async def extract_item(
 async def map_item(
     item_id: str,
     payload: MapPayload,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Mapping: record mapped fields + factor/tenant references; item → ``mapped``."""
@@ -368,7 +373,7 @@ async def map_item(
 @router.post("/items/{item_id}/validate")
 async def validate_item(
     item_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Run item-level validation.
@@ -389,6 +394,11 @@ async def validate_item(
     )
     target = "mapping" if issues else "validated"
     updated = await repos.manual_extraction.set_item_status(item_id, target)
+    if not issues:
+        # ISC-2 / CL-26 — a clean validation run proves previously blocking
+        # findings (EXTRACTION_MISSING_FIELD …) are resolved; close them so the
+        # item no longer carries stale open issues into approval.
+        await repos.issues.resolve_open_for_item(item.id, current_user.user_id)
     return {
         "item": updated,
         "findings": [f.__dict__ for f in findings],
@@ -406,7 +416,7 @@ async def validate_item(
 async def calculate_item(
     item_id: str,
     payload: CalculatePayload,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
     engine: CalculationEngine = Depends(get_calculation_engine),
 ):
@@ -466,6 +476,13 @@ async def calculate_item(
         payload.date.year
         if payload.date is not None
         else (factor if factor is not None else customer_factor).reporting_year
+    )
+
+    # CL-3 / PRC-2 — unit alias normalisation: ``L`` against a ``litres`` factor
+    # (and ``kWh`` against ``kWh (Gross CV)``) is legitimate equivalent input.
+    # Genuine mismatches pass through unchanged and the engine rejects them.
+    quantity_unit = resolve_unit_for_factor(
+        quantity_unit, getattr(factor or customer_factor, "unit", None)
     )
 
     request = CalculationRequest(
@@ -540,13 +557,18 @@ async def customer_review_item(
             )
         except BillingError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc))
-    return await repos.manual_extraction.customer_review(
+    updated = await repos.manual_extraction.customer_review(
         item_id,
         payload.approved,
         current_user.user_id,
         payload.rejection_reason,
         payload.customer_notes,
     )
+    if payload.approved:
+        # ISC-2 / CL-26 — an approved item must not carry stale blocking
+        # validation issues; the approval closes them (history preserved).
+        await repos.issues.resolve_open_for_item(item.id, current_user.user_id)
+    return updated
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +579,7 @@ async def customer_review_item(
 @router.get("/items/{item_id}/workspace")
 async def item_workspace(
     item_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Split-screen workspace payload for one item.
@@ -629,7 +651,7 @@ async def item_workspace(
 @router.get("/items/{item_id}/mapping-options")
 async def mapping_options(
     item_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Mapping suggestions for the split-screen data panel: the organisation's
@@ -649,6 +671,14 @@ async def mapping_options(
         "assets": await repos.organizations.get_assets(batch.organization_id),
         "suppliers": await repos.suppliers.list_for_org(batch.organization_id),
         "factors": factors,
+        # ISC-9 / CL-32 — honest spend-based mapping state. The DEFRA/SEAI
+        # factor sets are physical-unit based; a currency activity (GBP/EUR/…)
+        # has no applicable factor unless a customer factor is added. The
+        # mapper surfaces an explicit, actionable reason instead of an empty
+        # dead-end (never invents a factor, never treats GBP as a physical unit).
+        "no_factors_reason": mapping_no_factors_reason(
+            activity, unit, bool(factors)
+        ),
     }
 
 
@@ -662,11 +692,11 @@ async def next_item(
     organization_id: str,
     stage: str,
     exclude_item_id: Optional[str] = None,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Return the next item awaiting ``stage`` work (operator high-volume flow)."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     if stage not in WORKFLOW_STAGES and stage != "qc":
         raise HTTPException(
             status_code=422,
@@ -685,11 +715,11 @@ async def workflow_queue(
     organization_id: str,
     stage: str,
     limit: int = 100,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """List items currently in a workflow stage (org-scoped)."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     if stage not in WORKFLOW_STAGES and stage != "qc":
         raise HTTPException(
             status_code=422,
@@ -705,11 +735,11 @@ async def workflow_queue(
 @router.get("/customer-review")
 async def customer_review_queue(
     organization_id: str,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Items awaiting customer verification (customer-review stage)."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     return {
         "items": await repos.manual_extraction.list_customer_review(organization_id)
     }
@@ -719,11 +749,11 @@ async def customer_review_queue(
 async def workflow_issues(
     organization_id: str,
     status: Optional[str] = None,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Processing issues for an organisation (optional status filter)."""
-    ensure_org_access(current_user, organization_id)
+    await ensure_processing_org_access(current_user, repos, organization_id)
     issues = await repos.issues.list_for_org(organization_id)
     if status is not None:
         issues = [i for i in issues if i.status == status]

@@ -10,6 +10,7 @@ from tests.unit.api.fakes import (
     InMemoryWorld,
     admin_user,
     member_user,
+    org_owner_user,
 )
 
 
@@ -119,6 +120,25 @@ class TestV3CustomerFactors:
         # Factor created by admin-1; admin attempts self-approval -> 403.
         _await(world.customer_factors.save(_seed_factor(created_by="admin-1")))
         user_provider.set_user(admin_user())
+        resp = client.post("/api/v3/customer-factors/cf-1/approve")
+        assert resp.status_code == 403
+
+    def test_approve_own_factor_as_owner_allowed(self, world: InMemoryWorld, client, user_provider) -> None:
+        """PO Decision 1 — an organisation OWNER may approve their own factor.
+
+        The old blanket no-self-approval is removed for owners (the single-owner
+        org deadlock); non-owner creators (admin/member) still cannot self-approve.
+        """
+        _await(world.customer_factors.save(_seed_factor(created_by="owner-1")))
+        user_provider.set_user(org_owner_user("org-a", "owner-1", "owner@test"))
+        resp = client.post("/api/v3/customer-factors/cf-1/approve")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "active"
+
+    def test_approve_own_factor_as_member_rejected(self, world: InMemoryWorld, client, user_provider) -> None:
+        """A member creator still cannot self-approve (only owners may)."""
+        _await(world.customer_factors.save(_seed_factor(created_by="member-1")))
+        user_provider.set_user(member_user("org-a", "member-1", "m@test"))
         resp = client.post("/api/v3/customer-factors/cf-1/approve")
         assert resp.status_code == 403
 

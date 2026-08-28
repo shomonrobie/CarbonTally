@@ -46,6 +46,12 @@ class Facility:
     name: str
     address: str
     postcode: Optional[str] = None
+    # ISC-7 / MD-1 — surfaced so the locations/facilities UI can show real
+    # lifecycle state and classification (previously omitted → every facility
+    # rendered as "Inactive").
+    is_active: bool = True
+    type: Optional[str] = None
+    country: Optional[str] = "GB"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +63,10 @@ class Asset:
     organization_id: str
     name: str
     asset_type: str
+    # ISC-4 / CL-19 — the asset list renders the human-readable facility name
+    # instead of the raw UUID; is_active mirrors the schema.
+    facility_name: Optional[str] = None
+    is_active: bool = True
 
 
 @dataclass(frozen=True, slots=True)

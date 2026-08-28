@@ -262,11 +262,36 @@ class FacilityCreate(BaseModel):
     metadata: dict = {}
 
 
+class FacilityUpdate(BaseModel):
+    """Editable facility fields (MD-1 — the edit endpoint was missing)."""
+
+    name: Optional[str] = None
+    postcode: Optional[str] = None
+    country: Optional[str] = None
+    type: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    county: Optional[str] = None
+    is_active: Optional[bool] = None
+    metadata: Optional[dict] = None
+
+
 class AssetCreate(BaseModel):
     name: str
     facility_id: Optional[str] = None
     type: Optional[str] = None
     metadata: dict = {}
+
+
+class AssetUpdate(BaseModel):
+    """Editable asset fields (ISC-4 — asset must be viewable and editable)."""
+
+    name: Optional[str] = None
+    facility_id: Optional[str] = None
+    type: Optional[str] = None
+    is_active: Optional[bool] = None
+    metadata: Optional[dict] = None
 
 
 class InvitationCreate(BaseModel):
@@ -613,9 +638,44 @@ async def add_facility(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     ensure_org_access(current_user, org_id)
+    # MD-1/FAC-1 — the schema enforces ``postcode IS NOT NULL OR eircode IS NOT
+    # NULL``; surface that as a clean 422 instead of a raw DB 500.
+    if not (payload.postcode or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="postcode (or eircode for Ireland) is required when creating a facility",
+        )
     return await repos.tenant.add_facility(
         org_id, payload.name, payload.postcode, payload.country, payload.type, payload.metadata
     )
+
+
+@router.put("/facilities/{facility_id}")
+async def update_facility(
+    facility_id: str,
+    payload: FacilityUpdate,
+    current_user: AuthUser = Depends(require_org_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Edit a facility (MD-1 — the edit endpoint was missing)."""
+    facility = await repos.tenant.get_facility(facility_id)
+    if facility is None:
+        raise HTTPException(status_code=404, detail="facility not found")
+    ensure_org_access(current_user, facility.organization_id)
+    updated = await repos.tenant.update_facility(
+        facility_id,
+        name=payload.name,
+        is_active=payload.is_active,
+        postcode=payload.postcode,
+        country=payload.country,
+        type_=payload.type,
+        address_line1=payload.address_line1,
+        address_line2=payload.address_line2,
+        city=payload.city,
+        county=payload.county,
+        metadata=payload.metadata,
+    )
+    return updated
 
 
 @router.delete("/facilities/{facility_id}", status_code=204)
@@ -662,8 +722,50 @@ async def add_asset(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     ensure_org_access(current_user, org_id)
+    # ISC-4 — ``assets.facility_id`` is NOT NULL; validate at the API layer so
+    # a missing/invalid facility is a clean 422 instead of a raw DB 500.
+    if not payload.facility_id:
+        raise HTTPException(
+            status_code=422,
+            detail="facility_id is required when creating an asset",
+        )
+    facilities = await repos.organizations.get_facilities(org_id)
+    if not any(str(f.id) == payload.facility_id for f in facilities):
+        raise HTTPException(
+            status_code=422,
+            detail="facility does not belong to this organisation",
+        )
     return await repos.tenant.add_asset(
         org_id, payload.facility_id, payload.name, payload.type, payload.metadata
+    )
+
+
+@router.put("/assets/{asset_id}")
+async def update_asset(
+    asset_id: str,
+    payload: AssetUpdate,
+    current_user: AuthUser = Depends(require_org_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Edit an asset (ISC-4 — asset must be viewable and editable)."""
+    existing = await repos.tenant.get_asset(asset_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="asset not found")
+    ensure_org_access(current_user, existing.organization_id)
+    if payload.facility_id is not None:
+        facilities = await repos.organizations.get_facilities(existing.organization_id)
+        if not any(str(f.id) == payload.facility_id for f in facilities):
+            raise HTTPException(
+                status_code=422,
+                detail="facility does not belong to this organisation",
+            )
+    return await repos.tenant.update_asset(
+        asset_id,
+        name=payload.name,
+        is_active=payload.is_active,
+        facility_id=payload.facility_id,
+        type_=payload.type,
+        metadata=payload.metadata,
     )
 
 

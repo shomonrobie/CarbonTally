@@ -190,16 +190,23 @@ async def approve_customer_factor(
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> CustomerFactorOut:
-    """Approve a customer factor (D-cf-3: org Admin/Owner only; no
-    self-approval)."""
+    """Approve a customer factor (PO Decision 1 — owner self-approval).
+
+    An organisation OWNER may create and approve their organisation's custom
+    factor (the old blanket no-self-approval is removed for owners). For
+    non-owner approvers the no-self-approval rule is preserved: an admin who
+    created a factor still needs a different authorising actor.
+    """
     existing = await repos.customer_factors.get(factor_id)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"customer factor {factor_id} not found")
     ensure_org_access(current_user, existing.organization_id)
-    if existing.created_by == current_user.user_id:
+    # PO Decision 1: org owners may self-approve (audited via updated_by).
+    is_owner = getattr(current_user, "role", None) == "org_owner"
+    if existing.created_by == current_user.user_id and not is_owner:
         raise HTTPException(
             status_code=403,
-            detail="a factor's creator cannot approve their own factor",
+            detail="a factor's creator cannot approve their own factor (only the organisation owner may self-approve)",
         )
     if not existing.can_transition_to("active"):
         raise HTTPException(

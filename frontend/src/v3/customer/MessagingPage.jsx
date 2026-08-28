@@ -95,7 +95,7 @@ export default function MessagingPage() {
   return (
     <div className="v3-page">
       <div className="v3-page-header">
-        <h1>Messages</h1>
+        <h1>Messaging</h1>
         <p className="v3-subtitle">Conversations between your organisation and your consultants</p>
       </div>
 

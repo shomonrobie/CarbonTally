@@ -101,10 +101,12 @@ export default function ReviewQueue() {
               <tr key={r.id}>
                 <td>{r.file_name}</td>
                 <td>{r.status}</td>
-                <td>{r.assigned_to || '—'}</td>
+                {/* UH-7 — reviewer display name instead of a raw UUID */}
+                <td>{r.assigned_to_name || '—'}</td>
                 <td>{r.priority}</td>
                 <td>
-                  <button className="v3-btn primary" onClick={() => setActiveItemId(r.id)}>Open workspace</button>
+                  {/* UH-7 — open the REAL extraction item the row resolves to */}
+                  <button className="v3-btn primary" onClick={() => setActiveItemId(r.item_id || r.id)}>Open workspace</button>
                 </td>
               </tr>
             ))}

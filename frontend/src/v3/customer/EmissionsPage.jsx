@@ -206,7 +206,7 @@ export default function EmissionsPage() {
                         <td>{row.activity || row.activity_type || '—'}</td>
                         <td>{row.scope || '—'}</td>
                         <td>{row.calculated_kg_co2e ?? row.co2e_kg ?? '—'}</td>
-                        <td className="v3-muted">{row.factor_source || row.factor_id || '—'}</td>
+                        <td className="v3-muted">{row.factor_name || row.factor_source || row.factor_id || '—'}</td>
                         <td>
                           <button className="v3-btn v3-btn-sm" onClick={() => openEvidence(row)}>
                             View evidence

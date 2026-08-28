@@ -19,6 +19,18 @@ import './ops.css';
 
 const EMPTY_LINE = { description: '', activity: '', quantity: '', unit: '', amount: '' };
 
+// CL-37 / UH-4 — legacy demo data stored internal validation messages as field
+// values (e.g. "missing extracted field 'supplier'", "missing quantity"). These
+// must never render as user-facing field content: treat them as empty so the
+// operator sees the muted "no value extracted" hint instead of debug prose.
+const DEBUG_PLACEHOLDER_RE = /^missing (extracted field|quantity|unit|.*value|.*field)/i;
+const humanValue = (value) => {
+  if (value == null) return '';
+  const s = String(value);
+  if (DEBUG_PLACEHOLDER_RE.test(s.trim())) return '';
+  return s;
+};
+
 // D19 — default workflow stages for a Processing Entity extraction workspace.
 const PE_STAGES = [
   { id: 'queue', label: 'Queue' },
@@ -61,12 +73,12 @@ function stageForStatus(status, stages) {
 function headerFromData(data) {
   const d = data || {};
   return {
-    supplier: d.supplier || '',
-    invoice_number: d.invoice_number || '',
-    invoice_date: d.invoice_date || d.date || '',
-    billing_period_start: d.billing_period_start || '',
-    billing_period_end: d.billing_period_end || '',
-    currency: d.currency || 'GBP',
+    supplier: humanValue(d.supplier),
+    invoice_number: humanValue(d.invoice_number),
+    invoice_date: humanValue(d.invoice_date || d.date),
+    billing_period_start: humanValue(d.billing_period_start),
+    billing_period_end: humanValue(d.billing_period_end),
+    currency: humanValue(d.currency) || 'GBP',
   };
 }
 
@@ -83,7 +95,16 @@ export default function ExtractionPanel({
   const [header, setHeader] = useState(headerFromData(item?.extracted_data) || {});
   const [lines, setLines] = useState(() => {
     const existing = (item?.extracted_data || {}).line_items || [];
-    return existing.length ? existing.map((l) => ({ ...EMPTY_LINE, ...l })) : [{ ...EMPTY_LINE }];
+    return existing.length
+      ? existing.map((l) => ({
+          ...EMPTY_LINE,
+          description: humanValue(l.description),
+          activity: humanValue(l.activity),
+          quantity: humanValue(l.quantity),
+          unit: humanValue(l.unit),
+          amount: humanValue(l.amount),
+        }))
+      : [{ ...EMPTY_LINE }];
   });
   const [mapping, setMapping] = useState(() => {
     const ml = (item?.mapped_data || {}).line_items || [];
@@ -156,7 +177,18 @@ export default function ExtractionPanel({
   useEffect(() => {
     setHeader(headerFromData(item?.extracted_data) || {});
     const existing = (item?.extracted_data || {}).line_items || [];
-    setLines(existing.length ? existing.map((l) => ({ ...EMPTY_LINE, ...l })) : [{ ...EMPTY_LINE }]);
+    setLines(
+      existing.length
+        ? existing.map((l) => ({
+            ...EMPTY_LINE,
+            description: humanValue(l.description),
+            activity: humanValue(l.activity),
+            quantity: humanValue(l.quantity),
+            unit: humanValue(l.unit),
+            amount: humanValue(l.amount),
+          }))
+        : [{ ...EMPTY_LINE }]
+    );
     const ml = (item?.mapped_data || {}).line_items || [];
     setMapping(ml.map((l) => ({ activity_type: l.activity_type || '', factor_id: l.factor_id || '' })));
     setError('');
@@ -206,8 +238,15 @@ export default function ExtractionPanel({
         });
         setNotice('Mapping saved.');
       } else if (action === 'calculate') {
+        // CL-2/PRC-1 — the backend state machine requires
+        // `validated -> calculating -> calculated`. The UI must claim the
+        // intermediate `calculation` stage before invoking the authoritative
+        // engine, or the engine correctly returns 409.
+        if (status !== 'calculating' && status !== 'calculated') {
+          await api.startItem(itemId, 'calculation');
+        }
         const res = await api.calculateItem(itemId, {});
-        const co2e = res.result ? Number(res.result.co2e_kg) : null;
+        const co2e = res.result ? Number(res.result.co2e_kg) : (res.calculation ? Number(res.calculation.co2e_kg) : null);
         setNotice(
           co2e != null
             ? `Calculation complete — ${co2e.toFixed(2)} kg CO₂e.`

@@ -359,6 +359,25 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         )
         return _row_to_item(row) if row is not None else None
 
+    async def find_item_by_file(
+        self, org_id: str, file_name: str
+    ) -> Optional[ManualExtractionItem]:
+        """Resolve an extraction item for ``file_name`` inside ``org_id``.
+
+        UH-7/CL-36 — the review queue resolves each ``manual_review_queue`` row
+        to a real extraction item; rows without a resolvable item are dropped
+        (legacy phantom rows never surface).
+        """
+        row = await self._fetch_one(
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
+            "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
+            "WHERE b.organization_id = $1 AND i.file_name = $2 "
+            "ORDER BY i.created_at LIMIT 1",
+            org_id,
+            file_name,
+        )
+        return _row_to_item(row) if row is not None else None
+
     async def update_item(
         self,
         item_id: str,
@@ -518,11 +537,19 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         return _row_to_item(row) if row is not None else None
 
     # -- queues / dashboards ------------------------------------------------
+    #: ``_ITEM_COLUMNS`` qualified with an ``i.`` prefix — safe for JOINs where
+    #: both ``manual_extraction_items`` and ``manual_extraction_batches`` expose
+    #: an ``id`` column (CL-1: unqualified ``id`` raised PostgreSQL
+    #: ``column reference "id" is ambiguous`` on every org-scoped stage query).
+    #: The leading ``i.`` is required — a bare ``.replace`` leaves the first
+    #: column (``id``) unqualified.
+    _ITEM_COLUMNS_I = "i." + _ITEM_COLUMNS.replace(", ", ", i.")
+
     async def list_items_for_org(
         self, org_id: str, status: Optional[str] = None
     ) -> list[ManualExtractionItem]:
         query = (
-            f"SELECT {_ITEM_COLUMNS} FROM public.manual_extraction_items i "
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
             "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
             "WHERE b.organization_id = $1"
         )
@@ -541,7 +568,7 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         if statuses is None:
             return []
         rows = await self._fetch_all(
-            f"SELECT {_ITEM_COLUMNS} FROM public.manual_extraction_items i "
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
             "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
             "WHERE b.organization_id = $1 AND i.status = ANY($2::text[]) "
             "ORDER BY i.created_at LIMIT $3",
@@ -559,7 +586,7 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         if statuses is None:
             return None
         query = (
-            f"SELECT {_ITEM_COLUMNS} FROM public.manual_extraction_items i "
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
             "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
             "WHERE b.organization_id = $1 AND i.status = ANY($2::text[]) "
             "AND b.status <> 'cancelled'"
@@ -573,8 +600,25 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         return _row_to_item(row) if row is not None else None
 
     async def list_customer_review(self, org_id: str) -> list[ManualExtractionItem]:
-        """Items awaiting customer verification (``customer_review`` stage)."""
-        return await self.list_by_stage(org_id, "review")
+        """Items awaiting customer verification.
+
+        CL-1 / D5: the customer review queue is the CALCULATE → CUSTOMER
+        REVIEW handoff. Both ``customer_review`` (formally queued) and
+        ``calculated`` (calculated and ready, awaiting the distinct approver
+        action) items are listed — a calculated item may be approved directly
+        (the state machine permits ``calculated -> approved``), so the review
+        screen must expose it rather than dead-ending.
+        """
+        rows = await self._fetch_all(
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
+            "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
+            "WHERE b.organization_id = $1 "
+            "AND i.status IN ('customer_review', 'calculated') "
+            "AND b.status <> 'cancelled' "
+            "ORDER BY i.created_at",
+            org_id,
+        )
+        return [_row_to_item(r) for r in rows]
 
     async def get_item_org(self, item_id: str) -> Optional[str]:
         """Resolve the owning organisation of an item (via its batch)."""

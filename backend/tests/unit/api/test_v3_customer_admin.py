@@ -628,10 +628,25 @@ def test_owner_can_create_asset(client, world, user_provider) -> None:
     user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
     response = client.post(
         "/api/v3/organizations/org-a/assets",
-        json={"facility_id": "facility-a", "name": "Owner boiler", "type": "boiler"},
+        json={"facility_id": "fac-a1", "name": "Owner boiler", "type": "boiler"},
     )
     assert response.status_code == 201
     assert response.json()["name"] == "Owner boiler"
+
+
+def test_owner_cannot_create_asset_with_missing_facility(client, world, user_provider) -> None:
+    """ISC-4 — an asset without a (valid) facility is a clean 422, never a 500."""
+    user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
+    response = client.post(
+        "/api/v3/organizations/org-a/assets",
+        json={"name": "Orphan asset", "type": "boiler"},
+    )
+    assert response.status_code == 422
+    response2 = client.post(
+        "/api/v3/organizations/org-a/assets",
+        json={"facility_id": "facility-not-in-org", "name": "Bad asset", "type": "boiler"},
+    )
+    assert response2.status_code == 422
 
 
 def test_owner_can_create_invitation(client, world, user_provider) -> None:

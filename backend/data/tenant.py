@@ -184,15 +184,41 @@ class TenantRepository(AbstractRepository[dict]):
         return _row_to_facility(row)
 
     async def update_facility(
-        self, facility_id: str, name: Optional[str], is_active: Optional[bool]
+        self,
+        facility_id: str,
+        *,
+        name: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        postcode: Optional[str] = None,
+        country: Optional[str] = None,
+        type_: Optional[str] = None,
+        address_line1: Optional[str] = None,
+        address_line2: Optional[str] = None,
+        city: Optional[str] = None,
+        county: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[FacilityDetail]:
         sets, args = ["updated_at = NOW()"], [facility_id]
-        if name is not None:
-            sets.append(f"name = ${len(args) + 1}")
-            args.append(name)
-        if is_active is not None:
-            sets.append(f"is_active = ${len(args) + 1}")
-            args.append(is_active)
+        updates = {
+            "name": name,
+            "is_active": is_active,
+            "postcode": postcode,
+            "country": country,
+            "type": type_,
+            "address_line1": address_line1,
+            "address_line2": address_line2,
+            "city": city,
+            "county": county,
+        }
+        for column, value in updates.items():
+            if value is not None:
+                sets.append(f"{column} = ${len(args) + 1}")
+                args.append(value)
+        if metadata is not None:
+            sets.append(f"metadata = ${len(args) + 1}")
+            args.append(dumps_jsonb(metadata))
+        if len(sets) == 1:
+            return await self.get_facility(facility_id)
         row = await self._fetch_one(
             f"UPDATE public.facilities SET {', '.join(sets)} "
             f"WHERE id = $1 RETURNING {_FACILITY_COLUMNS}",
@@ -241,15 +267,31 @@ class TenantRepository(AbstractRepository[dict]):
         return _row_to_asset(row)
 
     async def update_asset(
-        self, asset_id: str, name: Optional[str], is_active: Optional[bool]
+        self,
+        asset_id: str,
+        *,
+        name: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        facility_id: Optional[str] = None,
+        type_: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[AssetDetail]:
         sets, args = [], [asset_id]
-        if name is not None:
-            sets.append(f"name = ${len(args) + 1}")
-            args.append(name)
-        if is_active is not None:
-            sets.append(f"is_active = ${len(args) + 1}")
-            args.append(is_active)
+        updates = {
+            "name": name,
+            "is_active": is_active,
+            "facility_id": facility_id,
+            "type": type_,
+        }
+        for column, value in updates.items():
+            if value is not None:
+                sets.append(f"{column} = ${len(args) + 1}")
+                args.append(value)
+        if metadata is not None:
+            sets.append(f"metadata = ${len(args) + 1}")
+            args.append(dumps_jsonb(metadata))
+        if not sets:
+            return await self.get_asset(asset_id)
         sets.append("updated_at = NOW()")
         row = await self._fetch_one(
             f"UPDATE public.assets SET {', '.join(sets)} "
