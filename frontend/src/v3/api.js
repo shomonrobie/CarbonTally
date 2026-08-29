@@ -551,9 +551,12 @@ export const entityClarifyItem = (entityId, itemId, payload) =>
     body: JSON.stringify(payload),
   });
 
-export const getOperatorQueue = (status = '') => {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
-  return v3Fetch(`/api/v3/ops/queues/operator${query}`);
+export const getOperatorQueue = (status = '', limit = 25, offset = 0) => {
+  const query = new URLSearchParams();
+  if (status) query.set('status', status);
+  query.set('limit', String(limit));
+  query.set('offset', String(offset));
+  return v3Fetch(`/api/v3/ops/queues/operator?${query.toString()}`);
 };
 
 export const getReviewQueue = (params = {}) => {

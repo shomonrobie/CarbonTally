@@ -32,6 +32,9 @@ const EMPTY_ASSIGN = { type: 'operator', target: '', reason: '' };
 export default function OperatorQueue() {
   const navigate = useNavigate();
   const [batches, setBatches] = useState([]);
+  const [queueTotal, setQueueTotal] = useState(0);
+  const [queueLimit, setQueueLimit] = useState(25);
+  const [queueOffset, setQueueOffset] = useState(0);
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
@@ -47,10 +50,14 @@ export default function OperatorQueue() {
     me?.permissions?.can_manage_staff && me?.permissions?.can_process
   );
 
-  const loadBatches = useCallback(async () => {
+  const loadBatches = useCallback(async (limit = queueLimit, offset = queueOffset) => {
     try {
-      const result = await getOperatorQueue();
+      // CL-58 — server-side pagination window over the operator queue.
+      const result = await getOperatorQueue('', limit, offset);
       setBatches(result.batches || []);
+      setQueueTotal(result.total ?? result.queued ?? 0);
+      setQueueLimit(limit);
+      setQueueOffset(offset);
       if ((result.batches || []).length) {
         const first = result.batches[0].batch;
         setActiveBatchId(first.id);
@@ -58,7 +65,7 @@ export default function OperatorQueue() {
     } catch (e) {
       setError(e.message || 'Failed to load operator queue');
     }
-  }, []);
+  }, [queueLimit, queueOffset]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadBatches(); }, []);
@@ -145,16 +152,18 @@ export default function OperatorQueue() {
       {notice && <div className="v3-ops-notice">{notice}</div>}
 
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
-        <h3>Assigned / self-serve batches ({batches.length})</h3>
+        <h3>Assigned / self-serve batches ({queueTotal})</h3>
         <table className="v3-ops-table">
-          <thead><tr><th>Batch</th><th>Status</th><th>Progress</th><th /></tr></thead>
+          <thead><tr><th>Batch</th><th>Organisation</th><th>Status</th><th>Progress</th><th>Items</th><th /></tr></thead>
           <tbody>
             {batches.map((entry) => (
               <React.Fragment key={entry.batch.id}>
                 <tr>
                   <td>{entry.batch.batch_name || entry.batch.id}</td>
+                  <td>{entry.organization?.name || '—'}</td>
                   <td>{entry.batch.status}</td>
                   <td>{entry.progress ? `${entry.progress.pct_complete}%` : '—'}</td>
+                  <td>{entry.progress?.total_items ?? '—'}</td>
                   <td>
                     <button
                       className="v3-btn v3-btn-sm"
@@ -177,7 +186,7 @@ export default function OperatorQueue() {
                 </tr>
                 {assignFor?.id === entry.batch.id && (
                   <tr>
-                    <td colSpan={4}>
+                    <td colSpan={6}>
                       <div className="workspace-field" style={{ marginBottom: 8 }}>
                         <label>Assign batch to</label>
                         <div>
@@ -255,6 +264,42 @@ export default function OperatorQueue() {
             ))}
           </tbody>
         </table>
+        {queueTotal > queueLimit && (
+          <div className="ct-table-pagination">
+            <span className="ct-table-pagination-count">
+              {queueTotal === 0 ? '0 rows' : `${queueOffset + 1}–${Math.min(queueTotal, queueOffset + batches.length)} of ${queueTotal}`}
+            </span>
+            <button
+              type="button"
+              className="v3-btn v3-btn-sm"
+              disabled={queueOffset <= 0}
+              onClick={() => loadBatches(queueLimit, Math.max(0, queueOffset - queueLimit))}
+            >
+              ← Prev
+            </button>
+            <span className="ct-table-pagination-count">
+              Page {Math.floor(queueOffset / queueLimit) + 1} of {Math.max(1, Math.ceil(queueTotal / queueLimit))}
+            </span>
+            <button
+              type="button"
+              className="v3-btn v3-btn-sm"
+              disabled={queueOffset + queueLimit >= queueTotal}
+              onClick={() => loadBatches(queueLimit, queueOffset + queueLimit)}
+            >
+              Next →
+            </button>
+            <select
+              className="ct-table-pagination-select"
+              aria-label="Rows per page"
+              value={queueLimit}
+              onChange={(e) => loadBatches(Number(e.target.value), 0)}
+            >
+              {[10, 25, 50, 100].map((s) => (
+                <option key={s} value={s}>{s} / page</option>
+              ))}
+            </select>
+          </div>
+        )}
         {canAssign && entities.length === 0 && (
           <div className="v3-ops-notice" style={{ marginTop: 8 }}>
             No processing entities provisioned — create one in the Entities tab before assigning work to an entity.

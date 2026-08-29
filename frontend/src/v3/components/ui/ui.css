@@ -423,3 +423,10 @@
 .ct-field__error { font-size: var(--ct-type-label); color: var(--ct-color-error-text-strong); margin: 0; }
 .ct-field__row { display: flex; align-items: center; gap: var(--ct-space-3); font-size: var(--ct-type-body); }
 .ct-field__row input[type='checkbox'], .ct-field__row input[type='radio'] { accent-color: var(--ct-color-primary); }
+
+/* DataTable (CL-58) — sort header + server-style pagination controls. */
+.ct-table-sort { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
+.ct-table-sort:hover { color: var(--ct-color-primary); }
+.ct-table-pagination { display: flex; align-items: center; gap: var(--ct-space-3); flex-wrap: wrap; padding: var(--ct-space-3) 0; }
+.ct-table-pagination-count { font-size: var(--ct-type-label); color: var(--ct-color-text-muted); }
+.ct-table-pagination-select { padding: 4px 8px; font-size: var(--ct-type-body); border: 1px solid var(--ct-color-border); border-radius: 6px; background: var(--ct-color-surface); }

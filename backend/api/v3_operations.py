@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from api.contracts import calculation_out
@@ -1106,6 +1106,8 @@ async def entity_extraction_clarify(
 @router.get("/queues/operator")
 async def operator_queue(
     status: Optional[str] = None,
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
@@ -1113,14 +1115,20 @@ async def operator_queue(
 
     Assignment model (real columns): ``manual_extraction_batches.assigned_to``
     is the operator; ``NULL`` + open = the self-serve queue.
+
+    CL-58 — server-side pagination: ``limit``/``offset`` bound the window and
+    ``total`` is the authoritative count (the UI never paginates an
+    over-broad result set in the browser).
     """
     require_internal_staff(context)
     ensure_staff_permission(context, "can_process")
     batches = await repos.manual_extraction.list_operator_batches(
         context.profile.user_id, status
     )
+    total = len(batches)
+    window = batches[offset:offset + limit]
     out = []
-    for batch in batches:
+    for batch in window:
         progress = await repos.manual_extraction.batch_progress(batch.id)
         org = await repos.organizations.get(batch.organization_id)
         out.append(
@@ -1130,7 +1138,7 @@ async def operator_queue(
                 "organization": {"id": org.id, "name": org.name} if org else None,
             }
         )
-    return {"queued": len(out), "batches": out}
+    return {"queued": total, "total": total, "limit": limit, "offset": offset, "batches": out}
 
 
 
