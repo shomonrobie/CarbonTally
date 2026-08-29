@@ -750,7 +750,32 @@ async def list_my_team(
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    return {"members": await repos.consultants.list_firm_members(context.profile.id)}
+    members = await repos.consultants.list_firm_members(context.profile.id)
+    # CL-61 — human-readable roster (name/email via public.users) instead of
+    # raw UUIDs (AGENTS.md §75: business context over internal IDs).
+    names = await repos.consultants.get_user_summaries([m.user_id for m in members])
+    enriched = []
+    for m in members:
+        info = names.get(m.user_id, {})
+        enriched.append(
+            {
+                "id": m.id,
+                "user_id": m.user_id,
+                "role": m.role,
+                "is_active": m.is_active,
+                "can_manage_clients": m.can_manage_clients,
+                "can_upload_documents": m.can_upload_documents,
+                "can_generate_reports": m.can_generate_reports,
+                "can_manage_team": m.can_manage_team,
+                "client_access": m.client_access,
+                "joined_at": m.joined_at,
+                "invited_at": m.invited_at,
+                "email": info.get("email"),
+                "first_name": info.get("first_name"),
+                "last_name": info.get("last_name"),
+            }
+        )
+    return {"members": enriched}
 
 
 @router.post("/me/team", status_code=201)

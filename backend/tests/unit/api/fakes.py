@@ -1454,6 +1454,13 @@ class MemoryConsultants:
     async def list_firm_members(self, firm_id: str):
         return [m for m in self._members if m.firm_id == firm_id]
 
+    async def get_user_summaries(self, user_ids: list[str]) -> dict:
+        """CL-61 — display info per member (fake: deterministic names)."""
+        return {
+            uid: {"email": f"{uid}@example.test", "first_name": uid, "last_name": None}
+            for uid in user_ids
+        }
+
     async def get_firm_member_by_user(self, firm_id: str, user_id: str):
         return next(
             (m for m in self._members if m.firm_id == firm_id and m.user_id == user_id),

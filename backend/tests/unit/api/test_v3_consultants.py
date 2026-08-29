@@ -293,6 +293,26 @@ def test_add_team_member_requires_manage_team(client, world, user_provider) -> N
     assert response.status_code == 403
 
 
+def test_team_roster_returns_human_readable_members(client, world, user_provider) -> None:
+    """CL-61 — the team roster is enriched with display names/emails (no raw
+    UUID-only rows) and only exposes the calling firm's members."""
+    _seed_consultant(world)
+    world.consultants.seed_firm_member("firm-1", "u-team-a", role="consultant", can_upload_documents=True)
+    world.consultants.seed_firm_member("firm-2", "u-other-firm", role="consultant")
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+
+    response = client.get("/api/v3/consultants/me/team")
+    assert response.status_code == 200
+    members = response.json()["members"]
+    ids = {m["user_id"] for m in members}
+    # Firm-1 members only; the other firm's member is never exposed.
+    assert ids == {"u-cons", "u-team-a"}
+    first = next(m for m in members if m["user_id"] == "u-team-a")
+    assert first["email"] == "u-team-a@example.test"
+    assert first["first_name"] == "u-team-a"
+    assert first["can_upload_documents"] is True
+
+
 def test_client_status_update(client, world, user_provider) -> None:
     user = _seed_consultant(world, can_manage_clients=True)
     user_provider.set_user(user)

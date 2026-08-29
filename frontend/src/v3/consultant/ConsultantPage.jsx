@@ -26,6 +26,8 @@ import {
 } from '../api';
 import WhiteLabelTab from './WhiteLabelTab';
 import ClientMessagingTab from './ClientMessagingTab';
+import ConsultantTeamTab from './ConsultantTeamTab';
+import NewCustomerView from './NewCustomerView';
 import { ErrorState } from '../components/StateViews';
 import './consultant.css';
 
@@ -552,6 +554,7 @@ export default function ConsultantPage() {
   const [brandContext, setBrandContext] = useState(null);
   const [canManageClients, setCanManageClients] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -737,15 +740,30 @@ export default function ConsultantPage() {
         <button className={`v3-tab ${view === 'whitelabel' ? 'active' : ''}`} onClick={() => setView('whitelabel')}>
           White-label
         </button>
+        <button className={`v3-tab ${view === 'team' ? 'active' : ''}`} onClick={() => setView('team')}>
+          Team
+        </button>
         <button className={`v3-tab ${view === 'messaging' ? 'active' : ''}`} onClick={() => setView('messaging')} disabled={!activeClient}>
           Client messages
         </button>
       </div>
 
-      {view === 'branding' ? (
+      {showNewCustomer ? (
+        <NewCustomerView
+          onCancel={() => setShowNewCustomer(false)}
+          onCreated={() => {
+            // Refresh the client list so the new customer appears immediately.
+            listConsultantClients()
+              .then((res) => setClients(res.clients || []))
+              .catch(() => setError('Created the customer but failed to refresh the client list.'));
+          }}
+        />
+      ) : view === 'branding' ? (
         <BrandingView />
       ) : view === 'whitelabel' ? (
         <WhiteLabelTab />
+      ) : view === 'team' ? (
+        <ConsultantTeamTab />
       ) : view === 'messaging' ? (
         <ClientMessagingTab client={activeClient} />
       ) : view === 'dashboard' || !activeClient ? (
@@ -756,7 +774,14 @@ export default function ConsultantPage() {
 
       {clients.length > 0 && (
         <div className="v3-admin-card">
-          <h2>Clients</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h2>Clients</h2>
+            {canManageClients && (
+              <button className="v3-btn primary v3-btn-sm" onClick={() => setShowNewCustomer(true)}>
+                + New customer
+              </button>
+            )}
+          </div>
           {notice && <div className="v3-note" style={{ marginBottom: 10 }}>{notice}</div>}
           {clients.map((client) => (
             <div

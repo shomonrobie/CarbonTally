@@ -230,6 +230,30 @@ class ConsultantsRepository(AbstractRepository[dict]):
         )
         return [_row_to_member(r) for r in rows]
 
+    async def get_user_summaries(self, user_ids: list[str]) -> dict[str, dict]:
+        """Human-readable display info for team members (CL-61).
+
+        Joins ``public.users`` (the app-side user table) so the team roster can
+        show a name/email instead of raw UUIDs. Returns ``{user_id: {email,
+        first_name, last_name}}`` for the requested ids.
+        """
+        if not user_ids:
+            return {}
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(user_ids)))
+        rows = await self._fetch_all(
+            "SELECT id, email, first_name, last_name FROM public.users "
+            f"WHERE id IN ({placeholders})",
+            *user_ids,
+        )
+        return {
+            str(r["id"]): {
+                "email": r.get("email"),
+                "first_name": r.get("first_name"),
+                "last_name": r.get("last_name"),
+            }
+            for r in rows
+        }
+
     async def get_firm_member_by_user(
         self, firm_id: str, user_id: str
     ) -> Optional[ConsultantFirmMember]:

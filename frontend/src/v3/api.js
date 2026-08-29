@@ -372,8 +372,42 @@ export const listConsultantClients = () => v3Fetch('/api/v3/consultants/me/clien
 
 export const getConsultantDashboard = () => v3Fetch('/api/v3/consultants/me/dashboard');
 
+// CL-61 — consultant team + internal tasks.
+export const getConsultantTeam = () => v3Fetch('/api/v3/consultants/me/team');
+
+export const addConsultantTeamMember = (userId, role = 'consultant') =>
+  v3Fetch('/api/v3/consultants/me/team', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, role }),
+  });
+
+export const getConsultantTasks = (status) => {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return v3Fetch(`/api/v3/consultants/me/tasks${query}`);
+};
+
+export const createConsultantTask = (payload) =>
+  v3Fetch('/api/v3/consultants/me/tasks', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const updateConsultantTaskStatus = (taskId, status) =>
+  v3Fetch(`/api/v3/consultants/tasks/${taskId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+
 export const getConsultantClient = (clientId) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}`);
+
+// CON-1 / PO Decision 3 — a consultant creates a new customer organisation
+// (owner identity provisioned server-side, firm linked as active client).
+export const createConsultantCustomer = (payload) =>
+  v3Fetch('/api/v3/consultants/me/customers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
 export const updateConsultantClientStatus = (clientId, status) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}`, {
