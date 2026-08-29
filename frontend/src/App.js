@@ -1,7 +1,7 @@
 // App.js - Fully Refactored with Correct API Endpoints
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Login from './Login';
 import * as XLSX from 'xlsx';
@@ -51,6 +51,9 @@ import AdminPage from './v3/admin/AdminPage';
 import BillingPage from './v3/customer/BillingPage';
 import ConsultantPage from './v3/consultant/ConsultantPage';
 import OperationsPage from './v3/ops/OperationsPage';
+import OperatorItemPage from './v3/ops/OperatorItemPage';
+import ReviewItemPage from './v3/ops/ReviewItemPage';
+import QcItemPage from './v3/ops/QcItemPage';
 import DashboardPage from './v3/customer/DashboardPage';
 import EmissionsPage from './v3/customer/EmissionsPage';
 import DocumentsPage from './v3/customer/DocumentsPage';
@@ -1894,6 +1897,29 @@ function Dashboard({ user }){
 // MAIN APP - ✅ Properly placed at top level
 // ============================================
 
+// CL-60 — the CarbonTally Assistant is a PUBLIC WEBSITE surface. It must never
+// mount on authenticated application routes (customer/consultant/staff/PE use
+// the authenticated Realtime messaging experience). The boundary is route-based
+// (the public route tree vs the authenticated route tree); refresh and direct
+// URLs preserve it because the decision is re-derived from the URL on every
+// render.
+const PUBLIC_ROUTE_PREFIXES = [
+  '/login', '/privacy', '/cookies', '/terms', '/about', '/platform',
+  '/services', '/processing-services', '/consultants', '/pricing', '/contact',
+  '/faq', '/carbon-reduction-plan', '/signup', '/beta/signup', '/beta-login',
+  '/glossary', '/auth/callback', '/auth/magic',
+];
+
+function PublicAssistant() {
+  const location = useLocation();
+  const path = location.pathname;
+  const isPublic =
+    path === '/' ||
+    PUBLIC_ROUTE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  if (!isPublic) return null;
+  return <AssistantWidget />;
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -2141,12 +2167,40 @@ export default function App() {
                 </RoleRoute>
               </ProtectedRoute>
             } />
+            <Route path="/ops/items/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <V3Layout>
+                    <OperatorItemPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/ops/review/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <V3Layout>
+                    <ReviewItemPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/ops/qc/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <V3Layout>
+                    <QcItemPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <CookieBanner />
           {/* Public CarbonTally Assistant — deterministic local knowledge module
-              (no AI provider, no credentials, no network). */}
-          <AssistantWidget />
+              (no AI provider, no credentials, no network). PUBLIC WEBSITE ONLY
+              (CL-60): authenticated applications use Realtime messaging. */}
+          <PublicAssistant />
         </RealtimeProviderWrapper>
       </ReferenceDataProvider>
     </BrowserRouter>

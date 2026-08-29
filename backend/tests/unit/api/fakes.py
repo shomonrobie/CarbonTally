@@ -659,6 +659,24 @@ class MemoryOrganizations:
         """Every organisation, by name (operations/commercial surface)."""
         return sorted(self._orgs.values(), key=lambda o: (o.name or "").lower())
 
+    async def search(
+        self,
+        *,
+        q: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        active_only: bool = False,
+    ) -> tuple[list[Organization], int]:
+        """Bounded organisation search mirroring the repository surface (CL-63)."""
+        rows = sorted(self._orgs.values(), key=lambda o: (o.name or "").lower())
+        if q and q.strip():
+            needle = q.strip().lower()
+            rows = [o for o in rows if needle in (o.name or "").lower()]
+        if active_only:
+            rows = [o for o in rows if o.is_active]
+        total = len(rows)
+        return rows[offset:offset + limit], total
+
 
 class MemoryImports:
     """``ImportsRepository`` read surface used by the admin endpoints."""

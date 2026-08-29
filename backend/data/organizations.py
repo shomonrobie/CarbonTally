@@ -514,6 +514,46 @@ class OrganizationsRepository(AbstractRepository[Organization]):
         )
         return [_row_to_org(r) for r in rows]
 
+    async def search(
+        self,
+        *,
+        q: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        active_only: bool = False,
+    ) -> tuple[list[Organization], int]:
+        """Bounded, case-insensitive organisation search (CL-63).
+
+        Returns ``(rows, total)`` with a stable name/id ordering so pagination
+        never duplicates or drops rows. Used by the authorised staff messaging
+        organisation selector — NOT by customer surfaces (org isolation is the
+        caller's concern; this repo is service-role and always returns whatever
+        the caller is authorised to see via the API guard).
+        """
+        clauses = ["1=1"]
+        params: list[object] = []
+        if q and q.strip():
+            params.append(f"%{q.strip()}%")
+            clauses.append("name ILIKE $%d" % len(params))
+        if active_only:
+            clauses.append("is_active = TRUE")
+        where = " AND ".join(clauses)
+        limit = max(1, min(500, int(limit)))
+        offset = max(0, int(offset))
+        total_row = await self._fetch_one(
+            f"SELECT COUNT(*) AS n FROM public.organizations WHERE {where}",
+            *params,
+        )
+        total = int(total_row["n"]) if total_row else 0
+        rows = await self._fetch_all(
+            f"SELECT {_ORG_COLUMNS} FROM public.organizations "
+            f"WHERE {where} ORDER BY name, id LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}",
+            *params,
+            limit,
+            offset,
+        )
+        return [_row_to_org(r) for r in rows], total
+
     async def save(self, entity: Organization) -> Organization:
         """Upsert an organisation by id and return the stored state."""
         row = await self._fetch_one(

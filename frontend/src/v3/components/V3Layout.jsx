@@ -47,15 +47,21 @@ export default function V3Layout({ children }) {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([
-      resolveV3Organization(),
-      getOpsMe().then(() => true).catch(() => false),
-      getConsultantProfile().then(() => true).catch(() => false),
-    ]).then(([orgResult, staffResult, consultantResult]) => {
+    // CL-49 — role probes are cascaded and quiet so a normal authenticated
+    // page load never fires unrelated role APIs (no 403 console noise):
+    //   org member -> customer nav only (no staff/consultant probe)
+    //   non-org    -> probe staff, then consultant
+    (async () => {
+      const org = await resolveV3Organization().catch(() => null);
+      let staff = false;
+      let consultant = false;
+      if (!org) {
+        staff = await getOpsMe({ quiet: true }).then(() => true).catch(() => false);
+        if (!staff) {
+          consultant = await getConsultantProfile({ quiet: true }).then(() => true).catch(() => false);
+        }
+      }
       if (!active) return;
-      const org = orgResult.status === 'fulfilled' ? orgResult.value || null : null;
-      const staff = staffResult.status === 'fulfilled' && staffResult.value === true;
-      const consultant = consultantResult.status === 'fulfilled' && consultantResult.value === true;
       setOrg(org);
       setIsStaff(staff);
       setIsConsultant(consultant);
@@ -66,7 +72,7 @@ export default function V3Layout({ children }) {
       if (!org && !staff && !consultant) {
         navigate('/onboarding', { replace: true });
       }
-    });
+    })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

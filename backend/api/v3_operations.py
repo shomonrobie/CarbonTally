@@ -507,6 +507,47 @@ async def operations_dashboard(
     }
 
 
+@router.get("/organizations")
+async def ops_organizations(
+    q: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Authorised organisation search/list for staff messaging (CL-63).
+
+    This is the dedicated, paginated organisation-selection contract for the
+    N1 support/admin messaging surface. The ops dashboard summary
+    (``organizations: {total: N}``) is deliberately NOT consumed as a row
+    collection anywhere in the UI. Gate: INTERNAL staff holding the staff-admin
+    (``can_manage_staff``) permission — exactly the ``_authorize_org_actor``
+    staff path in ``v3_messaging``. General employees, operator/reviewer/QC and
+    Processing Entity staff are denied.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_manage_staff")
+    rows, total = await repos.organizations.search(
+        q=q, limit=limit, offset=offset, active_only=True
+    )
+    return {
+        "organizations": [
+            {
+                "id": o.id,
+                "name": o.name,
+                "country": o.country,
+                "is_active": o.is_active,
+                "created_at": o.created_at,
+            }
+            for o in rows
+        ],
+        "total": total,
+        "limit": max(1, min(500, int(limit))),
+        "offset": max(0, int(offset)),
+        "q": q or "",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Staff roster administration (CarbonTally internal)
 # ---------------------------------------------------------------------------

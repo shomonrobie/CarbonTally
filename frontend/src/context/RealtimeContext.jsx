@@ -1,8 +1,13 @@
 // context/RealtimeContext.jsx - Add message subscription
 
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../v3/api';
 
 // Create contexts
 const RealtimeContext = createContext();
@@ -13,6 +18,22 @@ const DocumentStatusContext = createContext();
 export const useRealtime = () => useContext(RealtimeContext);
 export const useNotifications = () => useContext(NotificationsContext);
 export const useDocumentStatus = () => useContext(DocumentStatusContext);
+
+// CL-45 — normalise a V3 notification row (snake_case from /api/v3/notifications)
+// into the shape the bell renders; tolerate legacy camelCase rows too.
+const normaliseNotification = (n) => {
+  if (!n) return n;
+  return {
+    id: String(n.id ?? ''),
+    title: n.title || '',
+    message: n.message || '',
+    is_read: !!(n.is_read ?? n.isRead),
+    created_at: n.created_at || n.createdAt || null,
+    notification_type: n.notification_type || n.notificationType || '',
+    priority: n.priority ?? 'normal',
+    link: n.link || null,
+  };
+};
 
 // Message counter hook for unread messages
 // Message counter hook for unread messages
@@ -250,75 +271,83 @@ export function RealtimeProvider({ children, user }) {
   );
 }
 
-// Notifications Provider
+// Notifications Provider — CL-45: reads/writes flow through the per-recipient
+// V3 API (/api/v3/notifications, user-isolated server-side). The legacy direct
+// `supabase.from('notifications')` reads/writes (RLS deny-by-default) are gone,
+// so a normal authenticated page load no longer produces console errors. The
+// API is the authoritative source; a best-effort Realtime subscription and a
+// refetch-on-visibility fallback keep the bell live.
 export function NotificationsProvider({ children, user }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const channelRef = useRef(null);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await listNotifications({ unreadOnly: false, limit: 50 });
+      const items = (data?.notifications || []).map(normaliseNotification) || [];
+      setNotifications(items);
+      setUnreadCount(items.filter((n) => !n.is_read).length || 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
-    // Fetch initial notifications
-    const fetchNotifications = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        setNotifications(data || []);
-        setUnreadCount(data?.filter(n => !n.is_read).length || 0);
-      } catch (error) {
-        console.error('Error fetching notifications:', error);
-      }
-    };
-
     fetchNotifications();
 
-    // Subscribe to new notifications
-    const notificationChannel = supabase
-      .channel('notifications')
+    // Best-effort live delivery: when Realtime can deliver rows this keeps the
+    // bell live; if RLS blocks it, the API refetch on window focus is the
+    // deterministic fallback (never a console error).
+    const channel = supabase
+      .channel('ct-v3-notifications')
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          const newNotification = payload.new;
-          setNotifications(prev => [newNotification, ...prev]);
-          setUnreadCount(prev => prev + 1);
-          toast(`🔔 ${newNotification.title}`, {icon: 'ℹ️', });
-          
+          const n = normaliseNotification(payload.new);
+          setNotifications((prev) => [n, ...prev]);
+          setUnreadCount((prev) => prev + 1);
+          if (n.title) {
+            toast(`🔔 ${n.title}`, { icon: 'ℹ️' });
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // CHANNEL_ERROR/TIMED_OUT are expected when the table has no RLS
+          // storey for the client; the API fallback covers the read.
+        }
+      });
+    channelRef.current = channel;
+
+    const onFocus = () => { fetchNotifications(); };
+    window.addEventListener('focus', onFocus);
 
     return () => {
-      supabase.removeChannel(notificationChannel);
+      window.removeEventListener('focus', onFocus);
+      if (channelRef.current) {
+        try { supabase.removeChannel(channelRef.current); } catch (e) { /* noop */ }
+        channelRef.current = null;
+      }
     };
-  }, [user]);
+  }, [user, fetchNotifications]);
 
   const markAsRead = async (notificationId) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId);
-
-      if (error) throw error;
-
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, is_read: true } : n
-        )
+      await markNotificationRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -326,17 +355,8 @@ export function NotificationsProvider({ children, user }) {
 
   const markAllAsRead = async () => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      if (error) throw error;
-
-      setNotifications(prev =>
-        prev.map(n => ({ ...n, is_read: true }))
-      );
+      await markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
       toast.success('All notifications marked as read');
     } catch (error) {
@@ -345,20 +365,10 @@ export function NotificationsProvider({ children, user }) {
   };
 
   const clearAll = async () => {
-    try {
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-
-      setNotifications([]);
-      setUnreadCount(0);
-      toast.success('All notifications cleared');
-    } catch (error) {
-      console.error('Error clearing notifications:', error);
-    }
+    // The V3 notifications surface is per-recipient read + mark-read only;
+    // there is deliberately no bulk-delete surface (notifications are
+    // auditable history). Clearing is therefore a no-op for unread state.
+    await markAllAsRead();
   };
 
   return (
@@ -367,7 +377,7 @@ export function NotificationsProvider({ children, user }) {
       unreadCount,
       markAsRead,
       markAllAsRead,
-      clearAll
+      clearAll,
     }}>
       {children}
     </NotificationsContext.Provider>

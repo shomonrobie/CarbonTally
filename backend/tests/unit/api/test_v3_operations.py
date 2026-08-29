@@ -512,6 +512,28 @@ def test_mapping_options(client, world, user_provider) -> None:
     assert "factors" in response.json()
 
 
+def test_ops_organizations_requires_staff_admin(client, world, user_provider) -> None:
+    """CL-63 — the authorised organisation search/list is gated to the N1
+    staff-admin messaging authority (can_manage_staff, internal staff)."""
+    _seed_ops_world(world)
+    # Operator (can_process only) is denied.
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    assert client.get("/api/v3/ops/organizations").status_code == 403
+    # Reviewer (can_review only) is denied.
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    assert client.get("/api/v3/ops/organizations").status_code == 403
+    # Manager (can_manage_staff) is allowed and receives the paginated contract.
+    user_provider.set_user(staff_user("u-mgr", email="mgr@carbontally.test"))
+    response = client.get("/api/v3/ops/organizations?q=org")
+    assert response.status_code == 200
+    body = response.json()
+    assert "organizations" in body
+    assert isinstance(body["organizations"], list)
+    assert "total" in body
+    assert "limit" in body
+    assert "offset" in body
+
+
 def test_next_item_flow(client, world, user_provider) -> None:
     _seed_ops_world(world)
     _batch, item = _seed_batch_with_item(world)

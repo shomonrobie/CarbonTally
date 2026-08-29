@@ -6,15 +6,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   createMessagingConversation,
-  getOpsDashboard,
+  getOpsOrganizations,
   listMessagingConversations,
   listMessagingMessages,
   sendMessagingMessage,
 } from '../api';
 import { LoadingState, Alert, Button, SelectInput, TextInput } from '../components/ui';
+import { useConversationRealtime } from '../messaging/useConversationRealtime';
+
+// CL-63 — organisation selection uses the dedicated authorised search/list API
+// (paginated + searchable), never the ops-dashboard summary object.
+const ORG_PAGE_SIZE = 50;
 
 export default function OpsMessagingTab({ canManage }) {
   const [orgs, setOrgs] = useState([]);
+  const [orgTotal, setOrgTotal] = useState(0);
+  const [orgOffset, setOrgOffset] = useState(0);
+  const [orgQuery, setOrgQuery] = useState('');
+  const [orgSearch, setOrgSearch] = useState('');
   const [orgId, setOrgId] = useState('');
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
@@ -25,25 +34,44 @@ export default function OpsMessagingTab({ canManage }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [retryCount, setRetryCount] = useState(0);
 
   const loadOrgs = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const result = await getOpsDashboard();
-      setOrgs(result.organizations || []);
-      if ((result.organizations || []).length > 0) {
-        setOrgId((current) => current || result.organizations[0].id);
+      const result = await getOpsOrganizations({ q: orgSearch, limit: ORG_PAGE_SIZE, offset: orgOffset });
+      const rows = (result.organizations || []).filter((o) => o && o.id);
+      setOrgs(rows);
+      setOrgTotal(result.total || rows.length);
+      if (rows.length > 0) {
+        setOrgId((current) => current || rows[0].id);
       }
     } catch (e) {
       setError(e.message || 'Failed to load organisations');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgSearch, orgOffset]);
 
-  useEffect(() => { loadOrgs(); }, [loadOrgs, retryCount]);
+  useEffect(() => { loadOrgs(); }, [loadOrgs]);
+
+  // CL-64 — live delivery for the ACTIVE conversation (staff support thread).
+  // RLS confines the channel to authorised participants; API refetch is the
+  // deterministic fallback and duplicate INSERT payloads are deduplicated.
+  useConversationRealtime(active, {
+    onInsert: (message) => {
+      if (!message) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev; // dedupe
+        return [...prev, message];
+      });
+    },
+    onUpdate: (message) => {
+      if (!message) return;
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
+    },
+    onStatus: () => { /* reconnect/backoff handled by the client */ },
+  });
 
   const loadConversations = useCallback(async (selectedOrgId) => {
     if (!selectedOrgId) return;
@@ -58,7 +86,7 @@ export default function OpsMessagingTab({ canManage }) {
   useEffect(() => {
     if (!orgId) return;
     loadConversations(orgId);
-  }, [orgId, loadConversations, retryCount]);
+  }, [orgId, loadConversations]);
 
   const openConversation = async (conversationId) => {
     setError('');
@@ -120,13 +148,57 @@ export default function OpsMessagingTab({ canManage }) {
       {error && <Alert tone="error" title="Action failed">{error}</Alert>}
 
       <div className="v3-form-grid" style={{ marginBottom: 12 }}>
+        <div>
+          <TextInput
+            label="Find organisation"
+            value={orgQuery}
+            placeholder="Search by name…"
+            onChange={(e) => setOrgQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setOrgOffset(0);
+                setOrgSearch(orgQuery);
+              }
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setOrgOffset(0); setOrgSearch(orgQuery); }}
+            >
+              Search
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setOrgQuery(''); setOrgSearch(''); setOrgOffset(0); }}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
         <SelectInput
-          label="Organisation context"
+          label={`Organisation context (${orgs.length} of ${orgTotal})`}
           value={orgId}
           onChange={(e) => { setOrgId(e.target.value); setActive(null); setMessages([]); }}
         >
+          {orgs.length === 0 && <option value="">No organisations found</option>}
           {orgs.map((o) => <option key={o.id} value={o.id}>{o.name || o.id}</option>)}
         </SelectInput>
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 28 }}>
+            <Button variant="secondary" size="sm" disabled={orgOffset <= 0}
+              onClick={() => setOrgOffset((o) => Math.max(0, o - ORG_PAGE_SIZE))}>
+              Prev
+            </Button>
+            <Button variant="secondary" size="sm"
+              disabled={orgOffset + orgs.length >= orgTotal}
+              onClick={() => setOrgOffset((o) => o + ORG_PAGE_SIZE)}>
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="workspace-grid">

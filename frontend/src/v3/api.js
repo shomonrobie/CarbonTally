@@ -68,8 +68,12 @@ export const v3Fetch = async (path, options = {}) => {
     } catch (_e) {
       /* non-JSON error body */
     }
-    // Keep the real backend message visible to developers.
-    console.error(`[CarbonTally V3] ${options.method || 'GET'} ${path} → ${response.status}:`, raw);
+    // Keep the real backend message visible to developers (suppressed when the
+    // caller explicitly opts into a quiet probe — CL-49: expected 403 role
+    // probes must not produce console noise on normal page loads).
+    if (!options.quiet) {
+      console.error(`[CarbonTally V3] ${options.method || 'GET'} ${path} → ${response.status}:`, raw);
+    }
     const error = new Error(friendlyError(raw, response.status));
     error.status = response.status;
     error.raw = raw;
@@ -106,14 +110,16 @@ export const resolveV3Organization = async () => {
 //   authenticated but no role    -> /home (role guards redirect gracefully)
 export const resolvePostLoginPath = async () => {
   if (!(await getV3Token())) return '/login';
+  // CL-49 — quiet probes: expected 403s during cascading role resolution are
+  // never logged as console errors on a normal page load.
   try {
     if (await resolveV3Organization()) return '/home';
   } catch (_e) { /* continue to staff/consultant resolution */ }
   try {
-    if (await getOpsMe()) return '/ops';
+    if (await getOpsMe({ quiet: true })) return '/ops';
   } catch (_e) { /* continue to consultant resolution */ }
   try {
-    if (await getConsultantProfile()) return '/consultant';
+    if (await getConsultantProfile({ quiet: true })) return '/consultant';
   } catch (_e) { /* continue to onboarding */ }
   // D35 — an authenticated user with no org/staff/consultant relationship is a
   // brand-new customer: land on the self-service onboarding surface instead of
@@ -348,7 +354,7 @@ export const removeSupplier = (supplierId) =>
 // Consultant / multi-client API (V3 org-authorized surface)
 // ---------------------------------------------------------------------------
 
-export const getConsultantProfile = () => v3Fetch('/api/v3/consultants/me');
+export const getConsultantProfile = (options = {}) => v3Fetch('/api/v3/consultants/me', options);
 
 export const getConsultantBranding = () =>
   v3Fetch('/api/v3/consultants/me/branding');
@@ -402,9 +408,21 @@ export const getClientIssues = (clientId) =>
 // Internal Operations API (V3 authoritative surface — /api/v3/ops/*)
 // ---------------------------------------------------------------------------
 
-export const getOpsMe = () => v3Fetch('/api/v3/ops/me');
+export const getOpsMe = (options = {}) => v3Fetch('/api/v3/ops/me', options);
 
 export const getOpsDashboard = () => v3Fetch('/api/v3/ops/dashboard');
+
+// CL-63 — dedicated authorised organisation search/list contract for staff
+// messaging (paginated + searchable). The ops dashboard summary is never used
+// as a row collection by any UI component.
+export const getOpsOrganizations = ({ q = '', limit = 50, offset = 0 } = {}) => {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (limit) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
+  const qs = params.toString();
+  return v3Fetch(`/api/v3/ops/organizations${qs ? `?${qs}` : ''}`);
+};
 
 export const listOpsStaff = () => v3Fetch('/api/v3/ops/staff');
 

@@ -9,6 +9,7 @@ import {
   sendMessagingMessage,
 } from '../api';
 import { ErrorState } from '../components/StateViews';
+import { useConversationRealtime } from '../messaging/useConversationRealtime';
 
 export default function MessagingPage() {
   const [org, setOrg] = useState(null);
@@ -22,6 +23,32 @@ export default function MessagingPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  // CL-64 — live delivery for the ACTIVE conversation only. RLS confines the
+  // channel to the caller's authorised participants; the API refetch remains
+  // the deterministic fallback (reconnect/backoff is the client's channel
+  // lifecycle).
+  useConversationRealtime(activeConversation, {
+    onInsert: (message) => {
+      if (!message) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev; // dedupe
+        return [...prev, message];
+      });
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConversation
+            ? { ...c, message_count: (c.message_count || 0) + 1 }
+            : c
+        )
+      );
+    },
+    onUpdate: (message) => {
+      if (!message) return;
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, ...message } : m)));
+    },
+    onStatus: () => { /* reconnect/backoff handled by the client */ },
+  });
 
   const loadConversations = async (organizationId) => {
     const result = await listMessagingConversations(organizationId);
