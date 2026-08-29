@@ -100,9 +100,13 @@ class SearchRepository(AbstractRepository[dict]):
         )
         add("vehicle", vehicles, [str(r["name"]) for r in vehicles])
 
-        # Reports
+        # Reports (CL-65) — the org-scoped report surface is
+        # ``report_generation_queue`` (report_name/status/report_type are the
+        # authoritative columns). The old ``report_versions.report_name`` query
+        # referenced a column that does not exist in the running schema and
+        # 500'd every shell search.
         reports = await self._fetch_all(
-            "SELECT id, report_name FROM public.report_versions "
+            "SELECT id, report_name FROM public.report_generation_queue "
             "WHERE organization_id = $1 AND report_name ILIKE $2 "
             "ORDER BY created_at DESC LIMIT $3",
             org_id, q, limit,

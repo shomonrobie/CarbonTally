@@ -1,13 +1,14 @@
 // frontend/src/v3/ops/ReviewQueue.jsx
 // Reviewer queue: review queue + shared workspace with validation and
-// review (assign/complete) actions.
+// review (assign/complete) actions. CL-59 — opening an item navigates to the
+// dedicated routed workspace (/ops/review/:itemId).
 import React, { useEffect, useState } from 'react';
-import { assignReview, completeReview, getOpsReviewReporting, getReviewQueue, validateItem } from '../api';
-import WorkItemWorkspace from './WorkItemWorkspace';
+import { useNavigate } from 'react-router-dom';
+import { getOpsReviewReporting, getReviewQueue } from '../api';
 
 export default function ReviewQueue() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
-  const [activeItemId, setActiveItemId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [report, setReport] = useState(null);
@@ -29,30 +30,6 @@ export default function ReviewQueue() {
       .then(setReport)
       .catch(() => setReport(null));
   }, []);
-
-  const onValidate = async () => {
-    try {
-      const result = await validateItem(activeItemId);
-      setNotice(result.blocking ? 'Blocking findings — routed back to mapping.' : 'Validated.');
-    } catch (e) { setError(e.message); }
-  };
-
-  const onAssign = async () => {
-    try {
-      await assignReview(activeItemId, ''); // assigned_to resolved server-side for internal reviewers
-      setNotice('Review assigned.');
-      await load();
-    } catch (e) { setError(e.message); }
-  };
-
-  const onComplete = async () => {
-    try {
-      await completeReview(activeItemId, { manual_extraction_result: { reviewed: true }, review_time_seconds: 60 });
-      setNotice('Review completed.');
-      setActiveItemId(null);
-      await load();
-    } catch (e) { setError(e.message); }
-  };
 
   return (
     <div>
@@ -105,29 +82,14 @@ export default function ReviewQueue() {
                 <td>{r.assigned_to_name || '—'}</td>
                 <td>{r.priority}</td>
                 <td>
-                  {/* UH-7 — open the REAL extraction item the row resolves to */}
-                  <button className="v3-btn primary" onClick={() => setActiveItemId(r.item_id || r.id)}>Open workspace</button>
+                  {/* CL-59 — open the REAL extraction item in a dedicated route */}
+                  <button className="v3-btn primary" onClick={() => navigate(`/ops/review/${encodeURIComponent(r.item_id || r.id)}`)}>Open workspace</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {activeItemId && (
-        <WorkItemWorkspace
-          itemId={activeItemId}
-          renderActions={({ item }) => (
-            <div className="workspace-actions">
-              <button className="v3-btn primary" onClick={onValidate} disabled={item.status !== 'mapped' && item.status !== 'validated'}>
-                Validate
-              </button>
-              <button className="v3-btn" onClick={onAssign}>Assign to me</button>
-              <button className="v3-btn primary" onClick={onComplete}>Complete review</button>
-            </div>
-          )}
-        />
-      )}
     </div>
   );
 }

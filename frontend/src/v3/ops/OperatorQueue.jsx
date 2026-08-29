@@ -3,11 +3,11 @@
 // extraction panel (document viewer, multi-line extraction, factor picker,
 // save/resume, next/previous item).
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   assignBatch,
   calculateItem,
   extractItem,
-  getItemWorkspace,
   getMappingOptions,
   getOperatorQueue,
   getOpsBatchItems,
@@ -30,13 +30,10 @@ const INTERNAL_API = {
 const EMPTY_ASSIGN = { type: 'operator', target: '', reason: '' };
 
 export default function OperatorQueue() {
+  const navigate = useNavigate();
   const [batches, setBatches] = useState([]);
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [items, setItems] = useState([]);
-  const [activeItemId, setActiveItemId] = useState(null);
-  const [item, setItem] = useState(null);
-  const [suggestions, setSuggestions] = useState(null);
-  const [validation, setValidation] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [me, setMe] = useState(null);
@@ -86,7 +83,6 @@ export default function OperatorQueue() {
       const list = result.items || [];
       setItems(list);
       const pending = list.find((i) => i.status === 'pending') || list[0];
-      setActiveItemId(pending ? pending.id : null);
       return list;
     } catch (e) {
       setError(e.message || 'Failed to load batch items');
@@ -96,62 +92,20 @@ export default function OperatorQueue() {
 
   const openBatch = async (batchId) => {
     setActiveBatchId(batchId);
-    setActiveItemId(null);
-    setItem(null);
     await loadBatchItems(batchId);
   };
 
   const openItem = async (itemId) => {
-    setActiveItemId(itemId);
-    setItem(null);
-    setNotice('');
-    try {
-      // UH-1/UH-2 — the workbench is the primary workspace: open items move the
-      // page to the top so the split-screen workbench appears immediately
-      // (previously the 53-row queue wall pushed it ~3,100 px below).
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      // Load the full signed workspace payload: signed source URL + OCR field
-      // suggestions + server validation findings (D19/D32). The list row is
-      // used only for selection.
-      const ws = await getItemWorkspace(itemId);
-      setItem(ws.item || ws);
-      setSuggestions(ws.source?.ocr_suggestions || null);
-      setValidation(ws.validation?.findings || []);
-    } catch (e) {
-      setError(e.message || 'Failed to open item workspace');
-    }
-  };
-
-  const closeItem = () => {
-    setActiveItemId(null);
-    setItem(null);
-    setSuggestions(null);
-    setValidation([]);
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    // CL-59 — the workspace is a dedicated route, never an inline panel below
+    // the queue. Queue position/filters live on the queue page; the item route
+    // is deep-linkable, refresh-safe and history-aware.
+    navigate(`/ops/items/${encodeURIComponent(itemId)}`);
   };
 
   useEffect(() => {
     if (activeBatchId && !items.length) loadBatchItems(activeBatchId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBatchId]);
-
-  useEffect(() => {
-    if (activeItemId && !item) openItem(activeItemId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeItemId]);
-
-  const afterChange = async (itemId) => {
-    try {
-      const ws = await getItemWorkspace(itemId);
-      setItem(ws.item || ws);
-      setSuggestions(ws.source?.ocr_suggestions || null);
-      setValidation(ws.validation?.findings || []);
-      // Also refresh the list row so the queue reflects the new status.
-      await loadBatchItems(activeBatchId);
-    } catch (e) {
-      setError(e.message || 'Failed to refresh item');
-    }
-  };
 
   const startAssign = (batch) => {
     setAssignFor(batch);
@@ -190,26 +144,6 @@ export default function OperatorQueue() {
       {error && <div className="v3-ops-error">{error}</div>}
       {notice && <div className="v3-ops-notice">{notice}</div>}
 
-      {item ? (
-        // UH-1/UH-2 — WORKBENCH-FIRST: with an item open the giant queue wall is
-        // collapsed to a compact summary strip so the D19 split-screen workbench
-        // becomes the primary workspace and appears immediately (canonical
-        // ASCII E1 → E2: queue hub → standalone item workbench). Previous/Next
-        // navigate within the open item (ExtractionPanel) without returning to
-        // the queue.
-        <div className="ct-workbench-context" style={{ marginBottom: 12 }}>
-          <div className="v3-ops-notice" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <strong>{item.file_name || item.id}</strong>
-            <span className="v3-muted">
-              {batches.find((b) => b.batch.id === activeBatchId)?.batch.batch_name || 'batch'}
-              {' · '}{items.length} item{items.length === 1 ? '' : 's'}
-            </span>
-            <span style={{ flex: 1 }} />
-            <button className="v3-btn v3-btn-sm" onClick={closeItem}>Back to queue</button>
-          </div>
-        </div>
-      ) : (
-        <>
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
         <h3>Assigned / self-serve batches ({batches.length})</h3>
         <table className="v3-ops-table">
@@ -342,7 +276,7 @@ export default function OperatorQueue() {
                   <td>{i.status}</td>
                   <td>
                     <button className="v3-btn v3-btn-sm" onClick={() => openItem(i.id)}>
-                      {activeItemId === i.id ? 'Open' : 'Open'}
+                      Open
                     </button>
                   </td>
                 </tr>
@@ -351,22 +285,6 @@ export default function OperatorQueue() {
           </table>
         )}
       </div>
-        </>
-      )}
-
-      {item ? (
-        <ExtractionPanel
-          item={item}
-          items={items}
-          api={INTERNAL_API}
-          onItemChange={afterChange}
-          mode="staff"
-          suggestions={suggestions}
-          validation={validation}
-        />
-      ) : (
-        <div className="v3-ops-card"><div className="v3-ops-notice">Select an item to begin extraction.</div></div>
-      )}
     </div>
   );
 }

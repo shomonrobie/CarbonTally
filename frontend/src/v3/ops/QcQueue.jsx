@@ -1,17 +1,17 @@
 // frontend/src/v3/ops/QcQueue.jsx
 // QC queue: QC queue + shared workspace with validation/calculation visibility
 // and the pass/fail decision + notes (the CarbonTally-staff QC gate).
+// CL-59 — opening an item navigates to the dedicated routed workspace
+// (/ops/qc/:itemId).
 import React, { useEffect, useState } from 'react';
-import { getOpsQcReporting, getQcQueue, qcReviewItem } from '../api';
-import WorkItemWorkspace from './WorkItemWorkspace';
+import { useNavigate } from 'react-router-dom';
+import { getOpsQcReporting, getQcQueue } from '../api';
 
 export default function QcQueue() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
-  const [activeItemId, setActiveItemId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [score, setScore] = useState(80);
-  const [notes, setNotes] = useState('');
   const [report, setReport] = useState(null);
 
   const load = async () => {
@@ -31,15 +31,6 @@ export default function QcQueue() {
       .then(setReport)
       .catch(() => setReport(null));
   }, []);
-
-  const onQc = async (approved) => {
-    try {
-      await qcReviewItem(activeItemId, { quality_score: Number(score), approved, qc_notes: notes });
-      setNotice(approved ? 'QC passed.' : 'QC rejected — item returned for correction.');
-      setActiveItemId(null);
-      await load();
-    } catch (e) { setError(e.message); }
-  };
 
   return (
     <div>
@@ -95,37 +86,14 @@ export default function QcQueue() {
                 <td>{r.status}</td>
                 <td>{r.quality_score ?? '—'}</td>
                 <td>
-                  <button className="v3-btn primary" onClick={() => setActiveItemId(r.id)}>Open workspace</button>
+                  {/* CL-59 — open the item in a dedicated routed workspace */}
+                  <button className="v3-btn primary" onClick={() => navigate(`/ops/qc/${encodeURIComponent(r.id)}`)}>Open workspace</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {activeItemId && (
-        <WorkItemWorkspace
-          itemId={activeItemId}
-          renderActions={({ item }) => (
-            <div>
-              <div className="workspace-grid">
-                <div className="workspace-field">
-                  <label>Quality score (0–100)</label>
-                  <input type="number" min={0} max={100} value={score} onChange={(e) => setScore(e.target.value)} />
-                </div>
-                <div className="workspace-field">
-                  <label>QC notes</label>
-                  <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-                </div>
-              </div>
-              <div className="workspace-actions">
-                <button className="v3-btn primary" onClick={() => onQc(true)}>Pass</button>
-                <button className="v3-btn danger" onClick={() => onQc(false)}>Fail — return for correction</button>
-              </div>
-            </div>
-          )}
-        />
-      )}
     </div>
   );
 }
