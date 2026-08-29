@@ -55,6 +55,7 @@ import DashboardPage from './v3/customer/DashboardPage';
 import EmissionsPage from './v3/customer/EmissionsPage';
 import DocumentsPage from './v3/customer/DocumentsPage';
 import ProcessingPage from './v3/customer/ProcessingPage';
+import ProcessingItemPage from './v3/customer/ProcessingItemPage';
 import ReviewPage from './v3/customer/ReviewPage';
 import ReviewDetailPage from './v3/customer/ReviewDetailPage';
 import IssuesPage from './v3/customer/IssuesPage';
@@ -2021,6 +2022,15 @@ export default function App() {
                 <RoleRoute requireOrg>
                   <V3Layout>
                     <ProcessingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/processing/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ProcessingItemPage />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>

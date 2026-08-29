@@ -6,7 +6,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  getItemWorkspace,
+  getProcessingItemWorkspace,
   resolveV3Membership,
   submitCustomerReview,
 } from '../api';
@@ -54,7 +54,7 @@ export default function ReviewDetailPage() {
     try {
       const membership = await resolveV3Membership();
       setRole(membership?.role || null);
-      const w = await getItemWorkspace(itemId);
+      const w = await getProcessingItemWorkspace(itemId);
       setWorkspace(w);
     } catch (e) {
       setError(e.message || 'Failed to load the review workspace');

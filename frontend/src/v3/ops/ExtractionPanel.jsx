@@ -110,7 +110,9 @@ export default function ExtractionPanel({
     const ml = (item?.mapped_data || {}).line_items || [];
     return ml.map((l) => ({ activity_type: l.activity_type || '', factor_id: l.factor_id || '' }));
   });
-  const [factors, setFactors] = useState([]);
+  const [factors, setFactors] = useState([]); // system (CarbonTally-managed) factors
+  const [customerFactors, setCustomerFactors] = useState([]); // approved customer factors (CL-44)
+  const [noFactorsReason, setNoFactorsReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -207,8 +209,15 @@ export default function ExtractionPanel({
     setBusy(true);
     api
       .getMappingOptions(itemId, firstActivity)
-      .then((body) => { if (active) setFactors(body.factors || []); })
-      .catch(() => { if (active) setFactors([]); })
+      .then((body) => {
+        if (active) {
+          setFactors(body.factors || []);
+          // CL-44 / D-cf-5 — approved customer factors take precedence.
+          setCustomerFactors(body.customer_factors || []);
+          setNoFactorsReason(body.no_factors_reason || '');
+        }
+      })
+      .catch(() => { if (active) { setFactors([]); setCustomerFactors([]); setNoFactorsReason(''); } })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,8 +289,18 @@ export default function ExtractionPanel({
     setMapping((m) => m.filter((_, i) => i !== idx));
   };
 
-  const factorLabel = (f) =>
-    `${f.activity_type} · ${f.unit || 'unit?'} · ${f.factor_source || ''} ${f.reporting_year || ''}`;
+  const factorLabel = (f) => {
+    const isCustomer =
+      f.factor_kind === 'customer_factor' ||
+      String(f.factor_source || '').toUpperCase() === 'CUSTOMER';
+    const source = isCustomer
+      ? `Customer factor v${f.version || 1}`
+      : `${f.factor_source || ''} ${f.reporting_year || ''}`;
+    return `${f.activity_type || f.id} · ${f.unit || 'unit?'} · ${source}`;
+  };
+
+  // CL-44 / D-cf-5 — approved customer factors are listed first (precedence).
+  const allFactors = [...customerFactors, ...factors];
 
   const status = item?.status || 'pending';
   const index = items.findIndex((i) => i.id === itemId);
@@ -330,6 +349,9 @@ export default function ExtractionPanel({
       </div>
 
       <h4>Line items</h4>
+      {noFactorsReason ? (
+        <p className="v3-muted" style={{ margin: '4px 0 8px', fontSize: 13 }}>{noFactorsReason}</p>
+      ) : null}
       <table className="line-table">
         <thead>
           <tr>
@@ -365,14 +387,14 @@ export default function ExtractionPanel({
                   onChange={(e) =>
                     setMapping((m) => {
                       const n = m.slice();
-                      const f = factors.find((x) => x.id === e.target.value);
+                      const f = allFactors.find((x) => x.id === e.target.value);
                       n[idx] = { activity_type: f?.activity_type || '', factor_id: e.target.value };
                       return n;
                     })
                   }
                 >
                   <option value="">— select factor —</option>
-                  {factors.map((f) => (
+                  {allFactors.map((f) => (
                     <option key={f.id} value={f.id}>{factorLabel(f)}</option>
                   ))}
                 </select>

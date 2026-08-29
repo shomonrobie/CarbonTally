@@ -177,3 +177,55 @@ def mapping_no_factors_reason(
         "No matching emission factor found. Check the activity description or enter a "
         "physical quantity and unit (e.g. litres, kWh, tonnes, km) from the document."
     )
+
+
+def spend_mapping_suggestion(
+    activity: Optional[str], unit: Optional[str], has_factors: bool
+) -> Optional[dict]:
+    """Machine-readable mapping guidance for spend/currency activities (CL-47).
+
+    When a currency activity has no applicable factor the response carries an
+    explicit, actionable payload instead of silently returning an empty list.
+    The correct supported workflow for spend data is: create an approved
+    **customer factor** for the activity in the currency unit, then map the
+    item to it (spend_based calculation). ``None`` means no suggestion applies.
+    """
+    if has_factors:
+        return None
+    if is_currency_unit(unit):
+        return {
+            "kind": "spend_based",
+            "activity": activity or "",
+            "unit": unit or "GBP",
+            "message": (
+                "Spend-based activity — create an approved customer factor for this "
+                "activity in the currency unit, then map the item to it."
+            ),
+            "action": "create_customer_factor",
+        }
+    return None
+
+
+def relevant_customer_factors(
+    customer_factors: list[dict], activity: Optional[str], unit: Optional[str]
+) -> list[dict]:
+    """Filter approved customer factors to those applicable to the item.
+
+    Used by the mapping-options endpoints so the ``no_factors_reason`` /
+    ``spend_suggestion`` guidance reflects whether ANY factor (system or
+    customer) actually covers THIS activity/unit — an unrelated approved
+    customer factor (e.g. a Diesel factor) must not mask the spend dead-end.
+    """
+    a = (activity or "").strip().lower()
+    u = (unit or "").strip().lower()
+    out = []
+    for f in customer_factors:
+        fa = str(f.get("activity_type") or f.get("activity") or "").lower()
+        fu = str(f.get("unit") or "").lower()
+        activity_ok = (not a) or (a in fa) or (fa in a)
+        unit_ok = (not u) or (fu == u) or (u in fu) or (fu in u)
+        if activity_ok and unit_ok:
+            out.append(f)
+    return out
+
+

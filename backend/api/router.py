@@ -48,6 +48,7 @@ from api.v3_processing import router as v3_processing_router
 from api.v3_qc import router as v3_qc_router
 from api.v3_suppliers import router as v3_suppliers_router
 from api.v3_processing_workflow import router as v3_processing_workflow_router
+from api.v3_automatic_processing import router as v3_automatic_processing_router
 from api.v3_search import router as v3_search_router
 from api.v3_settings import router as v3_settings_router
 from api.v3_emissions import router as v3_emissions_router
@@ -189,6 +190,7 @@ router.include_router(v3_exports_router)
 router.include_router(v3_consultants_router)
 router.include_router(v3_processing_router)
 router.include_router(v3_processing_workflow_router)
+router.include_router(v3_automatic_processing_router)
 router.include_router(v3_search_router)
 router.include_router(v3_settings_router)
 router.include_router(v3_emissions_router)

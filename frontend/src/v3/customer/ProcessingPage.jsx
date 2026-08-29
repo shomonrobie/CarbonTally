@@ -1,37 +1,67 @@
 // frontend/src/v3/customer/ProcessingPage.jsx
-// Customer processing — manual-extraction batches and items over the V3 surface
-// (/api/v3/manual-extraction/*). Real org-scoped backend data.
+// CL-54 - genuine customer processing workspace:
+//   * upload documents (V3 surface - the worker/operator pipeline takes over)
+//   * processing status summary (per-stage counts)
+//   * every processing item with live status -> deep link into the item workspace
+//   * durable automatic-processing jobs (Phase A) with retry/confirm actions
+// All reads/writes are org-scoped /api/v3/* endpoints; the staff /api/v3/ops/*
+// surface is never used here.
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
+  confirmProcessingJob,
+  getProcessingJobs,
+  getProcessingStatus,
   resolveV3Organization,
-  v3CreateExtractionBatch,
-  v3CreateExtractionItem,
+  retryProcessingJob,
   v3ListExtractionBatches,
   v3ListExtractionItems,
+  v3UploadDocument,
 } from '../api';
-import { ErrorState } from '../components/StateViews';
+import { formatBytes } from '../utils';
+import { Button, EmptyState, ErrorState, LoadingState, StatusBadge } from '../components/ui';
 
-const EMPTY_BATCH = { batch_name: '', total_documents: 0, total_pages: 0 };
-const EMPTY_ITEM = { file_name: '', file_url: '', page_count: 1, document_type: '' };
+const STAGE_ORDER = ['source', 'extraction', 'mapping', 'validation', 'calculation', 'review', 'approval'];
 
 export default function ProcessingPage() {
+  const navigate = useNavigate();
   const [org, setOrg] = useState(null);
-  const [batches, setBatches] = useState([]);
-  const [expanded, setExpanded] = useState(null);
-  const [items, setItems] = useState({});
-  const [batchForm, setBatchForm] = useState({ ...EMPTY_BATCH });
-  const [itemForm, setItemForm] = useState({ ...EMPTY_ITEM });
+  const [status, setStatus] = useState(null);
+  const [items, setItems] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [file, setFile] = useState(null);
+  const [dataType, setDataType] = useState('utility');
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [busyJob, setBusyJob] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
   const load = useCallback(async (organizationId) => {
+    setError('');
     try {
-      const result = await v3ListExtractionBatches(organizationId);
-      setBatches(result.batches || []);
+      const [statusResult, jobsResult, batches] = await Promise.all([
+        getProcessingStatus(organizationId),
+        getProcessingJobs(organizationId, { limit: 200 }).catch(() => ({ jobs: [] })),
+        v3ListExtractionBatches(organizationId).catch(() => ({ batches: [] })),
+      ]);
+      setStatus(statusResult);
+      setJobs(jobsResult.jobs || []);
+      const batchList = batches.batches || [];
+      const rows = [];
+      for (const batch of batchList) {
+        try {
+          const result = await v3ListExtractionItems(batch.id);
+          (result.items || []).forEach((it) => rows.push({ ...it, batch_name: batch.batch_name }));
+        } catch (_e) {
+          /* skip batches that cannot be listed */
+        }
+      }
+      rows.sort((a, b) => (a.created_at > b.created_at ? -1 : 1));
+      setItems(rows);
     } catch (e) {
-      setError(e.message || 'Failed to load processing batches');
+      setError(e.message || 'Failed to load processing');
     }
   }, []);
 
@@ -55,130 +85,185 @@ export default function ProcessingPage() {
     return () => { active = false; };
   }, [load, retryCount]);
 
-  const onCreateBatch = async () => {
+  // Light polling while anything is still in flight.
+  useEffect(() => {
+    if (!org) return undefined;
+    const inFlight = items.some(
+      (i) => !['approved', 'rejected', 'qc_approved', 'qc_rejected', 'completed', 'failed'].includes(i.status)
+    ) || jobs.some(
+      (j) => ['enqueued', 'ingesting', 'extracting', 'mapping', 'validating', 'calculating'].includes(j.stage)
+    );
+    if (!inFlight) return undefined;
+    const timer = setInterval(() => { load(org.id); }, 10000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org, items, jobs]);
+
+  const onUpload = async () => {
+    if (!file || !org) return;
+    setUploading(true);
     setError('');
     setNotice('');
     try {
-      await v3CreateExtractionBatch(org.id, {
-        batch_name: batchForm.batch_name,
-        total_documents: Number(batchForm.total_documents) || 0,
-        total_pages: Number(batchForm.total_pages) || 0,
-      });
-      setBatchForm({ ...EMPTY_BATCH });
-      setNotice('Batch created.');
+      await v3UploadDocument({ organization_id: org.id, data_type: dataType, file });
+      setFile(null);
+      setNotice('Document uploaded - automatic processing has been enqueued.');
       await load(org.id);
     } catch (e) {
-      setError(e.message || 'Failed to create batch');
+      setError(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
-  const toggleBatch = async (batchId) => {
-    if (expanded === batchId) { setExpanded(null); return; }
-    try {
-      const result = await v3ListExtractionItems(batchId);
-      setItems((prev) => ({ ...prev, [batchId]: result.items || [] }));
-      setExpanded(batchId);
-    } catch (e) {
-      setError(e.message || 'Failed to load batch items');
-    }
-  };
-
-  const onCreateItem = async (batchId) => {
+  const onRetryJob = async (jobId) => {
+    setBusyJob(jobId);
     setError('');
-    setNotice('');
     try {
-      await v3CreateExtractionItem(batchId, {
-        file_name: itemForm.file_name,
-        file_url: itemForm.file_url,
-        page_count: Number(itemForm.page_count) || 1,
-        document_type: itemForm.document_type || null,
-      });
-      setItemForm({ ...EMPTY_ITEM });
-      setNotice('Item added to batch.');
-      const result = await v3ListExtractionItems(batchId);
-      setItems((prev) => ({ ...prev, [batchId]: result.items || [] }));
-      // Keep the batch list count authoritative (the API now returns item_count).
-      setBatches((prev) =>
-        prev.map((x) =>
-          x.id === batchId ? { ...x, item_count: (x.item_count ?? 0) + 1 } : x
-        )
-      );
+      await retryProcessingJob(jobId);
+      await load(org.id);
+      setNotice('Job re-enqueued.');
     } catch (e) {
-      setError(e.message || 'Failed to add item');
+      setError(e.message || 'Failed to retry job');
+    } finally {
+      setBusyJob('');
     }
   };
 
-  if (loading) return <div className="v3-loading"><div className="spinner" />Loading processing…</div>;
-  if (error && !org) return <ErrorState message={error} onRetry={() => setRetryCount((n) => n + 1)} />;
+  const onConfirmJob = async (jobId) => {
+    setBusyJob(jobId);
+    setError('');
+    try {
+      await confirmProcessingJob(jobId, { stage: 'enqueued', reset_attempts: true });
+      await load(org.id);
+      setNotice('Job confirmed - the pipeline will resume it.');
+    } catch (e) {
+      setError(e.message || 'Failed to confirm job');
+    } finally {
+      setBusyJob('');
+    }
+  };
 
+  if (loading) return <LoadingState label="Loading processing..." />;
+  if (error && !org) return <ErrorState inline message={error} onRetry={() => setRetryCount((n) => n + 1)} />;
+
+  const pipeline = status?.pipeline || {};
+  const totalItems = status?.total_items ?? items.length;
   return (
     <div className="v3-page">
-      <div className="v3-page-header">
+      <header className="v3-page-header">
         <h1>Processing</h1>
-        <p className="v3-subtitle">Manual-extraction batches and items (org-scoped V3 surface).</p>
-      </div>
+        <p className="v3-subtitle">
+          Upload a document and follow it through extraction, mapping, validation, calculation and review - or pick up an
+          item in flight.
+        </p>
+      </header>
 
       {error && <div className="v3-error" style={{ marginBottom: 14 }}>{error}</div>}
-      {notice && <div className="v3-note">{notice}</div>}
+      {notice && <div className="v3-note" style={{ marginBottom: 14 }}>{notice}</div>}
 
       <div className="v3-card">
-        <h2>Batches ({batches.length})</h2>
-        {batches.length === 0 ? (
-          <div className="v3-empty">No processing batches yet.</div>
+        <h2>Upload a document</h2>
+        <div className="v3-actions" style={{ marginTop: 0 }}>
+          <input
+            className="v3-input"
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+          />
+          <select className="v3-input" value={dataType} onChange={(e) => setDataType(e.target.value)}>
+            <option value="utility">Utility</option>
+            <option value="fuel">Fuel</option>
+            <option value="scope3">Scope 3</option>
+          </select>
+          <Button variant="primary" onClick={onUpload} disabled={uploading || !file}>
+            {uploading ? 'Uploading...' : 'Upload & process'}
+          </Button>
+        </div>
+        {file && <p className="v3-muted" style={{ margin: '8px 0 0' }}>{file.name} · {formatBytes(file.size)}</p>}
+      </div>
+
+      <div className="v3-card">
+        <h2>Pipeline status</h2>
+        {Object.keys(pipeline).length === 0 ? (
+          <div className="v3-empty">No processing activity yet.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            {STAGE_ORDER.filter((s) => pipeline[s] != null && pipeline[s] !== 0).map((stage) => (
+              <div key={stage} className="v3-inline-card" style={{ margin: 0, textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, fontSize: 18 }}>{pipeline[stage]}</div>
+                <div className="v3-muted" style={{ fontSize: 12, textTransform: 'capitalize' }}>{stage}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="v3-muted" style={{ margin: '10px 0 0' }}>
+          {totalItems} item{totalItems === 1 ? '' : 's'} · {status?.pct_complete ?? 0}% complete
+        </p>
+      </div>
+      <div className="v3-card">
+        <h2>Items ({items.length})</h2>
+        {items.length === 0 ? (
+          <EmptyState icon="documents" title="No processing items">Upload a document to create the first processing item.</EmptyState>
         ) : (
           <table className="v3-table">
             <thead>
-              <tr><th>Batch</th><th>Status</th><th>Items</th><th>Created</th><th>Actions</th></tr>
+              <tr><th>Item</th><th>Batch</th><th>Status</th><th>Type</th><th>Calculated</th><th></th></tr>
             </thead>
             <tbody>
-              {batches.map((b) => (
-                <React.Fragment key={b.id}>
-                  <tr>
-                    <td>{b.batch_name || b.id}</td>
-                    <td>{b.status || '—'}</td>
-                    <td>{b.item_count != null ? b.item_count : (items[b.id] || []).length}</td>
-                    <td className="v3-muted">{b.created_at || '—'}</td>
-                    <td>
-                      <button className="v3-btn v3-btn-sm" onClick={() => toggleBatch(b.id)}>
-                        {expanded === b.id ? 'Close' : 'Items'}
-                      </button>
-                    </td>
-                  </tr>
-                  {expanded === b.id && (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="v3-inline-card">
-                          <div className="v3-actions" style={{ marginTop: 0, marginBottom: 12 }}>
-                            <input className="v3-input" placeholder="File name" value={itemForm.file_name} onChange={(e) => setItemForm({ ...itemForm, file_name: e.target.value })} />
-                            <input className="v3-input" placeholder="File URL" value={itemForm.file_url} onChange={(e) => setItemForm({ ...itemForm, file_url: e.target.value })} />
-                            <input className="v3-input" type="number" min="1" placeholder="Pages" value={itemForm.page_count} onChange={(e) => setItemForm({ ...itemForm, page_count: e.target.value })} />
-                            <button className="v3-btn v3-btn-sm" onClick={() => onCreateItem(b.id)} disabled={!itemForm.file_name.trim()}>
-                              Add item
-                            </button>
-                          </div>
-                          {(items[b.id] || []).length === 0 ? (
-                            <div className="v3-empty">No items in this batch.</div>
-                          ) : (
-                            <table className="v3-table">
-                              <thead>
-                                <tr><th>File</th><th>Status</th><th>Type</th></tr>
-                              </thead>
-                              <tbody>
-                                {(items[b.id] || []).map((it) => (
-                                  <tr key={it.id}>
-                                    <td>{it.file_name}</td>
-                                    <td>{it.status}</td>
-                                    <td className="v3-muted">{it.document_type || '—'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+              {items.map((it) => (
+                <tr key={it.id}>
+                  <td><strong>{it.file_name}</strong></td>
+                  <td className="v3-muted">{it.batch_name || '—'}</td>
+                  <td><StatusBadge status={it.status} /></td>
+                  <td className="v3-muted">{it.document_type || '—'}</td>
+                  <td>{it.calculated_emissions_kg_co2e != null ? `${it.calculated_emissions_kg_co2e} kg` : '—'}</td>
+                  <td>
+                    <Button variant="secondary" size="sm" onClick={() => navigate(`/processing/${it.id}`)}>
+                      Open workspace
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="v3-card">
+        <h2>Automatic processing jobs ({jobs.length})</h2>
+        {jobs.length === 0 ? (
+          <div className="v3-empty">No automatic-processing jobs yet.</div>
+        ) : (
+          <table className="v3-table">
+            <thead>
+              <tr><th>Document</th><th>Stage</th><th>Status</th><th>Attempt</th><th>Detail</th><th></th></tr>
+            </thead>
+            <tbody>
+              {jobs.map((j) => (
+                <tr key={j.id}>
+                  <td><strong>{j.file_name}</strong></td>
+                  <td>{j.stage_label || j.stage}</td>
+                  <td><StatusBadge status={j.status} /></td>
+                  <td className="v3-muted">{j.attempt_count}/{j.max_attempts}</td>
+                  <td className="v3-muted" style={{ maxWidth: 260 }}>
+                    {j.manual_review_reason || (j.completeness != null ? `completeness ${Math.round(j.completeness * 100)}%` : '')}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {(j.stage === 'blocked' || j.stage === 'failed') && (
+                      <>
+                        <Button variant="secondary" size="sm" onClick={() => onRetryJob(j.id)} disabled={busyJob === j.id}>
+                          Retry
+                        </Button>{' '}
+                        {j.stage === 'blocked' && (
+                          <Button variant="secondary" size="sm" onClick={() => onConfirmJob(j.id)} disabled={busyJob === j.id}>
+                            Confirm
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

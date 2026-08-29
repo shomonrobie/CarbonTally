@@ -14,6 +14,7 @@ from core.units import (
     is_currency_unit,
     mapping_no_factors_reason,
     normalize_unit,
+    relevant_customer_factors,
     resolve_unit_for_factor,
     units_equivalent,
 )
@@ -100,3 +101,23 @@ def test_mapping_no_factors_reason_neutral_no_match() -> None:
     reason = mapping_no_factors_reason("Something unusual", "widgets", has_factors=False)
     assert reason is not None
     assert "No matching emission factor" in reason
+
+
+def test_relevant_customer_factors_matches_activity_and_unit() -> None:
+    factors = [
+        {"id": "diesel", "activity_type": "Diesel", "unit": "litres"},
+        {"id": "spend", "activity_type": "Purchased goods", "unit": "GBP"},
+    ]
+    hit = relevant_customer_factors(factors, "Diesel", "litres")
+    assert [f["id"] for f in hit] == ["diesel"]
+    # A spend item does NOT match the Diesel factor -> the spend dead-end stays
+    # visible even though the org owns an approved Diesel factor (CL-47).
+    assert relevant_customer_factors(factors, "Purchased goods", "GBP")[0]["id"] == "spend"
+    assert relevant_customer_factors(factors, "Purchased goods", "GBP") != []
+
+
+def test_relevant_customer_factors_empty_activity_matches_all() -> None:
+    factors = [{"id": "a", "activity_type": "Diesel", "unit": "litres"}]
+    assert len(relevant_customer_factors(factors, "", "")) == 1
+    assert relevant_customer_factors([], "Purchased goods", "GBP") == []
+

@@ -36,10 +36,53 @@ from api.dependencies import (
     require_org_member,
 )
 from auth import AuthUser
+from domain.audit import AuditEntry
 from domain.customer_factor import CustomerFactor
 from engines.validation import validate_customer_factor
 
 router = APIRouter(prefix="/api/v3/customer-factors", tags=["V3 — Customer Factors"])
+
+
+async def _audit_factor(
+    repos: RepositoryBundle,
+    factor: CustomerFactor,
+    *,
+    action: str,
+    actor: str,
+    changed: dict,
+) -> None:
+    """Append-only audit for customer-factor lifecycle events (CL-43).
+
+    Audit failures must never break the authoritative change (matching the
+    established append-only audit pattern elsewhere in the API).
+    """
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id=str(uuid.uuid4()),
+                correlation_id=factor.id,
+                entity_type="customer_factors",
+                entity_id=factor.id,
+                action=action,
+                actor=actor,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={
+                    "organization_id": factor.organization_id,
+                    "activity_type": factor.activity_type,
+                    "unit": factor.unit,
+                    "scope": factor.scope,
+                    "reporting_year": factor.reporting_year,
+                    "country": factor.country,
+                    "status": factor.status,
+                    "version": factor.version,
+                    **changed,
+                },
+                reason="customer factor lifecycle event",
+            )
+        )
+    except Exception:  # noqa: BLE001 — append-only audit must never break the request
+        pass
+
 
 
 def _decimal(value: str) -> Decimal:
@@ -118,9 +161,61 @@ async def create_customer_factor(
     current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> CustomerFactorOut:
-    """Create a customer factor as a DRAFT (D-cf-3 — approval required later)."""
+    """Create a customer factor as a DRAFT (D-cf-3 — approval required later).
+
+    CL-43 / D-cf-4 lifecycle:
+    * ``version`` is optional. When omitted the API resolves the next free
+      version in the family (max + 1) — this is the supported way to open a
+      NEW VERSION of an approved factor without editing the active row.
+    * A duplicate family/version is a clean HTTP 409 (never a raw 500).
+    """
     ensure_org_access(current_user, payload.organization_id)
     now = datetime.now(timezone.utc)
+
+    family = await repos.customer_factors.find_by_family(
+        payload.organization_id,
+        payload.activity_type.strip(),
+        payload.reporting_year,
+        payload.country,
+        payload.unit,
+        payload.scope,
+    )
+    if payload.version is not None:
+        # Explicit version: the family/version must be free.
+        existing = next((f for f in family if f.version == payload.version), None)
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a customer factor with this activity/unit/scope family "
+                    f"already exists at version {payload.version} — create a "
+                    "new version instead"
+                ),
+            )
+        version = payload.version
+    else:
+        newest = max(family, key=lambda f: f.version) if family else None
+        if newest is not None and newest.status == "draft":
+            # Duplicate create: the newest slot in the family is still a draft.
+            # Editing it (PUT) is the supported path; a second identical create
+            # must never silently succeed as a brand-new factor.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a draft customer factor already exists in this family at "
+                    f"version {newest.version} — edit the draft, approve it, or "
+                    "create an explicit new version"
+                ),
+            )
+        version = await repos.customer_factors.next_version(
+            payload.organization_id,
+            payload.activity_type.strip(),
+            payload.reporting_year,
+            payload.country,
+            payload.unit,
+            payload.scope,
+        )
+
     factor = CustomerFactor(
         id=str(uuid.uuid4()),
         organization_id=payload.organization_id,
@@ -134,7 +229,7 @@ async def create_customer_factor(
         reporting_year=payload.reporting_year,
         factor_source="CUSTOMER",
         status="draft",
-        version=1,
+        version=version,
         metadata=payload.metadata,
         created_at=now,
         updated_at=now,
@@ -142,7 +237,33 @@ async def create_customer_factor(
         updated_by=current_user.user_id,
     )
     _reject_invalid(factor)
-    stored = await repos.customer_factors.save(factor)
+    try:
+        stored = await repos.customer_factors.save(factor)
+    except Exception as exc:  # noqa: BLE001 — race on the family/version index
+        import asyncpg
+
+        if isinstance(exc, asyncpg.exceptions.UniqueViolationError):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a customer factor with this family and version "
+                    f"({version}) already exists — create a new version instead"
+                ),
+            ) from exc
+        raise
+    await _audit_factor(
+        repos,
+        factor,
+        action="customer_factor:created",
+        actor=current_user.user_id,
+        changed={
+            "version": version,
+            "status": factor.status,
+            "activity_type": factor.activity_type,
+            "unit": factor.unit,
+            "scope": factor.scope,
+        },
+    )
     return customer_factor_out(stored)
 
 
@@ -216,6 +337,13 @@ async def approve_customer_factor(
     stored = await repos.customer_factors.update_status(
         factor_id, "active", updated_by=current_user.user_id
     )
+    await _audit_factor(
+        repos,
+        stored,
+        action="customer_factor:approved",
+        actor=current_user.user_id,
+        changed={"previous_status": existing.status, "version": existing.version},
+    )
     return customer_factor_out(stored)
 
 
@@ -237,6 +365,13 @@ async def deactivate_customer_factor(
         )
     stored = await repos.customer_factors.update_status(
         factor_id, "inactive", updated_by=current_user.user_id
+    )
+    await _audit_factor(
+        repos,
+        stored,
+        action="customer_factor:deactivated",
+        actor=current_user.user_id,
+        changed={"previous_status": existing.status, "version": existing.version},
     )
     return customer_factor_out(stored)
 

@@ -28,6 +28,19 @@ const EMPTY = {
   description: '',
 };
 
+// CL-47 — a spend/currency activity is mapped to an approved customer factor
+// with a currency unit (the automatic pipeline detects GBP/EUR/USD → spend_based).
+const UNIT_OPTIONS = [
+  'kgCO2e',
+  'kgCO2e/L',
+  'kgCO2e/kWh',
+  'kgCO2e/kg',
+  'kgCO2e/m³',
+  'GBP',
+  'EUR',
+  'USD',
+];
+
 export default function CustomFactorsTab({ organization, isAdmin }) {
   const [factors, setFactors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +51,7 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
   const [form, setForm] = useState({ ...EMPTY });
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(null); // {action:'approve'|'deactivate', factor}
-  const [retryCount, setRetryCount] = useState(0);
+  const [newVersionOf, setNewVersionOf] = useState(null); // active factor being versioned (CL-43/D-cf-4)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +66,7 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
     }
   }, [organization.id]);
 
-  useEffect(() => { load(); }, [load, retryCount]);
+  useEffect(() => { load(); }, [load]);
 
   const flash = (message) => {
     setNotice(message);
@@ -78,16 +91,28 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
       if (editing) {
         await updateCustomerFactor(editing, payload);
         flash('Factor updated.');
+      } else if (newVersionOf) {
+        // CL-43 / D-cf-4 — the API resolves the next free family version (N+1)
+        // automatically when no explicit version is supplied, so a new version
+        // of an approved factor is created as a draft without touching vN.
+        const created = await createCustomerFactor(payload);
+        flash(`New version draft created (v${created.version || '?'}). Approve it to replace the active factor for matching.`);
       } else {
         await createCustomerFactor(payload);
         flash('Factor draft created. As the organisation owner you can approve it; an admin can also approve it.');
       }
       setShowForm(false);
       setEditing(null);
+      setNewVersionOf(null);
       setForm({ ...EMPTY });
       await load();
     } catch (e) {
-      setError(e.message || 'Failed to save factor');
+      if (e && e.status === 409) {
+        // CL-43 — a duplicate family/version is a clean, explainable conflict.
+        setError(`${e.raw || e.message} — edit the draft above or create a new version.`);
+      } else {
+        setError(e.message || 'Failed to save factor');
+      }
     } finally {
       setBusy(false);
     }
@@ -126,6 +151,12 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
       render: (row) => `${row.co2e_multiplier} ${row.unit || ''}`,
     },
     { key: 'reporting_year', header: 'Year', accessor: 'reporting_year' },
+    {
+      key: 'version',
+      header: 'Version',
+      accessor: 'version',
+      render: (row) => <span className="v3-badge">{`v${row.version || 1}`}</span>,
+    },
     { key: 'status', header: 'Status', accessor: 'status', render: (row) => <StatusBadge status={row.status} /> },
     {
       key: 'actions',
@@ -141,6 +172,31 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
           {row.status === 'active' && isAdmin && (
             <Button variant="danger" size="sm" icon="x" onClick={() => setConfirm({ action: 'deactivate', factor: row })}>
               Deactivate
+            </Button>
+          )}
+          {row.status === 'active' && isAdmin && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="edit"
+              title="Create a draft new version of this approved factor (the active factor is unchanged)"
+              onClick={() => {
+                setEditing(null);
+                setNewVersionOf(row);
+                setForm({
+                  name: row.name || '',
+                  activity_type: row.activity_type || '',
+                  co2e_multiplier: String(row.co2e_multiplier ?? ''),
+                  unit: row.unit || 'kgCO2e',
+                  scope: row.scope || 'Scope 1',
+                  country: row.country || 'GB',
+                  reporting_year: String(row.reporting_year || new Date().getFullYear()),
+                  description: row.description || '',
+                });
+                setShowForm(true);
+              }}
+            >
+              New version
             </Button>
           )}
           {row.status === 'draft' && (
@@ -182,20 +238,32 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
       </Alert>
 
       <div className="v3-actions">
-        <Button variant="primary" icon="plus" onClick={() => { setEditing(null); setForm({ ...EMPTY }); setShowForm((s) => !s); }}>
+        <Button variant="primary" icon="plus" onClick={() => { setEditing(null); setNewVersionOf(null); setForm({ ...EMPTY }); setShowForm((s) => !s); }}>
           {showForm ? 'Hide form' : 'New factor'}
         </Button>
       </div>
 
       {showForm && (
         <div className="v3-card" style={{ marginTop: 16 }}>
-          <h2>{editing ? 'Edit factor draft' : 'Create a custom factor (draft)'}</h2>
+          <h2>
+            {editing
+              ? 'Edit factor draft'
+              : newVersionOf
+                ? `Create a new version of “${newVersionOf.name}” (draft v${(newVersionOf.version || 1) + 1})`
+                : 'Create a custom factor (draft)'}
+          </h2>
+          {newVersionOf && !editing && (
+            <Alert tone="info" title="New version">
+              This creates a DRAFT new version of the approved factor — the active factor v{newVersionOf.version || 1} is
+              unchanged and keeps matching until the new draft is approved.
+            </Alert>
+          )}
           <div className="v3-form-grid">
             <TextInput label="Factor name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <TextInput label="Activity type" required value={form.activity_type} onChange={(e) => setForm({ ...form, activity_type: e.target.value })} hint="e.g. Natural gas, Diesel" />
-            <TextInput label="CO₂e multiplier" required value={form.co2e_multiplier} onChange={(e) => setForm({ ...form, co2e_multiplier: e.target.value })} hint="The value per unit (decimal)" />
+            <TextInput label="CO₂e multiplier" required value={form.co2e_multiplier} onChange={(e) => setForm({ ...form, co2e_multiplier: e.target.value })} hint="The value per unit (decimal). For spend factors, kg CO₂e per £/€/$." />
             <SelectInput label="Unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-              <option>kgCO2e</option><option>kgCO2e/L</option><option>kgCO2e/kWh</option><option>kgCO2e/kg</option><option>kgCO2e/m³</option>
+              {UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
             </SelectInput>
             <SelectInput label="Scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
               <option>Scope 1</option><option>Scope 2</option><option>Scope 3</option>
@@ -207,8 +275,10 @@ export default function CustomFactorsTab({ organization, isAdmin }) {
           </div>
           <TextArea label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <div className="v3-actions">
-            <Button variant="primary" icon="save" loading={busy} onClick={onSave}>{editing ? 'Save changes' : 'Create draft'}</Button>
-            <Button variant="secondary" onClick={() => { setShowForm(false); setEditing(null); }}>Cancel</Button>
+            <Button variant="primary" icon="save" loading={busy} onClick={onSave}>
+              {editing ? 'Save changes' : newVersionOf ? 'Create new version (draft)' : 'Create draft'}
+            </Button>
+            <Button variant="secondary" onClick={() => { setShowForm(false); setEditing(null); setNewVersionOf(null); }}>Cancel</Button>
           </div>
         </div>
       )}

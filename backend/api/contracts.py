@@ -949,6 +949,11 @@ class CustomerFactorCreate(BaseModel):
     country: str = Field("GB", pattern="^(GB|IE)$")
     description: Optional[str] = Field(None, max_length=2000)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # D-cf-4 (CL-43): optional explicit version. When omitted, the API resolves
+    # the next free version in the family (max version + 1) so a NEW VERSION of
+    # an approved factor can be created (draft N+1) without editing the active
+    # row. Supplying a version that already exists is a clean 409 conflict.
+    version: Optional[int] = Field(None, ge=1)
 
     model_config = ConfigDict(extra="forbid")
 

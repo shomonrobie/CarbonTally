@@ -41,6 +41,7 @@ from api.contracts import calculation_out
 from api.dependencies import (
     AuditContext,
     RepositoryBundle,
+    customer_factor_mapping_options,
     get_audit_context,
     get_calculation_engine,
     get_repositories,
@@ -54,7 +55,12 @@ from api.operations_auth import (
     require_internal_staff,
     require_staff,
 )
-from core.units import mapping_no_factors_reason, resolve_unit_for_factor
+from core.units import (
+    mapping_no_factors_reason,
+    relevant_customer_factors,
+    resolve_unit_for_factor,
+    spend_mapping_suggestion,
+)
 from domain.audit import AuditEntry
 from domain.issue import Issue
 from domain.partners import (
@@ -746,11 +752,28 @@ async def entity_extraction_mapping_options(
         if search_activity
         else []
     )
+    # CL-44 / D-cf-5 — approved customer factors join the picker and take
+    # precedence over system factors for the same activity/unit.
+    customer_factors = await customer_factor_mapping_options(
+        repos, batch.organization_id
+    )
+    relevant = relevant_customer_factors(
+        customer_factors, search_activity, search_unit
+    )
+    has_factors = bool(factors) or bool(relevant)
     return {
         "facilities": await repos.organizations.get_facilities(batch.organization_id),
         "assets": await repos.organizations.get_assets(batch.organization_id),
         "suppliers": await repos.suppliers.list_for_org(batch.organization_id),
         "factors": factors,
+        "customer_factors": customer_factors,
+        # CL-47 — honest, actionable spend guidance instead of an empty list.
+        "no_factors_reason": mapping_no_factors_reason(
+            search_activity, search_unit, has_factors
+        ),
+        "spend_suggestion": spend_mapping_suggestion(
+            search_activity, search_unit, has_factors
+        ),
     }
 
 
@@ -1176,15 +1199,30 @@ async def mapping_options(
         if search_activity
         else []
     )
+    # CL-44 / D-cf-5 — approved customer factors join the picker and take
+    # precedence over system factors for the same activity/unit.
+    customer_factors = await customer_factor_mapping_options(
+        repos, batch.organization_id
+    )
+    relevant = relevant_customer_factors(
+        customer_factors, search_activity, search_unit
+    )
+    has_factors = bool(factors) or bool(relevant)
     return {
         "facilities": await repos.organizations.get_facilities(batch.organization_id),
         "assets": await repos.organizations.get_assets(batch.organization_id),
         "suppliers": await repos.suppliers.list_for_org(batch.organization_id),
         "factors": factors,
+        "customer_factors": customer_factors,
         # ISC-9 / CL-32 — honest spend-based mapping state (see the Phase 3
         # surface for the full reasoning).
         "no_factors_reason": mapping_no_factors_reason(
-            search_activity, search_unit, bool(factors)
+            search_activity, search_unit, has_factors
+        ),
+        # CL-47 — machine-readable guidance so the UI can offer the supported
+        # spend workflow (create an approved customer factor, then map).
+        "spend_suggestion": spend_mapping_suggestion(
+            search_activity, search_unit, has_factors
         ),
     }
 

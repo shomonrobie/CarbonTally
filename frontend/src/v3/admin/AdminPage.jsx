@@ -4,6 +4,7 @@
 // Navigation model (D18/R2): Overview, Locations, Facilities, Assets, Vehicles,
 // Suppliers, Members, Custom Factors, Security.
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { listOrgRoles, resolveV3Membership, resolveV3Organization } from '../api';
 import { ErrorState } from '../components/StateViews';
 import ProfileTab from './ProfileTab';
@@ -37,6 +38,16 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [searchParams] = useSearchParams();
+
+  // CL-44/CL-47 — the mapping workspace deep-links to the Custom Factors tab
+  // (?tab=factors) when the user chooses the "create a customer factor" path.
+  const requestedTab = searchParams.get('tab');
+  useEffect(() => {
+    if (requestedTab && TABS.some((t) => t.id === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const load = useCallback(async () => {
     setLoading(true);

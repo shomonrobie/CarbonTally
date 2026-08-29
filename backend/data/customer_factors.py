@@ -85,6 +85,54 @@ class CustomerFactorsRepository(AbstractRepository[CustomerFactor]):
         )
         return [_row_to_customer_factor(r) for r in rows]
 
+    async def find_by_family(
+        self,
+        org_id: str,
+        activity_type: str,
+        reporting_year: int,
+        country: str,
+        unit: Optional[str],
+        scope: Optional[str],
+    ) -> list[CustomerFactor]:
+        """Return every factor in the same family (CL-43 / D-cf-4).
+
+        The family is the version identity: ``(organization_id, activity_type,
+        reporting_year, country, COALESCE(unit,''), COALESCE(scope,''))`` —
+        exactly the unique ``idx_customer_factors_family_version`` columns. The
+        API uses this to resolve the next free version and to detect duplicates
+        before inserting.
+        """
+        rows = await self._fetch_all(
+            f"SELECT {_FACTOR_COLUMNS} FROM public.customer_factors "
+            "WHERE organization_id = $1 AND activity_type = $2 "
+            "AND reporting_year = $3 AND country = $4 "
+            "AND COALESCE(unit, '') = COALESCE($5, '') "
+            "AND COALESCE(scope, '') = COALESCE($6, '') "
+            "ORDER BY version DESC",
+            org_id,
+            activity_type,
+            int(reporting_year),
+            country,
+            unit,
+            scope,
+        )
+        return [_row_to_customer_factor(r) for r in rows]
+
+    async def next_version(
+        self,
+        org_id: str,
+        activity_type: str,
+        reporting_year: int,
+        country: str,
+        unit: Optional[str],
+        scope: Optional[str],
+    ) -> int:
+        """Resolve the next free version for a family (max version + 1, or 1)."""
+        family = await self.find_by_family(
+            org_id, activity_type, reporting_year, country, unit, scope
+        )
+        return (max(f.version for f in family) + 1) if family else 1
+
     async def save(self, entity: CustomerFactor) -> CustomerFactor:
         """Insert or update a customer factor (version family respected)."""
         now = datetime.now(timezone.utc)

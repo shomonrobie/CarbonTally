@@ -1165,6 +1165,120 @@ export const submitCustomerReview = (itemId, { approved, rejection_reason, custo
     body: JSON.stringify({ approved, rejection_reason, customer_notes }),
   });
 
+// ---------------------------------------------------------------------------
+// Customer processing workspace (CL-54) — /api/v3/processing/* (org-scoped)
+//
+// The customer workspace uses ONLY the org-scoped processing surface. The
+// staff/PE surfaces (/api/v3/ops/*, /api/v3/ops/entities/*) are require_staff
+// and are never called from the customer application.
+// ---------------------------------------------------------------------------
+
+/** Split-screen workspace payload for one item (source + data + status + issues). */
+export const getProcessingItemWorkspace = (itemId) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/workspace`);
+
+/** Claim a pipeline stage for an item (server-enforced state machine). */
+export const startProcessingItem = (itemId, stage) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/start`, {
+    method: 'POST',
+    body: JSON.stringify({ stage }),
+  });
+
+/** Persist the customer's confirmed extraction values (advances to extracted). */
+export const saveProcessingExtraction = (itemId, extractedData) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/extract`, {
+    method: 'POST',
+    body: JSON.stringify({ extracted_data: extractedData }),
+  });
+
+/** Persist mapping decisions (factor + facility/asset/supplier) → mapped. */
+export const saveProcessingMapping = (itemId, payload) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/map`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+/** Run the server-side data-quality validation for an item. */
+export const validateProcessingItem = (itemId) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/validate`, { method: 'POST' });
+
+/** Run the authoritative server-side calculation (client never supplies the result). */
+export const calculateProcessingItem = (itemId, payload = {}) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/calculate`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+/** Emission-factor + tenant candidates for the mapping picker. */
+export const getProcessingMappingOptions = (itemId) =>
+  v3Fetch(`/api/v3/processing/items/${encodeURIComponent(itemId)}/mapping-options`);
+
+/** Pipeline status (per-stage counts + progress) for the organisation. */
+export const getProcessingStatus = (organizationId) =>
+  v3Fetch(`/api/v3/processing/status?organization_id=${encodeURIComponent(organizationId)}`);
+
+/** Per-stage queue listing for the organisation. */
+export const getProcessingQueue = (organizationId, stage, limit = 100) =>
+  v3Fetch(
+    `/api/v3/processing/queue?organization_id=${encodeURIComponent(organizationId)}&stage=${encodeURIComponent(stage)}&limit=${limit}`
+  );
+
+/** Next item awaiting `stage` work (operator-style high-volume flow, org-scoped). */
+export const getProcessingNextItem = (organizationId, stage) =>
+  v3Fetch(`/api/v3/processing/next-item?organization_id=${encodeURIComponent(organizationId)}&stage=${encodeURIComponent(stage)}`);
+
+/** Processing issues for the organisation. */
+export const getProcessingIssues = (organizationId, status) => {
+  const query = new URLSearchParams({ organization_id: organizationId });
+  if (status) query.set('status', status);
+  return v3Fetch(`/api/v3/processing/issues?${query.toString()}`);
+};
+
+// ---------------------------------------------------------------------------
+// Durable automatic-processing jobs (Phase A / CL-56) — /api/v3/processing/jobs
+// ---------------------------------------------------------------------------
+
+/** List durable automatic-processing jobs (filters optional). */
+export const getProcessingJobs = (organizationId, params = {}) => {
+  const query = new URLSearchParams({ organization_id: organizationId });
+  if (params.status) query.set('status', params.status);
+  if (params.stage) query.set('stage', params.stage);
+  if (params.limit) query.set('limit', String(params.limit));
+  return v3Fetch(`/api/v3/processing/jobs?${query.toString()}`);
+};
+
+/** One durable job with its persisted pipeline outputs. */
+export const getProcessingJob = (jobId) =>
+  v3Fetch(`/api/v3/processing/jobs/${encodeURIComponent(jobId)}`);
+
+/** Enqueue an uploaded document for automatic processing (Phase A). */
+export const enqueueDocumentForProcessing = (fileId, payload = {}) =>
+  v3Fetch(`/api/v3/processing/documents/${encodeURIComponent(fileId)}/enqueue`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+/** Human gate: resume a blocked job after corrections (Phase A). */
+export const confirmProcessingJob = (jobId, payload = {}) =>
+  v3Fetch(`/api/v3/processing/jobs/${encodeURIComponent(jobId)}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+/** Retry a failed/blocked job (dead-letter recovery). */
+export const retryProcessingJob = (jobId) =>
+  v3Fetch(`/api/v3/processing/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+
+/** Distinct customer/owner review of a durable job (D5 — owner/admin only). */
+export const reviewProcessingJob = (jobId, payload) =>
+  v3Fetch(`/api/v3/processing/jobs/${encodeURIComponent(jobId)}/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
 /**
  * Resolve the caller's primary organisation + membership role (owner/admin/
  * member/viewer). Used to gate approver actions in the customer review surface

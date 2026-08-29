@@ -77,6 +77,7 @@ from data.discovery import DiscoveryRepository
 from data.messaging import MessagingRepository
 from data.whitelabel import WhiteLabelRepository
 from data.manual_extraction import ManualExtractionRepository
+from data.document_processing import DocumentProcessingRepository
 from data.staff import StaffRepository
 from data.suppliers import SuppliersRepository
 from data.reporting import ReportingRepository
@@ -274,6 +275,7 @@ class RepositoryBundle:
     billing_payments: PaymentRecordsRepository
     billing_idempotency: IdempotencyRepository
     billing_usage: UsageTrackingRepository
+    processing: "DocumentProcessingRepository"
 
 
 async def get_pool():
@@ -326,7 +328,39 @@ async def get_repositories() -> RepositoryBundle:
         billing_payments=PaymentRecordsRepository(pool),
         billing_idempotency=IdempotencyRepository(pool),
         billing_usage=UsageTrackingRepository(pool),
+        processing=DocumentProcessingRepository(pool),
     )
+
+
+async def customer_factor_mapping_options(
+    repos: RepositoryBundle, org_id: str
+) -> list[dict]:
+    """Approved (active) customer factors for the mapping picker (CL-44).
+
+    D-cf-5 precedence: an approved customer factor is selected AHEAD of any
+    applicable system factor. The mapping-options response therefore carries
+    both surfaces; the picker renders the customer factor first and labels it
+    ``factor_kind='customer_factor'`` so the chosen source is always clear.
+    """
+    factors = await repos.customer_factors.get_active_for_org(org_id)
+    return [
+        {
+            "id": f.id,
+            "factor_kind": "customer_factor",
+            "organization_id": f.organization_id,
+            "name": f.name,
+            "activity_type": f.activity_type,
+            "co2e_multiplier": str(f.co2e_multiplier),
+            "unit": f.unit,
+            "scope": f.scope,
+            "country": f.country,
+            "reporting_year": f.reporting_year,
+            "factor_source": "CUSTOMER",
+            "status": f.status,
+            "version": f.version,
+        }
+        for f in factors
+    ]
 
 
 async def get_aliases_repository(

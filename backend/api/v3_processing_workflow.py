@@ -33,12 +33,18 @@ from pydantic import BaseModel
 from api.contracts import calculation_out
 from api.dependencies import (
     RepositoryBundle,
+    customer_factor_mapping_options,
     ensure_processing_org_access,
     get_calculation_engine,
     get_repositories,
 )
 from auth import AuthUser, require_auth, require_org_admin
-from core.units import mapping_no_factors_reason, resolve_unit_for_factor
+from core.units import (
+    mapping_no_factors_reason,
+    relevant_customer_factors,
+    resolve_unit_for_factor,
+    spend_mapping_suggestion,
+)
 from domain.issue import Issue
 from domain.partners import (
     ITEM_STATUS_FLOW,
@@ -666,19 +672,31 @@ async def mapping_options(
         if activity
         else []
     )
+    # CL-44 / D-cf-5 — approved customer factors join the picker and take
+    # precedence over system factors for the same activity/unit.
+    customer_factors = await customer_factor_mapping_options(
+        repos, batch.organization_id
+    )
+    # The guidance below reflects whether ANY factor (system or customer)
+    # covers THIS activity/unit — an unrelated approved customer factor (e.g.
+    # a Diesel factor) must not mask a spend-activity dead-end (CL-47).
+    relevant = relevant_customer_factors(customer_factors, activity, unit)
+    has_factors = bool(factors) or bool(relevant)
     return {
         "facilities": await repos.organizations.get_facilities(batch.organization_id),
         "assets": await repos.organizations.get_assets(batch.organization_id),
         "suppliers": await repos.suppliers.list_for_org(batch.organization_id),
         "factors": factors,
+        "customer_factors": customer_factors,
         # ISC-9 / CL-32 — honest spend-based mapping state. The DEFRA/SEAI
         # factor sets are physical-unit based; a currency activity (GBP/EUR/…)
         # has no applicable factor unless a customer factor is added. The
         # mapper surfaces an explicit, actionable reason instead of an empty
         # dead-end (never invents a factor, never treats GBP as a physical unit).
-        "no_factors_reason": mapping_no_factors_reason(
-            activity, unit, bool(factors)
-        ),
+        "no_factors_reason": mapping_no_factors_reason(activity, unit, has_factors),
+        # CL-47 — machine-readable guidance so the UI can offer the supported
+        # spend workflow (create an approved customer factor, then map).
+        "spend_suggestion": spend_mapping_suggestion(activity, unit, has_factors),
     }
 
 

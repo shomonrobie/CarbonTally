@@ -282,6 +282,31 @@ class MemoryFactors:
     async def load_all_for_index(self) -> list[EmissionFactor]:
         return list(self._factors.values())
 
+    async def find_by_activity(
+        self,
+        activity: str,
+        unit: Optional[str] = None,
+        year: Optional[int] = None,
+        country: Optional[str] = None,
+        provider: Optional[str] = None,
+        limit: int = 20,
+        unit_substring: bool = False,
+    ) -> list[EmissionFactor]:
+        """Case-insensitive activity search mirroring the repository surface."""
+        needle = str(activity or "").strip().lower()
+        results = [
+            f
+            for f in self._factors.values()
+            if (not needle or needle in str(f.activity_type).lower())
+        ]
+        if unit:
+            u = str(unit).strip().lower()
+            if unit_substring:
+                results = [f for f in results if u in str(f.unit or "").lower()]
+            else:
+                results = [f for f in results if str(f.unit or "").lower() == u]
+        return results[:limit]
+
     def add(self, factor: EmissionFactor) -> None:
         self._factors[factor.id] = factor
 
@@ -2222,6 +2247,33 @@ class MemoryFiles:
             self._by_id[str(id)] = f
         return f
 
+    async def create(
+        self,
+        org_id: str,
+        name: str,
+        path: str,
+        size_bytes: int,
+        file_type: str,
+        mime_type: str,
+        bucket: str,
+        uploaded_by: str,
+        metadata: Optional[dict] = None,
+    ):
+        row = {
+            "id": f"file-{len(self._by_id) + 1}",
+            "organization_id": org_id,
+            "name": name,
+            "path": path,
+            "size_bytes": size_bytes,
+            "file_type": file_type,
+            "mime_type": mime_type,
+            "bucket": bucket,
+            "metadata": metadata or {},
+        }
+        self._by_id[str(row["id"])] = row
+        self._rows.setdefault(org_id, []).append(row)
+        return row
+
     async def save(self, entity):
         return entity
 
@@ -2240,6 +2292,9 @@ class _StubRepo:
 
     async def delete(self, id: str) -> None:
         return None
+
+    async def create(self, **kwargs):
+        return {"id": "stub", **kwargs}
 
     async def list_for_user(self, user_id: str, unread_only: bool = False, limit: int = 100, offset: int = 0):
         return []
@@ -3481,6 +3536,9 @@ class InMemoryWorld:
         self.billing_payments = MemoryPaymentRecords()
         self.billing_idempotency = MemoryIdempotency()
         self.billing_usage = MemoryUsageTracking()
+        # Phase A (CL-56) — durable automatic processing repository (stub for
+        # API tests that never touch document-processing jobs directly).
+        self.processing = _StubRepo()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -3527,6 +3585,7 @@ class InMemoryWorld:
             billing_payments=self.billing_payments,
             billing_idempotency=self.billing_idempotency,
             billing_usage=self.billing_usage,
+            processing=self.processing,
         )
 
 
@@ -3555,6 +3614,41 @@ class MemoryCustomerFactors:
             f for f in self._factors
             if f.organization_id == org_id and f.activity_type == activity_type
         ]
+
+    async def find_by_family(
+        self,
+        org_id: str,
+        activity_type: str,
+        reporting_year: int,
+        country: str,
+        unit: Optional[str],
+        scope: Optional[str],
+    ) -> list[CustomerFactor]:
+        """CL-43 — factors in the same version family."""
+        return [
+            f for f in self._factors
+            if f.organization_id == org_id
+            and f.activity_type == activity_type
+            and f.reporting_year == reporting_year
+            and f.country == country
+            and (f.unit or "") == (unit or "")
+            and (f.scope or "") == (scope or "")
+        ]
+
+    async def next_version(
+        self,
+        org_id: str,
+        activity_type: str,
+        reporting_year: int,
+        country: str,
+        unit: Optional[str],
+        scope: Optional[str],
+    ) -> int:
+        """CL-43 — next free version in the family (max + 1, or 1)."""
+        family = await self.find_by_family(
+            org_id, activity_type, reporting_year, country, unit, scope
+        )
+        return (max(f.version for f in family) + 1) if family else 1
 
     async def save(self, entity: CustomerFactor) -> CustomerFactor:
         for i, existing in enumerate(self._factors):

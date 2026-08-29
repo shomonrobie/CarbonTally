@@ -169,6 +169,14 @@ async def upload_document(
 ):
     """Upload a document to Supabase Storage and record it in organization_files."""
     ensure_org_access(current_user, organization_id)
+    # CL-42 (P1 security) — a Viewer is read-only: the upload must be denied
+    # BEFORE any storage object or database row is created. Owner/Admin/Member
+    # keep write access according to the product model.
+    if current_user.role_name == "org_viewer" or current_user.role == "org_viewer":
+        raise HTTPException(
+            status_code=403,
+            detail="Viewers are read-only and cannot upload documents",
+        )
     filename = file.filename or "untitled"
     content = await file.read()
     file_type = _classify(filename, file.content_type or "")
@@ -228,7 +236,7 @@ async def upload_document(
                 created_by=current_user.user_id,
             )
         page_count = _pdf_page_count(content) if file_type == "PDF" else 1
-        await repos.manual_extraction.create_item(
+        item = await repos.manual_extraction.create_item(
             upload_batch.id,
             filename,
             path,  # D32: store the canonical PATH (non-expiring); responses sign it
@@ -237,6 +245,29 @@ async def upload_document(
             "pending",
             file_id=record.id,  # D33: authoritative item → source-document link
         )
+
+        # CL-56 (Phase A) — durable automatic processing: every upload now
+        # enqueues a real pipeline job (ingest → extract → map → validate →
+        # calculate → review). The worker processes it server-side; job state
+        # lives in document_processing_queue. Enqueue failures never fail the
+        # upload itself (the item stays pending for the manual path).
+        try:
+            await repos.processing.create(
+                organization_id=organization_id,
+                file_name=filename,
+                file_url=path,
+                file_type=file_type,
+                processing_type=data_type,
+                created_by=current_user.user_id,
+                source_item_id=item.id,
+                metadata={
+                    "mime": file.content_type or "application/octet-stream",
+                    "page_count": page_count,
+                    "document_id": str(record.id),
+                },
+            )
+        except Exception as exc:  # pragma: no cover - enqueue is best-effort
+            print(f"⚠️ automatic-processing enqueue failed: {exc}")
     except Exception as exc:  # pragma: no cover - enqueue is best-effort
         print(f"⚠️ extraction enqueue failed: {exc}")
 

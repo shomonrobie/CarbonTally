@@ -326,6 +326,22 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         )
         return dict(row) if row is not None else None
 
+    async def find_snapshot_by_request_id(self, request_id: str) -> Optional[dict]:
+        """Resolve an existing snapshot by its ``request_id``.
+
+        Used by the automatic pipeline's no-duplicate-calculation guard: the
+        worker derives a deterministic request id per job, so re-running a job
+        whose snapshot was already written (e.g. after a crash between the
+        snapshot insert and the job update) reuses the immutable snapshot
+        instead of creating a duplicate calculation.
+        """
+        row = await self._fetch_one(
+            f"SELECT {_SNAPSHOT_COLUMNS} FROM public.calculation_snapshots "
+            "WHERE request_id = $1 ORDER BY calculated_at DESC LIMIT 1",
+            request_id,
+        )
+        return dict(row) if row is not None else None
+
     async def snapshot_count_for_factor(self, factor_id: str) -> int:
         """Number of calculations that used ``factor_id`` (provenance/usage)."""
         row = await self._fetch_one(

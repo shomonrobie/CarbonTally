@@ -271,6 +271,20 @@ async def startup_event():
     print(f"📋 CORS Allowed Origins: {Config.ALLOWED_ORIGINS}")
     print(f"🔧 CORS Allow Credentials: {Config.CORS_ALLOW_CREDENTIALS}")
     print(f"📊 Total routes registered: {len(app.routes)}")
+    # CL-56 (Phase A) — durable automatic document-processing worker. Started
+    # on the composition root so uploads flow upload → ingest → extraction →
+    # mapping → validation → calculation → review even when no API call
+    # triggers the pipeline. Job state is durable in the database; restarting
+    # the app resumes in-flight jobs.
+    if V3_API_AVAILABLE:
+        try:
+            from workers.automatic_processing import (
+                get_automatic_processing_worker,
+            )
+
+            await get_automatic_processing_worker().start()
+        except Exception as exc:  # pragma: no cover - worker must never block startup
+            print(f"⚠️ automatic-processing worker failed to start: {exc!r}")
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -363,6 +377,15 @@ async def generic_exception_handler(request, exc):
 async def shutdown_event():
     """Clean up on application shutdown."""
     print("🛑 Shutting down CarbonTally API...")
+    try:
+        if V3_API_AVAILABLE:
+            from workers.automatic_processing import (
+                get_automatic_processing_worker,
+            )
+
+            await get_automatic_processing_worker().stop()
+    except Exception:
+        pass
     try:
         from infra.supabase import close_service_pool
         close_service_pool()
