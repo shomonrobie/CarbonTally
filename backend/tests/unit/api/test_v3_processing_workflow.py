@@ -122,6 +122,55 @@ def test_validation_requires_mapping_and_factor() -> None:
     )
 
 
+def test_multiline_validation_accepts_item_level_factor() -> None:
+    """A multi-line item mapped through the documented item-level factor
+    contract (``emission_factor_used``) must validate cleanly.
+
+    The map endpoint accepts ``emission_factor_used`` OR ``mapped_data.factor_id``
+    as the whole-document factor. The multi-line validation path used to require
+    ``mapped_data.line_items[].factor_id`` on every line and ignored the
+    item-level factor, so an item could be mapped successfully yet could never
+    pass validation (live E2E: FACTOR_MISSING on line 1)."""
+    extracted = {
+        "supplier": "ACME Energy",
+        "date": "2026-01-15",
+        "line_items": [
+            {"activity": "Diesel", "quantity": "4258.9", "unit": "L"},
+            {"activity": "Diesel", "quantity": "10", "unit": "L"},
+        ],
+    }
+    # Item-level factor only, no per-line factors — must pass.
+    item_level = _item(
+        extracted_data=extracted,
+        mapped_data={"activity_type": "Diesel"},
+        emission_factor_used="f-diesel",
+    )
+    assert validate_processing_item(item_level) == []
+
+    # Per-line factors also still pass (unchanged precedence).
+    per_line = _item(
+        extracted_data=extracted,
+        mapped_data={
+            "line_items": [
+                {"factor_id": "f-a", "activity_type": "Diesel"},
+                {"factor_id": "f-b", "activity_type": "Diesel"},
+            ]
+        },
+        emission_factor_used=None,
+    )
+    assert validate_processing_item(per_line) == []
+
+    # Neither item-level nor per-line factor → still blocking.
+    none_set = _item(
+        extracted_data=extracted,
+        mapped_data={"activity_type": "Diesel"},
+        emission_factor_used=None,
+    )
+    findings = validate_processing_item(none_set)
+    assert [f.code for f in findings] == ["FACTOR_MISSING", "FACTOR_MISSING"]
+    assert has_blocking_findings(findings)
+
+
 def test_validation_flags_negative_calculation_result() -> None:
     item = _item(calculated_emissions_kg_co2e=-1.0)
     findings = validate_processing_item(item)

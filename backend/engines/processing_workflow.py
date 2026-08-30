@@ -271,6 +271,12 @@ def _validate_line_items(
                 )
             )
         else:
+            # A single item-level factor (the map contract's
+            # ``emission_factor_used`` / ``mapped_data.factor_id``) satisfies the
+            # factor requirement for every line. Per-line factors take precedence
+            # when present; the item-level factor is the fallback — identical to
+            # the single-line validation path.
+            item_factor = item.emission_factor_used or mapped.get("factor_id")
             mapped_lines = mapped.get("line_items") or []
             for idx, line in enumerate(line_items):
                 ml = (
@@ -278,7 +284,7 @@ def _validate_line_items(
                     if idx < len(mapped_lines) and isinstance(mapped_lines[idx], dict)
                     else {}
                 )
-                if not ml.get("factor_id"):
+                if not ml.get("factor_id") and not item_factor:
                     findings.append(
                         ValidationFinding(
                             "FACTOR_MISSING", "error",
