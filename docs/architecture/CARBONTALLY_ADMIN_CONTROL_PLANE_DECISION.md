@@ -76,3 +76,22 @@ for those roles (CL-62).
 *Implementation note:* the code has already moved to the V3 canonical surface;
 this document records the decision and the guardrails so a later migration can
 proceed without reintroducing a split catalog.
+
+## 6. PO decisions (2026-08-30) — ratified
+
+- **D-P2-02 (LEGACY ADMIN: DEPRECATE).** The V3 internal operations surface
+  (`/ops`) is the canonical CarbonTally internal administration system. The
+  legacy admin surface is **deprecated, not deleted** — see the dependency and
+  coverage inventory in `CARBONTALLY_LEGACY_ADMIN_INVENTORY.md` (retirement
+  conditions in §4 there). No new feature may be built on legacy admin.
+- **D-P2-03 (QC: LIMITED AUTHORITY).** QC controls the internal quality-control
+  workflow (inspect, quality checks, record findings, return for correction,
+  approve/reject the internal QC step) but **never** customer-approval
+  authority. The customer-review gate remains `require_org_admin` (owner/admin
+  only); a regression test proves QC/staff cannot approve customer reviews.
+- **D-P2-04 (RETENTION: DEFER DESTRUCTIVE ENFORCEMENT).** Retention remains
+  configurable and persists (`/api/v3/settings/retention`). Destructive
+  retention deletion is **deferred** to a dedicated future phase covering
+  dependency analysis, legal/contract review, evidence preservation, audit
+  logging, grace periods, deletion verification, backups, legal holds and
+  customer notification. No automatic destructive deletion is active.

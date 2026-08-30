@@ -23,6 +23,8 @@ No database access — all in-memory fakes.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi import HTTPException
 
@@ -31,7 +33,7 @@ from api.dependencies import ensure_org_access
 from auth import AuthUser, require_admin, require_org_admin, require_role
 from domain.staff import StaffProfile, StaffRole
 
-from tests.unit.api.fakes import consultant_user
+from tests.unit.api.fakes import consultant_user, staff_user
 
 CALCULATE_PAYLOAD = {
     "organization_id": "org-a",
@@ -389,6 +391,37 @@ def test_d5_customer_review_requires_org_admin() -> None:
     # member gate was org_member_checker. Assert the approver gate is wired.
     names = {getattr(d, "__name__", "") for d in deps}
     assert "org_admin_checker" in names, f"customer-review gate must be require_org_admin, got {names}"
+
+
+def test_dp203_qc_cannot_approve_customer_review(client, world, user_provider) -> None:
+    """D-P2-03 — QC has LIMITED authority: full control of the internal QC
+    workflow, but never customer-approval authority.
+
+    A QC/staff caller must be denied the customer-review approve action (which
+    is org owner/admin-only); QC's internal pass/fail decision is a separate,
+    org-invisible step and cannot stamp the customer's approval."""
+    from tests.unit.api.test_v3_operations import _seed_batch_with_item, _seed_ops_world
+
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)
+    # A QC reviewer with full internal QC powers.
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    asyncio.run(world.manual_extraction.set_item_status(item.id, "extracted"))
+    # QC's internal step works (approve/reject the internal QC gate).
+    qc = client.post(
+        f"/api/v3/ops/items/{item.id}/qc",
+        json={"quality_score": 95, "approved": True, "qc_notes": "clean"},
+    )
+    assert qc.status_code == 200, qc.text
+    assert qc.json()["item"]["status"] == "qc_approved"
+    # But the same staff caller must NEVER reach the customer approval gate.
+    approved = client.post(
+        f"/api/v3/processing/items/{item.id}/customer-review",
+        json={"approved": True},
+    )
+    assert approved.status_code == 403, (
+        "QC/internal staff must not override customer approval authority"
+    )
 
 
 async def test_d5_org_admin_dependency_allows_owner_and_admin() -> None:
