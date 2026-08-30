@@ -504,7 +504,8 @@ export const updateOpsStaff = (profileId, payload) =>
     body: JSON.stringify(payload),
   });
 
-export const listProcessingEntities = () => v3Fetch('/api/v3/ops/entities');
+export const listProcessingEntities = (limit = 25, offset = 0) =>
+  v3Fetch(`/api/v3/ops/entities?limit=${limit}&offset=${offset}`);
 
 // Creating a Processing Entity is a CarbonTally-internal admin action
 // (backend: /api/v3/processing-entities, require_admin).

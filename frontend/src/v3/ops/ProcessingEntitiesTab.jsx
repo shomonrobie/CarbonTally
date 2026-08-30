@@ -8,19 +8,25 @@ import { createProcessingEntity, listProcessingEntities } from '../api';
 
 export default function ProcessingEntitiesTab({ canManage }) {
   const [entities, setEntities] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(25);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [form, setForm] = useState({ name: '', description: '' });
   const [creating, setCreating] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextLimit = limit, nextOffset = offset) => {
     try {
-      const result = await listProcessingEntities();
+      const result = await listProcessingEntities(nextLimit, nextOffset);
       setEntities(result.entities || []);
+      setTotal(result.total ?? result.entities?.length ?? 0);
+      setLimit(nextLimit);
+      setOffset(nextOffset);
     } catch (e) {
       setError(e.message || 'Failed to load processing entities');
     }
-  }, []);
+  }, [limit, offset]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -85,7 +91,7 @@ export default function ProcessingEntitiesTab({ canManage }) {
       </div>
 
       <div className="workspace-pane">
-        <h3>Processing entities ({entities.length})</h3>
+        <h3>Processing entities ({total})</h3>
         {entities.length === 0 ? (
           <div className="v3-ops-notice">
             No processing entities yet. Create one above, then assign staff and batches.
@@ -105,6 +111,19 @@ export default function ProcessingEntitiesTab({ canManage }) {
               ))}
             </tbody>
           </table>
+        )}
+        {total > limit && (
+          <div className="ct-table-pagination">
+            <span className="ct-table-pagination-count">
+              {offset + 1}–{Math.min(total, offset + entities.length)} of {total}
+            </span>
+            <button type="button" className="v3-btn v3-btn-sm" disabled={offset <= 0} onClick={() => load(limit, Math.max(0, offset - limit))}>← Prev</button>
+            <span className="ct-table-pagination-count">Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))}</span>
+            <button type="button" className="v3-btn v3-btn-sm" disabled={offset + limit >= total} onClick={() => load(limit, offset + limit)}>Next →</button>
+            <select className="ct-table-pagination-select" aria-label="Rows per page" value={limit} onChange={(e) => load(Number(e.target.value), 0)}>
+              {[10, 25, 50, 100].map((s) => <option key={s} value={s}>{s} / page</option>)}
+            </select>
+          </div>
         )}
       </div>
     </div>

@@ -605,14 +605,27 @@ async def list_staff(
 @router.get("/entities")
 async def list_entities(
     status: Optional[str] = None,
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """List processing entities (CarbonTally internal staff)."""
+    """List processing entities (CarbonTally internal staff).
+
+    CL-58 — server-side pagination window over the entity catalogue.
+    """
     require_internal_staff(context)
     if status is not None:
-        return {"entities": await repos.entities.list_by_status(status)}
-    return {"entities": await repos.entities.list_all()}
+        entities = await repos.entities.list_by_status(status)
+    else:
+        entities = await repos.entities.list_all()
+    total = len(entities)
+    return {
+        "entities": entities[offset:offset + limit],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/entities/{entity_id}/dashboard")
