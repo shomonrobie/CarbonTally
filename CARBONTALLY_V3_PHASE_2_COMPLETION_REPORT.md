@@ -122,22 +122,23 @@ Full matrix (D–M + reporting + factor + security) lives at
   `/api/v3/processing/*` surface (extract → map → validate → calculate).
 - **CON-6** — never land on an unmanaged active client (auto-select first
   managed client). **CON-7** — CO₂e business formatting.
-- **Team (E9)** — roster + add (manage_team) exist; **revoke/deactivate member
-  UI is still missing** (PARTIAL).
-- **Evidence view (E7)** — the consultant sees item status via the processing
-  pipeline; a dedicated consultant evidence-trail view is still PARTIAL.
+- **Team (E9)** — roster + add (manage_team) + **revoke/deactivate/reactivate
+  member** (deactivate/reactivate endpoints manage_team-gated, cross-firm 404,
+  audit trail; `require_consultant` rejects inactive members server-side) with
+  UI controls. ✅
+- **Evidence view (E7)** — dedicated consultant evidence view over the
+  grant-scoped snapshot contract (`GET /clients/{id}/evidence`); cross-firm
+  denied. ✅
 
 ## 4. Phase F status
 
 - **PE Staff (F2/F3/F4/F6)** — entity-scoped workspace persists; isolation and
   the D20 no-download boundary hold (verified). PE calculation from the UI works
   (start('calculation') then calculate).
-- **PE Manager (F1/F5)** — `pe_manager` role now resolves `can_process` +
-  `can_review` + `can_view_all`; the entity workspace shows assigned batches,
-  entity performance (workload, SLA, quality, staff table). **Live-verified** the
-  manager reads their entity batches (200, total=1) and a foreign entity id is
-  403. A *distinct* manager dashboard (role-specific view) is the remaining
-  enhancement (PARTIAL).
+- **PE Manager (F1/F5)** — **distinct `PEManagerDashboard`** (entity overview,
+  team workload, SLA/quality, batch status distribution, 'Open item work' switch)
+  routed for the `pe_manager` role; manager reads own-entity batches +
+  performance (200) and foreign-entity ids are 403. ✅
 - **G5** — PE items open in a dedicated routed workspace
   `/pe/items/:entityId/:itemId` with Back-to-entity, Previous/Next, and the
   mediated-clarification control.
@@ -146,11 +147,12 @@ Full matrix (D–M + reporting + factor + security) lives at
 
 ## 7. Phase I status
 
-- Operator queue rows expose **Organisation + Items + Status** context (I1
-  PO-free subset) with server-side pagination and a **status filter** (I2).
-- **PO-gated remainder (I1/I3/I4):** consultant/source/PE-assignment/SLA columns
-  and queue search require Product Owner disclosure sign-off (backlog CL-55/57
-  explicitly flag this). Not implemented pending that decision.
+- **D-P2-01 implemented and verified** — every operator/review/QC queue row now
+  identifies WHOSE work it is: organisation, consultant/client relationship,
+  processing entity, batch, assignment (display name), received date, source
+  documents and SLA (deadline/breach), resolved server-side, never raw UUIDs.
+  Status filter (operator), assigned_to filter (review), server-side pagination
+  (limit/offset/total) and 2 regression tests. ✅
 
 ## 8. Phase J status
 
@@ -183,12 +185,25 @@ Full matrix (D–M + reporting + factor + security) lives at
 
 ## 11. Phase M status
 
+- **M4 (CAL-3)** — `/api/reference/fuel-types` **verified 200, 561 fuel types
+  incl. Diesel** (queries `emission_factors`). ✅
+- **M5 (PRC-5)** — mapping-options returns the correct factor within the default
+  20 results for Diesel and Natural gas (unit + scope correct). ✅
+- **M1/M2** — v3Fetch surfaces the friendly error envelope; Loading/Error/Empty
+  states present on checked surfaces; no raw technical errors reach the UI.
+- **M3** — quiet role probes (CL-46/49). ✅
+
 ## 13. Security verification
 
-- **No P0 issue.** Cross-org, cross-client, cross-firm, PE-boundary and role-gate
-  negative tests pass (security suites run individually; the 236-failure combined
-  run was a **environment artifact** — system Python lacking pytest-asyncio, not a
-  code regression; the venv run passes **1177**).
+- **No P0, no P1.** Cross-org, cross-client, cross-firm, PE-boundary and role-gate
+  negative tests pass.
+- **Final acceptance live sweep 19/19 PASS** (2026-08-30): customer A→B
+  emissions 403 (+ own-org 200), viewer upload 403, member positive, consultant
+  A→B's client context/evidence/documents 403 (+ own-client 200), PE Alpha→Beta
+  batches/performance 403 (+ own-entity 200), PE→customer emissions 403,
+  **QC→customer-review approve 403 (D-P2-03) + QC queue 200 positive**,
+  operator→customer emissions 403, system-admin + staff-admin retention/entities
+  200 positives.
 - New surfaces server-enforced: consultant upload (cross-firm 403, permission
   403), consultant processing-items (cross-firm 403), PE item workspace (foreign
   entity 403), retention (admin-only).
@@ -292,11 +307,16 @@ Remaining (non-blocking, explicitly documented P3/follow-on):
 
 ## 12. Reporting/PDF status
 
-- **Live-verified:** report create → status **completed** → PDF download **200,
-  `application/pdf`, 5,933 bytes** (real persisted data; no fake values).
-- R3 (customer review → approval → report handoff) is **unblocked** — the
-  customer-review queue returns 200 (was 500). Full browser E2E of the handoff
-  remains the final acceptance step.
+- **Final acceptance (R3) — PASS.** The full browser E2E of the handoff
+  completed (see §0): customer review → owner approval → report generation
+  **201 → completed** → **PDF download 200, valid `%PDF-1.4`** → cross-org
+  owner denied the PDF (403). Report generation renders from real persisted
+  emissions data (44.17 kg CO₂e for the E2E item; no fake values).
+- **P1 fix in this session:** customer-factor calculations previously blocked
+  report generation forever — now validated against the approved customer
+  factor; live report + PDF verified.
+- Prior verification: report create → status **completed** → PDF download **200,
+  `application/pdf`** (real persisted data; no fake values).
 
 
 - **Routed workspaces complete for all five surfaces:**
