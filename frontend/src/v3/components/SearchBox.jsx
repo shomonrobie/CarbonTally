@@ -20,7 +20,7 @@ const TYPE_LABEL = {
 function resultRoute(result) {
   switch (result.type) {
     case 'report': return `/reports/${result.id}`;
-    case 'item': return `/processing`;
+    case 'item': return `/processing/${result.id}`;
     case 'issue': return `/issues`;
     case 'document': return `/documents`;
     default: return `/organization`;
