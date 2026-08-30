@@ -313,6 +313,68 @@ def test_team_roster_returns_human_readable_members(client, world, user_provider
     assert first["can_upload_documents"] is True
 
 
+# ---------------------------------------------------------------------------
+# CON-2/3 — consultant client document upload + processing items
+# ---------------------------------------------------------------------------
+
+
+def test_consultant_upload_cross_firm_denied(client, world, user_provider) -> None:
+    """A consultant cannot upload a document into another firm's client."""
+    _seed_consultant(world)  # firm-1 owns client-a/b; client-c belongs to firm-2
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+    response = client.post(
+        "/api/v3/consultants/clients/client-c/documents",
+        files={"file": ("bill.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        data={"data_type": "utility"},
+    )
+    assert response.status_code == 403
+
+
+def test_consultant_upload_requires_upload_permission(client, world, user_provider) -> None:
+    """CON-2 — the upload action needs the real can_upload_documents permission
+    (server-side), not merely an active client grant."""
+    _seed_consultant(world)
+    # Strip the upload capability from the firm member (re-seed as limited).
+    world.consultants._members = [
+        m for m in world.consultants._members
+        if getattr(m, "firm_id", None) != "firm-1" or getattr(m, "user_id", None) != "u-cons"
+    ]
+    world.consultants.seed_firm_member(
+        "firm-1", "u-cons", role="manager",
+        can_manage_clients=True, can_upload_documents=False,
+        can_generate_reports=True, can_manage_team=True,
+    )
+    world.consultants.seed_client("client-a", "firm-1", "org-a", "ACME LTD")
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+    response = client.post(
+        "/api/v3/consultants/clients/client-a/documents",
+        files={"file": ("bill.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        data={"data_type": "utility"},
+    )
+    assert response.status_code == 403
+
+
+def test_consultant_client_processing_items(client, world, user_provider) -> None:
+    """CON-3 — the consultant can list their client's processing items with
+    org context (grant-authorized)."""
+    user = _seed_consultant(world)
+    user_provider.set_user(user)
+    world.manual_extraction.seed_item("item-a1", "org-a", "electricity.csv", status="pending")
+    response = client.get("/api/v3/consultants/clients/client-a/processing/items")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["file_name"] == "electricity.csv"
+    assert data["items"][0]["organization"]["name"] is not None
+
+
+def test_consultant_client_processing_items_cross_firm_denied(client, world, user_provider) -> None:
+    """The items list never crosses firm boundaries."""
+    _seed_consultant(world)
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+    assert client.get("/api/v3/consultants/clients/client-c/processing/items").status_code == 403
+
+
 def test_client_status_update(client, world, user_provider) -> None:
     user = _seed_consultant(world, can_manage_clients=True)
     user_provider.set_user(user)

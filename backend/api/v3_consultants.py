@@ -13,7 +13,7 @@ import re
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from api.consultant_auth import (
@@ -950,6 +950,96 @@ async def client_documents(
 ):
     org_id = await _authorized_client_org(client_id, current_user, context, repos)
     return {"documents": await repos.files.list_for_org(org_id)}
+
+
+def _classify_upload(filename: str, mime: str) -> str:
+    """Duplicate of the document-surface classifier (avoids a private import)."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "pdf" or "pdf" in mime:
+        return "PDF"
+    if ext in ("jpg", "jpeg", "png", "gif", "webp") or "image" in mime:
+        return "IMAGE"
+    if ext in ("csv", "xlsx", "xls"):
+        return "SPREADSHEET"
+    return "OTHER"
+
+
+@router.post("/clients/{client_id}/documents", status_code=201)
+async def upload_client_document(
+    client_id: str,
+    data_type: str = Form("utility"),
+    file: UploadFile = File(...),
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CON-2/3 — a consultant uploads a document FOR an authorized client.
+
+    The active ``consultant_clients`` grant is the authorization (D15); the
+    document is stored under the client organisation's private bucket path and
+    enters the SAME durable server-side pipeline as a customer upload
+    (organization_files → extraction item → automatic-processing job → OCR).
+    """
+    # Active-grant + firm-ownership (404 cross-firm, 403 when not active).
+    org_id = await _authorized_client_org(client_id, current_user, context, repos)
+    ensure_consultant_permission(context, "upload_documents")
+
+    from api.v3_documents import create_document_and_enqueue
+
+    filename = file.filename or "untitled"
+    content = await file.read()
+    file_type = _classify_upload(filename, file.content_type or "")
+    record = await create_document_and_enqueue(
+        organization_id=org_id,
+        filename=filename,
+        content=content,
+        mime_type=file.content_type or "application/octet-stream",
+        file_type=file_type,
+        data_type=data_type,
+        uploaded_by=current_user.user_id,
+        repos=repos,
+    )
+    return {
+        "document": {
+            "id": record.id,
+            "name": record.name,
+            "organization_id": org_id,
+            "client_id": client_id,
+        }
+    }
+
+
+@router.get("/clients/{client_id}/processing/items")
+async def client_processing_items(
+    client_id: str,
+    stage: Optional[str] = None,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CON-3 — the client's processing items (with context) for the consultant
+    workspace. Org-scoped and grant-authorized; item rows carry the batch name
+    and the owning organisation label so the consultant can identify work."""
+    org_id = await _authorized_client_org(client_id, current_user, context, repos)
+    if stage:
+        items = await repos.manual_extraction.list_by_stage(org_id, stage)
+    else:
+        items = await repos.manual_extraction.list_items_for_org(org_id)
+    org = await repos.organizations.get(org_id)
+    return {
+        "items": [
+            {
+                "id": i.id,
+                "file_name": i.file_name,
+                "status": i.status,
+                "batch_id": i.batch_id,
+                "file_id": i.file_id,
+                "organization": {"id": org_id, "name": org.name if org else None},
+            }
+            for i in items
+        ],
+        "total": len(items),
+    }
 
 
 @router.get("/clients/{client_id}/processing/status")

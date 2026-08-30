@@ -50,6 +50,7 @@ import ReportDetailPage from './v3/reports/ReportDetailPage';
 import AdminPage from './v3/admin/AdminPage';
 import BillingPage from './v3/customer/BillingPage';
 import ConsultantPage from './v3/consultant/ConsultantPage';
+import ConsultantItemPage from './v3/consultant/ConsultantItemPage';
 import OperationsPage from './v3/ops/OperationsPage';
 import OperatorItemPage from './v3/ops/OperatorItemPage';
 import ReviewItemPage from './v3/ops/ReviewItemPage';
@@ -2154,6 +2155,15 @@ export default function App() {
                 <RoleRoute requireConsultant>
                   <V3Layout>
                     <ConsultantPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/consultant/items/:clientId/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireConsultant>
+                  <V3Layout>
+                    <ConsultantItemPage />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>

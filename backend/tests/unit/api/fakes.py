@@ -1643,6 +1643,45 @@ class MemoryManualExtraction:
     def set_batches(self, org_id: str, batches: list) -> None:
         self._org_batches[org_id] = batches
 
+    def seed_item(
+        self,
+        item_id: str,
+        org_id: str,
+        file_name: str,
+        *,
+        status: str = "pending",
+        batch_id: Optional[str] = None,
+    ) -> "ManualExtractionItem":
+        """Seed a work item under an org batch (consultant/ops tests)."""
+        from domain.partners import ManualExtractionItem
+
+        batch = self._batches.get(batch_id) if batch_id else None
+        if batch is None:
+            batch = ManualExtractionBatch(
+                id=batch_id or f"batch-{item_id}",
+                organization_id=org_id,
+                batch_name="Uploads",
+                status="open",
+                total_documents=1,
+                total_pages=1,
+                total_cost=0.0,
+                currency="GBP",
+                created_at=datetime.now(timezone.utc),
+            )
+            self._batches[batch.id] = batch
+            self._org_batches.setdefault(org_id, []).append(batch)
+        item = ManualExtractionItem(
+            id=item_id,
+            batch_id=batch.id,
+            file_name=file_name,
+            file_url=f"/uploads/{org_id}/{file_name}",
+            page_count=1,
+            status=status,
+            created_at=datetime.now(timezone.utc),
+        )
+        self._items[item.id] = item
+        return item
+
     async def workflow_status(self, org_id: str) -> dict:
         return self._status.get(org_id, {})
 
@@ -1988,6 +2027,19 @@ class MemoryManualExtraction:
             and self._batches.get(i.batch_id) is not None
             and self._batches[i.batch_id].organization_id == org_id
         ][:limit]
+
+    async def list_items_for_org(
+        self, org_id: str, status: Optional[str] = None
+    ) -> list:
+        out = [
+            i
+            for i in self._items.values()
+            if self._batches.get(i.batch_id) is not None
+            and self._batches[i.batch_id].organization_id == org_id
+        ]
+        if status is not None:
+            out = [i for i in out if i.status == status]
+        return sorted(out, key=lambda i: i.created_at or datetime.min.replace(tzinfo=timezone.utc))
 
     async def list_customer_review(self, org_id: str) -> list:
         # CL-1 — the customer review queue exposes both `customer_review` and

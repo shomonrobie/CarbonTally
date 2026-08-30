@@ -432,6 +432,25 @@ export const getClientDashboard = (clientId, startDate, endDate) => {
 export const getClientDocuments = (clientId) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}/documents`);
 
+// CON-2 — consultant uploads a document INTO an authorized client's org
+// (durable server-side pipeline: storage → item → auto-processing job → OCR).
+export const uploadConsultantDocument = (clientId, file, dataType = 'utility') => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('data_type', dataType);
+  return v3Fetch(`/api/v3/consultants/clients/${clientId}/documents`, {
+    method: 'POST',
+    body: form,
+  });
+};
+
+// CON-3 — the client's processing items (with org context) for the consultant
+// processing workspace. Optional `stage` narrows to a workflow stage.
+export const getClientProcessingItems = (clientId, stage) => {
+  const query = stage ? `?stage=${encodeURIComponent(stage)}` : '';
+  return v3Fetch(`/api/v3/consultants/clients/${clientId}/processing/items${query}`);
+};
+
 export const getClientProcessingStatus = (clientId) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}/processing/status`);
 

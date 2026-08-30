@@ -180,14 +180,44 @@ async def upload_document(
     filename = file.filename or "untitled"
     content = await file.read()
     file_type = _classify(filename, file.content_type or "")
+    return await create_document_and_enqueue(
+        organization_id=organization_id,
+        filename=filename,
+        content=content,
+        mime_type=file.content_type or "application/octet-stream",
+        file_type=file_type,
+        data_type=data_type,
+        uploaded_by=current_user.user_id,
+        repos=repos,
+    )
+
+
+async def create_document_and_enqueue(
+    *,
+    organization_id: str,
+    filename: str,
+    content: bytes,
+    mime_type: str,
+    file_type: str,
+    data_type: str,
+    uploaded_by: str,
+    repos: RepositoryBundle,
+) -> dict:
+    """Shared document-creation + durable-enqueue pipeline (Phase E).
+
+    Used by the org-member upload AND the consultant client upload so every
+    entry point drives the same durable server-side pipeline:
+    storage → organization_files → extraction batch/item → automatic-processing
+    job (ingest → extract → map → validate → calculate → review) → OCR prefill.
+    """
     day = datetime.utcnow().strftime("%Y/%m/%d")
     path = f"uploads/{organization_id}/{day}/{uuid4().hex}_{filename}"
     client = get_service_client()
     try:
-        client.storage.from_("documents").upload(
+        client.storage.from_(DOCUMENTS_BUCKET).upload(
             path,
             content,
-            file_options={"content-type": file.content_type or "application/octet-stream"},
+            file_options={"content-type": mime_type},
         )
     except Exception as exc:  # pragma: no cover - storage failure path
         raise HTTPException(status_code=500, detail=f"storage upload failed: {exc}")
@@ -201,9 +231,9 @@ async def upload_document(
         path=path,
         size_bytes=len(content),
         file_type=file_type,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime_type,
         bucket="documents",
-        uploaded_by=current_user.user_id,
+        uploaded_by=uploaded_by,
         metadata={"data_type": data_type, "file_url": file_url},
     )
 
@@ -233,7 +263,7 @@ async def upload_document(
                 currency="GBP",
                 batch_description="Auto-created from document uploads",
                 price_per_page=None,
-                created_by=current_user.user_id,
+                created_by=uploaded_by,
             )
         page_count = _pdf_page_count(content) if file_type == "PDF" else 1
         item = await repos.manual_extraction.create_item(
@@ -258,10 +288,10 @@ async def upload_document(
                 file_url=path,
                 file_type=file_type,
                 processing_type=data_type,
-                created_by=current_user.user_id,
+                created_by=uploaded_by,
                 source_item_id=item.id,
                 metadata={
-                    "mime": file.content_type or "application/octet-stream",
+                    "mime": mime_type,
                     "page_count": page_count,
                     "document_id": str(record.id),
                 },
@@ -276,7 +306,7 @@ async def upload_document(
     # schema change) and surfaced in the item workspace for human review. OCR
     # failure never fails the upload — the item stays pending for manual entry.
     try:
-        ocr = _extract_document_text(content, filename, file.content_type or "")
+        ocr = _extract_document_text(content, filename, mime_type)
         if ocr["status"] in ("ok", "no_text"):
             await repos.files.update_metadata(record.id, {**record.metadata, "ocr": ocr})
     except Exception as exc:  # pragma: no cover - defensive

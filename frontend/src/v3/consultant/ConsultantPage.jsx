@@ -6,9 +6,12 @@
 // backend re-authorizes it server-side (client A/B allowed, C denied). The UI
 // never relies on hiding links — a denied client request surfaces as an error.
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getClientDashboard,
+  getClientDocuments,
   getClientIssues,
+  getClientProcessingItems,
   getClientProcessingStatus,
   getClientReports,
   getConsultantBranding,
@@ -20,6 +23,7 @@ import {
   listConsultantClients,
   updateConsultantBranding,
   updateConsultantClientStatus,
+  uploadConsultantDocument,
   endConsultantClient,
   reactivateConsultantClient,
   suspendConsultantClient,
@@ -32,6 +36,25 @@ import { ErrorState } from '../components/StateViews';
 import './consultant.css';
 
 const YEAR = new Date().getFullYear();
+
+// CON-7 — business-first CO₂e formatting: "10.7 t CO₂e" / "8,850 kg CO₂e".
+function formatCo2(kg) {
+  const value = Number(kg);
+  if (!Number.isFinite(value) || value === 0) return '0 kg CO₂e';
+  if (Math.abs(value) >= 1000) {
+    return `${(value / 1000).toLocaleString('en-GB', { maximumFractionDigits: 2 })} t CO₂e`;
+  }
+  return `${value.toLocaleString('en-GB', { maximumFractionDigits: 0 })} kg CO₂e`;
+}
+
+const STAGE_FILTERS = [
+  { id: '', label: 'All items' },
+  { id: 'extraction', label: 'Extraction' },
+  { id: 'mapping', label: 'Mapping' },
+  { id: 'validation', label: 'Validation' },
+  { id: 'calculation', label: 'Calculation' },
+  { id: 'customer_review', label: 'Customer review' },
+];
 
 function LoadingBlock({ label }) {
   return <div className="v3-loading"><div className="spinner" />{label}</div>;
@@ -165,36 +188,75 @@ function DashboardView({ dashboard }) {
 }
 
 function ClientWorkspace({ client, clientId }) {
+  const navigate = useNavigate();
   const [reports, setReports] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [processing, setProcessing] = useState(null);
   const [issues, setIssues] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [items, setItems] = useState([]);
+  const [stageFilter, setStageFilter] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadNotice, setUploadNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const load = useCallback(async (clientIdParam) => {
+    setLoading(true);
+    setError('');
+    try {
+      const [rep, dash, proc, iss, docs, itemList] = await Promise.all([
+        getClientReports(clientIdParam),
+        getClientDashboard(clientIdParam, `${YEAR}-01-01`, `${YEAR}-12-31`),
+        getClientProcessingStatus(clientIdParam),
+        getClientIssues(clientIdParam),
+        getClientDocuments(clientIdParam),
+        getClientProcessingItems(clientIdParam, stageFilter || undefined),
+      ]);
+      setReports(rep);
+      setDashboard(dash);
+      setProcessing(proc);
+      setIssues(iss);
+      setDocuments(docs.documents || []);
+      setItems(itemList.items || []);
+    } catch (e) {
+      setError(e.message || 'Failed to load client workspace');
+    } finally {
+      setLoading(false);
+    }
+  }, [stageFilter]);
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const [rep, dash, proc, iss] = await Promise.all([
-          getClientReports(clientId),
-          getClientDashboard(clientId, `${YEAR}-01-01`, `${YEAR}-12-31`),
-          getClientProcessingStatus(clientId),
-          getClientIssues(clientId),
-        ]);
-        setReports(rep);
-        setDashboard(dash);
-        setProcessing(proc);
-        setIssues(iss);
-      } catch (e) {
-        setError(e.message || 'Failed to load client workspace');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [clientId]);
+    load(clientId);
+  }, [clientId, load]);
+
+  const onUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    setUploadNotice('');
+    try {
+      await uploadConsultantDocument(clientId, file, 'utility');
+      setUploadNotice(`“${file.name}” uploaded — it is now in the client's processing pipeline.`);
+      const [docs, itemList] = await Promise.all([
+        getClientDocuments(clientId),
+        getClientProcessingItems(clientId, stageFilter || undefined),
+      ]);
+      setDocuments(docs.documents || []);
+      setItems(itemList.items || []);
+    } catch (e) {
+      setUploadError(e.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const onOpenItem = (itemId) => {
+    navigate(`/consultant/items/${encodeURIComponent(clientId)}/${encodeURIComponent(itemId)}`);
+  };
 
   if (loading) return <LoadingBlock label="Loading client workspace…" />;
   if (error) return <ErrorBlock message={error} />;
@@ -211,10 +273,86 @@ function ClientWorkspace({ client, clientId }) {
       </div>
 
       <div className="v3-consultant-grid">
-        <div className="v3-summary-card"><div className="label">Total CO2e ({YEAR})</div><div className="value completed">{dashboard?.total_co2e_kg || '0'}</div></div>
+        <div className="v3-summary-card"><div className="label">Total CO2e ({YEAR})</div><div className="value completed">{formatCo2(dashboard?.total_co2e_kg)}</div></div>
         <div className="v3-summary-card"><div className="label">Rows</div><div className="value">{dashboard?.total_rows || 0}</div></div>
         <div className="v3-summary-card"><div className="label">Open issues</div><div className="value failed">{issues?.issues?.filter((i) => i.status === 'open').length || 0}</div></div>
-        <div className="v3-summary-card"><div className="label">Reports</div><div className="value">{reports?.reports?.length || 0}</div></div>
+        <div className="v3-summary-card"><div className="label">Documents</div><div className="value">{documents.length}</div></div>
+      </div>
+
+      <div className="v3-admin-card">
+        <h2>Upload document for this client</h2>
+        <p className="v3-muted">
+          The document is stored under the client organisation and enters the same durable
+          server-side pipeline as a customer upload (extraction item → automatic processing → review).
+        </p>
+        {uploadError && <div className="v3-ops-error">{uploadError}</div>}
+        {uploadNotice && <div className="v3-ops-notice">{uploadNotice}</div>}
+        <div className="workspace-actions">
+          <label className="v3-btn primary" style={{ cursor: 'pointer' }}>
+            {uploading ? 'Uploading…' : 'Choose file to upload'}
+            <input
+              type="file"
+              style={{ display: 'none' }}
+              disabled={uploading}
+              onChange={onUpload}
+              accept=".pdf,.csv,.xlsx,.xls,.jpg,.jpeg,.png"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="v3-admin-card">
+        <h2>Processing pipeline ({items.length})</h2>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {STAGE_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              className={`v3-tab ${stageFilter === f.id ? 'active' : ''}`}
+              onClick={() => setStageFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {items.length === 0 ? (
+          <div className="v3-empty" style={{ padding: 20 }}>No processing items in this stage.</div>
+        ) : (
+          <table className="v3-table">
+            <thead><tr><th>Item</th><th>Organisation</th><th>Status</th><th>Open</th></tr></thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.file_name}</td>
+                  <td>{item.organization?.name || '—'}</td>
+                  <td><span className={`v3-status ${item.status}`}><span className="dot" />{item.status}</span></td>
+                  <td>
+                    <button className="v3-btn v3-btn-sm" onClick={() => onOpenItem(item.id)}>Open workspace</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="v3-admin-card">
+        <h2>Documents</h2>
+        {documents.length === 0 ? (
+          <div className="v3-empty" style={{ padding: 20 }}>No documents uploaded yet.</div>
+        ) : (
+          <table className="v3-table">
+            <thead><tr><th>Document</th><th>Type</th><th>Size</th></tr></thead>
+            <tbody>
+              {documents.map((doc) => (
+                <tr key={doc.id}>
+                  <td>{doc.name}</td>
+                  <td>{doc.file_type || '—'}</td>
+                  <td>{doc.size_bytes ? `${Math.round(doc.size_bytes / 1024)} KB` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="v3-admin-card">
@@ -555,6 +693,20 @@ export default function ConsultantPage() {
   const [canManageClients, setCanManageClients] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  // CON-6 / Phase G — the routed item workspace links back with
+  // ?client=<id>&view=workspace; restore the active client + view so
+  // "Back to client workspace" returns to the same work area.
+  const requestedClient = searchParams.get('client');
+  const requestedView = searchParams.get('view');
+  useEffect(() => {
+    if (requestedClient) {
+      setActiveClientId(requestedClient);
+      localStorage.setItem('v3_consultant_active_client', requestedClient);
+    }
+    if (requestedView) setView(requestedView);
+  }, [requestedClient, requestedView]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -569,8 +721,14 @@ export default function ConsultantPage() {
       setCanManageClients(!!prof?.can_manage_clients);
       setClients(clientList.clients || []);
       setDashboard(dash);
-      if (!activeClientId && clientList.clients?.length) {
-        const first = clientList.clients[0];
+      const managed = clientList.clients || [];
+      // CON-6 — never land on a client the firm does not actually manage:
+      // if the remembered active client is absent from the managed list,
+      // auto-select the first managed client instead of dead-ending.
+      const remembered = activeClientId || localStorage.getItem('v3_consultant_active_client') || '';
+      const stillManaged = managed.some((c) => c.id === remembered);
+      if (!stillManaged && managed.length) {
+        const first = managed[0];
         setActiveClientId(first.id);
         localStorage.setItem('v3_consultant_active_client', first.id);
       }
