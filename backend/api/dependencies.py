@@ -471,6 +471,7 @@ async def get_validation_engine(
         repos.logs,
         repos.organizations,
         repos.factors,
+        customer_factors=repos.customer_factors,
         event_bus=event_bus,
         audit_logger=audit_logger,
     )
@@ -504,6 +505,7 @@ async def get_report_engine(
         repos.logs,
         repos.organizations,
         repos.factors,
+        customer_factors=repos.customer_factors,
         event_bus=event_bus,
         audit_logger=audit_logger,
     )

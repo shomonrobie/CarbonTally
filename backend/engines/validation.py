@@ -161,6 +161,19 @@ class FactorLookup(Protocol):
     async def get(self, id: str) -> Optional[EmissionFactor]: ...
 
 
+class CustomerFactorLookup(Protocol):
+    """The approved customer-factor surface (``CustomerFactorsRepository``).
+
+    O1 — customer-factor calculations leave ``emissions_logs.emission_factor_id``
+    NULL; the authoritative factor reference lives on the linked snapshot's
+    ``customer_factor_id``. The engine resolves it here so a customer-factor log
+    is validated against its real factor instead of being mis-flagged as an
+    orphaned factor (which previously blocked report generation forever).
+    """
+
+    async def get(self, id: str) -> Optional[CustomerFactor]: ...
+
+
 class ValidationEngine:
     """Emissions data-quality and calculation-integrity validation (Phase 9A).
 
@@ -180,6 +193,7 @@ class ValidationEngine:
         org_repo: OrgSource,
         factor_repo: FactorLookup,
         *,
+        customer_factors: Optional[CustomerFactorLookup] = None,
         event_bus: Optional[EventBus] = None,
         audit_logger: Optional[AuditLogger] = None,
     ) -> None:
@@ -188,6 +202,7 @@ class ValidationEngine:
         self._logs = logs_repo
         self._orgs = org_repo
         self._factors = factor_repo
+        self._customer_factors = customer_factors
         self._event_bus = event_bus
         self._audit_logger = audit_logger
 
@@ -326,7 +341,7 @@ class ValidationEngine:
                 ).issues
             )
             factor = await self._factors.get(log.factor_id)
-            if factor is None:
+            if factor is None and log.factor_id is not None:
                 issues.append(
                     _issue(
                         CODE_FACTOR_ORPHAN,
@@ -338,8 +353,63 @@ class ValidationEngine:
                         field="factor_id",
                     )
                 )
-            else:
+            elif factor is not None:
                 issues.extend(self._validate_log_consistency(log, factor).issues)  # A4
+            elif log.customer_factor_id:
+                # O1 — customer-factor calculation: emission_factor_id is NULL
+                # by design and the factor lives on the snapshot. Resolve it so
+                # A4 consistency still applies; a missing/inactive customer
+                # factor is a real integrity defect, but an unavailable lookup
+                # surface must not block reporting (warning, not error).
+                customer_factor = (
+                    await self._customer_factors.get(log.customer_factor_id)
+                    if self._customer_factors is not None
+                    else None
+                )
+                if customer_factor is None:
+                    if self._customer_factors is not None:
+                        issues.append(
+                            _issue(
+                                CODE_FACTOR_ORPHAN,
+                                ValidationSeverity.ERROR,
+                                f"emissions log {log.id} references missing "
+                                f"customer factor {log.customer_factor_id}",
+                                "emissions_log",
+                                log.id,
+                                field="customer_factor_id",
+                            )
+                        )
+                    else:
+                        issues.append(
+                            _issue(
+                                CODE_FACTOR_ORPHAN,
+                                ValidationSeverity.WARNING,
+                                f"emissions log {log.id} uses a customer factor "
+                                f"({log.customer_factor_id}) that could not be "
+                                "resolved for consistency checks",
+                                "emissions_log",
+                                log.id,
+                                field="customer_factor_id",
+                            )
+                        )
+                elif customer_factor.status != "active":
+                    issues.append(
+                        _issue(
+                            CODE_FACTOR_ORPHAN,
+                            ValidationSeverity.ERROR,
+                            f"emissions log {log.id} references customer factor "
+                            f"{log.customer_factor_id} which is not active",
+                            "emissions_log",
+                            log.id,
+                            field="customer_factor_id",
+                        )
+                    )
+                else:
+                    issues.extend(
+                        self._validate_customer_factor_consistency(
+                            log, customer_factor
+                        ).issues
+                    )
         return ValidationReport(issues=tuple(issues))
 
     def _validate_log_integrity(self, log: EmissionLog) -> ValidationReport:
@@ -502,6 +572,75 @@ class ValidationEngine:
                     f"with activity family (expected {expected_family_scope!r})",
                     "emission_factors",
                     factor.id,
+                    field="scope",
+                )
+            )
+        return ValidationReport(issues=tuple(issues))
+
+    def _validate_customer_factor_consistency(
+        self, log: EmissionLog, factor: CustomerFactor
+    ) -> ValidationReport:
+        """A4 (customer-factor variant) — unit/scope consistency between a
+        customer-factor log and its approved customer factor (O1)."""
+        issues: list[ValidationIssue] = []
+        if factor.unit is not None and log.unit != factor.unit:
+            issues.append(
+                _issue(
+                    CODE_UNIT_MISMATCH,
+                    ValidationSeverity.ERROR,
+                    f"emissions log {log.id} unit {log.unit!r} does not match "
+                    f"customer factor {factor.id} unit {factor.unit!r}",
+                    "emissions_log",
+                    log.id,
+                    field="unit",
+                )
+            )
+        if factor.scope is not None and factor.scope not in _SUPPORTED_SCOPES:
+            issues.append(
+                _issue(
+                    CODE_SCOPE_UNKNOWN,
+                    ValidationSeverity.ERROR,
+                    f"customer factor {factor.id} scope {factor.scope!r} is not "
+                    "a known scope",
+                    "customer_factors",
+                    factor.id,
+                    field="scope",
+                )
+            )
+        if log.scope is not None and log.scope not in _SUPPORTED_SCOPES:
+            issues.append(
+                _issue(
+                    CODE_SCOPE_UNKNOWN,
+                    ValidationSeverity.ERROR,
+                    f"emissions log {log.id} scope {log.scope!r} is not a known "
+                    "scope",
+                    "emissions_log",
+                    log.id,
+                    field="scope",
+                )
+            )
+        if factor.scope is not None and log.scope is not None:
+            if log.scope != factor.scope:
+                issues.append(
+                    _issue(
+                        CODE_SCOPE_MISMATCH,
+                        ValidationSeverity.ERROR,
+                        f"emissions log {log.id} scope {log.scope!r} does not "
+                        f"match customer factor {factor.id} scope {factor.scope!r}",
+                        "emissions_log",
+                        log.id,
+                        field="scope",
+                    )
+                )
+        elif factor.scope is not None and log.scope is None:
+            issues.append(
+                _issue(
+                    CODE_SCOPE_MISSING,
+                    ValidationSeverity.WARNING,
+                    f"emissions log {log.id} has no scope; customer factor "
+                    f"{factor.id} declares scope {factor.scope!r}",
+                    "emissions_log",
+                    log.id,
                     field="scope",
                 )
             )

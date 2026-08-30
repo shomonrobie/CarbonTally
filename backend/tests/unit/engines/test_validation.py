@@ -66,10 +66,14 @@ def make_seai_factor(**kwargs: Any) -> EmissionFactor:
 
 def make_log(**kwargs: Any) -> EmissionLog:
     factor = kwargs.get("factor")
+    if "factor_id" in kwargs:
+        factor_id = kwargs["factor_id"]
+    else:
+        factor_id = str(factor.id if factor else "f-1")
     return EmissionLog(
         id=str(kwargs.get("id") or f"log-{uuid.uuid4().hex[:8]}"),
         organization_id=str(kwargs.get("organization_id") or "org-1"),
-        factor_id=str(kwargs.get("factor_id") or (factor.id if factor else "f-1")),
+        factor_id=factor_id,
         quantity=Decimal(str(kwargs.get("quantity") or "100")),
         date=kwargs.get("date", date(2025, 6, 1)),
         unit=kwargs.get("unit", factor.unit if factor else "kWh"),
@@ -77,6 +81,7 @@ def make_log(**kwargs: Any) -> EmissionLog:
         asset_id=kwargs.get("asset_id"),
         facility_id=kwargs.get("facility_id"),
         snapshot_id=kwargs.get("snapshot_id"),
+        customer_factor_id=kwargs.get("customer_factor_id"),
         calculated_kg_co2e=Decimal(str(kwargs.get("calculated_kg_co2e") or "0")),
     )
 
@@ -198,6 +203,16 @@ class _FakeFactors:
         self.factors = {f.id: f for f in (factors or [])}
 
     async def get(self, factor_id: str) -> Optional[EmissionFactor]:
+        return self.factors.get(factor_id)
+
+
+class _FakeCustomerFactors:
+    """In-memory customer-factor lookup (O1 — customer-factor logs)."""
+
+    def __init__(self, factors: Optional[list[Any]] = None) -> None:
+        self.factors = {f.id: f for f in (factors or [])}
+
+    async def get(self, factor_id: str) -> Optional[Any]:
         return self.factors.get(factor_id)
 
 
@@ -561,6 +576,94 @@ class TestA6Integrity:
         report = await engine.validate_logs([log], 2025)
         assert not report.ok
         assert _v.CODE_FACTOR_ORPHAN in codes(report)
+
+    async def test_customer_factor_log_passes_when_factor_resolves(self) -> None:
+        """O1 — a customer-factor calculation (emission_factor_id NULL) must
+        validate against its approved customer factor, not be mis-flagged as an
+        orphaned factor. Previously this blocking error made report generation
+        fail forever for any org with a customer-factor calculation."""
+        from domain.customer_factor import CustomerFactor
+
+        cf = CustomerFactor(
+            id="cf-1",
+            organization_id="org-1",
+            name="Quayside Diesel",
+            activity_type="Diesel",
+            co2e_multiplier=Decimal("0.4417"),
+            unit="litres",
+            scope="Scope 1",
+            country="GB",
+            reporting_year=2026,
+            status="active",
+            version=1,
+            created_by="owner-1",
+        )
+        log = make_log(factor_id=None, customer_factor_id="cf-1", unit="litres", scope="Scope 1")
+        engine = _v.ValidationEngine(
+            _FakeLogs(), _FakeOrgs(), _FakeFactors(), customer_factors=_FakeCustomerFactors([cf])
+        )
+        report = await engine.validate_logs([log], 2026)
+        assert report.ok, [i.message for i in report.issues]
+        assert _v.CODE_FACTOR_ORPHAN not in codes(report)
+
+    async def test_customer_factor_log_inactive_is_error(self) -> None:
+        from domain.customer_factor import CustomerFactor
+
+        cf = CustomerFactor(
+            id="cf-draft",
+            organization_id="org-1",
+            name="Draft factor",
+            activity_type="Diesel",
+            co2e_multiplier=Decimal("0.5"),
+            unit="litres",
+            scope="Scope 1",
+            country="GB",
+            reporting_year=2026,
+            status="draft",
+            version=1,
+            created_by="owner-1",
+        )
+        log = make_log(factor_id=None, customer_factor_id="cf-draft", unit="litres", scope="Scope 1")
+        engine = _v.ValidationEngine(
+            _FakeLogs(), _FakeOrgs(), _FakeFactors(), customer_factors=_FakeCustomerFactors([cf])
+        )
+        report = await engine.validate_logs([log], 2026)
+        assert not report.ok
+        assert _v.CODE_FACTOR_ORPHAN in codes(report)
+
+    async def test_customer_factor_log_without_lookup_surface_is_warning(self) -> None:
+        """When the engine has no customer-factor surface wired (legacy
+        construction), a customer-factor log must NOT block (warning only)."""
+        log = make_log(factor_id=None, customer_factor_id="cf-1", unit="litres", scope="Scope 1")
+        engine = _v.ValidationEngine(_FakeLogs(), _FakeOrgs(), _FakeFactors())
+        report = await engine.validate_logs([log], 2026)
+        assert report.ok, "customer-factor log must not block when the lookup is absent"
+        assert _v.CODE_FACTOR_ORPHAN in codes(report)  # now a warning
+
+    async def test_customer_factor_unit_mismatch_is_error(self) -> None:
+        from domain.customer_factor import CustomerFactor
+
+        cf = CustomerFactor(
+            id="cf-1",
+            organization_id="org-1",
+            name="Quayside Diesel",
+            activity_type="Diesel",
+            co2e_multiplier=Decimal("0.4417"),
+            unit="litres",
+            scope="Scope 1",
+            country="GB",
+            reporting_year=2026,
+            status="active",
+            version=1,
+            created_by="owner-1",
+        )
+        log = make_log(factor_id=None, customer_factor_id="cf-1", unit="kg", scope="Scope 1")
+        engine = _v.ValidationEngine(
+            _FakeLogs(), _FakeOrgs(), _FakeFactors(), customer_factors=_FakeCustomerFactors([cf])
+        )
+        report = await engine.validate_logs([log], 2026)
+        assert not report.ok
+        assert _v.CODE_UNIT_MISMATCH in codes(report)
 
 
 class TestA7Period:

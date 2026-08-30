@@ -139,6 +139,7 @@ class EmissionLog:
     asset_id: Optional[str] = None
     facility_id: Optional[str] = None
     snapshot_id: Optional[str] = None
+    customer_factor_id: Optional[str] = None
     calculated_kg_co2e: Decimal = Decimal("0")
     created_at: Optional[datetime.datetime] = None
 

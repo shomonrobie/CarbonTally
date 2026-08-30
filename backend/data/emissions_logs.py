@@ -73,6 +73,14 @@ def _row_to_log(row: Any) -> EmissionLog:
         asset_id=str(r["asset_id"]) if r.get("asset_id") else None,
         facility_id=str(facility_id) if facility_id else None,
         snapshot_id=str(r["snapshot_id"]) if r.get("snapshot_id") else None,
+        # O1 — customer-factor calculations leave emission_factor_id NULL; the
+        # authoritative factor reference lives on the linked snapshot
+        # (calculation_snapshots.customer_factor_id) and is joined here so the
+        # validation/reporting engines can resolve it instead of treating the
+        # log as an orphaned factor.
+        customer_factor_id=(
+            str(r["customer_factor_id"]) if r.get("customer_factor_id") else None
+        ),
         calculated_kg_co2e=Decimal(str(r["calculated_kg_co2e"])),
         created_at=r["created_at"],
     )
@@ -138,14 +146,21 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         return _row_to_log(row)
 
     async def find_by_org(self, org_id: str, period: DateRange) -> list[EmissionLog]:
-        """Return all logs for ``org_id`` whose date falls inside ``period``."""
+        """Return all logs for ``org_id`` whose date falls inside ``period``.
+
+        O1 — customer-factor calculations carry ``customer_factor_id`` on the
+        linked snapshot; it is joined here so validation/reporting can resolve
+        the authoritative factor for a log whose ``emission_factor_id`` is NULL.
+        """
         rows = await self._fetch_all(
             f"""
-            SELECT {_LOG_COLUMNS} FROM public.emissions_logs
-            WHERE organization_id = $1
-              AND start_date >= $2
-              AND start_date <= $3
-            ORDER BY start_date, created_at
+            SELECT {_LOG_COLUMNS_L}, s.customer_factor_id
+            FROM public.emissions_logs l
+            LEFT JOIN public.calculation_snapshots s ON s.id = l.snapshot_id
+            WHERE l.organization_id = $1
+              AND l.start_date >= $2
+              AND l.start_date <= $3
+            ORDER BY l.start_date, l.created_at
             """,
             org_id,
             period.start_date,
