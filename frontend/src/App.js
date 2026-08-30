@@ -55,6 +55,7 @@ import OperationsPage from './v3/ops/OperationsPage';
 import OperatorItemPage from './v3/ops/OperatorItemPage';
 import ReviewItemPage from './v3/ops/ReviewItemPage';
 import QcItemPage from './v3/ops/QcItemPage';
+import PEEntityItemPage from './v3/ops/PEEntityItemPage';
 import DashboardPage from './v3/customer/DashboardPage';
 import EmissionsPage from './v3/customer/EmissionsPage';
 import DocumentsPage from './v3/customer/DocumentsPage';
@@ -2200,6 +2201,15 @@ export default function App() {
                 <RoleRoute requireStaff>
                   <V3Layout>
                     <QcItemPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/pe/items/:entityId/:itemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <V3Layout>
+                    <PEEntityItemPage />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>
