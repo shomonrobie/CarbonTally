@@ -2381,10 +2381,16 @@ class _StubRepo:
 
 
 class _SettingsStub:
-    """In-memory settings stub for the platform retention surface (N3)."""
+    """In-memory settings stub for the platform retention surface (N3).
 
-    async def get_retention(self) -> dict:
-        return {
+    Phase K — stateful: ``update_retention`` persists the values so a
+    GET-after-PUT round-trip returns what was saved (mirrors the real
+    system_settings upsert). Values that are not provided keep their current
+    value (the real repo merges with the existing row).
+    """
+
+    def __init__(self) -> None:
+        self._values = {
             "audit_log_retention_days": None,
             "data_retention_days": None,
             "document_retention_days": None,
@@ -2393,15 +2399,16 @@ class _SettingsStub:
             "updated_by": None,
         }
 
+    async def get_retention(self) -> dict:
+        return dict(self._values)
+
     async def update_retention(self, **kwargs) -> dict:
-        return {
-            "audit_log_retention_days": kwargs.get("audit_log_retention_days"),
-            "data_retention_days": kwargs.get("data_retention_days"),
-            "document_retention_days": kwargs.get("document_retention_days"),
-            "backup_retention_days": kwargs.get("backup_retention_days"),
-            "updated_at": None,
-            "updated_by": kwargs.get("updated_by"),
-        }
+        for key in ("audit_log_retention_days", "data_retention_days",
+                    "document_retention_days", "backup_retention_days"):
+            if kwargs.get(key) is not None:
+                self._values[key] = kwargs.get(key)
+        self._values["updated_by"] = kwargs.get("updated_by")
+        return dict(self._values)
 
     async def get(self, id: str):
         return await self.get_retention()
@@ -3525,6 +3532,9 @@ class InMemoryWorld:
             facilities={"org-a": fac_a, "org-b": fac_b},
             assets={"org-a": asset_a, "org-b": asset_b},
         )
+        # Phase K — one shared settings instance so retention PUT→GET round-trips
+        # across API requests hold state (like the real system_settings row).
+        self.settings = _SettingsStub()
         self.imports = MemoryImports(
             batches
             if batches is not None
@@ -3640,7 +3650,7 @@ class InMemoryWorld:
             batches=_StubRepo(),
             review_queue=self.review_queue,
             queue_settings=self.queue_settings,
-            settings=_SettingsStub(),
+            settings=self.settings,
             search=_SearchStub(),
             verifications=_StubRepo(),
             notifications=_StubRepo(),

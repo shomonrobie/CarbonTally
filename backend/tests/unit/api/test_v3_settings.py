@@ -65,3 +65,32 @@ async def test_retention_get_returns_none_for_unset_values() -> None:
     assert settings["data_retention_days"] is None
     assert settings["document_retention_days"] is None
     assert settings["backup_retention_days"] is None
+
+
+def test_retention_update_rejects_negative_days(client, world, user_provider) -> None:
+    """Phase K — a negative retention duration is a validation failure (422),
+    never a raw 500 or a silent write."""
+    from tests.unit.api.fakes import staff_user
+
+    user_provider.set_user(staff_user("u-admin", email="admin@example.test", role_name="admin"))
+    response = client.put(
+        "/api/v3/settings/retention",
+        json={"data_retention_days": -5},
+    )
+    assert response.status_code == 422
+
+
+def test_retention_update_round_trip(client, world, user_provider) -> None:
+    """Phase K — the update path persists values through the API contract."""
+    from tests.unit.api.fakes import staff_user
+
+    user_provider.set_user(staff_user("u-admin", email="admin@example.test", role_name="admin"))
+    put = client.put(
+        "/api/v3/settings/retention",
+        json={"audit_log_retention_days": 365},
+    )
+    assert put.status_code == 200
+    assert put.json()["settings"]["audit_log_retention_days"] == 365
+    get = client.get("/api/v3/settings/retention")
+    assert get.status_code == 200
+    assert get.json()["settings"]["audit_log_retention_days"] == 365

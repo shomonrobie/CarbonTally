@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from data.base import AbstractRepository
+from data.base import AbstractRepository, dumps_jsonb
 
 #: Fixed key for the single system_settings row this repository manages.
 _SETTINGS_KEY = "platform_retention"
@@ -66,10 +66,27 @@ class SettingsRepository(AbstractRepository[dict]):
         updated_by: Optional[str],
     ) -> dict:
         current = await self.get_retention()
+        # Phase K fix — `system_settings.setting_value` is NOT NULL; every
+        # upsert must carry a value. Store a JSON snapshot of the retention
+        # policy (server-authoritative, never invented).
+        snapshot = {
+            "audit_log_retention_days": audit_log_retention_days
+            if audit_log_retention_days is not None
+            else current["audit_log_retention_days"],
+            "data_retention_days": data_retention_days
+            if data_retention_days is not None
+            else current["data_retention_days"],
+            "document_retention_days": document_retention_days
+            if document_retention_days is not None
+            else current["document_retention_days"],
+            "backup_retention_days": backup_retention_days
+            if backup_retention_days is not None
+            else current["backup_retention_days"],
+        }
         row = await self._fetch_one(
             f"""
             INSERT INTO public.system_settings (
-                setting_key, setting_type, description,
+                setting_key, setting_type, description, setting_value,
                 audit_log_retention_days, data_retention_days,
                 document_retention_days, backup_retention_days,
                 updated_by, updated_at, created_at
@@ -77,10 +94,12 @@ class SettingsRepository(AbstractRepository[dict]):
             VALUES (
                 $1, 'retention',
                 'Configurable platform data-retention policy (N3)',
-                $2, $3, $4, $5, $6, NOW(), NOW()
+                $2::jsonb,
+                $3, $4, $5, $6, $7, NOW(), NOW()
             )
             ON CONFLICT (setting_key)
             DO UPDATE SET
+                setting_value = EXCLUDED.setting_value,
                 audit_log_retention_days = EXCLUDED.audit_log_retention_days,
                 data_retention_days = EXCLUDED.data_retention_days,
                 document_retention_days = EXCLUDED.document_retention_days,
@@ -90,6 +109,7 @@ class SettingsRepository(AbstractRepository[dict]):
             RETURNING {_RETENTION_COLUMNS}
             """,
             _SETTINGS_KEY,
+            dumps_jsonb(snapshot),
             audit_log_retention_days if audit_log_retention_days is not None else current["audit_log_retention_days"],
             data_retention_days if data_retention_days is not None else current["data_retention_days"],
             document_retention_days if document_retention_days is not None else current["document_retention_days"],
