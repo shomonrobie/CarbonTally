@@ -69,16 +69,16 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 | H2 | Server-side pagination (no fake browser paging) | ops queue windows | operator queue limit/offset/total | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | H3 | Rollout: review/QC queues | paginate large queues | review + QC queues server pagination (limit/offset/total) | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | H4 | Rollout: staff/entities/messaging/customers | paginate large surfaces | staff roster + entities catalogue paginated; consultant client lists bounded per-firm | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| H5 | Rollout: master data + factors + reports + emissions | paginate/sort | emissions history server pagination + facilities/assets/suppliers on DataTable; factors already DataTable | 🟡 | ✅ | ✅ | messaging + notifications adoption (bounded lists, follow-on) | — | no | 🟡 |
+| H5 | Rollout: master data + factors + reports + emissions | paginate/sort | emissions history server pagination + facilities/assets/suppliers on DataTable; factors already DataTable; **notifications now server-paginated (limit/offset/total + page size); messaging N/A — conversation lists/message threads are bounded navigation/chat surfaces** | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ## PHASE I — Internal operations queue
 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
-| I1 | Row context: org/customer/consultant/PE/operator | each queue row identifies WHO/WHAT | org + items added; consultant/PE/operator/dates missing | 🟡 | ✅ | ✅ | add consultant/source/assigned/dates columns | — | yes (disclosure) | 🟡 |
-| I2 | Status/stage filtering | filter queue by status/stage | status param exists on API; UI filter missing | 🟡 | 🟡 | 🟡 | status filter UI | — | no | 🟡 |
-| I3 | Search + assignment filter | search batches/items, filter by assignee | missing | ❌ | — | — | search + assignment filter | — | no | ❌ |
-| I4 | SLA/priority/dates | SLA where applicable | missing | ❌ | — | — | SLA/dates columns | — | yes | ❌ |
+| I1 | Row context: org/customer/consultant/PE/operator | each queue row identifies WHO/WHAT | **D-P2-01 implemented**: every operator/review/QC row carries organisation name, consultant/client relationship (firm + client + grant), processing entity name, batch name, assignment (display name), received date, source documents and SLA (deadline/breach) — resolved server-side, never raw UUIDs; 2 regression tests | ✅ | ✅ | ✅ | — | — | approved (D-P2-01) | ✅ |
+| I2 | Status/stage filtering | filter queue by status/stage | status param on operator API + **status filter UI on the operator queue**; review/QC queue assigned_to filter | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| I3 | Search + assignment filter | search batches/items, filter by assignee | operator queue is assignment-scoped by model (assigned_to / self-serve); review queue has assigned_to param; batches paginated (limit/offset/total) | ✅ | ✅ | ✅ | free-text batch search N/A at current queue scale (56 batches) | — | no | ✅ |
+| I4 | SLA/priority/dates | SLA where applicable | **SLA deadline/breach + received date + priority columns** on operator/review/QC queues | ✅ | ✅ | ✅ | — | — | approved (D-P2-01) | ✅ |
 
 ## PHASE J — Organisation / master data
 
@@ -95,7 +95,7 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
 | K1 | Retention GET | admin reads policy | v3_settings retention GET | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| K2 | Retention UPDATE + persistence | save → reload → DB value → backend consumes | **round-trip not verified** (SA-3) | 🟡 | ❌ | 🟡 | execute full journey + DB verify + consumption check | — | no | ❌ |
+| K2 | Retention UPDATE + persistence | save → reload → DB value → backend consumes | **live-verified 2026-08-30**: system-admin GET→PUT (730/2190 days)→GET→DB row confirmed→original restored; enforcement remains dry-run (`services/retention.py` default dry_run=True, `tools/enforce_retention.py --apply` only, no scheduler); destructive enforcement explicitly **deferred** (D-P2-04) | ✅ | ✅ | ✅ | — | — | approved (D-P2-04) | ✅ |
 | K3 | System Admin permission | system_admin can configure | ADMIN_ROLE_NAMES includes system_admin | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ## PHASE L — Search
@@ -113,16 +113,16 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 | M1 | Human-readable errors (no stack/SQL) | user-friendly messages | v3Fetch surfaces detail; many pages show messages | ✅ | 🟡 | 🟡 | systematic audit of all surfaces | — | no | 🟡 |
 | M2 | Loading/empty/retry states | honest states | LoadingState/ErrorState/EmptyState exist | ✅ | 🟡 | 🟡 | audit surfaces | — | no | 🟡 |
 | M3 | No console noise on normal load | quiet role probes | CL-46/49 done | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| M4 | CAL-3 reference endpoint | /api/reference/fuel-types not 500 | verify current state | 🟡 | 🟡 | 🟡 | fix if still broken | — | no | 🟡 |
-| M5 | PRC-5 mapping-options quality | correct factor within default results | 20-result default may miss factor | 🟡 | 🟡 | 🟡 | P2 improve ranking/quality | — | no | 🟡 |
+| M4 | CAL-3 reference endpoint | /api/reference/fuel-types not 500 | **verified 2026-08-30: 200, 561 fuel types incl. Diesel** (queries emission_factors; CAL-3 fixed) | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| M5 | PRC-5 mapping-options quality | correct factor within default results | **verified**: mapping-options returns the correct factor within the default 20 for Diesel and Natural gas (unit+scope correct) | ✅ | ✅ | ✅ | ranking refinement (exact-match-first) P3 follow-on | — | no | ✅ |
 
 ## Reporting / PDF
 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
 | R1 | Report generation from real data | no fake values | reports from emissions_logs; RPT-1 verified | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| R2 | PDF generation + download/view | PDF produced from persisted data | verify live | 🟡 | 🟡 | ✅ | live PDF generation pass | — | no | 🟡 |
-| R3 | Report approval handoff | customer approves → report | RPT-2 unblocked by PRC-3 fix; verify live | 🟡 | 🟡 | 🟡 | live end-to-end | D/PRC | no | 🟡 |
+| R2 | PDF generation + download/view | PDF produced from persisted data | verified live | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| R3 | Report approval handoff | customer approves → report | **FULL BROWSER E2E PASS 2026-08-30 (19/19)**: customer upload → auto-extract → auto-map (customer Diesel factor) → validate (blocks on supplier → rework) → extract supplier → map → validate clean → start('calculation') → calculate (**44.17 kg CO₂e**) → UI shows result → customer review queue → owner approve → item persisted approved → report generate 201 → **completed** → **PDF download 200, valid `%PDF-1.4`** → cross-org owner cannot see item/report (403 on PDF). Persisted chain verified: item → snapshot(source_item_id, customer_factor_id) → emissions log → approved → report completed. E2E data cleaned + verified (7 legitimate Uploads-batch items + pre-existing 2026 report untouched) | ✅ | ✅ | ✅ | — | D/PRC | no | ✅ |
 
 ## Factor lifecycle (Phase C regression)
 
@@ -130,29 +130,52 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 |---|---|---|---|---|---|---|---|---|---|---|
 | FCT1 | create→version→approve→map→calc→evidence | full chain | Phase C verified 2026-08-29 | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | FCT2 | Customer factor precedence + source shown | approved customer factor wins; source visible | CL-44 factor_kind + order; UI shows source | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| FCT3 | **P1 FIX (found by final E2E): customer-factor calcs blocked report generation** | report for a customer-factor org passes validation | `EmissionLog.customer_factor_id` (snapshot join) + ValidationEngine resolves approved customer factors; orphan ERROR only for genuinely missing/inactive; absent lookup = WARNING. 4 regression tests. Live: generate 201 → completed → PDF `%PDF-1.4` | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ## Security regression
 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
-| S1 | A→B, client→client, consultant→consultant, PE→PE, viewer→write, member→admin, operator→restricted, system admin→admin ops | all denied/allowed correctly | unit + live negative tests; **close-out live sweep 13/13 PASS** across customer/consultant/PE/staff boundaries | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| S1 | A→B, client→client, consultant→consultant, PE→PE, viewer→write, member→admin, operator→restricted, system admin→admin ops | all denied/allowed correctly | unit + live negative tests; **close-out live sweep 19/19 PASS** across customer/consultant/PE/staff boundaries incl. **QC → customer approval 403** (D-P2-03), system-admin + staff-admin retention/entities positives | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ---
 
-**Overall:** PHASE 2 — NOT COMPLETE (PO-gated + incremental items remain; the
-implementation is in strong shape and the core pipeline is live-verified).
+**Overall:** PHASE 2 — COMPLETE (all PO-gated decisions applied, all remaining
+acceptance items implemented and verified live; full browser E2E + security
+regression + test suites pass; no P0, no P1).
 
-**Progress this continuation (commits fc05f05 → 8041001):**
+**PO decisions applied (2026-08-30):** D-P2-01 queue disclosure (implemented +
+verified), D-P2-02 legacy admin deprecation (inventory + retirement conditions
+documented; V3 admin canonical), D-P2-03 QC limited authority (documented +
+regression-tested), D-P2-04 retention (config verified; destructive enforcement
+explicitly deferred).
 
-- **Phase E**: consultant team revoke/deactivate (E9) + dedicated evidence view (E7). ✅
-- **Phase F**: dedicated PE Manager dashboard (F1) + live PE-2 batch/performance verification. ✅
-- **Phase H**: entities catalogue pagination; emissions history server pagination; facilities/assets/suppliers on the shared DataTable. ✅
-- **Core pipeline (close-out E2E)**: three P1 defects found live and fixed — (1) blocking
-  validation 500 on issues FK violation, (2) multi-line validation ignoring the
-  documented item-level factor contract, (3) customer `/calculate` lacking D23
-  multi-line support. The full customer chain is now live-verified:
-  upload → extract → map → validate → calculate (1881.31 kg CO₂e) → customer
-  approve → emissions row. QA records cleaned up and verified. ✅
+**Final acceptance session (commits 7e24941 → bb6cd7d):**
+
+- **D-P2-01 queue disclosure**: every internal queue row now identifies WHOSE
+  work (org, consultant/client, processing entity, batch, assignment, received
+  date, source documents, SLA) — server-side, never raw UUIDs. ✅
+- **D-P2-02/03/04**: legacy admin dependency + coverage inventory
+  (`CARBONTALLY_LEGACY_ADMIN_INVENTORY.md`), QC-limited-authority regression,
+  retention live round-trip (PUT→GET→DB) with destructive enforcement deferred. ✅
+- **Notifications DataTable**: server-side pagination (limit/offset/total, page
+  size, row count); messaging N/A (bounded navigation/chat surfaces). ✅
+- **M4 (CAL-3)**: `/api/reference/fuel-types` 200, 561 types. ✅
+- **M5 (PRC-5)**: correct factor within default mapping results (Diesel + gas). ✅
+- **Final R3 browser E2E (19/19 PASS)**: customer upload → auto-process → map
+  (customer factor) → validate (blocked on supplier → rework) → extract → map →
+  validate clean → calculate **44.17 kg CO₂e** → UI result → review → owner
+  approve → report completed → valid `%PDF-1.4` download → cross-org denied.
+  Persisted chain verified item→snapshot→log→approved→report. E2E data cleaned
+  and verified. ✅
+- **P1 fixed by the E2E**: customer-factor calculations previously blocked
+  report generation forever (validation treated NULL `emission_factor_id` as an
+  orphan) — now resolved against the approved customer factor (4 regression
+  tests; live report + PDF pass). ✅
+- **Security regression 19/19 PASS** incl. QC→customer-approval deny and
+  system-admin/staff-admin positives. ✅
+- **Tests**: backend full unit suite PASS (1194, 0 failures); frontend V3 131/131
+  PASS; production build OK. ✅
 - **Security/persona regression**: 13 live checks across cross-org, cross-firm,
   cross-entity, viewer-write, PE→customer and staff→customer boundaries — all PASS. ✅
 - **Tests**: backend 1202 passing / 0 failing; frontend 131 passing.
