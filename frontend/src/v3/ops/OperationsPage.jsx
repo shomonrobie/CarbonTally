@@ -7,6 +7,7 @@ import { useSearchParams } from 'react-router-dom';
 import { getOpsMe } from '../api';
 import { LoadingState } from '../components/ui';
 import EntityExtractionWorkspace from './EntityExtractionWorkspace';
+import PEManagerDashboard from './PEManagerDashboard';
 import OpsDashboard from './OpsDashboard';
 import OperatorQueue from './OperatorQueue';
 import ProcessingEntitiesTab from './ProcessingEntitiesTab';
@@ -46,6 +47,12 @@ export default function OperationsPage() {
   // D22: Processing Entity staff never see the CarbonTally-internal tabs — they
   // get the entity-scoped extraction workspace for their own entity.
   if (me?.profile?.entity_id) {
+    // Phase F close-out (F1) — a distinct PE Manager experience: managers land
+    // on the entity-wide manager dashboard; ?view=work switches to the item
+    // work surface. PE staff always get the work surface.
+    if (me?.profile?.role_name === 'pe_manager' && searchParams.get('view') !== 'work') {
+      return <PEManagerDashboard entityId={me.profile.entity_id} />;
+    }
     return <EntityExtractionWorkspace entityId={me.profile.entity_id} />;
   }
 

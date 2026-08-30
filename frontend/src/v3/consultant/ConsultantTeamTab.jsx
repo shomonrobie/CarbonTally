@@ -8,8 +8,10 @@ import React, { useEffect, useState } from 'react';
 import {
   addConsultantTeamMember,
   createConsultantTask,
+  deactivateConsultantTeamMember,
   getConsultantTasks,
   getConsultantTeam,
+  reactivateConsultantTeamMember,
   updateConsultantTaskStatus,
 } from '../api';
 
@@ -73,6 +75,26 @@ export default function ConsultantTeamTab() {
     }
   };
 
+  const onToggleMemberActive = async (member, deactivate) => {
+    setError('');
+    setNotice('');
+    if (deactivate && !window.confirm(
+      `Revoke consultant access for this team member? Their client access ends immediately (server-side).`
+    )) return;
+    try {
+      if (deactivate) {
+        await deactivateConsultantTeamMember(member.id);
+        setNotice('Team member access revoked.');
+      } else {
+        await reactivateConsultantTeamMember(member.id);
+        setNotice('Team member access restored.');
+      }
+      await loadTeam();
+    } catch (e) {
+      setError(e.message || 'Failed to update team member');
+    }
+  };
+
   const onCreateTask = async () => {
     if (!taskTitle.trim()) return;
     setCreating(true);
@@ -120,7 +142,7 @@ export default function ConsultantTeamTab() {
           <p className="v3-muted">No team members yet — add a consultant colleague below.</p>
         ) : (
           <table className="v3-ops-table">
-            <thead><tr><th>Member</th><th>Role</th><th>Capabilities</th><th>Status</th></tr></thead>
+            <thead><tr><th>Member</th><th>Role</th><th>Capabilities</th><th>Status</th><th /></tr></thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id}>
@@ -137,7 +159,14 @@ export default function ConsultantTeamTab() {
                       m.can_manage_team && 'team',
                     ].filter(Boolean).join(', ') || '—'}
                   </td>
-                  <td>{m.is_active ? 'Active' : 'Inactive'}</td>
+                  <td>{m.is_active ? 'Active' : 'Revoked'}</td>
+                  <td>
+                    {m.is_active ? (
+                      <button className="v3-btn v3-btn-sm" onClick={() => onToggleMemberActive(m, true)}>Revoke access</button>
+                    ) : (
+                      <button className="v3-btn v3-btn-sm" onClick={() => onToggleMemberActive(m, false)}>Reactivate</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

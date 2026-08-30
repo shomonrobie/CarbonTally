@@ -280,6 +280,37 @@ class ConsultantsRepository(AbstractRepository[dict]):
             raise RuntimeError("consultant_firm_members insert returned no row")
         return _row_to_member(row)
 
+    async def get_firm_member(self, firm_id: str, member_id: str) -> Optional[ConsultantFirmMember]:
+        row = await self._fetch_one(
+            f"SELECT {_MEMBER_COLUMNS} FROM public.consultant_firm_members "
+            "WHERE firm_id = $1 AND id = $2 LIMIT 1",
+            firm_id,
+            member_id,
+        )
+        return _row_to_member(row) if row is not None else None
+
+    async def set_firm_member_active(
+        self, firm_id: str, member_id: str, is_active: bool
+    ) -> Optional[ConsultantFirmMember]:
+        """CL-61 close-out — revoke (deactivate) or reactivate a team member.
+
+        Server-side enforcement: a deactivated member's permission flags no
+        longer resolve at ``require_consultant`` (the member row is inactive),
+        so access revocation is immediate and not merely a UI affordance.
+        """
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.consultant_firm_members
+            SET is_active = $3, updated_at = NOW()
+            WHERE firm_id = $1 AND id = $2
+            RETURNING {_MEMBER_COLUMNS}
+            """,
+            firm_id,
+            member_id,
+            is_active,
+        )
+        return _row_to_member(row) if row is not None else None
+
     # -- clients -----------------------------------------------------------
     async def list_clients(self, consultant_id: str) -> list[ConsultantClient]:
         rows = await self._fetch_all(

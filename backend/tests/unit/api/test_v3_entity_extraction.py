@@ -75,6 +75,10 @@ def _seed_world(world) -> None:
             id="sp-ent2", user_id="u-ent2", first_name="Ent", last_name="B",
             email="entb@entity.test", role_id="role-operator", entity_id="entity-2",
         ),
+        StaffProfile(
+            id="sp-entmgr", user_id="u-entmgr", first_name="Ent", last_name="Mgr",
+            email="entmgr@entity.test", role_id="role-manager", entity_id="entity-1",
+        ),
     ]
     for profile in profiles:
         world.staff.seed_profile(profile)
@@ -512,4 +516,42 @@ def test_q_entity_staff_cannot_fake_entity_id_parameter(client, world, user_prov
     user_provider.set_user(entity_operator_user("entity-2", "u-ent2"))
     assert client.get("/api/v3/ops/entities/entity-1/extraction/batches").status_code == 403
 
+
+
+# ---------------------------------------------------------------------------
+# F1 — PE Manager performance / workload oversight (own entity only)
+# ---------------------------------------------------------------------------
+
+
+def _pe_manager_user(entity_id: str) -> "AuthUser":
+    return staff_user(
+        "u-entmgr",
+        entity_id=entity_id,
+        role_name="pe_manager",
+        permissions={"can_process": True, "can_review": True, "can_view_all": True},
+    )
+
+
+def test_m_pe_manager_reads_own_entity_performance(client, world, user_provider) -> None:
+    """F1 — the PE Manager can read their entity's performance/workload
+    (the distinct manager-oversight surface)."""
+    _seed_world(world)
+    user_provider.set_user(_pe_manager_user("entity-1"))
+    response = client.get("/api/v3/ops/entities/entity-1/performance")
+    assert response.status_code == 200
+
+
+def test_n_pe_manager_cannot_read_other_entity_performance(client, world, user_provider) -> None:
+    """F1 — cross-entity performance is denied even for a manager."""
+    _seed_world(world)
+    user_provider.set_user(_pe_manager_user("entity-1"))
+    assert client.get("/api/v3/ops/entities/entity-2/performance").status_code == 403
+
+
+def test_o_pe_manager_reads_own_entity_batches(client, world, user_provider) -> None:
+    """F1 — the manager's assigned-batch visibility works for their entity."""
+    _seed_world(world)
+    user_provider.set_user(_pe_manager_user("entity-1"))
+    response = client.get("/api/v3/ops/entities/entity-1/extraction/batches")
+    assert response.status_code == 200
 

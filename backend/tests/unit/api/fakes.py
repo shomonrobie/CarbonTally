@@ -334,6 +334,15 @@ class MemoryLogs:
         self._snapshots[snapshot.id] = snapshot
         return snapshot
 
+    async def count_snapshots(self, org_id: str, period: object) -> int:
+        # The in-memory world seeds raw EmissionLog rows, not rich snapshot
+        # rows; return 0 (honest) so the evidence contract returns an empty
+        # list without fabricating evidence.
+        return 0
+
+    async def list_snapshots(self, org_id: str, period: object, limit: int, offset: int):
+        return []
+
     async def create(
         self,
         org_id: str,
@@ -1473,6 +1482,22 @@ class MemoryConsultants:
         )
         self._members.append(member)
         return member
+
+    async def get_firm_member(self, firm_id: str, member_id: str):
+        return next(
+            (m for m in self._members if m.firm_id == firm_id and m.id == member_id),
+            None,
+        )
+
+    async def set_firm_member_active(self, firm_id: str, member_id: str, is_active: bool):
+        from dataclasses import replace
+
+        for i, member in enumerate(self._members):
+            if member.firm_id == firm_id and member.id == member_id:
+                updated = replace(member, is_active=is_active)
+                self._members[i] = updated
+                return updated
+        return None
 
     # -- clients ------------------------------------------------------------
     async def list_clients(self, consultant_id: str):

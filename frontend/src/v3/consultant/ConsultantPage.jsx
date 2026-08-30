@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getClientDashboard,
   getClientDocuments,
+  getClientEvidence,
   getClientIssues,
   getClientProcessingItems,
   getClientProcessingStatus,
@@ -195,6 +196,7 @@ function ClientWorkspace({ client, clientId }) {
   const [issues, setIssues] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [items, setItems] = useState([]);
+  const [evidence, setEvidence] = useState(null);
   const [stageFilter, setStageFilter] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -206,13 +208,14 @@ function ClientWorkspace({ client, clientId }) {
     setLoading(true);
     setError('');
     try {
-      const [rep, dash, proc, iss, docs, itemList] = await Promise.all([
+      const [rep, dash, proc, iss, docs, itemList, ev] = await Promise.all([
         getClientReports(clientIdParam),
         getClientDashboard(clientIdParam, `${YEAR}-01-01`, `${YEAR}-12-31`),
         getClientProcessingStatus(clientIdParam),
         getClientIssues(clientIdParam),
         getClientDocuments(clientIdParam),
         getClientProcessingItems(clientIdParam, stageFilter || undefined),
+        getClientEvidence(clientIdParam),
       ]);
       setReports(rep);
       setDashboard(dash);
@@ -220,6 +223,7 @@ function ClientWorkspace({ client, clientId }) {
       setIssues(iss);
       setDocuments(docs.documents || []);
       setItems(itemList.items || []);
+      setEvidence(ev);
     } catch (e) {
       setError(e.message || 'Failed to load client workspace');
     } finally {
@@ -365,6 +369,29 @@ function ClientWorkspace({ client, clientId }) {
             <tbody>
               {stageCounts.map((row) => (
                 <tr key={row.stage}><td>{row.stage}</td><td>{row.count}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="v3-admin-card">
+        <h2>Evidence — persisted calculations ({evidence?.total ?? 0})</h2>
+        {!evidence?.calculations || evidence.calculations.length === 0 ? (
+          <div className="v3-empty" style={{ padding: 20 }}>No calculated evidence for this client yet.</div>
+        ) : (
+          <table className="v3-table">
+            <thead><tr><th>Activity</th><th>Quantity</th><th>CO₂e</th><th>Scope</th><th>Factor source</th><th>Year</th></tr></thead>
+            <tbody>
+              {evidence.calculations.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.activity_type || c.activity || c.id}</td>
+                  <td>{c.quantity} {c.quantity_unit}</td>
+                  <td>{Number(c.co2e_kg).toLocaleString('en-GB', { maximumFractionDigits: 2 })} kg</td>
+                  <td>{c.scope || '—'}</td>
+                  <td>{c.factor_source || '—'}{c.factor_kind === 'customer_factor' ? ' (customer factor)' : ''}</td>
+                  <td>{c.reporting_year || '—'}</td>
+                </tr>
               ))}
             </tbody>
           </table>

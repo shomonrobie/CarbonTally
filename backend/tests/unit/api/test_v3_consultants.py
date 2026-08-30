@@ -375,6 +375,82 @@ def test_consultant_client_processing_items_cross_firm_denied(client, world, use
     assert client.get("/api/v3/consultants/clients/client-c/processing/items").status_code == 403
 
 
+def test_consultant_client_evidence_grant_scoped(client, world, user_provider) -> None:
+    """E7 — the consultant's evidence view is grant-scoped: an authorized client
+    returns the org evidence contract; a foreign client is denied."""
+    user = _seed_consultant(world)
+    user_provider.set_user(user)
+    ok = client.get("/api/v3/consultants/clients/client-a/evidence")
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["organization"]["id"] == "org-a"
+    assert isinstance(body["calculations"], list)
+
+    denied = client.get("/api/v3/consultants/clients/client-c/evidence")
+    assert denied.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# CL-61 close-out — team member revoke (deactivate) / reactivate
+# ---------------------------------------------------------------------------
+
+
+def test_team_member_deactivate_revokes_access(client, world, user_provider) -> None:
+    """Deactivating a team member flips their firm-membership to inactive and
+    removes them from the active roster (server-side, not a UI affordance).
+    ``require_consultant`` rejects inactive members on every request."""
+    user = _seed_consultant(world)
+    world.consultants.seed_firm_member("firm-1", "u-team-b", role="consultant", can_upload_documents=True)
+    user_provider.set_user(user)  # the manager deactivates u-team-b
+    team = client.get("/api/v3/consultants/me/team")
+    member = next(m for m in team.json()["members"] if m["user_id"] == "u-team-b")
+
+    deact = client.post(f"/api/v3/consultants/me/team/{member['id']}/deactivate")
+    assert deact.status_code == 200
+    assert deact.json()["is_active"] is False
+
+    # The roster now shows the member as inactive.
+    team = client.get("/api/v3/consultants/me/team")
+    updated = next(m for m in team.json()["members"] if m["user_id"] == "u-team-b")
+    assert updated["is_active"] is False
+
+    # Reactivate restores the roster row.
+    react = client.post(f"/api/v3/consultants/me/team/{member['id']}/reactivate")
+    assert react.status_code == 200
+    assert react.json()["is_active"] is True
+
+
+def test_team_member_actions_require_manage_team(client, world, user_provider) -> None:
+    """A firm member without can_manage_team cannot revoke/reactivate."""
+    _seed_consultant(world)
+    world.consultants.seed_profile("firm-limited", "u-limited", "Small Consultancy")
+    world.consultants.seed_firm_member("firm-limited", "u-limited", role="consultant")
+    world.consultants.seed_firm_member("firm-limited", "u-other", role="consultant")
+    user_provider.set_user(consultant_user("u-limited", "limited@example.test"))
+    member = world.consultants._members[-1]
+    response = client.post(f"/api/v3/consultants/me/team/{member.id}/deactivate")
+    assert response.status_code == 403
+
+
+def test_team_member_cannot_deactivate_self(client, world, user_provider) -> None:
+    _seed_consultant(world)
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+    team = client.get("/api/v3/consultants/me/team")
+    own = next(m for m in team.json()["members"] if m["user_id"] == "u-cons")
+    response = client.post(f"/api/v3/consultants/me/team/{own['id']}/deactivate")
+    assert response.status_code == 422
+
+
+def test_team_member_deactivate_cross_firm_denied(client, world, user_provider) -> None:
+    """A firm cannot revoke a member of another firm."""
+    _seed_consultant(world)
+    world.consultants.seed_firm_member("firm-2", "u-other", role="consultant")
+    user_provider.set_user(consultant_user("u-cons", "cons@example.test"))
+    other = world.consultants._members[-1]
+    response = client.post(f"/api/v3/consultants/me/team/{other.id}/deactivate")
+    assert response.status_code == 404
+
+
 def test_client_status_update(client, world, user_provider) -> None:
     user = _seed_consultant(world, can_manage_clients=True)
     user_provider.set_user(user)

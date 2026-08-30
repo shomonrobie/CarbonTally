@@ -381,6 +381,13 @@ export const addConsultantTeamMember = (userId, role = 'consultant') =>
     body: JSON.stringify({ user_id: userId, role }),
   });
 
+// CL-61 close-out — revoke (deactivate) / reactivate a team member.
+export const deactivateConsultantTeamMember = (memberId) =>
+  v3Fetch(`/api/v3/consultants/me/team/${memberId}/deactivate`, { method: 'POST' });
+
+export const reactivateConsultantTeamMember = (memberId) =>
+  v3Fetch(`/api/v3/consultants/me/team/${memberId}/reactivate`, { method: 'POST' });
+
 export const getConsultantTasks = (status) => {
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
   return v3Fetch(`/api/v3/consultants/me/tasks${query}`);
@@ -450,6 +457,12 @@ export const getClientProcessingItems = (clientId, stage) => {
   const query = stage ? `?stage=${encodeURIComponent(stage)}` : '';
   return v3Fetch(`/api/v3/consultants/clients/${clientId}/processing/items${query}`);
 };
+
+// E7 — the consultant's evidence view for an authorized client (persisted
+// calculation history with provenance from the same evidence contract the
+// customer sees; grant-scoped server-side).
+export const getClientEvidence = (clientId, limit = 50, offset = 0) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/evidence?limit=${limit}&offset=${offset}`);
 
 export const getClientProcessingStatus = (clientId) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}/processing/status`);

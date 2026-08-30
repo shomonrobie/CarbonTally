@@ -13,7 +13,7 @@ import re
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from api.consultant_auth import (
@@ -788,6 +788,80 @@ async def add_team_member(
     return await repos.consultants.add_firm_member(context.profile.id, payload.user_id, payload.role)
 
 
+@router.post("/me/team/{member_id}/deactivate")
+async def deactivate_team_member(
+    member_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CL-61 close-out — revoke a team member's consultant access.
+
+    Server-side: ``is_active=false`` on the firm-membership row makes
+    ``require_consultant`` reject the member on every subsequent request
+    (immediate, not a UI-only affordance). A consultant cannot revoke
+    themselves.
+    """
+    ensure_consultant_permission(context, "manage_team")
+    member = await repos.consultants.get_firm_member(context.profile.id, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="team member not found")
+    if member.user_id == current_user.user_id:
+        raise HTTPException(status_code=422, detail="a consultant cannot deactivate themselves")
+    updated = await repos.consultants.set_firm_member_active(
+        context.profile.id, member_id, False
+    )
+    await _audit_team_member_change(repos, context, member_id, "deactivated")
+    return {"member": updated, "is_active": False}
+
+
+@router.post("/me/team/{member_id}/reactivate")
+async def reactivate_team_member(
+    member_id: str,
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Restore a previously revoked team member's consultant access."""
+    ensure_consultant_permission(context, "manage_team")
+    member = await repos.consultants.get_firm_member(context.profile.id, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="team member not found")
+    updated = await repos.consultants.set_firm_member_active(
+        context.profile.id, member_id, True
+    )
+    await _audit_team_member_change(repos, context, member_id, "reactivated")
+    return {"member": updated, "is_active": True}
+
+
+async def _audit_team_member_change(
+    repos: RepositoryBundle,
+    context: ConsultantContext,
+    member_id: str,
+    action: str,
+) -> None:
+    """Append-only audit trail for team membership lifecycle changes."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="consultant_firm_member",
+                entity_id=member_id,
+                action=f"consultant.team.{action}",
+                actor=context.profile.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"is_active": action == "reactivated"},
+                before=None,
+                after={"is_active": action == "reactivated"},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the team action
+        pass
+
+
 @router.get("/me/tasks")
 async def list_my_tasks(
     status: Optional[str] = None,
@@ -1039,6 +1113,45 @@ async def client_processing_items(
             for i in items
         ],
         "total": len(items),
+    }
+
+
+@router.get("/clients/{client_id}/evidence")
+async def client_evidence(
+    client_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """E7 close-out — the consultant's evidence view for an authorized client.
+
+    Returns the client organisation's persisted calculation history with
+    human-readable provenance (factor source, reporting year, calculated at)
+    from the SAME emission_logs surface the customer sees — the consultant is
+    grant-authorized (active ``consultant_clients``), never a bypass. Cross-firm
+    and inactive grants are denied by ``_authorized_client_org``.
+    """
+    org_id = await _authorized_client_org(client_id, current_user, context, repos)
+
+    # Reuse the emissions snapshot shaping so the consultant sees the same
+    # evidence contract as the customer (no parallel evidence system).
+    from datetime import date as _Date
+
+    from api.v3_emissions import build_period, shape_snapshot
+
+    period = build_period(_Date(1990, 1, 1), _Date.today())
+    total = await repos.logs.count_snapshots(org_id, period)
+    rows = await repos.logs.list_snapshots(org_id, period, limit, offset)
+    org = await repos.organizations.get(org_id)
+    return {
+        "organization": {"id": org_id, "name": org.name if org else None},
+        "client_id": client_id,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "calculations": [shape_snapshot(r) for r in rows],
     }
 
 
