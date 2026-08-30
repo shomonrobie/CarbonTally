@@ -38,6 +38,7 @@ from api.dependencies import (
     get_calculation_engine,
     get_repositories,
 )
+from api.v3_operations import _run_line_calculation
 from auth import AuthUser, require_auth, require_org_admin
 from core.units import (
     mapping_no_factors_reason,
@@ -414,7 +415,15 @@ async def validate_item(
         await repos.issues.resolve_open_for_item(item.id, current_user.user_id)
     return {
         "item": updated,
-        "findings": [f.__dict__ for f in findings],
+        "findings": [
+            {
+                "code": f.code,
+                "severity": f.severity,
+                "message": f.message,
+                "field": getattr(f, "field", None),
+            }
+            for f in findings
+        ],
         "blocking": bool(issues),
         "issues_created": issues,
     }
@@ -447,6 +456,12 @@ async def calculate_item(
 
     extracted = item.extracted_data or {}
     mapped = item.mapped_data or {}
+
+    # D23 — multi-line documents calculate each mapped line and sum the result
+    # (shared with the internal surface so both surfaces behave identically).
+    if isinstance(extracted.get("line_items"), list) and extracted["line_items"]:
+        result = await _run_line_calculation(repos, engine, item, batch, payload)
+        return {"item": result["item"], "calculation": result["result"]}
 
     raw_qty = extracted.get("quantity")
     if raw_qty in (None, ""):

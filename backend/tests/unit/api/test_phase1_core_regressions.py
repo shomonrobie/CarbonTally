@@ -24,7 +24,63 @@ from tests.unit.api.test_v3_operations import _seed_batch_with_item, _seed_ops_w
 # ---------------------------------------------------------------------------
 
 
-def test_customer_review_queue_lists_calculated_item(client, world, user_provider) -> None:
+def test_customer_calculate_multiline_item_with_item_level_factor(client, world, user_provider) -> None:
+    """Phase 2 close-out — the customer-facing ``calculate`` endpoint must handle
+    multi-line (D23) items and honour the documented item-level factor contract.
+
+    Live E2E: after the auto-processor mapped a multi-line CSV item and the map
+    contract accepted ``emission_factor_used``, ``/calculate`` 422'd with
+    ``extracted_data.quantity is required`` because the customer surface had no
+    multi-line path (only the ops surface did). The customer surface now shares
+    the D23 line-calculation used by ops, and the item-level factor applies to
+    every line (matching the validation engine)."""
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)
+
+    user_provider.set_user(member_user("org-a", "member-1", "m@test"))
+    client.post(
+        f"/api/v3/processing/items/{item.id}/extract",
+        json={
+            "extracted_data": {
+                "supplier": "ACME Utilities",
+                "invoice_date": "2026-01-10",
+                "line_items": [
+                    {"activity": "Electricity", "quantity": "1000", "unit": "kWh"},
+                    {"activity": "Natural gas", "quantity": "500", "unit": "kWh"},
+                ],
+            }
+        },
+    )
+    mapped = client.post(
+        f"/api/v3/processing/items/{item.id}/map",
+        json={
+            "mapped_data": {"activity_type": "Natural gas"},
+            "emission_factor_used": "factor-defra-gas",
+        },
+    )
+    assert mapped.status_code == 200, mapped.text
+    validated = client.post(f"/api/v3/processing/items/{item.id}/validate")
+    assert validated.status_code == 200, validated.text
+    assert validated.json()["blocking"] is False, validated.text
+
+    assert (
+        client.post(
+            f"/api/v3/processing/items/{item.id}/start",
+            json={"stage": "calculation"},
+        ).status_code
+        == 200
+    )
+    response = client.post(f"/api/v3/processing/items/{item.id}/calculate", json={})
+    assert response.status_code == 200, response.text
+    calc = response.json()["calculation"]
+    assert calc["multi_line"] is True
+    # 1000 kWh + 500 kWh × 0.183 kg/kWh = 274.5 kg CO2e.
+    assert abs(float(calc["co2e_kg"]) - 274.5) < 0.01
+    assert response.json()["item"]["status"] == "calculated"
+    stored = world.manual_extraction._items[item.id]
+    assert float(stored.calculated_emissions_kg_co2e) == 274.5
+    assert len(stored.mapped_data["line_items"]) == 2
+
     """CL-1 — a calculated item appears in the customer review queue (the
     queue previously 500'd with ``column reference "id" is ambiguous``)."""
     _seed_ops_world(world)

@@ -378,7 +378,13 @@ async def _run_line_calculation(
             if idx < len(mapped_lines) and isinstance(mapped_lines[idx], dict)
             else {}
         )
-        factor_id = ml.get("factor_id") or line.get("factor_id")
+        # Per-line factor wins; an item-level factor (the map contract's
+        # ``emission_factor_used`` / ``mapped_data.factor_id``) applies to every
+        # line — identical precedence to the validation engine.
+        factor_id = (
+            ml.get("factor_id") or line.get("factor_id")
+            or item.emission_factor_used or mapped.get("factor_id")
+        )
         if not factor_id:
             raise HTTPException(
                 status_code=422,
