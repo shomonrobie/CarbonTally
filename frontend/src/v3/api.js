@@ -477,7 +477,8 @@ export const getOpsOrganizations = ({ q = '', limit = 50, offset = 0 } = {}) => 
   return v3Fetch(`/api/v3/ops/organizations${qs ? `?${qs}` : ''}`);
 };
 
-export const listOpsStaff = () => v3Fetch('/api/v3/ops/staff');
+export const listOpsStaff = (limit = 25, offset = 0) =>
+  v3Fetch(`/api/v3/ops/staff?limit=${limit}&offset=${offset}`);
 
 export const createOpsStaff = (payload) =>
   v3Fetch('/api/v3/ops/staff', { method: 'POST', body: JSON.stringify(payload) });

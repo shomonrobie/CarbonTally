@@ -555,10 +555,16 @@ async def ops_organizations(
 
 @router.get("/staff")
 async def list_staff(
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """List the staff roster (``can_view_all`` or ``can_manage_staff``)."""
+    """List the staff roster (``can_view_all`` or ``can_manage_staff``).
+
+    CL-58 — server-side pagination window over the roster (total is the
+    authoritative count).
+    """
     require_internal_staff(context)
     if not context.permissions.get("can_view_all") and not context.permissions.get(
         "can_manage_staff"
@@ -567,8 +573,10 @@ async def list_staff(
             status_code=403, detail="staff lacks permission: can_view_all or can_manage_staff"
         )
     profiles = await repos.staff.list_profiles()
+    total = len(profiles)
+    window = profiles[offset:offset + limit]
     out = []
-    for profile in profiles:
+    for profile in window:
         role = await repos.staff.get_role(profile.role_id) if profile.role_id else None
         out.append(
             {
@@ -585,7 +593,7 @@ async def list_staff(
                 "max_concurrent_tasks": profile.max_concurrent_tasks,
             }
         )
-    return {"staff": out, "total": len(out)}
+    return {"staff": out, "total": total, "limit": limit, "offset": offset}
 
 
 

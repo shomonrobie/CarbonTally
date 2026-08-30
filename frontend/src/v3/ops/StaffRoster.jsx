@@ -14,6 +14,9 @@ import {
 
 export default function StaffRoster({ canManage }) {
   const [staff, setStaff] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(25);
+  const [offset, setOffset] = useState(0);
   const [roles, setRoles] = useState([]);
   const [entities, setEntities] = useState([]);
   const [error, setError] = useState('');
@@ -21,10 +24,13 @@ export default function StaffRoster({ canManage }) {
   const [form, setForm] = useState({ user_id: '', first_name: '', last_name: '', email: '', role_id: '', entity_id: '' });
   const [entityFor, setEntityFor] = useState({ profileId: '', entityId: '' });
 
-  const load = async () => {
+  const load = async (nextLimit = limit, nextOffset = offset) => {
     try {
-      const [list, roleList] = await Promise.all([listOpsStaff(), listStaffRoles()]);
+      const [list, roleList] = await Promise.all([listOpsStaff(nextLimit, nextOffset), listStaffRoles()]);
       setStaff(list.staff || []);
+      setTotal(list.total ?? list.staff?.length ?? 0);
+      setLimit(nextLimit);
+      setOffset(nextOffset);
       setRoles((roleList.roles || []).concat(roleList.staff_roles || []));
     } catch (e) {
       setError(e.message || 'Failed to load staff');
@@ -118,7 +124,7 @@ export default function StaffRoster({ canManage }) {
       </div>
 
       <div className="workspace-pane">
-        <h3>Staff roster ({staff.length})</h3>
+        <h3>Staff roster ({total})</h3>
         <table className="v3-ops-table">
           <thead>
             <tr><th>Name</th><th>Email</th><th>Role</th><th>Type</th><th>Active</th>{canManage && <th>Entity</th>}</tr>
@@ -161,6 +167,19 @@ export default function StaffRoster({ canManage }) {
             ))}
           </tbody>
         </table>
+        {total > limit && (
+          <div className="ct-table-pagination">
+            <span className="ct-table-pagination-count">
+              {offset + 1}–{Math.min(total, offset + staff.length)} of {total}
+            </span>
+            <button type="button" className="v3-btn v3-btn-sm" disabled={offset <= 0} onClick={() => load(limit, Math.max(0, offset - limit))}>← Prev</button>
+            <span className="ct-table-pagination-count">Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))}</span>
+            <button type="button" className="v3-btn v3-btn-sm" disabled={offset + limit >= total} onClick={() => load(limit, offset + limit)}>Next →</button>
+            <select className="ct-table-pagination-select" aria-label="Rows per page" value={limit} onChange={(e) => load(Number(e.target.value), 0)}>
+              {[10, 25, 50, 100].map((s) => <option key={s} value={s}>{s} / page</option>)}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );
