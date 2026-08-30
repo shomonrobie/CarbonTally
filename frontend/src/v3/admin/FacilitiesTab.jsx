@@ -1,6 +1,7 @@
 // frontend/src/v3/admin/FacilitiesTab.jsx
 // Facilities + assets using the V3 org-scoped backend (real data).
 import React, { useCallback, useEffect, useState } from 'react';
+import DataTable from '../components/ui/DataTable';
 import {
   createAsset,
   createFacility,
@@ -128,52 +129,42 @@ export default function FacilitiesTab({ organization }) {
         </div>
         {loading ? (
           <div className="v3-loading"><div className="spinner" />Loading facilities…</div>
-        ) : facilities.length === 0 ? (
-          <div className="v3-empty">No facilities yet.</div>
         ) : (
-          <table className="v3-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Postcode</th>
-                <th>Country</th>
-                <th>Type</th>
-                <th>Assets</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {facilities.map((facility) => (
-                <tr key={facility.id}>
-                  <td><div className="v3-report-name">{facility.name}</div></td>
-                  <td className="v3-muted">{facility.postcode || '—'}</td>
-                  <td className="v3-muted">{facility.country || '—'}</td>
-                  <td className="v3-muted">{facility.type || '—'}</td>
-                  <td>{assetCount(facility.id)}</td>
-                  <td>
+          <DataTable
+            caption={`Facilities — ${facilities.length}`}
+            columns={[
+              { key: 'name', header: 'Name', accessor: 'name', render: (r) => <div className="v3-report-name">{r.name}</div> },
+              { key: 'postcode', header: 'Postcode', accessor: 'postcode', render: (r) => <span className="v3-muted">{r.postcode || '—'}</span> },
+              { key: 'country', header: 'Country', accessor: 'country', render: (r) => <span className="v3-muted">{r.country || '—'}</span> },
+              { key: 'type', header: 'Type', accessor: 'type', render: (r) => <span className="v3-muted">{r.type || '—'}</span> },
+              { key: 'assets', header: 'Assets', accessor: 'id', render: (r) => assetCount(r.id) },
+              { key: 'actions', header: 'Actions', accessor: 'id', render: (r) => (
+                  <>
                     <button
                       className="v3-btn v3-btn-sm"
                       onClick={() => {
-                        setEditingFacility(facility.id);
+                        setEditingFacility(r.id);
                         setFacilityForm({
-                          name: facility.name || '',
-                          postcode: facility.postcode || '',
-                          country: facility.country || 'GB',
-                          type: facility.type || '',
+                          name: r.name || '',
+                          postcode: r.postcode || '',
+                          country: r.country || 'GB',
+                          type: r.type || '',
                         });
                       }}
                     >
                       Edit
                     </button>
                     {' '}
-                    <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove({ kind: 'facility', id: facility.id, name: facility.name })}>
+                    <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove({ kind: 'facility', id: r.id, name: r.name })}>
                       Remove
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ) },
+            ]}
+            rows={facilities}
+            rowKey="id"
+            emptyLabel="No facilities yet."
+          />
         )}
       </div>
 
@@ -184,47 +175,39 @@ export default function FacilitiesTab({ organization }) {
         </div>
         {loading ? (
           <div className="v3-loading"><div className="spinner" />Loading assets…</div>
-        ) : assets.length === 0 ? (
-          <div className="v3-empty">No assets yet.</div>
         ) : (
-          <table className="v3-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Facility</th>
-                <th>Type</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map((asset) => (
-                <tr key={asset.id}>
-                  <td><div className="v3-report-name">{asset.name}</div></td>
-                  <td className="v3-muted">{asset.facility_name || '—'}</td>
-                  <td className="v3-muted">{asset.type || asset.asset_type || '—'}</td>
-                  <td>
+          <DataTable
+            caption={`Assets — ${assets.length}`}
+            columns={[
+              { key: 'name', header: 'Name', accessor: 'name', render: (r) => <div className="v3-report-name">{r.name}</div> },
+              { key: 'facility', header: 'Facility', accessor: 'facility_name', render: (r) => <span className="v3-muted">{r.facility_name || '—'}</span> },
+              { key: 'type', header: 'Type', accessor: 'type', render: (r) => <span className="v3-muted">{r.type || r.asset_type || '—'}</span> },
+              { key: 'actions', header: 'Actions', accessor: 'id', render: (r) => (
+                  <>
                     <button
                       className="v3-btn v3-btn-sm"
                       onClick={() => {
-                        setEditingAsset(asset.id);
+                        setEditingAsset(r.id);
                         setAssetForm({
-                          name: asset.name || '',
-                          facility_id: asset.facility_id || '',
-                          type: asset.type || asset.asset_type || '',
+                          name: r.name || '',
+                          facility_id: r.facility_id || '',
+                          type: r.type || r.asset_type || '',
                         });
                       }}
                     >
                       Edit
                     </button>
                     {' '}
-                    <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove({ kind: 'asset', id: asset.id, name: asset.name })}>
+                    <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove({ kind: 'asset', id: r.id, name: r.name })}>
                       Remove
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ) },
+            ]}
+            rows={assets}
+            rowKey="id"
+            emptyLabel="No assets yet."
+          />
         )}
       </div>
 

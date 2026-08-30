@@ -5,8 +5,11 @@
 // the verified /api/v3/exports/emissions.json surface.
 import React, { useCallback, useEffect, useState } from 'react';
 import { getEmissionEvidence, resolveV3Organization, v3CalculateEmissions, v3ListEmissions } from '../api';
+import DataTable from '../components/ui/DataTable';
 import EvidenceRecordPanel from '../components/EvidenceRecordPanel';
 import { ErrorState } from '../components/StateViews';
+
+const PAGE_SIZE = 25;
 
 const EMPTY_FORM = {
   activity: '',
@@ -26,6 +29,9 @@ export default function EmissionsPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -42,12 +48,16 @@ export default function EmissionsPage() {
       .catch((e) => setEvidenceError(e.message || 'Evidence unavailable'));
   };
 
-  const loadHistory = useCallback(async (organizationId) => {
+  const loadHistory = useCallback(async (organizationId, pageLimit = PAGE_SIZE, pageOffset = 0) => {
     try {
-      const response = await v3ListEmissions(organizationId);
+      const response = await v3ListEmissions(organizationId, { limit: pageLimit, offset: pageOffset });
       setHistory(response.emissions || []);
+      setTotal(typeof response.total === 'number' ? response.total : (response.emissions || []).length);
+      setLimit(pageLimit);
+      setOffset(pageOffset);
     } catch (_e) {
       setHistory([]);
+      setTotal(0);
     }
   }, []);
 
@@ -190,32 +200,29 @@ export default function EmissionsPage() {
         </div>
 
           <div className="v3-card">
-            <h2>Calculation history ({history.length})</h2>
-            {history.length === 0 ? (
+            <h2>Calculation history ({total})</h2>
+            {history.length === 0 && total === 0 ? (
               <div className="v3-empty">No recorded calculations yet.</div>
             ) : (
               <>
-                <table className="v3-table">
-                  <thead>
-                    <tr><th>Date</th><th>Activity</th><th>Scope</th><th>kg CO₂e</th><th>Factor</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {history.slice(0, 25).map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.start_date || row.date || '—'}</td>
-                        <td>{row.activity || row.activity_type || '—'}</td>
-                        <td>{row.scope || '—'}</td>
-                        <td>{row.calculated_kg_co2e ?? row.co2e_kg ?? '—'}</td>
-                        <td className="v3-muted">{row.factor_name || row.factor_source || row.factor_id || '—'}</td>
-                        <td>
-                          <button className="v3-btn v3-btn-sm" onClick={() => openEvidence(row)}>
-                            View evidence
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <DataTable
+                  caption={`Calculation history — ${total} ${total === 1 ? 'record' : 'records'}`}
+                  columns={[
+                    { key: 'date', header: 'Date', accessor: 'start_date', render: (r) => r.start_date || r.date || '—' },
+                    { key: 'activity', header: 'Activity', accessor: 'activity', render: (r) => r.activity || r.activity_type || '—' },
+                    { key: 'scope', header: 'Scope', accessor: 'scope', render: (r) => r.scope || '—' },
+                    { key: 'kg', header: 'kg CO₂e', accessor: 'calculated_kg_co2e', render: (r) => r.calculated_kg_co2e ?? r.co2e_kg ?? '—' },
+                    { key: 'factor', header: 'Factor', accessor: 'factor_name', render: (r) => <span className="v3-muted">{r.factor_name || r.factor_source || r.factor_id || '—'}</span> },
+                    { key: 'evidence', header: 'Evidence', accessor: 'evidence_status', render: (r) => <button className="v3-btn v3-btn-sm" onClick={() => openEvidence(r)}>View evidence</button> },
+                  ]}
+                  rows={history}
+                  rowKey="id"
+                  emptyLabel="No recorded calculations yet."
+                  total={total}
+                  limit={limit}
+                  offset={offset}
+                  onPage={(nextOffset, nextLimit) => loadHistory(org.id, nextLimit, nextOffset)}
+                />
 
                 {evidenceError && (
                   <div className="v3-muted" style={{ marginTop: 12 }}>{evidenceError}</div>

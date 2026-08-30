@@ -70,6 +70,7 @@ class ExportsRepository(AbstractRepository[dict]):
         end_date: Optional[str] = None,
         scope: Optional[str] = None,
         limit: int = 10000,
+        offset: int = 0,
     ) -> list[dict]:
         # D33: export carries provenance identifiers — the calculation snapshot
         # id (already on the log) plus the source extraction item / source file
@@ -97,8 +98,8 @@ class ExportsRepository(AbstractRepository[dict]):
         if scope is not None:
             args.append(scope)
             query += f" AND l.scope = ${len(args)}"
-        query += " ORDER BY l.start_date"
-        query += f" LIMIT {int(limit)}"
+        query += " ORDER BY l.start_date DESC"
+        query += f" LIMIT {int(limit)} OFFSET {int(offset)}"
         rows = await self._fetch_all(query, *args)
         out = []
         for r in rows:
@@ -106,6 +107,28 @@ class ExportsRepository(AbstractRepository[dict]):
             row["evidence_status"] = _evidence_status(row)
             out.append(row)
         return out
+
+    async def count_emissions(
+        self,
+        org_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        scope: Optional[str] = None,
+    ) -> int:
+        """Total matching emissions rows (server-side pagination contract)."""
+        query = "SELECT COUNT(*) AS n FROM public.emissions_logs l WHERE l.organization_id = $1"
+        args: list[Any] = [org_id]
+        if start_date is not None:
+            args.append(start_date)
+            query += f" AND l.start_date >= ${len(args)}"
+        if end_date is not None:
+            args.append(end_date)
+            query += f" AND l.end_date <= ${len(args)}"
+        if scope is not None:
+            args.append(scope)
+            query += f" AND l.scope = ${len(args)}"
+        row = await self._fetch_one(query, *args)
+        return int(row["n"]) if row is not None else 0
 
     async def documents(self, org_id: str) -> list[dict]:
         rows = await self._fetch_all(

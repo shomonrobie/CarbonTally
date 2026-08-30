@@ -14,6 +14,51 @@ from decimal import Decimal
 from data.exports import _jsonable_row
 
 
+def test_emissions_json_returns_pagination_contract(client, world, user_provider, monkeypatch) -> None:
+    """CL-58 — the JSON history surface honours the shared server-side
+    pagination contract: ``emissions`` (page window) + authoritative ``total``.
+    Previously the endpoint returned every row and the UI silently sliced to 25."""
+    from tests.unit.api.fakes import member_user
+
+    seen = {}
+
+    async def _fake_emissions(org_id, start_date=None, end_date=None, scope=None, limit=10000, offset=0):
+        seen["limit"] = limit
+        seen["offset"] = offset
+        return [
+            {
+                "id": "e-1",
+                "organization_id": org_id,
+                "activity": "Diesel",
+                "activity_type": "Diesel",
+                "start_date": "2026-01-10",
+                "calculated_kg_co2e": 1881.31,
+                "unit": "l",
+                "scope": "Scope 1",
+                "evidence_status": "COMPLETE",
+            }
+        ]
+
+    async def _fake_count(org_id, start_date=None, end_date=None, scope=None):
+        return 42
+
+    world.exports.emissions = _fake_emissions
+    world.exports.count_emissions = _fake_count
+
+    user_provider.set_user(member_user("org-a", "member-1", "m@test"))
+    response = client.get(
+        "/api/v3/exports/emissions.json",
+        params={"organization_id": "org-a", "limit": 25, "offset": 50},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 42
+    assert len(body["emissions"]) == 1
+    assert body["emissions"][0]["activity"] == "Diesel"
+    # The route forwards the page window to the repository.
+    assert seen == {"limit": 25, "offset": 50}
+
+
 def test_jsonable_row_coerces_asyncpg_types() -> None:
     row = {
         "id": uuid.UUID("11111111-1111-4111-8111-111111111111"),

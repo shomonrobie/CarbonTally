@@ -2471,8 +2471,18 @@ class MemoryExports:
         end_date: Optional[str] = None,
         scope: Optional[str] = None,
         limit: int = 10000,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         return []
+
+    async def count_emissions(
+        self,
+        org_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        scope: Optional[str] = None,
+    ) -> int:
+        return 0
 
     async def documents(self, org_id: str) -> list[dict[str, Any]]:
         return []

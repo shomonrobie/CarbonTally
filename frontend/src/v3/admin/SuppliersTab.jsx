@@ -1,6 +1,7 @@
 // frontend/src/v3/admin/SuppliersTab.jsx
 // Supplier management using the V3 org-scoped suppliers surface (real data).
 import React, { useCallback, useEffect, useState } from 'react';
+import DataTable from '../components/ui/DataTable';
 import { createSupplier, listSuppliers, removeSupplier } from '../api';
 
 export default function SuppliersTab({ organization }) {
@@ -81,44 +82,34 @@ export default function SuppliersTab({ organization }) {
 
         {loading ? (
           <div className="v3-loading"><div className="spinner" />Loading suppliers…</div>
-        ) : suppliers.length === 0 ? (
-          <div className="v3-empty">No suppliers found.</div>
         ) : (
-          <table className="v3-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Contact</th>
-                <th>Country</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {suppliers.map((supplier) => (
-                <tr key={supplier.id}>
-                  <td><div className="v3-report-name">{supplier.name}</div></td>
-                  <td className="v3-muted">{supplier.supplier_type || supplier.type || '—'}</td>
-                  <td>
-                    <div>{supplier.contact_name || '—'}</div>
-                    <div className="v3-muted">{supplier.contact_email || ''}</div>
-                  </td>
-                  <td className="v3-muted">{supplier.country || '—'}</td>
-                  <td>
-                    <span className={`v3-badge ${supplier.is_active ? 'active' : 'inactive'}`}>
-                      {supplier.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove(supplier)}>
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption={`Suppliers — ${suppliers.length}`}
+            columns={[
+              { key: 'name', header: 'Name', accessor: 'name', render: (r) => <div className="v3-report-name">{r.name}</div> },
+              { key: 'type', header: 'Type', accessor: 'supplier_type', render: (r) => <span className="v3-muted">{r.supplier_type || r.type || '—'}</span> },
+              { key: 'contact', header: 'Contact', accessor: 'contact_name', render: (r) => (
+                  <div>
+                    <div>{r.contact_name || '—'}</div>
+                    <div className="v3-muted">{r.contact_email || ''}</div>
+                  </div>
+                ) },
+              { key: 'country', header: 'Country', accessor: 'country', render: (r) => <span className="v3-muted">{r.country || '—'}</span> },
+              { key: 'status', header: 'Status', accessor: 'is_active', render: (r) => (
+                  <span className={`v3-badge ${r.is_active ? 'active' : 'inactive'}`}>
+                    {r.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                ) },
+              { key: 'actions', header: 'Actions', accessor: 'id', render: (r) => (
+                  <button className="v3-btn v3-btn-sm" onClick={() => setConfirmRemove(r)}>
+                    Remove
+                  </button>
+                ) },
+            ]}
+            rows={suppliers}
+            rowKey="id"
+            emptyLabel="No suppliers found."
+          />
         )}
       </div>
 

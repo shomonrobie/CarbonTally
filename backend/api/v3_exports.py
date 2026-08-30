@@ -55,12 +55,23 @@ async def export_emissions_json(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     scope: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
     current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    """List persisted emissions rows with the shared server-side pagination
+    contract (``emissions`` + authoritative ``total``). The CSV export remains a
+    full-data download; the JSON surface is page-windowed so large histories
+    never force an over-broad result set into the UI."""
     ensure_org_access(current_user, organization_id)
-    rows = await repos.exports.emissions(organization_id, start_date, end_date, scope)
-    return JSONResponse({"emissions": rows})
+    rows = await repos.exports.emissions(
+        organization_id, start_date, end_date, scope, limit=max(1, min(limit, 500)), offset=max(0, offset)
+    )
+    total = await repos.exports.count_emissions(
+        organization_id, start_date, end_date, scope
+    )
+    return JSONResponse({"emissions": rows, "total": total})
 
 
 @router.get("/documents.csv")
