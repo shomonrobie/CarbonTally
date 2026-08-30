@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.dependencies import RepositoryBundle, get_repositories
@@ -25,10 +25,20 @@ class QCReview(BaseModel):
 
 @router.get("/queue")
 async def qc_queue(
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: AuthUser = Depends(require_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    return {"items": await repos.manual_extraction.list_qc_pending()}
+    # CL-58 — server-side pagination over the QC pending queue.
+    items = await repos.manual_extraction.list_qc_pending()
+    total = len(items)
+    return {
+        "items": items[offset:offset + limit],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/stats")

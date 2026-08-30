@@ -582,11 +582,13 @@ export const getReviewQueue = (params = {}) => {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
   if (params.assigned_to) query.set('assigned_to', params.assigned_to);
-  const qs = query.toString();
-  return v3Fetch(`/api/v3/ops/queues/review${qs ? `?${qs}` : ''}`);
+  query.set('limit', String(params.limit ?? 25));
+  query.set('offset', String(params.offset ?? 0));
+  return v3Fetch(`/api/v3/ops/queues/review?${query.toString()}`);
 };
 
-export const getQcQueue = () => v3Fetch('/api/v3/ops/queues/qc');
+export const getQcQueue = (limit = 25, offset = 0) =>
+  v3Fetch(`/api/v3/ops/queues/qc?limit=${limit}&offset=${offset}`);
 
 export const getNextItem = (stage) =>
   v3Fetch(`/api/v3/ops/next-item?stage=${encodeURIComponent(stage)}`);

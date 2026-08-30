@@ -1744,6 +1744,8 @@ async def update_sla_settings(
 async def review_queue(
     status: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
@@ -1758,6 +1760,9 @@ async def review_queue(
     a real item are dropped (legacy phantom rows never surface). Each returned
     row carries ``item_id`` (the extraction item the workbench opens) and the
     reviewer's display name instead of a raw UUID.
+
+    CL-58 — server-side pagination: ``limit``/``offset`` bound the resolved
+    window and ``total`` is the authoritative count.
     """
     ensure_staff_permission(context, "can_review")
     items = await repos.review_queue.list_items(
@@ -1802,19 +1807,33 @@ async def review_queue(
                 "created_at": row.created_at,
             }
         )
-    return {"queued": len(resolved), "items": resolved}
+    total = len(resolved)
+    window = resolved[offset:offset + limit]
+    return {"queued": total, "total": total, "limit": limit, "offset": offset, "items": window}
 
 
 @router.get("/queues/qc")
 async def qc_queue(
+    limit: int = Query(25, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """QC queue: extracted items awaiting QC review (``can_review``, internal)."""
+    """QC queue: extracted items awaiting QC review (``can_review``, internal).
+
+    CL-58 — server-side pagination window over the QC pending queue.
+    """
     require_internal_staff(context)
     ensure_staff_permission(context, "can_review")
-    return {"queued": len(await repos.manual_extraction.list_qc_pending()),
-            "items": await repos.manual_extraction.list_qc_pending()}
+    items = await repos.manual_extraction.list_qc_pending()
+    total = len(items)
+    return {
+        "queued": total,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items[offset:offset + limit],
+    }
 
 
 @router.get("/next-item")

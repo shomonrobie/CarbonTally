@@ -35,6 +35,7 @@ export default function OperatorQueue() {
   const [queueTotal, setQueueTotal] = useState(0);
   const [queueLimit, setQueueLimit] = useState(25);
   const [queueOffset, setQueueOffset] = useState(0);
+  const [statusFilter, setStatusFilter] = useState('');
   const [activeBatchId, setActiveBatchId] = useState(null);
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
@@ -50,10 +51,10 @@ export default function OperatorQueue() {
     me?.permissions?.can_manage_staff && me?.permissions?.can_process
   );
 
-  const loadBatches = useCallback(async (limit = queueLimit, offset = queueOffset) => {
+  const loadBatches = useCallback(async (limit = queueLimit, offset = queueOffset, status = statusFilter) => {
     try {
       // CL-58 — server-side pagination window over the operator queue.
-      const result = await getOperatorQueue('', limit, offset);
+      const result = await getOperatorQueue(status, limit, offset);
       setBatches(result.batches || []);
       setQueueTotal(result.total ?? result.queued ?? 0);
       setQueueLimit(limit);
@@ -65,7 +66,7 @@ export default function OperatorQueue() {
     } catch (e) {
       setError(e.message || 'Failed to load operator queue');
     }
-  }, [queueLimit, queueOffset]);
+  }, [queueLimit, queueOffset, statusFilter]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadBatches(); }, []);
@@ -152,7 +153,24 @@ export default function OperatorQueue() {
       {notice && <div className="v3-ops-notice">{notice}</div>}
 
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
-        <h3>Assigned / self-serve batches ({queueTotal})</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>Assigned / self-serve batches ({queueTotal})</h3>
+          <select
+            className="ct-table-pagination-select"
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              loadBatches(queueLimit, 0, e.target.value);
+            }}
+          >
+            <option value="">All statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
         <table className="v3-ops-table">
           <thead><tr><th>Batch</th><th>Organisation</th><th>Status</th><th>Progress</th><th>Items</th><th /></tr></thead>
           <tbody>
