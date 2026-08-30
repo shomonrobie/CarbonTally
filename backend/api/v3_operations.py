@@ -1130,6 +1130,54 @@ async def entity_extraction_clarify(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Queue disclosure context (D-P2-01) — every internal queue row must identify
+# WHOSE work it is: organisation, consultant/client relationship, processing
+# entity, batch/document, assignment, received date and SLA/progress.
+# ---------------------------------------------------------------------------
+
+
+async def _entity_ctx(repos, entity_id: Optional[str]) -> Optional[dict]:
+    """Resolve a processing-entity id to ``{id, name}`` for queue rows."""
+    if not entity_id:
+        return None
+    entity = await repos.entities.get(entity_id)
+    return {"id": entity.id, "name": entity.name} if entity is not None else None
+
+
+async def _staff_display_name(repos, user_id: Optional[str]) -> Optional[str]:
+    """Resolve a staff user id to a display name (never a raw UUID)."""
+    if not user_id:
+        return None
+    profile = await repos.staff.get_by_user(user_id)
+    if profile is None:
+        return None
+    return f"{profile.first_name} {profile.last_name}".strip() or profile.email
+
+
+async def _client_context(repos, org_id: str) -> Optional[dict]:
+    """The consultant/client relationship for an organisation (first active
+    grant; firm name + client name + grant status). Never fabricates: returns
+    None when the org is not a consultant-managed client."""
+    grants = await repos.consultants.list_active_client_grants(org_id)
+    if not grants:
+        return None
+    grant = grants[0]
+    firm = await repos.consultants.get_profile_by_id(grant.consultant_id)
+    return {
+        "firm_name": firm.company_name if firm is not None else None,
+        "client_name": grant.client_name,
+        "status": grant.status,
+    }
+
+
+async def _batch_source_items(repos, batch_id: str, max_items: int = 3) -> list[str]:
+    """First few file names of a batch — the uploaded/source context the PO's
+    \"Uploads\"-alone label must not hide."""
+    items = await repos.manual_extraction.list_items(batch_id)
+    return [i.file_name for i in items[:max_items] if i.file_name]
+
+
 @router.get("/queues/operator")
 async def operator_queue(
     status: Optional[str] = None,
@@ -1146,6 +1194,10 @@ async def operator_queue(
     CL-58 — server-side pagination: ``limit``/``offset`` bound the window and
     ``total`` is the authoritative count (the UI never paginates an
     over-broad result set in the browser).
+
+    D-P2-01 — each row carries business context (organisation, consultant
+    client relationship, processing entity, source documents, assignment,
+    received date, SLA) so an operator never has to infer whose work it is.
     """
     require_internal_staff(context)
     ensure_staff_permission(context, "can_process")
@@ -1163,6 +1215,14 @@ async def operator_queue(
                 "batch": batch,
                 "progress": progress,
                 "organization": {"id": org.id, "name": org.name} if org else None,
+                "entity": await _entity_ctx(repos, batch.entity_id),
+                "assigned_to_name": await _staff_display_name(repos, batch.assigned_to),
+                "consultant": await _client_context(repos, batch.organization_id),
+                "source_items": await _batch_source_items(repos, batch.id),
+                "sla": {
+                    "deadline": batch.sla_deadline,
+                    "breached": batch.sla_breached,
+                },
             }
         )
     return {"queued": total, "total": total, "limit": limit, "offset": offset, "batches": out}
@@ -1820,15 +1880,28 @@ async def review_queue(
                     break
             if assigned_name is None:
                 assigned_name = row.assigned_to  # very unlikely; keep a resolvable id
+        # D-P2-01 — business context: organisation, consultant relationship,
+        # processing entity, batch + received date (never raw UUIDs alone).
+        org = await repos.organizations.get(row.organization_id)
+        batch = (
+            await repos.manual_extraction.get_batch(extraction_item.batch_id)
+            if extraction_item.batch_id
+            else None
+        )
         resolved.append(
             {
                 "id": row.id,
                 "item_id": extraction_item.id,
                 "organization_id": row.organization_id,
+                "organization_name": org.name if org is not None else None,
+                "entity_id": row.entity_id,
+                "entity": await _entity_ctx(repos, row.entity_id),
+                "batch_id": extraction_item.batch_id,
+                "batch_name": batch.batch_name if batch is not None else None,
+                "consultant": await _client_context(repos, row.organization_id),
                 "file_name": row.file_name,
                 "status": row.status,
                 "priority": row.priority,
-                "entity_id": row.entity_id,
                 "assigned_to": row.assigned_to,
                 "assigned_to_name": assigned_name,
                 "created_at": row.created_at,
@@ -1854,12 +1927,44 @@ async def qc_queue(
     ensure_staff_permission(context, "can_review")
     items = await repos.manual_extraction.list_qc_pending()
     total = len(items)
+    window = items[offset:offset + limit]
+    enriched = []
+    for item in window:
+        batch = (
+            await repos.manual_extraction.get_batch(item.batch_id)
+            if item.batch_id
+            else None
+        )
+        org = (
+            await repos.organizations.get(batch.organization_id)
+            if batch is not None
+            else None
+        )
+        enriched.append(
+            {
+                "id": item.id,
+                "file_name": item.file_name,
+                "status": item.status,
+                "quality_score": item.quality_score,
+                "batch_id": item.batch_id,
+                "batch_name": batch.batch_name if batch is not None else None,
+                "organization_id": batch.organization_id if batch is not None else None,
+                "organization_name": org.name if org is not None else None,
+                "entity": await _entity_ctx(repos, batch.entity_id if batch is not None else None),
+                "consultant": (
+                    await _client_context(repos, batch.organization_id)
+                    if batch is not None
+                    else None
+                ),
+                "created_at": item.created_at,
+            }
+        )
     return {
         "queued": total,
         "total": total,
         "limit": limit,
         "offset": offset,
-        "items": items[offset:offset + limit],
+        "items": enriched,
     }
 
 

@@ -175,6 +175,83 @@ def test_internal_operator_accesses_operator_queue(client, world, user_provider)
     assert response.json()["queued"] == 1
 
 
+def test_operator_queue_carries_business_context(client, world, user_provider) -> None:
+    """D-P2-01 — internal queue rows identify WHOSE work it is.
+
+    A bare 'Uploads'-style batch label must never be the only context: each
+    operator-queue row carries the organisation name, the consultant/client
+    relationship, the processing entity, the assignment (display name), the
+    received date and the source file names — all resolved server-side.
+    """
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    asyncio.run(
+        world.organizations.create_with_owner(
+            org_id="org-a", name="Quayside Energy", country="GB",
+            owner_user_id="owner-1",
+        )
+    )
+    world.consultants.seed_profile(
+        profile_id="firm-1", user_id="cons-1", company_name="Net Zero Advisory"
+    )
+    world.consultants.seed_client(
+        "client-1", "firm-1", "org-a", "Quayside Energy", status="active"
+    )
+    asyncio.run(
+        world.manual_extraction.update_batch(
+            batch.id,
+            status="in_progress",
+            assigned_to="u-op",
+            assigned_by="u-mgr",
+        )
+    )
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    response = client.get("/api/v3/ops/queues/operator")
+    assert response.status_code == 200, response.text
+    rows = response.json()["batches"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["batch"]["batch_name"] == "Phase 8 batch"
+    assert row["organization"]["name"] == "Quayside Energy"
+    assert row["entity"] is None  # internal batch carries no entity assignment
+    assert row["consultant"]["firm_name"] == "Net Zero Advisory"
+    assert row["assigned_to_name"] == "Op One"
+    assert row["source_items"] == [item.file_name]
+    assert "sla" in row
+
+
+def test_qc_queue_carries_business_context(client, world, user_provider) -> None:
+    """D-P2-01 — the QC queue also surfaces org/entity/batch context per row."""
+    _seed_ops_world(world)
+    batch, item = _seed_batch_with_item(world)
+    asyncio.run(
+        world.organizations.create_with_owner(
+            org_id="org-a", name="Quayside Energy", country="GB",
+            owner_user_id="owner-1",
+        )
+    )
+    asyncio.run(
+        world.manual_extraction.update_batch(
+            batch.id,
+            status="in_progress",
+            assigned_to=None,
+            assigned_by="u-mgr",
+            entity_id="entity-1",
+        )
+    )
+    asyncio.run(world.manual_extraction.set_item_status(item.id, "extracted"))
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    response = client.get("/api/v3/ops/queues/qc")
+    assert response.status_code == 200, response.text
+    rows = response.json()["items"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["organization_name"] == "Quayside Energy"
+    assert row["batch_name"] == "Phase 8 batch"
+    assert row["entity"]["name"] == "Entity Beta"
+    assert row["file_name"] == item.file_name
+
+
 def test_entity_staff_denied_internal_dashboard(client, world, user_provider) -> None:
     _seed_ops_world(world)
     user_provider.set_user(entity_operator_user("entity-1", "u-ent"))

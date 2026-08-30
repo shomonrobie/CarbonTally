@@ -171,6 +171,16 @@ class ConsultantsRepository(AbstractRepository[dict]):
         )
         return _row_to_profile(row) if row is not None else None
 
+    async def get_profile_by_id(self, profile_id: str) -> Optional[ConsultantProfile]:
+        """Return a consultant firm profile by its id (queue-disclosure context:
+        an internal queue row can name the firm that manages the client org)."""
+        row = await self._fetch_one(
+            f"SELECT {_PROFILE_COLUMNS} FROM public.consultant_profiles "
+            "WHERE id = $1 LIMIT 1",
+            profile_id,
+        )
+        return _row_to_profile(row) if row is not None else None
+
     async def create_profile(self, user_id: str, company_name: str) -> ConsultantProfile:
         row = await self._fetch_one(
             f"""

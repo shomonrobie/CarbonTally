@@ -172,16 +172,23 @@ export default function OperatorQueue() {
           </select>
         </div>
         <table className="v3-ops-table">
-          <thead><tr><th>Batch</th><th>Organisation</th><th>Status</th><th>Progress</th><th>Items</th><th /></tr></thead>
+          <thead><tr><th>Batch</th><th>Organisation</th><th>Client of</th><th>Entity</th><th>Status</th><th>Progress</th><th>Items</th><th>Assigned</th><th>Received</th><th>Source</th><th /></tr></thead>
           <tbody>
             {batches.map((entry) => (
               <React.Fragment key={entry.batch.id}>
                 <tr>
                   <td>{entry.batch.batch_name || entry.batch.id}</td>
                   <td>{entry.organization?.name || '—'}</td>
+                  <td>{entry.consultant ? entry.consultant.firm_name || entry.consultant.client_name || '—' : '—'}</td>
+                  <td>{entry.entity?.name || '—'}</td>
                   <td>{entry.batch.status}</td>
                   <td>{entry.progress ? `${entry.progress.pct_complete}%` : '—'}</td>
                   <td>{entry.progress?.total_items ?? '—'}</td>
+                  <td>{entry.assigned_to_name || 'Unassigned'}</td>
+                  <td>{entry.batch.created_at ? new Date(entry.batch.created_at).toLocaleDateString() : '—'}</td>
+                  <td className="v3-muted" style={{ fontSize: 12 }}>
+                    {(entry.source_items || []).join(', ') || (entry.sla?.breached ? '⚠ SLA breached' : '—')}
+                  </td>
                   <td>
                     <button
                       className="v3-btn v3-btn-sm"
@@ -204,7 +211,7 @@ export default function OperatorQueue() {
                 </tr>
                 {assignFor?.id === entry.batch.id && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={11}>
                       <div className="workspace-field" style={{ marginBottom: 8 }}>
                         <label>Assign batch to</label>
                         <div>

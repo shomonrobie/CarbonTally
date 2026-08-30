@@ -84,13 +84,18 @@ export default function QcQueue() {
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
         <h3>QC queue ({total})</h3>
         <table className="v3-ops-table">
-          <thead><tr><th>Item</th><th>Status</th><th>Quality score</th><th>Open</th></tr></thead>
+          <thead><tr><th>Item</th><th>Organisation</th><th>Client of</th><th>Entity</th><th>Batch</th><th>Status</th><th>Quality score</th><th>Received</th><th>Open</th></tr></thead>
           <tbody>
             {items.map((r) => (
               <tr key={r.id}>
                 <td>{r.file_name}</td>
+                <td>{r.organization_name || '—'}</td>
+                <td>{r.consultant ? r.consultant.firm_name || r.consultant.client_name || '—' : '—'}</td>
+                <td>{r.entity?.name || '—'}</td>
+                <td>{r.batch_name || '—'}</td>
                 <td>{r.status}</td>
                 <td>{r.quality_score ?? '—'}</td>
+                <td>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
                 <td>
                   {/* CL-59 — open the item in a dedicated routed workspace */}
                   <button className="v3-btn primary" onClick={() => navigate(`/ops/qc/${encodeURIComponent(r.id)}`)}>Open workspace</button>

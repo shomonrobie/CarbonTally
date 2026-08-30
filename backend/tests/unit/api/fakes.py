@@ -1452,6 +1452,9 @@ class MemoryConsultants:
     async def get_profile_by_user(self, user_id: str):
         return next((p for p in self._profiles.values() if p.user_id == user_id), None)
 
+    async def get_profile_by_id(self, profile_id: str):
+        return self._profiles.get(profile_id)
+
     async def create_profile(self, user_id: str, company_name: str):
         profile = self._profile_type(
             id=f"firm-{user_id}", user_id=user_id, company_name=company_name, is_active=True

@@ -78,15 +78,20 @@ export default function ReviewQueue() {
       <div className="workspace-pane" style={{ marginBottom: 16 }}>
         <h3>Review queue ({total})</h3>
         <table className="v3-ops-table">
-          <thead><tr><th>Item</th><th>Status</th><th>Assigned</th><th>Priority</th><th>Open</th></tr></thead>
+          <thead><tr><th>Item</th><th>Organisation</th><th>Client of</th><th>Entity</th><th>Batch</th><th>Status</th><th>Assigned</th><th>Priority</th><th>Received</th><th>Open</th></tr></thead>
           <tbody>
             {items.map((r) => (
               <tr key={r.id}>
                 <td>{r.file_name}</td>
+                <td>{r.organization_name || '—'}</td>
+                <td>{r.consultant ? r.consultant.firm_name || r.consultant.client_name || '—' : '—'}</td>
+                <td>{r.entity?.name || '—'}</td>
+                <td>{r.batch_name || '—'}</td>
                 <td>{r.status}</td>
                 {/* UH-7 — reviewer display name instead of a raw UUID */}
                 <td>{r.assigned_to_name || '—'}</td>
                 <td>{r.priority}</td>
+                <td>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
                 <td>
                   {/* CL-59 — open the REAL extraction item in a dedicated route */}
                   <button className="v3-btn primary" onClick={() => navigate(`/ops/review/${encodeURIComponent(r.item_id || r.id)}`)}>Open workspace</button>
