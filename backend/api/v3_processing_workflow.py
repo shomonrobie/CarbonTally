@@ -183,8 +183,15 @@ async def _open_validation_issues(
             priority=1,
             status="open",
             organization_id=batch.organization_id,
-            batch_id=batch.id,
-            work_item_id=item.id,
+            # Manual-extraction batches link through the dedicated
+            # ``manual_extraction_batch_id`` column. ``work_item_id`` FKs to
+            # ``manual_review_queue(id)`` (a review-queue row must exist) and
+            # ``batch_id`` FKs to ``upload_batches`` — neither exists for a
+            # manual-extraction item, so both stay NULL (canonical pattern,
+            # see api.v3_operations._open_validation_issues).
+            work_item_id=None,
+            batch_id=None,
+            manual_extraction_batch_id=batch.id,
             created_by=actor,
             updated_by=actor,
         )

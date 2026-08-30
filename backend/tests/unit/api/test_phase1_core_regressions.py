@@ -61,7 +61,51 @@ def test_customer_review_queue_rejects_cancelled_batch(client, world, user_provi
 # ---------------------------------------------------------------------------
 
 
-def test_ops_calculate_snapshot_retains_source_item_id(client, world, user_provider) -> None:
+def test_validate_with_blocking_findings_creates_issues_without_500(client, world, user_provider) -> None:
+    """Phase 2 close-out — validate with blocking findings must persist first-class
+    issues without a 500.
+
+    Previously ``_open_validation_issues`` wrote the manual-extraction batch id
+    into ``issues.batch_id`` (FK -> ``upload_batches``) and the item id into
+    ``issues.work_item_id`` (FK -> ``manual_review_queue``) — both violated FKs
+    because a manual-extraction item has neither row, so every blocking
+    validation run 500'd and the item could never advance.
+    """
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)
+
+    user_provider.set_user(staff_user("u-op", email="op@carbontally.test"))
+    client.post(f"/api/v3/ops/items/{item.id}/start", json={"stage": "extraction"})
+    # Extraction data with NO quantity/unit/activity -> blocking findings.
+    client.post(
+        f"/api/v3/ops/items/{item.id}/extract",
+        json={"extracted_data": {"date": "2025-06-01"}},
+    )
+    client.post(
+        f"/api/v3/ops/items/{item.id}/map",
+        json={"mapped_data": {"activity_type": "Natural gas"}, "emission_factor_used": "factor-defra-gas"},
+    )
+
+    user_provider.set_user(staff_user("u-rev", email="rev@carbontally.test"))
+    response = client.post(f"/api/v3/ops/items/{item.id}/validate")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["blocking"] is True, "missing extraction fields must block"
+    assert body["status"] == "mapping", "blocked item routes back to mapping"
+
+    # The issue row is persisted with the manual-extraction batch link (the
+    # legacy defect wrote batch_id/work_item_id into FK columns that reference
+    # other tables, which made every blocking validation run 500).
+    issue = next(
+        (i for i in world.issues._issues if i.manual_extraction_batch_id == _batch.id),
+        None,
+    )
+    assert issue is not None, "blocking validation must persist a first-class issue"
+    assert issue.batch_id is None
+    assert issue.work_item_id is None
+
+
+
     """ISC-1 — ``/api/v3/ops/items/{id}/calculate`` persists ``source_item_id``
     on the calculation snapshot so the document->emissions reverse lookup works."""
     _seed_ops_world(world)
