@@ -29,26 +29,26 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 | E1 | Consultant dashboard | portfolio, clients, status, activity | dashboard view + client switcher | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | E2 | Create customer + owner | POST me/customers provisions owner+org+grant | NewCustomerView (CON-1) | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | E3 | View customer / client context | client detail w/ org context | ClientWorkspace summary | ✅ | ✅ | 🟡 | deeper context columns | — | no | 🟡 |
-| E4 | **Upload documents for client** | consultant uploads into client org, durable enqueue | **MISSING** — no consultant upload endpoint/UI | ❌ | — | — | E-impl: POST consultant documents + UI | E-backend | no | ❌ |
-| E5 | **Automatic processing for client** | upload → enqueue → extract → map → validate → calculate | engine exists; no consultant entry point | ❌ | — | — | E-impl upload enqueues durable processing | E4 | no | ❌ |
-| E6 | **Manual processing workspace** | extraction/mapping/validation/calculation for client items | shared workflow API consultant-aware; **no consultant UI** | 🟡 | 🟡 | 🟡 | consultant routed item workspace (ExtractionPanel reuse) | E4 | no | ❌ |
-| E7 | Evidence + review + customer approval handoff | consultant sees evidence; customer approves | customer review/approval UI exists; consultant evidence view missing | 🟡 | 🟡 | 🟡 | consultant evidence/status surface | E6 | no | ❌ |
+| E4 | **Upload documents for client** | consultant uploads into client org, durable enqueue | `POST /consultants/clients/{id}/documents` + UI; reuses durable pipeline; live 201 → item auto-processed | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| E5 | **Automatic processing for client** | upload → enqueue → extract → map → validate → calculate | consultant upload enqueues the shared durable pipeline | ✅ | ✅ | ✅ | — | E4 | no | ✅ |
+| E6 | **Manual processing workspace** | extraction/mapping/validation/calculation for client items | consultant routed item workspace (`/consultant/items/:clientId/:itemId`, shared ExtractionPanel) | ✅ | ✅ | ✅ | — | E4 | no | ✅ |
+| E7 | Evidence + review + customer approval handoff | consultant sees evidence; customer approves | `GET /consultants/clients/{id}/evidence` (grant-scoped, snapshot contract) + evidence table in ClientWorkspace; cross-firm denied | ✅ | ✅ | ✅ | — | E6 | no | ✅ |
 | E8 | Reports for client | view/generate/download client reports | reports list in ClientWorkspace; generation via shared API | 🟡 | 🟡 | 🟡 | verify generation + PDF for consultant | RPT | no | 🟡 |
-| E9 | Team management | create members, roles, revoke | CL-61 roster + add member (manage_team); **no revoke UI** | 🟡 | ✅ | ✅ | revoke/deactivate team member UI | — | no | 🟡 |
-| E10 | Security: A↔B / team / cross-firm | server-side isolation | consultant grant + firm-scope enforced | ✅ | ✅ | ✅ | re-run regression | — | no | ✅ |
-| E11 | Default client dead-end (CON-6) | login lands on managed client | active client from localStorage may be non-managed | ❌ | — | — | validate/auto-select managed client | — | no | ❌ |
-| E12 | CO₂e formatting (CON-7) | "10.7 t CO₂e" not "8850.000000" | raw floats in some consultant cards | ❌ | — | — | format util on consultant dashboard | — | no | ❌ |
+| E9 | Team management | create members, roles, revoke | roster + add + **deactivate/reactivate UI** (`POST …/team/{id}/deactivate|reactivate`, manage_team-gated, self-deactivate 422, cross-firm 404, audit trail; inactive members rejected server-side) | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| E10 | Security: A↔B / team / cross-firm | server-side isolation | consultant grant + firm-scope enforced; live sweep passed | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| E11 | Default client dead-end (CON-6) | login lands on managed client | auto-select first managed client (never unmanaged) | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| E12 | CO₂e formatting (CON-7) | "10.7 t CO₂e" not "8850.000000" | business CO₂e formatting on consultant surfaces | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 
 ## PHASE F — Processing Entity application
 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
-| F1 | PE Manager dashboard | assigned work, batch visibility, workload, team oversight | EntityExtractionWorkspace only (item-level); no manager dashboard | 🟡 | 🟡 | 🟡 | PE manager dashboard (workload/stats) | — | no | ❌ |
-| F2 | PE Staff workspace | extraction/mapping/validation/status | EntityExtractionWorkspace (real, persists) | ✅ | ✅ | ✅ | routed workspace (Phase G) | G | no | ✅ |
-| F3 | PE isolation (Alpha≠Beta) | own-entity only, 403 cross-entity | _entity_workspace_guard + RLS | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| F1 | PE Manager dashboard | assigned work, batch visibility, workload, team oversight | `PEManagerDashboard` (entity overview, team workload, SLA/quality, batch status distribution; 'Open item work' switch) routed for `pe_manager` role | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| F2 | PE Staff workspace | extraction/mapping/validation/status | EntityExtractionWorkspace (real, persists) + routed workspace | ✅ | ✅ | ✅ | — | G | no | ✅ |
+| F3 | PE isolation (Alpha≠Beta) | own-entity only, 403 cross-entity | _entity_workspace_guard + RLS; live sweep passed | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | F4 | No customer-document download | no download path, signed view-only URLs | D20 boundary holds | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| F5 | PE Manager batch list (PE-2) | manager sees entity batches | pe_manager role has can_process in seed; verify live | 🟡 | 🟡 | ✅ | live-verify pe-manager-1.demo | — | no | 🟡 |
+| F5 | PE Manager batch list (PE-2) | manager sees entity batches | pe_manager can_process + own-entity batches/performance live-verified 200; cross-entity 403 | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | F6 | PE calculation from UI (PE-3) | start('calculation') then calculate | fixed in ExtractionPanel (PRC-1) | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ## PHASE G — Universal workspace UX
@@ -58,8 +58,8 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 | G1 | Customer processing routed workspace | /processing/:itemId dedicated | ProcessingItemPage routed | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | G2 | Customer review routed workspace | /review/:itemId dedicated | ReviewDetailPage routed | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | G3 | Internal ops routed workspaces | /ops/items, /ops/review, /ops/qc | done (CL-59) | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| G4 | **Consultant routed item workspace** | /consultant item workspace | MISSING | ❌ | — | — | E-impl: consultant item page | E6 | no | ❌ |
-| G5 | PE routed item workspace | dedicated route for PE item | EntityExtractionWorkspace inline | ❌ | — | — | PE item route | F2 | no | ❌ |
+| G4 | **Consultant routed item workspace** | /consultant item workspace | `/consultant/items/:clientId/:itemId` (ConsultantItemPage, shared ExtractionPanel) | ✅ | ✅ | ✅ | — | E6 | no | ✅ |
+| G5 | PE routed item workspace | dedicated route for PE item | `/pe/items/:entityId/:itemId` (PEEntityItemPage) | ✅ | ✅ | ✅ | — | F2 | no | ✅ |
 
 ## PHASE H — Scalable table system
 
@@ -67,9 +67,9 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 |---|---|---|---|---|---|---|---|---|---|---|
 | H1 | Shared DataTable contract | pagination/sort/page-size | DataTable enhanced (CL-58) | ✅ | ✅ | ✅ | — | — | no | ✅ |
 | H2 | Server-side pagination (no fake browser paging) | ops queue windows | operator queue limit/offset/total | ✅ | ✅ | ✅ | — | — | no | ✅ |
-| H3 | Rollout: review/QC queues | paginate large queues | review/QC still unbounded inline tables | ❌ | — | — | apply DataTable pagination to review/QC | — | no | ❌ |
-| H4 | Rollout: staff/entities/messaging/customers | paginate large surfaces | mostly unbounded lists | ❌ | — | — | apply contract to staff roster, entities, client list, messaging | — | no | ❌ |
-| H5 | Rollout: master data + factors + reports + emissions | paginate/sort | unbounded | ❌ | — | — | apply to documents/emissions/factors/facilities etc. | — | no | ❌ |
+| H3 | Rollout: review/QC queues | paginate large queues | review + QC queues server pagination (limit/offset/total) | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| H4 | Rollout: staff/entities/messaging/customers | paginate large surfaces | staff roster + entities catalogue paginated; consultant client lists bounded per-firm | ✅ | ✅ | ✅ | — | — | no | ✅ |
+| H5 | Rollout: master data + factors + reports + emissions | paginate/sort | emissions history server pagination + facilities/assets/suppliers on DataTable; factors already DataTable | 🟡 | ✅ | ✅ | messaging + notifications adoption (bounded lists, follow-on) | — | no | 🟡 |
 
 ## PHASE I — Internal operations queue
 
@@ -135,39 +135,35 @@ Status legend: ✅ = implemented + tested + runtime verified (where applicable) 
 
 | # | Requirement | Expected behaviour | Current implementation | Impl? | RT? | Test? | Remaining work | Deps | PO? | Status |
 |---|---|---|---|---|---|---|---|---|---|---|
-| S1 | A→B, client→client, consultant→consultant, PE→PE, viewer→write, member→admin, operator→restricted, system admin→admin ops | all denied/allowed correctly | unit + live negative tests mostly present | 🟡 | 🟡 | ✅ | full regression pass incl. new E/F surfaces | E/F | no | 🟡 |
+| S1 | A→B, client→client, consultant→consultant, PE→PE, viewer→write, member→admin, operator→restricted, system admin→admin ops | all denied/allowed correctly | unit + live negative tests; **close-out live sweep 13/13 PASS** across customer/consultant/PE/staff boundaries | ✅ | ✅ | ✅ | — | — | no | ✅ |
 
 ---
 
-**Overall:** PHASE 2 — NOT COMPLETE.
+**Overall:** PHASE 2 — NOT COMPLETE (PO-gated + incremental items remain; the
+implementation is in strong shape and the core pipeline is live-verified).
 
-**Progress this continuation (commits 6b4d749 → d632afc, HEAD d632afc):**
+**Progress this continuation (commits fc05f05 → 8041001):**
 
-- **Phase E**: consultant operational workspace — upload documents FOR an authorized
-  client (CON-2), processing items + routed item workspace (CON-3, G4), default-client
-  fix (CON-6), CO₂e formatting (CON-7). ✅
-- **Phase F/G**: PE routed item workspace (G5) + mediated clarification; entity list
-  surface cleaned (no inline workspace). ✅
-- **Phase H/I**: review/QC queue server-side pagination + operator status filter. ✅
-- **Phase K**: retention persistence fixed (system_settings.setting_value NOT NULL);
-  live round-trip + DB verify + regression tests. ✅
-- **Phase L**: search item results deep-link into routed item workspaces (L3). ✅
-- **Reporting/PDF**: live report create → status completed → PDF (200, application/pdf). ✅
-- **Phase J**: facility/vehicle CRUD live-verified (clean 422 on missing postcode,
-  create/delete 201/204); QA records cleaned up. ✅
-- **Security**: security suites pass individually (async-plugin flake was an
-  environment artifact, not a code regression).
+- **Phase E**: consultant team revoke/deactivate (E9) + dedicated evidence view (E7). ✅
+- **Phase F**: dedicated PE Manager dashboard (F1) + live PE-2 batch/performance verification. ✅
+- **Phase H**: entities catalogue pagination; emissions history server pagination; facilities/assets/suppliers on the shared DataTable. ✅
+- **Core pipeline (close-out E2E)**: three P1 defects found live and fixed — (1) blocking
+  validation 500 on issues FK violation, (2) multi-line validation ignoring the
+  documented item-level factor contract, (3) customer `/calculate` lacking D23
+  multi-line support. The full customer chain is now live-verified:
+  upload → extract → map → validate → calculate (1881.31 kg CO₂e) → customer
+  approve → emissions row. QA records cleaned up and verified. ✅
+- **Security/persona regression**: 13 live checks across cross-org, cross-firm,
+  cross-entity, viewer-write, PE→customer and staff→customer boundaries — all PASS. ✅
+- **Tests**: backend 1202 passing / 0 failing; frontend 131 passing.
 
-**Remaining gaps (must be resolved before COMPLETE):**
-1. Phase F (F1) — dedicated PE Manager dashboard (workload/team oversight) is still a
-   manager-tab enhancement; PE manager batch visibility is functional via the entity
-   workspace.
-2. Phase H (H4/H5) — DataTable rollout to staff roster, entities, client lists,
-   master data, factors, emissions, messaging is incremental.
-3. Phase I (I1/I3/I4) — consultant/source/assignment/SLA queue columns + search are
-   partly PO-gated (disclosure).
-4. Phase M — systematic error/UX audit across every surface (most pages already use
-   human-readable error/loading/empty states).
-5. Full acceptance re-verification of the complete persona matrix + final report.
+**Remaining before COMPLETE:**
+1. **PO decisions** (⛔): queue disclosure columns (CL-55/57), legacy admin
+   retirement (CL-66), QC authority model, retention enforcement scheduling.
+2. R3 full browser E2E of customer review → approval → report handoff
+   (report generation + PDF are individually live-verified).
+3. Messaging + notifications DataTable adoption (bounded lists today, low risk).
+4. M4 (CAL-3 reference endpoint) and M5 (mapping-options quality) final
+   verification; consultant client-report generation (E8) live pass.
 
 

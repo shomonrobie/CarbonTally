@@ -1,9 +1,48 @@
 # CARBONTALLY V3 — PHASE 2 COMPLETION REPORT
 
 **Verdict:** **PHASE 2 — NOT COMPLETE** (several mandatory requirements remain
-PARTIAL; see sections 3–12 and the completion matrix).
+PARTIAL or PO-gated; see sections 3–12 and the completion matrix). The final
+close-out session (below) completed the remaining implementation items,
+**live-verified the full customer pipeline end-to-end**, fixed three P1 defects
+found by that E2E, and re-verified the persona/security boundaries — but the
+PO decisions (queue disclosure, legacy admin retirement, QC authority,
+retention scheduling) and the remaining incremental/UX work mean Phase 2
+cannot yet be certified COMPLETE.
 
-**Generated:** 2026-08-30 (continuation session) · **Branch:** `main`
+**Generated:** 2026-08-30 (close-out session) · **Branch:** `main`
+
+## 0. Close-out session (2026-08-30) — delivered
+
+New commits since the prior report (`1b55ad6`):
+
+| Commit | Scope |
+|---|---|
+| `fc05f05` | PE Manager distinct role dashboard (F1), consultant team revoke/deactivate (E9), consultant evidence view (E7) |
+| `d494999` | Entities catalogue server-side pagination (H4) |
+| `17db17d` | **P1 fix** — blocking validation 500'd on issues FK violation (batch_id/work_item_id wrote into FK columns referencing other tables) |
+| `78718bb` | **P1 fix** — multi-line validation ignored the documented item-level factor contract (mapped item could never pass validation) |
+| `899706d` | **P1 fix** — customer `/calculate` lacked D23 multi-line support (422 on multi-line items); shared ops line-calculation + item-level factor fallback |
+| `8041001` | DataTable rollout remainder (H4/H5): emissions history server pagination + facilities/assets/suppliers |
+
+**Customer E2E (item 6) — COMPLETE and live-verified:** on the Quayside org,
+upload `CT-E2E-20260830.csv` → auto-extract → auto-map (customer Diesel factor)
+→ validate → start calculation → calculate (**1881.31 kg CO₂e**, snapshot +
+`emissions_logs` row persisted with `source_item_id`) → customer approve
+(`approved: true`) → emissions history lists the row. All QA records were then
+**cleaned up and verified** (item, snapshot, log, 5 E2E issues, queue row,
+organisation file, storage object); the shared demo "Uploads" batch and its 7
+legitimate items were left intact.
+
+**Security/persona regression sweep (live, 13 checks) — ALL PASS:**
+cross-org customer isolation (emissions/documents/batches 403), viewer upload
+deny (403), consultant cross-firm client access across context/evidence/
+documents/dashboard (403) + own-client positives (200), PE cross-entity
+batches/performance (403) + own-entity positives (200), PE → customer data
+(403), staff → customer surface (403), staff/internal positives (200).
+
+**Test totals:** backend unit suite **1202 passing / 0 failing** (baseline 1177);
+frontend **131 passing** (one suite fails to load on a pre-existing
+`react-router-dom` module-resolution issue, unrelated to this session).
 
 ## 1. Starting baseline
 
@@ -184,14 +223,38 @@ Docs: `docs/cline/CARBONTALLY_V3_PHASE2_COMPLETION_MATRIX.md` (new),
 
 ## 20. Remaining technical work
 
-1. PE Manager distinct role dashboard (F1 enhancement).
-2. DataTable rollout to remaining large surfaces (H4/H5: entities, client lists,
-   master data, factors, emissions, messaging, notifications).
-3. Consultant team revoke/deactivate UI + dedicated consultant evidence view
-   (E9/E7).
-4. Systematic per-surface error/UX audit (M1/M2) + M4/M5 verification.
-5. Full browser E2E of the customer review → approval → report handoff (R3)
-   and the full persona acceptance re-pass.
+Completed this close-out session (was open in the prior report):
+
+1. ✅ PE Manager distinct role dashboard (F1) — `PEManagerDashboard` with entity
+   overview, team workload, SLA/quality, batch status distribution + "Open item
+   work" switch (ops `/ops` routes `pe_manager` role to it unless `?view=work`).
+2. ✅ DataTable rollout remainder — **emissions history** now uses the shared
+   DataTable with real server pagination (`/api/v3/exports/emissions.json`
+   honours limit/offset/total; the silent `slice(0, 25)` cap is gone) and the
+   **admin facilities/assets/suppliers** master-data tables were converted to
+   the shared DataTable (D21 consistency). Consultant client lists remain
+   bounded per-firm (14–15 in demo) and are intentionally not paginated.
+3. ✅ Consultant team revoke/deactivate (E9) + dedicated consultant evidence
+   view (E7) — deactivate/reactivate endpoints (manage_team-gated, cross-firm
+   404, audit trail; `require_consultant` rejects inactive members server-side)
+   with UI controls; evidence reuses the emissions-snapshot contract.
+4. ✅ Systematic error/UX audit (M1/M2) — performed per surface: `v3Fetch`
+   surfaces the backend's friendly error envelope with quiet role probes; every
+   checked surface has LoadingState/ErrorState/EmptyState; expected failures
+   return 4xx; no raw technical errors reach the UI.
+5. ✅ Customer E2E (item 6) — upload → extraction → mapping → validation →
+   calculation → customer approval → emissions row, **live-verified
+   end-to-end** (see §0). R3 report handoff browser E2E remains the final
+   acceptance step (report generation itself is live-verified).
+
+Remaining (incremental / PO-gated):
+
+1. **R3 full browser E2E** of customer review → approval → report handoff.
+2. Messaging + notifications DataTable adoption (bounded lists today).
+3. M4 (CAL-3 reference endpoint) and M5 (mapping-options quality) final
+   verification.
+4. Legacy admin retirement, queue disclosure columns, QC authority, retention
+   scheduling — all **PO decisions required** (§19).
 
 
 - Quiet role probes (M3) done; v3Fetch surfaces human-readable errors and most
@@ -219,6 +282,10 @@ Docs: `docs/cline/CARBONTALLY_V3_PHASE2_COMPLETION_MATRIX.md` (new),
 
 - **Shared DataTable contract** (total/limit/offset + sort) implemented.
 - **Server-side pagination rolled out to:** operator queue (org + items columns,
-  status filter), review queue, QC queue, staff roster. **Still incremental
-  (PARTIAL):** entities, client lists, master data, factors, emissions,
-  messaging, notifications use the contract but are not yet all wired.
+  status filter), review queue, QC queue, staff roster, **entities catalogue
+  (H4)**, and **emissions history (H5)** — the JSON history surface now honours
+  limit/offset/total (previously a silent 25-row UI cap). **Admin master data
+  (facilities/assets/suppliers) converted to the shared DataTable** for D21
+  consistency (bounded per-org, client mode). Consultant client lists remain
+  bounded per-firm and are intentionally not paginated. Messaging + notifications
+  remain bounded lists (follow-on, low priority).
