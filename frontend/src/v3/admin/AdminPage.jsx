@@ -16,6 +16,8 @@ import VehiclesTab from './VehiclesTab';
 import CustomFactorsTab from './CustomFactorsTab';
 import ActivityTab from './ActivityTab';
 import SecurityTab from './SecurityTab';
+// Phase 7 — Auditor / Assurance: customer audit & evidence surface.
+import AuditTab from './AuditTab';
 import './admin.css';
 
 const TABS = [
@@ -27,6 +29,8 @@ const TABS = [
   { id: 'members', label: 'Members & Invitations' },
   { id: 'factors', label: 'Custom Factors' },
   { id: 'activity', label: 'Activity' },
+  // Owner/admin only (the backend independently enforces this).
+  { id: 'audit', label: 'Audit & evidence', adminOnly: true },
   { id: 'security', label: 'Security' },
 ];
 
@@ -101,7 +105,7 @@ export default function AdminPage() {
       </div>
 
       <div className="v3-tabs">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => !tab.adminOnly || isAdmin).map((tab) => (
           <button
             key={tab.id}
             className={`v3-tab ${activeTab === tab.id ? 'active' : ''}`}
@@ -122,6 +126,7 @@ export default function AdminPage() {
       {activeTab === 'vehicles' && <VehiclesTab organization={organization} isAdmin={isAdmin} />}
       {activeTab === 'factors' && <CustomFactorsTab organization={organization} isAdmin={isAdmin} />}
       {activeTab === 'activity' && <ActivityTab organization={organization} />}
+      {activeTab === 'audit' && isAdmin && <AuditTab organization={organization} />}
       {activeTab === 'security' && <SecurityTab />}
     </div>
   );

@@ -3029,6 +3029,15 @@ class MemoryAudit:
                 for e in rows
                 if any(q in (getattr(e, f) or "").lower() for f in ("action", "entity_type", "actor", "entity_id", "reason"))
             ]
+        # Phase 7 — taxonomy investigation filters.
+        if filters.category is not None:
+            rows = [e for e in rows if getattr(e, "category", None) == filters.category]
+        if filters.origin is not None:
+            rows = [e for e in rows if getattr(e, "origin", None) == filters.origin]
+        if filters.outcome is not None:
+            rows = [e for e in rows if getattr(e, "outcome", None) == filters.outcome]
+        if filters.organization_id is not None:
+            rows = [e for e in rows if getattr(e, "organization_id", None) == filters.organization_id]
         return rows
 
     async def query(self, filters: AuditQuery) -> list[AuditEntry]:
@@ -3559,6 +3568,35 @@ class MemoryReporting:
 
     async def queue_aging(self, *args, **kwargs):
         return self.queue_aging_result
+
+    # --- Phase 7 fakes (auditability / assurance-support) --------------
+    audit_readiness_result: dict = {
+        "label": "AUDIT EVIDENCE READINESS",
+        "status": "no_evidence_yet",
+        "not_assurance": True,
+        "evidence_coverage_pct": 0.0,
+        "components": {},
+        "gaps": [],
+    }
+    audit_activity_result: dict = {"organization_id": "org-a", "total": 0, "events": []}
+    entity_audit_activity_result: dict = {"entity_id": "ent-a", "total": 0, "events": []}
+    audit_package_result: dict = {
+        "package": {"document_type": "carbontally_audit_evidence_package",
+                    "not_assurance": True},
+        "integrity": {"algorithm": "sha256", "package_hash": "deadbeef"},
+    }
+
+    async def org_audit_activity(self, org_id, **kwargs):
+        return dict(self.audit_activity_result, organization_id=org_id)
+
+    async def entity_audit_activity(self, entity_id, **kwargs):
+        return dict(self.entity_audit_activity_result, entity_id=entity_id)
+
+    async def audit_readiness(self, org_id, **kwargs):
+        return dict(self.audit_readiness_result)
+
+    async def audit_package(self, org_id, **kwargs):
+        return dict(self.audit_package_result)
 
 
 

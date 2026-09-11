@@ -8,10 +8,117 @@ org / staff / consultant / entity dependencies (D15/D20/D22 stay authoritative).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from data.base import AbstractRepository
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Auditor / Assurance: auditability + assurance-support
+# ---------------------------------------------------------------------------
+#
+# Read-only, evidence-scoped aggregates. CarbonTally provides traceable
+# evidence and audit-ready records; it does NOT provide an assurance opinion.
+# Every Phase 7 payload carries an explicit ``not_assurance`` marker.
+
+#: Label used for the evidence-based readiness indicator. Deliberately NOT
+#: "verified" / "assured" / "certified" (those require an independent process).
+AUDIT_READINESS_LABEL = "AUDIT EVIDENCE READINESS"
+
+AUDIT_NOT_ASSURANCE_NOTICE = (
+    "CarbonTally provides traceable calculations, evidence, provenance and "
+    "audit-ready records that can support internal review and independent "
+    "assurance processes. This is not an assurance opinion, verification, "
+    "certification or audit conclusion, and CarbonTally is not an independent "
+    "auditor or verifier."
+)
+
+#: System/machine actor labels treated as system-origin in the timeline.
+_SYSTEM_ACTORS_SQL = (
+    "('system','automatic_pipeline','automation',"
+    "'00000000-0000-0000-0000-000000000000')"
+)
+
+
+def _origin_sql(expr: str) -> str:
+    """SQL CASE returning ``system``/``human`` for an actor expression."""
+    return (
+        f"CASE WHEN {expr} IS NULL OR {expr}::text IN {_SYSTEM_ACTORS_SQL} "
+        f"THEN 'system' ELSE 'human' END"
+    )
+
+
+def audit_readiness_from_counts(
+    *,
+    calculations_total: int,
+    calculations_with_source: int,
+    evidence_complete: int,
+    evidence_partial: int,
+    evidence_unavailable: int,
+    open_issues: int,
+    awaiting_review: int,
+    reports_ready: int,
+    documents: int,
+) -> dict[str, Any]:
+    """Pure, evidence-based readiness summary (never an assurance opinion).
+
+    Describes ONLY the availability/completeness of CarbonTally evidence. The
+    result is deliberately labelled "AUDIT EVIDENCE READINESS" and carries
+    ``not_assurance: True`` so no consumer can read it as verification.
+    """
+    total = max(0, int(calculations_total))
+    complete = max(0, int(evidence_complete))
+    partial = max(0, int(evidence_partial))
+    unavailable = max(0, int(evidence_unavailable))
+
+    if total == 0 and int(documents) == 0:
+        status = "no_evidence_yet"
+    elif unavailable > 0 or int(open_issues) > 0 or complete < total:
+        status = "gaps_to_review"
+    else:
+        status = "evidence_present"
+
+    coverage_pct = round(complete / total * 100, 1) if total else 0.0
+
+    missing: list[str] = []
+    if unavailable > 0:
+        missing.append(
+            f"{unavailable} calculation(s) have no source-item lineage "
+            "(evidence chain unavailable)."
+        )
+    if complete < total:
+        missing.append(
+            f"{total - complete} calculation(s) lack a complete evidence chain "
+            "(source item + source file + exact page)."
+        )
+    if int(open_issues) > 0:
+        missing.append(f"{int(open_issues)} open issue(s) require resolution.")
+    if int(awaiting_review) > 0:
+        missing.append(f"{int(awaiting_review)} item(s) remain in review/approval.")
+    if int(reports_ready) == 0:
+        missing.append("No completed report is available for the organisation yet.")
+
+    return {
+        "label": AUDIT_READINESS_LABEL,
+        "status": status,
+        "not_assurance": True,
+        "notice": AUDIT_NOT_ASSURANCE_NOTICE,
+        "evidence_coverage_pct": coverage_pct,
+        "components": {
+            "calculations_total": total,
+            "calculations_with_source_item": max(0, int(calculations_with_source)),
+            "evidence_complete": complete,
+            "evidence_partial": partial,
+            "evidence_unavailable": unavailable,
+            "documents": max(0, int(documents)),
+            "open_issues": max(0, int(open_issues)),
+            "awaiting_review_or_approval": max(0, int(awaiting_review)),
+            "reports_ready": max(0, int(reports_ready)),
+        },
+        "gaps": missing,
+    }
 
 #: Persisted item statuses -> workflow stage bucket (authoritative source:
 #: ``domain.partners.WORKFLOW_STAGE_STATUSES``).
@@ -61,6 +168,102 @@ def coerce_float(value: Any) -> float:
         return round(float(value), 2)
     except (TypeError, ValueError):
         return 0.0
+
+
+#: Normalised ORGANISATION-scoped material-activity stream ($1 = organisation).
+#: Unioned from the authoritative org-scoped tables plus the org-tagged audit
+#: ledger, so a material workflow can be reconstructed without a new table.
+_ORG_ACTIVITY_UNION = f"""
+SELECT a.performed_at AS occurred_at,
+       COALESCE(a.metadata->>'category', 'system') AS category,
+       a.action_type AS action,
+       COALESCE(a.metadata->>'actor', a.performed_by::text) AS actor,
+       a.metadata->>'actor_type' AS actor_type,
+       COALESCE(a.metadata->>'origin', 'human') AS origin,
+       a.metadata->>'outcome' AS outcome,
+       a.table_name AS resource_type,
+       a.record_id::text AS resource_id,
+       a.metadata AS detail
+  FROM public.audit_trail a
+ WHERE a.metadata->>'organization_id' = $1
+UNION ALL
+SELECT cs.calculated_at, 'calculation', 'calculation:completed',
+       COALESCE(cs.calculated_by, 'system'), NULL,
+       {_origin_sql('cs.calculated_by')}, 'success',
+       'calculation_snapshot', cs.id::text,
+       jsonb_build_object('activity', cs.activity, 'co2e_kg', cs.co2e_kg,
+                          'content_hash', cs.content_hash,
+                          'source_item_id', cs.source_item_id)
+  FROM public.calculation_snapshots cs
+ WHERE cs.organization_id = $1
+UNION ALL
+SELECT COALESCE(f.uploaded_at, f.created_at), 'document', 'document:uploaded',
+       COALESCE(f.uploaded_by::text, 'system'), NULL,
+       {_origin_sql('f.uploaded_by')}, 'success',
+       'organization_file', f.id::text,
+       jsonb_build_object('name', f.name, 'status', f.status)
+  FROM public.organization_files f
+ WHERE f.organization_id = $1 AND f.deleted_at IS NULL
+UNION ALL
+SELECT b.created_at, 'workflow', 'batch:created',
+       COALESCE(b.created_by::text, 'system'), NULL,
+       {_origin_sql('b.created_by')}, 'success',
+       'manual_extraction_batch', b.id::text,
+       jsonb_build_object('status', b.status, 'batch_name', b.batch_name)
+  FROM public.manual_extraction_batches b
+ WHERE b.organization_id = $1
+UNION ALL
+SELECT i.created_at, 'workflow', 'issue:created',
+       COALESCE(i.created_by::text, 'system'), NULL,
+       {_origin_sql('i.created_by')}, 'success',
+       'issue', i.id::text,
+       jsonb_build_object('status', i.status, 'severity', i.severity)
+  FROM public.issues i
+ WHERE i.organization_id = $1 AND i.entity_id IS NULL
+UNION ALL
+SELECT COALESCE(r.completed_at, r.created_at), 'report',
+       CASE WHEN r.status = 'completed' THEN 'report:generated'
+            ELSE 'report:' || COALESCE(r.status, 'queued') END,
+       COALESCE(r.created_by::text, r.user_id::text, 'system'), NULL,
+       {_origin_sql('COALESCE(r.created_by, r.user_id)')},
+       CASE WHEN r.status = 'failed' THEN 'failure' ELSE 'success' END,
+       'report', r.id::text,
+       jsonb_build_object('report_type', r.report_type,
+                          'reporting_year', r.reporting_year,
+                          'status', r.status)
+  FROM public.report_generation_queue r
+ WHERE r.organization_id = $1
+"""
+
+#: Normalised PROCESSING-ENTITY-scoped activity stream ($1 = entity id).
+_ENTITY_ACTIVITY_UNION = f"""
+SELECT b.created_at AS occurred_at, 'workflow' AS category,
+       'batch:created' AS action,
+       COALESCE(b.created_by::text, 'system') AS actor,
+       NULL AS actor_type, {_origin_sql('b.created_by')} AS origin,
+       'success' AS outcome, 'manual_extraction_batch' AS resource_type,
+       b.id::text AS resource_id,
+       jsonb_build_object('status', b.status) AS detail
+  FROM public.manual_extraction_batches b
+ WHERE b.entity_id = $1
+UNION ALL
+SELECT i.updated_at, 'workflow', 'item:' || COALESCE(i.status, 'updated'),
+       COALESCE(i.extracted_by::text, 'system'), NULL,
+       {_origin_sql('i.extracted_by')}, 'success',
+       'manual_extraction_item', i.id::text,
+       jsonb_build_object('status', i.status)
+  FROM public.manual_extraction_items i
+  JOIN public.manual_extraction_batches b ON b.id = i.batch_id
+ WHERE b.entity_id = $1
+UNION ALL
+SELECT iss.created_at, 'workflow', 'issue:created',
+       COALESCE(iss.created_by::text, 'system'), NULL,
+       {_origin_sql('iss.created_by')}, 'success',
+       'issue', iss.id::text,
+       jsonb_build_object('status', iss.status, 'severity', iss.severity)
+  FROM public.issues iss
+ WHERE iss.entity_id = $1
+"""
 
 
 class ReportingRepository(AbstractRepository[dict]):
@@ -799,3 +1002,219 @@ class ReportingRepository(AbstractRepository[dict]):
                 "entity": sum(1 for r in items if r["entity_id"] is not None),
             },
         }
+
+    # ------------------------------------------------------------------
+    # Phase 7 — Auditor / Assurance: activity, readiness, evidence package
+    # ------------------------------------------------------------------
+
+    async def org_audit_activity(
+        self,
+        org_id: str,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        category: Optional[str] = None,
+        origin: Optional[str] = None,
+        outcome: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Org-scoped, reconstructable material-activity timeline.
+
+        Sources: the org-tagged ``audit_trail`` plus the authoritative
+        org-scoped tables (``calculation_snapshots``, ``organization_files``,
+        ``manual_extraction_batches``, ``issues``, ``report_generation_queue``).
+        Every row is scoped to ``org_id`` — no cross-tenant leakage.
+        """
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        args: list[Any] = [org_id]
+        clauses: list[str] = []
+        if category:
+            args.append(category)
+            clauses.append(f"category = ${len(args)}")
+        if origin:
+            args.append(origin)
+            clauses.append(f"origin = ${len(args)}")
+        if outcome:
+            args.append(outcome)
+            clauses.append(f"outcome = ${len(args)}")
+        if start_date:
+            args.append(start_date)
+            clauses.append(f"occurred_at >= ${len(args)}::timestamptz")
+        if end_date:
+            args.append(end_date)
+            clauses.append(f"occurred_at <= ${len(args)}::timestamptz")
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        total_row = await self._fetch_one(
+            f"SELECT COUNT(*) AS n FROM ({_ORG_ACTIVITY_UNION}) ev{where}", *args
+        )
+        page_args = list(args) + [limit, offset]
+        rows = await self._fetch_all(
+            f"SELECT * FROM ({_ORG_ACTIVITY_UNION}) ev{where} "
+            f"ORDER BY occurred_at DESC NULLS LAST, resource_id DESC "
+            f"LIMIT ${len(page_args) - 1} OFFSET ${len(page_args)}",
+            *page_args,
+        )
+        return {
+            "organization_id": org_id,
+            "total": int(total_row["n"]) if total_row else 0,
+            "events": [dict(r) for r in rows],
+        }
+
+    async def entity_audit_activity(
+        self, entity_id: str, *, limit: int = 100, offset: int = 0
+    ) -> dict[str, Any]:
+        """Entity-scoped activity timeline (own entity only)."""
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        total_row = await self._fetch_one(
+            f"SELECT COUNT(*) AS n FROM ({_ENTITY_ACTIVITY_UNION}) ev", entity_id
+        )
+        rows = await self._fetch_all(
+            f"SELECT * FROM ({_ENTITY_ACTIVITY_UNION}) ev "
+            f"ORDER BY occurred_at DESC NULLS LAST, resource_id DESC "
+            f"LIMIT $2 OFFSET $3",
+            entity_id,
+            limit,
+            offset,
+        )
+        return {
+            "entity_id": entity_id,
+            "total": int(total_row["n"]) if total_row else 0,
+            "events": [dict(r) for r in rows],
+        }
+
+
+    async def audit_readiness(self, org_id: str) -> dict[str, Any]:
+        """Evidence-based readiness indicator (never an assurance opinion)."""
+        evidence = await self._fetch_one(
+            """
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE source_item_id IS NOT NULL) AS with_source,
+                   COUNT(*) FILTER (
+                     WHERE source_item_id IS NOT NULL AND source_file IS NOT NULL
+                       AND source_page IS NOT NULL) AS complete,
+                   COUNT(*) FILTER (
+                     WHERE (source_item_id IS NOT NULL OR source_file IS NOT NULL)
+                       AND NOT (source_item_id IS NOT NULL AND source_file IS NOT NULL
+                                AND source_page IS NOT NULL)) AS partial,
+                   COUNT(*) FILTER (
+                     WHERE source_item_id IS NULL AND source_file IS NULL) AS unavailable
+              FROM public.calculation_snapshots WHERE organization_id = $1
+            """,
+            org_id,
+        )
+        counts = await self._fetch_one(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM public.organization_files
+                WHERE organization_id = $1 AND is_active = TRUE
+                  AND deleted_at IS NULL) AS documents,
+              (SELECT COUNT(*) FROM public.issues
+                WHERE organization_id = $1 AND status = 'open'
+                  AND entity_id IS NULL) AS open_issues,
+              (SELECT COUNT(*) FROM public.report_generation_queue
+                WHERE organization_id = $1 AND status = 'completed') AS reports_ready,
+              (SELECT COUNT(*) FROM public.manual_extraction_items i
+                 JOIN public.manual_extraction_batches b ON b.id = i.batch_id
+                WHERE b.organization_id = $1
+                  AND i.status NOT IN ('approved', 'rejected',
+                                       'qc_approved', 'qc_rejected')) AS awaiting
+            """,
+            org_id,
+        )
+        ev = evidence or {}
+        c = counts or {}
+        return audit_readiness_from_counts(
+            calculations_total=int(ev.get("total") or 0),
+            calculations_with_source=int(ev.get("with_source") or 0),
+            evidence_complete=int(ev.get("complete") or 0),
+            evidence_partial=int(ev.get("partial") or 0),
+            evidence_unavailable=int(ev.get("unavailable") or 0),
+            open_issues=int(c.get("open_issues") or 0),
+            awaiting_review=int(c.get("awaiting") or 0),
+            reports_ready=int(c.get("reports_ready") or 0),
+            documents=int(c.get("documents") or 0),
+        )
+
+
+    async def audit_package(
+        self, org_id: str, *, reporting_year: Optional[int] = None, limit: int = 500
+    ) -> dict[str, Any]:
+        """Assemble a scoped, self-describing audit/evidence package.
+
+        Contains CarbonTally-generated evidence only (calculation snapshots
+        with factor provenance + integrity hashes, the org activity timeline
+        and the readiness indicator). It is NOT an assurance opinion; the
+        payload carries an explicit notice and a package hash for integrity.
+        """
+        limit = max(1, min(int(limit), 500))
+        org = await self._fetch_one(
+            "SELECT id::text AS id, name FROM public.organizations WHERE id = $1",
+            org_id,
+        )
+        snapshots = await self._fetch_all(
+            """
+            SELECT cs.id::text AS id, cs.calculated_at, cs.calculated_by,
+                   cs.activity, cs.activity_type, cs.quantity, cs.quantity_unit,
+                   cs.co2e_multiplier, cs.co2e_kg, cs.scope, cs.date,
+                   cs.reporting_year, cs.methodology, cs.algorithm_version,
+                   cs.content_hash, cs.factor_id::text AS factor_id,
+                   cs.factor_source, cs.factor_set,
+                   cs.source_item_id::text AS source_item_id,
+                   cs.source_file, cs.source_page,
+                   ef.activity_type AS factor_activity_type,
+                   ef.factor_source AS factor_catalogue_source,
+                   ef.reporting_year AS factor_year, ef.unit AS factor_unit
+              FROM public.calculation_snapshots cs
+              LEFT JOIN public.emission_factors ef ON ef.id = cs.factor_id
+             WHERE cs.organization_id = $1
+               AND ($2::int IS NULL OR cs.reporting_year = $2)
+             ORDER BY cs.calculated_at
+             LIMIT $3
+            """,
+            org_id,
+            reporting_year,
+            limit,
+        )
+        activity = await self.org_audit_activity(org_id, limit=limit)
+        readiness = await self.audit_readiness(org_id)
+
+        content: dict[str, Any] = {
+            "package": {
+                "document_type": "carbontally_audit_evidence_package",
+                "package_version": 1,
+                "generated_by": "CarbonTally",
+                "organization_id": org_id,
+                "reporting_year": reporting_year,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "notice": AUDIT_NOT_ASSURANCE_NOTICE,
+                "not_assurance": True,
+            },
+            "organization": dict(org) if org is not None else {"id": org_id},
+            "readiness": readiness,
+            "calculation_snapshots": [dict(r) for r in snapshots],
+            "workflow_history": activity["events"],
+            "integrity": {
+                "algorithm": "sha256",
+                "covered": [
+                    "package",
+                    "organization",
+                    "readiness",
+                    "calculation_snapshots",
+                    "workflow_history",
+                ],
+                "package_hash": None,
+            },
+        }
+        canonical = json.dumps(content, sort_keys=True, default=str)
+        content["integrity"]["package_hash"] = hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
+        content["counts"] = {
+            "calculation_snapshots": len(content["calculation_snapshots"]),
+            "workflow_history": len(content["workflow_history"]),
+        }
+        return content
+

@@ -16,10 +16,14 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.consultant_auth import require_consultant
+from api.consultant_auth import (
+    ensure_consultant_org_access,
+    require_consultant,
+)
 from api.dependencies import (
     RepositoryBundle,
     ensure_org_access,
+    ensure_org_audit_access,
     get_repositories,
 )
 from api.operations_auth import (
@@ -40,6 +44,21 @@ def _row(obj: Any) -> dict[str, Any]:
         return {}
     data = dict(obj) if not isinstance(obj, dict) else dict(obj)
     return {str(k): to_jsonable(v) for k, v in data.items()}
+
+
+def _parse_dt(value: Optional[str]):
+    """Parse an ISO-8601 query timestamp (``None`` when absent/blank)."""
+    if value is None or not str(value).strip():
+        return None
+    from datetime import datetime
+
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"invalid ISO-8601 timestamp: {value}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +261,13 @@ async def audit_reporting(
     actor: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
     entity_type: Optional[str] = Query(None),
+    entity_id: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    origin: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    organization_id: Optional[str] = Query(None),
+    since: Optional[str] = Query(None),
+    until: Optional[str] = Query(None),
     q: Optional[str] = Query(None, max_length=200),
     sort: Optional[str] = Query(None),
     order: Optional[str] = Query(None),
@@ -256,9 +282,10 @@ async def audit_reporting(
     before/after payloads are deliberately excluded to avoid exposing sensitive
     data; only action/actor/resource/timestamp/changed-field-names are shown.
 
-    ``q`` is a free-text search, ``sort``/``order`` select the server ordering
-    (BL-4). ``total`` is the real COUNT of matching rows (BL-4), so the console
-    paginates an honest total rather than the page length.
+    Phase 7 adds investigation filters (``category``, ``origin``, ``outcome``,
+    ``entity_id``, ``organization_id``, ``since``/``until``). ``q`` is a
+    free-text search, ``sort``/``order`` select the server ordering (BL-4).
+    ``total`` is the real COUNT of matching rows (BL-4).
     """
     require_internal_staff(context)
     ensure_staff_permission(context, "can_manage_staff")
@@ -270,7 +297,14 @@ async def audit_reporting(
         filters = AuditQuery(
             action=action,
             entity_type=entity_type,
+            entity_id=entity_id,
             actor=actor,
+            category=category,
+            origin=origin,
+            outcome=outcome,
+            organization_id=organization_id,
+            occurred_after=_parse_dt(since),
+            occurred_before=_parse_dt(until),
             q=q,
             sort=sort,
             order=order or "desc",
@@ -290,6 +324,11 @@ async def audit_reporting(
                 "entity_id": e.entity_id,
                 "action": e.action,
                 "actor": e.actor,
+                "actor_type": e.actor_type,
+                "origin": e.origin,
+                "outcome": e.outcome,
+                "category": e.category,
+                "organization_id": e.organization_id,
                 "occurred_at": e.occurred_at.isoformat() if isinstance(e.occurred_at, _dt) else str(e.occurred_at),
                 "reason": e.reason,
                 "ip_address": e.ip_address,
@@ -326,3 +365,123 @@ async def entity_performance_report(
                 detail=f"processing entity is {entity.status}; only active entities may access this surface",
             )
     return await repos.reporting.entity_performance(entity_id)
+
+# ---------------------------------------------------------------------------
+# Phase 7 — Auditor / Assurance: customer / consultant scoped auditability
+# ---------------------------------------------------------------------------
+#
+# CarbonTally provides traceable evidence + audit-ready records to support
+# independent assurance; it does NOT provide assurance. Customer-facing audit
+# visibility is restricted to the organisation's OWN scope (owner/admin).
+# Internal security/operational logs are NOT exposed to customers.
+
+@router.get("/api/v3/reporting/audit-readiness")
+async def audit_readiness_report(
+    organization_id: str = Query(..., min_length=1),
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Evidence-based AUDIT EVIDENCE READINESS indicator (org scope).
+
+    This describes the availability/completeness of CarbonTally evidence only.
+    It is explicitly NOT an assurance opinion, verification or certification
+    (``not_assurance: true``).
+    """
+    await ensure_org_audit_access(current_user, repos, organization_id)
+    return await repos.reporting.audit_readiness(organization_id)
+
+
+@router.get("/api/v3/reporting/audit-activity")
+async def audit_activity_report(
+    organization_id: str = Query(..., min_length=1),
+    category: Optional[str] = Query(None),
+    origin: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Org-scoped, reconstructable material-activity timeline.
+
+    Scoped to the organisation only (owner/admin, authorized consultant, or
+    internal staff). No cross-tenant leakage; no internal security logs.
+    """
+    await ensure_org_audit_access(current_user, repos, organization_id)
+    result = await repos.reporting.org_audit_activity(
+        organization_id,
+        limit=limit,
+        offset=offset,
+        category=category,
+        origin=origin,
+        outcome=outcome,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    result["events"] = [_row(e) for e in result["events"]]
+    return result
+
+
+@router.get("/api/v3/reporting/consultant-client/{client_id}/audit-activity")
+async def consultant_client_audit_activity(
+    client_id: str,
+    category: Optional[str] = Query(None),
+    origin: Optional[str] = Query(None),
+    outcome: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Client-scoped audit activity for an authorized consultant.
+
+    Access is resolved server-side against the caller's ACTIVE client grant
+    (``ensure_consultant_org_access``); a consultant can never read a client
+    they are not actively engaged with. Role/workspace names are never the
+    authorization boundary.
+    """
+    await ensure_consultant_org_access(current_user, repos, client_id)
+    result = await repos.reporting.org_audit_activity(
+        client_id,
+        limit=limit,
+        offset=offset,
+        category=category,
+        origin=origin,
+        outcome=outcome,
+    )
+    result["events"] = [_row(e) for e in result["events"]]
+    return result
+
+
+@router.get("/api/v3/ops/entities/{entity_id}/audit-activity")
+async def entity_audit_activity(
+    entity_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    context=Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Entity-scoped material-activity timeline (own entity / internal).
+
+    Processing-entity activity remains operationally scoped: it shows work
+    assigned to the entity, never customer-organisation data or internal
+    security logs. This is auditability, NOT employee surveillance.
+    """
+    require_entity_scope(context, entity_id)
+    if context.profile.entity_id is not None:
+        entity = await repos.entities.get(entity_id)
+        if entity is None:
+            raise HTTPException(status_code=404, detail="processing entity not found")
+        if entity.status != "active":
+            raise HTTPException(
+                status_code=403,
+                detail=f"processing entity is {entity.status}; only active entities may access this surface",
+            )
+    result = await repos.reporting.entity_audit_activity(
+        entity_id, limit=limit, offset=offset
+    )
+    result["events"] = [_row(e) for e in result["events"]]
+    return result
+

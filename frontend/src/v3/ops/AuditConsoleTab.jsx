@@ -14,7 +14,11 @@ export default function AuditConsoleTab({ canManage }) {
   const [entries, setEntries] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [filters, setFilters] = useState({ action: '', entity_type: '', actor: '', q: '' });
+  const [filters, setFilters] = useState({
+    action: '', entity_type: '', actor: '', q: '',
+    // Phase 7 — taxonomy investigation filters.
+    category: '', origin: '', outcome: '',
+  });
   const [qDraft, setQDraft] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('desc');
@@ -30,6 +34,9 @@ export default function AuditConsoleTab({ canManage }) {
     if (filters.entity_type) params.entity_type = filters.entity_type;
     if (filters.actor) params.actor = filters.actor;
     if (filters.q) params.q = filters.q;
+    if (filters.category) params.category = filters.category;
+    if (filters.origin) params.origin = filters.origin;
+    if (filters.outcome) params.outcome = filters.outcome;
     if (sortKey) {
       params.sort = sortKey;
       params.order = sortDir;
@@ -87,6 +94,10 @@ export default function AuditConsoleTab({ canManage }) {
     },
     { key: 'actor', header: 'Actor', accessor: 'actor', sortable: true, sortValue: (row) => (row.actor || '').toLowerCase() },
     { key: 'action', header: 'Action', accessor: 'action', sortable: true, sortValue: (row) => (row.action || '').toLowerCase() },
+    // Phase 7 — canonical taxonomy columns.
+    { key: 'category', header: 'Category', accessor: 'category', render: (row) => row.category || '—' },
+    { key: 'origin', header: 'Origin', accessor: 'origin', render: (row) => row.origin || '—' },
+    { key: 'outcome', header: 'Outcome', accessor: 'outcome', render: (row) => row.outcome || '—' },
     { key: 'entity_type', header: 'Resource', accessor: 'entity_type', sortable: true, sortValue: (row) => (row.entity_type || '').toLowerCase() },
     {
       key: 'entity_id',
@@ -159,6 +170,43 @@ export default function AuditConsoleTab({ canManage }) {
           {[...new Set(entries.map((e) => e.actor).filter(Boolean))].map((a) => (
             <option key={a} value={a}>{a.slice(0, 12)}…</option>
           ))}
+        </SelectInput>
+        <SelectInput
+          label="Category"
+          value={filters.category}
+          onChange={(e) => { setFilters({ ...filters, category: e.target.value }); setOffset(0); }}
+        >
+          <option value="">All categories</option>
+          <option value="authentication">authentication</option>
+          <option value="authorization">authorization</option>
+          <option value="document">document</option>
+          <option value="extraction">extraction</option>
+          <option value="mapping">mapping</option>
+          <option value="validation">validation</option>
+          <option value="calculation">calculation</option>
+          <option value="evidence">evidence</option>
+          <option value="workflow">workflow</option>
+          <option value="report">report</option>
+          <option value="administration">administration</option>
+          <option value="system">system</option>
+        </SelectInput>
+        <SelectInput
+          label="Origin"
+          value={filters.origin}
+          onChange={(e) => { setFilters({ ...filters, origin: e.target.value }); setOffset(0); }}
+        >
+          <option value="">Human + system</option>
+          <option value="human">Human</option>
+          <option value="system">System / automated</option>
+        </SelectInput>
+        <SelectInput
+          label="Outcome"
+          value={filters.outcome}
+          onChange={(e) => { setFilters({ ...filters, outcome: e.target.value }); setOffset(0); }}
+        >
+          <option value="">Any outcome</option>
+          <option value="success">Success</option>
+          <option value="failure">Failure</option>
         </SelectInput>
       </div>
 

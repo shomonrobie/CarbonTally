@@ -225,6 +225,53 @@ async def ensure_processing_org_access(
         )
 
 
+#: Organisation roles permitted to read organisation audit/evidence records.
+_ORG_AUDIT_ROLES = frozenset({"owner", "admin", "org_owner", "org_admin"})
+
+
+async def ensure_org_audit_access(
+    current_user: AuthUser,
+    repos: "RepositoryBundle",
+    organization_id: str,
+) -> None:
+    """Authorize org-scoped audit/evidence reads (Phase 7 — reuse, not bypass).
+
+    * CarbonTally INTERNAL staff: allowed (operational oversight).
+    * Processing Entity staff: denied (never customer-organisation scope).
+    * Organisation member: must be **owner/admin** of their own organisation.
+    * Consultant: must hold an ACTIVE client grant for the organisation.
+
+    The URL/workspace is never the boundary; scope + role/capability are
+    resolved server-side on every request.
+    """
+    if not organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="organization_id is required",
+        )
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Processing Entity staff cannot access customer audit records",
+        )
+    if current_user.is_internal_staff:
+        return
+    if current_user.is_org_member:
+        ensure_org_access(current_user, organization_id)
+        role = (current_user.role_name or current_user.role or "").lower()
+        if role not in _ORG_AUDIT_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Audit records require organisation owner/admin access",
+            )
+        return
+    from api.consultant_auth import (
+        ensure_consultant_org_access,  # local import — avoids a cycle
+    )
+
+    await ensure_consultant_org_access(current_user, repos, organization_id)
+
+
 # ===========================================================================
 # Repository bundle (per-request, prep-pack §4.1)
 # ===========================================================================

@@ -1254,11 +1254,48 @@ export const getOpsQcReporting = () =>
 export const getOpsAudit = (params = {}) => {
   const query = new URLSearchParams();
   // BL-4 — forward every supported audit filter/search/sort parameter.
-  ['limit', 'offset', 'action', 'entity_type', 'actor', 'q', 'sort', 'order'].forEach((key) => {
+  // Phase 7 adds the taxonomy investigation filters.
+  ['limit', 'offset', 'action', 'entity_type', 'entity_id', 'actor',
+    'category', 'origin', 'outcome', 'organization_id', 'since', 'until',
+    'q', 'sort', 'order'].forEach((key) => {
     const value = params[key];
     if (value !== undefined && value !== null && value !== '') query.set(key, value);
   });
   return v3Fetch(`/api/v3/ops/reporting/audit${query.toString() ? `?${query.toString()}` : ''}`);
+};
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Auditor / Assurance (scoped auditability + evidence package)
+// ---------------------------------------------------------------------------
+
+export const getAuditReadiness = (organizationId) =>
+  v3Fetch(`/api/v3/reporting/audit-readiness?organization_id=${encodeURIComponent(organizationId)}`);
+
+export const getAuditActivity = (organizationId, params = {}) => {
+  const query = new URLSearchParams({ organization_id: organizationId });
+  ['category', 'origin', 'outcome', 'start_date', 'end_date', 'limit', 'offset'].forEach((key) => {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
+  return v3Fetch(`/api/v3/reporting/audit-activity?${query.toString()}`);
+};
+
+export const getConsultantClientAuditActivity = (clientId, params = {}) => {
+  const query = new URLSearchParams();
+  ['category', 'origin', 'outcome', 'limit', 'offset'].forEach((key) => {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
+  return v3Fetch(
+    `/api/v3/reporting/consultant-client/${encodeURIComponent(clientId)}/audit-activity`
+    + (query.toString() ? `?${query.toString()}` : '')
+  );
+};
+
+export const auditPackageUrl = (organizationId, reportingYear) => {
+  const query = new URLSearchParams({ organization_id: organizationId });
+  if (reportingYear) query.set('reporting_year', reportingYear);
+  return `${API_URL}/api/v3/exports/audit-package.json?${query.toString()}`;
 };
 
 export const getEntityPerformance = (entityId) =>

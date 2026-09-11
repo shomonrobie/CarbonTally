@@ -13,7 +13,15 @@ import uuid
 from typing import Any, Optional
 
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
-from domain.audit import AuditEntry, AuditQuery
+from domain.audit import (
+    ACTOR_SYSTEM,
+    AuditEntry,
+    AuditQuery,
+    CAT_SYSTEM,
+    ORIGIN_SYSTEM,
+    classify_action,
+    classify_origin,
+)
 
 _SYSTEM_UUID = "00000000-0000-0000-0000-000000000000"
 
@@ -48,10 +56,27 @@ def _actor_uuid(actor: str) -> str:
 
 
 def _entry_metadata(entry: AuditEntry) -> str:
+    """Serialise the entry's v2.1 fields + Phase 7 taxonomy into ``metadata``.
+
+    Phase 7 always stamps ``category`` and ``origin`` (derived when the caller
+    did not set them) so the ledger is investigable without a schema change.
+    Actor type / outcome / organisation id are stored only when supplied.
+    """
+    actor_type = entry.actor_type
+    origin = entry.origin or classify_origin(entry.actor, actor_type)
+    category = entry.category or classify_action(entry.action)
     payload: dict[str, object] = {
         "correlation_id": entry.correlation_id,
         "actor": entry.actor,
+        "category": category,
+        "origin": origin,
     }
+    if actor_type is not None:
+        payload["actor_type"] = actor_type
+    if entry.outcome is not None:
+        payload["outcome"] = entry.outcome
+    if entry.organization_id is not None:
+        payload["organization_id"] = entry.organization_id
     if entry.reason is not None:
         payload["reason"] = entry.reason
     return dumps_jsonb(payload)
@@ -61,19 +86,28 @@ def _row_to_entry(row: Any) -> AuditEntry:
     r = dict(row)
     metadata = loads_jsonb(r.get("metadata")) or {}
     ip = r.get("ip_address")
+    action = str(r["action_type"])
+    actor = str(metadata.get("actor") or r.get("performed_by") or "")
+    actor_type = metadata.get("actor_type")
     return AuditEntry(
         id=str(r["id"]),
         correlation_id=str(metadata.get("correlation_id") or ""),
         entity_type=str(r["table_name"]),
         entity_id=str(r["record_id"]),
-        action=str(r["action_type"]),
-        actor=str(metadata.get("actor") or r.get("performed_by") or ""),
+        action=action,
+        actor=actor,
         occurred_at=r["performed_at"],
         changed_fields=loads_jsonb(r.get("changes")) or {},
         reason=metadata.get("reason"),
         ip_address=str(ip) if ip is not None else None,
         before=loads_jsonb(r.get("old_data")),
         after=loads_jsonb(r.get("new_data")),
+        # Phase 7 — read the taxonomy back; derive when an entry pre-dates it.
+        actor_type=actor_type,
+        origin=metadata.get("origin") or classify_origin(actor, actor_type),
+        outcome=metadata.get("outcome"),
+        organization_id=metadata.get("organization_id"),
+        category=metadata.get("category") or classify_action(action),
     )
 
 
@@ -125,6 +159,23 @@ def _where_clause(filters: AuditQuery) -> tuple[list[str], list[object]]:
             f"OR record_id::text ILIKE ${p} OR performed_by::text ILIKE ${p} "
             f"OR metadata->>'actor' ILIKE ${p} OR metadata->>'reason' ILIKE ${p})"
         )
+    # Phase 7 — investigation filters over the taxonomy stored in metadata.
+    # ``category`` additionally matches entries written before the taxonomy
+    # existed by deriving the same prefix mapping at the SQL boundary is not
+    # possible; those legacy rows carry no category and are therefore excluded
+    # from a category filter (honest: they are categorised on read, not in SQL).
+    if filters.category is not None:
+        params.append(filters.category)
+        clauses.append(f"metadata->>'category' = ${len(params)}")
+    if filters.origin is not None:
+        params.append(filters.origin)
+        clauses.append(f"metadata->>'origin' = ${len(params)}")
+    if filters.outcome is not None:
+        params.append(filters.outcome)
+        clauses.append(f"metadata->>'outcome' = ${len(params)}")
+    if filters.organization_id is not None:
+        params.append(filters.organization_id)
+        clauses.append(f"metadata->>'organization_id' = ${len(params)}")
     return clauses, params
 
 
@@ -240,7 +291,12 @@ class AuditRepository(AbstractRepository[AuditEntry]):
         return _row_to_entry(row) if row is not None else None
 
     async def save(self, entity: AuditEntry) -> AuditEntry:
-        """Persist an audit entry (append-only: ``save`` inserts)."""
+        """Persist an audit entry (append-only: ``save`` inserts only).
+
+        Phase 7 removed the previous ``ON CONFLICT (id) DO UPDATE`` upsert so
+        the write path can never rewrite history; the DB-level immutability
+        trigger (migration ``20260912000000``) enforces the same rule.
+        """
         if entity.id:
             row = await self._fetch_one(
                 f"""
@@ -251,18 +307,6 @@ class AuditRepository(AbstractRepository[AuditEntry]):
                 ) VALUES ($1, $2, $3, $4::uuid, $5::uuid, $6, $7::jsonb,
                           $8::jsonb, $9::jsonb, NULLIF($10, '')::inet,
                           $11::jsonb, NOW())
-                ON CONFLICT (id)
-                DO UPDATE SET
-                    action_type = EXCLUDED.action_type,
-                    table_name = EXCLUDED.table_name,
-                    record_id = EXCLUDED.record_id,
-                    performed_by = EXCLUDED.performed_by,
-                    performed_at = EXCLUDED.performed_at,
-                    old_data = EXCLUDED.old_data,
-                    new_data = EXCLUDED.new_data,
-                    changes = EXCLUDED.changes,
-                    ip_address = EXCLUDED.ip_address,
-                    metadata = EXCLUDED.metadata
                 RETURNING {_AUDIT_COLUMNS}
                 """,
                 entity.id,

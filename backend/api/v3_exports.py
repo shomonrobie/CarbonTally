@@ -10,14 +10,16 @@ import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.dependencies import (
     RepositoryBundle,
     ensure_org_access,
+    ensure_org_audit_access,
     get_repositories,
 )
-from auth import AuthUser, require_org_member
+from auth import AuthUser, get_current_user, require_org_member
 
 router = APIRouter(prefix="/api/v3/exports", tags=["V3 — Exports"])
 
@@ -83,3 +85,27 @@ async def export_documents_csv(
     ensure_org_access(current_user, organization_id)
     rows = await repos.exports.documents(organization_id)
     return _csv_response(rows, "documents.csv")
+
+
+@router.get("/audit-package.json")
+async def export_audit_package(
+    organization_id: str,
+    reporting_year: Optional[int] = None,
+    limit: int = 500,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Phase 7 — scoped audit/evidence package (JSON).
+
+    Contains CarbonTally-generated evidence only: calculation snapshots with
+    factor provenance and integrity hashes, the organisation activity timeline
+    and the evidence-readiness indicator, plus a package hash. It is **not** an
+    assurance opinion — the payload carries an explicit notice and
+    ``not_assurance: true``. Authorization: organisation owner/admin, an
+    authorized consultant (active client grant), or internal staff.
+    """
+    await ensure_org_audit_access(current_user, repos, organization_id)
+    package = await repos.reporting.audit_package(
+        organization_id, reporting_year=reporting_year, limit=limit
+    )
+    return JSONResponse(jsonable_encoder(package))
