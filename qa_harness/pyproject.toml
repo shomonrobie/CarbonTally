@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "carbontally-qa-harness"
+version = "1.1.0"
+description = "Reusable read-only QA Harness for CarbonTally V3 (database, RLS, API, auth, workflow, browser, UI/UX, accessibility, security boundary, reporting)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "CarbonTally QA" }]
+keywords = ["qa", "acceptance", "audit", "carbontally", "read-only"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Framework :: Pytest",
+]
+
+[project.optional-dependencies]
+# Minimal runtime surface. Heavy tools (playwright, axe, schemathesis) are
+# OPTIONAL: the harness degrades gracefully with "SKIPPED — TOOL UNAVAILABLE".
+core = ["PyYAML>=6.0", "requests>=2.31"]
+api = ["schemathesis>=3.32"]
+browser = ["playwright>=1.45"]
+test = ["pytest>=8.0"]
+
+# The package root is this directory: `qa_harness` maps to `.` so that
+# submodules like `qa_harness.core` resolve to `./core/` etc.
+[tool.setuptools]
+packages = [
+    "qa_harness",
+    "qa_harness.core",
+    "qa_harness.config",
+    "qa_harness.identities",
+    "qa_harness.db",
+    "qa_harness.api",
+    "qa_harness.browser",
+    "qa_harness.browser.playwright",
+    "qa_harness.browser.fixtures",
+    "qa_harness.browser.auth",
+    "qa_harness.browser.routes",
+    "qa_harness.browser.tables",
+    "qa_harness.browser.responsive",
+    "qa_harness.browser.accessibility",
+    "qa_harness.browser.workflows",
+    "qa_harness.visual",
+    "qa_harness.visual.axe",
+    "qa_harness.workflows",
+    "qa_harness.rules",
+    "qa_harness.agents",
+    "qa_harness.evidence",
+    "qa_harness.findings",
+    "qa_harness.reports",
+    "qa_harness.scripts",
+    "qa_harness.tests",
+    "qa_harness.tests.harness",
+    "qa_harness.tests.fixtures",
+]
+
+[tool.setuptools.package-dir]
+qa_harness = "."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "harness: tests that exercise the QA Harness itself (no CarbonTally contact)",
+    "mutation: tests that would mutate state (blocked by default)",
+]

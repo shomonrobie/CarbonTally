@@ -41,6 +41,12 @@ supabase/functions/.import_map.json
 
 # --- Public website candidate (superseded by the promotion into frontend/) ---
 website_candidate/
+
+# --- Investor demo seeding (local runtime artifacts — no credentials, but
+#     environment-specific; kept out of the repository) ---
+tools/seed_investor_demo/demo_manifest.json
+tools/seed_investor_demo/.demo_state.json
+tools/seed_investor_demo/DEMO_IDENTITIES.md
 # --- Local database backups ---
 /backups/*.dump
 /backups/*.backup
@@ -100,3 +106,10 @@ backend/carbon_tally_backup_data.sql
 /local_backups/
 # Local-only demo credentials (NEVER commit — contains local dev passwords)
 /.local-demo-credentials.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

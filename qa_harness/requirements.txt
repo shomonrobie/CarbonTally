@@ -1,0 +1,26 @@
+# CarbonTally QA Harness v1 — core runtime dependencies.
+#
+# Everything listed below is OPTIONAL at import time: the harness degrades
+# gracefully and reports "SKIPPED — TOOL UNAVAILABLE" when a dependency is
+# missing. Install the whole file for a full QA run:
+#
+#   pip install -r qa_harness/requirements.txt
+#
+# Optional heavy tools are intentionally NOT required for the harness itself
+# (see README.md → "Tool handling").
+
+# Core config + HTTP
+PyYAML>=6.0
+requests>=2.31
+
+# Harness self-tests (development)
+pytest>=8.0
+
+# Optional — API contract testing (Schemathesis)
+# schemathesis>=3.32
+
+# Optional — browser automation (Playwright + Chromium)
+# playwright>=1.45
+
+# Optional — AI analysis layer (OpenRouter via REST, no SDK needed)
+# openai>=1.30
