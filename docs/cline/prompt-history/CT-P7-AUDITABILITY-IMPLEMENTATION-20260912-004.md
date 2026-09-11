@@ -32,9 +32,11 @@ Delivered:
 | Item | Before | After |
 |---|---|---|
 | Branch | `main` | `main` |
-| HEAD | `9e13236149b8132d737258abc0aa7d69a974a85b` | see §11/§18 (recorded after tests) |
-| `origin/main` | `9e13236149b8132d737258abc0aa7d69a974a85b` | unchanged |
-| Worktree | dirty (pre-existing: 208 modified, 51 untracked) | pre-existing changes **preserved**; Phase 7 files added/modified |
+| HEAD | `9e13236149b8132d737258abc0aa7d69a974a85b` | **`436815721aa2ec4b1d8ccd4f23d80c196fdbb109`** (Phase 7 commit) |
+| `origin/main` | `9e13236149b8132d737258abc0aa7d69a974a85b` | unchanged — **not pushed** |
+| Worktree | dirty (pre-existing: 208 modified, 51 untracked) | pre-existing changes **preserved**; Phase 7 files committed (15 files, +2068/−24) |
+
+**Commit:** `4368157` — `feat(phase7): auditor/assurance auditability, taxonomy, evidence package` (15 files changed, 2068 insertions, 24 deletions). **Not pushed** (push remains a separate, unauthorised step).
 
 No destructive operation, no reset, no unrelated cleanup. Pre-existing modified/untracked work was not touched.
 
