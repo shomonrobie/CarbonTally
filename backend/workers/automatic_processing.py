@@ -154,12 +154,28 @@ class AutomaticProcessingWorker:
             audit_logger=audit_logger,
             algorithm_version=DEFAULT_ALGORITHM_VERSION,
         )
+        # Phase 2 — optional candidate AI extraction engine. When no provider is
+        # configured (env unset) this is None and the pipeline stays purely
+        # deterministic; a misconfiguration must never break the worker.
+        ai_extraction_engine = None
+        try:
+            from infra.ai_runtime import configured_ai_extraction_engine
+
+            ai_extraction_engine = configured_ai_extraction_engine()
+        except Exception as exc:  # noqa: BLE001 - worker must never fail to build
+            logger.warning("AI extraction engine unavailable: %r", exc)
+        if ai_extraction_engine is not None:
+            logger.info(
+                "automatic-processing worker: AI extraction enabled (model=%s)",
+                ai_extraction_engine.llm_client.model,
+            )
         return AutomaticProcessingService(
             repos,
             event_bus=event_bus,
             audit_logger=audit_logger,
             matching_engine=matching_engine,
             calculation_engine=calculation_engine,
+            ai_extraction_engine=ai_extraction_engine,
         )
 
 

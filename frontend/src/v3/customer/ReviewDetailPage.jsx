@@ -28,7 +28,9 @@ const WORKFLOW_STAGES = [
 
 function stageForStatus(status) {
   if (['approved', 'rejected', 'qc_approved', 'qc_rejected', 'completed'].includes(status)) return 'approve';
-  if (['calculated', 'customer_review'].includes(status)) return 'review';
+  // V1.2 — CT-QC-approved items are released for customer verification.
+  if (['ct_qc_approved', 'customer_review'].includes(status)) return 'review';
+  if (['calculated'].includes(status)) return 'review';
   if (['validating', 'validated'].includes(status)) return 'validate';
   if (['mapping', 'mapped'].includes(status)) return 'map';
   return 'extract';

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { resolvePostLoginPath } from './v3/api';
+import { goToWorkspace } from './v3/api';
 import toast from 'react-hot-toast';
 
 function AuthCallback() {
@@ -32,7 +32,14 @@ function AuthCallback() {
           console.log('👤 User:', session.user.email);
           toast.success(`Welcome ${session.user.email || 'to CarbonTally'}!`);
           // D29/F5 — land on the actor's server-authoritative workspace.
-          navigate(await resolvePostLoginPath(), { replace: true });
+          // Fail-closed: a resolution failure shows a controlled error/retry.
+          try {
+            await goToWorkspace(navigate);
+          } catch (err) {
+            console.error('❌ Workspace resolution failed:', err);
+            setError('Failed to load your workspace. Please try again.');
+            toast.error('Failed to load your workspace');
+          }
         } else {
           console.log('⏳ No session found, waiting...');
           // Wait and retry
@@ -42,7 +49,13 @@ function AuthCallback() {
           
           if (retrySession) {
             console.log('✅ Retry successful!');
-            navigate(await resolvePostLoginPath(), { replace: true });
+            try {
+              await goToWorkspace(navigate);
+            } catch (err) {
+              console.error('❌ Workspace resolution failed:', err);
+              setError('Failed to load your workspace. Please try again.');
+              toast.error('Failed to load your workspace');
+            }
           } else {
             console.error('❌ No session after retry');
             setError('Authentication failed - no session');

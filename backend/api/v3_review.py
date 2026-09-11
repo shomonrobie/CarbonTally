@@ -2,6 +2,20 @@
 
 Review queue, assignment and SLA settings — thin API over the V3 repositories.
 Staff-only (``require_admin``).
+
+WS2 / ARCH-0001 — canonical-surface note (2026-08-31):
+
+    The canonical review/SLA surface consumed by the product UI is
+    ``v3_operations`` (``/api/v3/ops/*``): ``GET/PUT /api/v3/ops/sla/settings``,
+    ``POST /api/v3/ops/review/{review_id}/assign`` and
+    ``POST /api/v3/ops/review/{review_id}/complete`` — those carry the full
+    staff-permission + Processing-Entity scoping model.
+
+    This module (``/api/v3/admin/*``) is retained as an admin-only,
+    legacy-compatibility surface with a deliberately simpler authorization
+    model (``require_admin``). It has no current frontend consumer. Both route
+    families are intentionally kept for API compatibility; do NOT delete this
+    module, and do NOT route new UI work through it.
 """
 from __future__ import annotations
 

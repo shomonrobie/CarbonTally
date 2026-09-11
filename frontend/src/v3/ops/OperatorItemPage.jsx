@@ -5,7 +5,7 @@
 // Previous/Next over the server-authorised batch item list) all work because
 // the workspace is a first-class route, not inline state under the queue.
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   calculateItem,
   extractItem,
@@ -29,10 +29,15 @@ const INTERNAL_API = {
 export default function OperatorItemPage() {
   const { itemId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [workspace, setWorkspace] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // CL-59 + WS4D — queue-state restoration: the Assignments surface deep-links
+  // here with ?tab=assignments so "Back to queue" returns to the tab the item
+  // was opened from (default data entry).
+  const backTab = searchParams.get('tab') || 'data-entry';
 
   const load = useCallback(async (id) => {
     setLoading(true);
@@ -75,7 +80,7 @@ export default function OperatorItemPage() {
             {workspace.item?.file_name || '—'} · {workspace.item?.status || ''}
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => navigate('/ops?tab=data-entry')}>
+        <Button variant="secondary" size="sm" onClick={() => navigate(`/ops?tab=${backTab}`)}>
           ← Back to queue
         </Button>
       </div>
@@ -85,6 +90,7 @@ export default function OperatorItemPage() {
         items={items}
         api={INTERNAL_API}
         onItemChange={onNavigate}
+        onSaved={() => load(itemId)}
         mode="staff"
         suggestions={workspace.source?.ocr_suggestions || null}
         validation={(workspace.validation && workspace.validation.findings) || []}

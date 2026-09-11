@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import asyncpg
+
+from core.exceptions import DuplicateMembershipError
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
 from domain.operations import AssetDetail, FacilityDetail, MemberRecord, VehicleDetail
 
@@ -111,17 +114,38 @@ class TenantRepository(AbstractRepository[dict]):
         return _row_to_member(row) if row is not None else None
 
     async def add_member(self, org_id: str, user_id: str, role: str) -> MemberRecord:
-        row = await self._fetch_one(
-            f"""
-            INSERT INTO public.organization_members (
-                organization_id, user_id, role, is_active, created_at
-            ) VALUES ($1, $2, $3, TRUE, NOW())
-            RETURNING {_MEMBER_COLUMNS}
-            """,
-            org_id,
-            user_id,
-            role,
-        )
+        """Add an organisation member.
+
+        BL-1 — membership uniqueness is enforced by the real schema's
+        ``organization_members_org_user_uniq`` unique index. An existing row
+        for the same (organisation, user) — active or deactivated — must NOT
+        create a second membership (that would corrupt role/RLS semantics).
+        We therefore fail closed with a controlled 409 conflict and never
+        silently change an existing user's role. Re-activation remains an
+        explicit UPDATE (``update_member``), preserving the product contract.
+        """
+        if await self.get_member_by_user(org_id, user_id) is not None:
+            raise DuplicateMembershipError(
+                "user is already a member of this organisation"
+            )
+        try:
+            row = await self._fetch_one(
+                f"""
+                INSERT INTO public.organization_members (
+                    organization_id, user_id, role, is_active, created_at
+                ) VALUES ($1, $2, $3, TRUE, NOW())
+                RETURNING {_MEMBER_COLUMNS}
+                """,
+                org_id,
+                user_id,
+                role,
+            )
+        except asyncpg.exceptions.UniqueViolationError:
+            # Race: another request inserted the same (org, user) between the
+            # pre-check and the INSERT. Translate to the same controlled 409.
+            raise DuplicateMembershipError(
+                "user is already a member of this organisation"
+            ) from None
         if row is None:
             raise RuntimeError("organization_members insert returned no row")
         return _row_to_member(row)

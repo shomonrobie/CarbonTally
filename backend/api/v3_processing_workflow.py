@@ -30,6 +30,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.consultant_auth import (
+    ensure_consultant_processing_authorized,
+    ensure_consultant_review_authorized,
+    ensure_consultant_submission_authorized,
+)
 from api.contracts import calculation_out
 from api.dependencies import (
     RepositoryBundle,
@@ -70,6 +75,25 @@ _STAGE_WORKING_STATUS: dict[str, str] = {
     "validation": "validating",
     "calculation": "calculating",
     "review": "customer_review",
+}
+
+#: P6-2A — the consultant capability required to claim/act on each processing
+#: stage (consultant path only; org-member and internal-staff paths unchanged).
+#: Stages without an entry are NOT consultant processing actions.
+#:
+#: P6-2C (PO-P6-2C-D2 / contract CARBONTALLY-P6-2C-IC-20260910-001) — an active
+#: consultant grant must NOT implicitly grant every workflow-stage capability.
+#: The generic `review` stage claim hands the item to the Customer Review surface,
+#: so it requires the existing `can_submit` capability; `source` is the alias of
+#: `extraction` and requires the same existing `can_extract` capability. No new
+#: capability, role or permission is introduced.
+_STAGE_PERMISSION: dict[str, str] = {
+    "source": "extract",
+    "extraction": "extract",
+    "mapping": "map",
+    "validation": "validate",
+    "calculation": "calculate",
+    "review": "submit",
 }
 
 
@@ -137,11 +161,19 @@ async def _get_checked_item(
     current_user: AuthUser,
     repos: RepositoryBundle,
     item_id: str,
+    *,
+    permission: Optional[str] = None,
 ) -> tuple:
     """Load an item + its batch and enforce organisation isolation.
 
     PO Decision 3 — consultants with an ACTIVE grant may operate their own
     customers' processing items (the grant is re-checked server-side).
+
+    P6-2A — when a processing *action* is requested, the canonical Consultant
+    processing authorization contract is enforced (active membership →
+    active engagement → capability → resource scope → D38 conflict) whenever
+    the caller acts in the CONSULTANT capacity. Organisation-member and
+    internal-staff callers are unaffected (P6-2-D10).
     """
     item = await repos.manual_extraction.get_item(item_id)
     if item is None:
@@ -150,7 +182,49 @@ async def _get_checked_item(
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
     await ensure_processing_org_access(current_user, repos, batch.organization_id)
+    if permission is not None:
+        await ensure_consultant_processing_authorized(
+            current_user, repos, batch=batch, item=item, permission=permission
+        )
     return item, batch
+
+
+async def _record_consultant_provenance(
+    repos: RepositoryBundle,
+    *,
+    item,
+    current_user: AuthUser,
+) -> None:
+    """P6-2D (D7) — persist durable, server-derived consultant provenance.
+
+    Called at every consultant-capacity processing action immediately before the
+    action's mutation, so the provenance exists exactly when the action occurs.
+
+    * **Firm** — resolved server-side from the caller's authorised consultant
+      membership/engagement relationship (``resolve_consultant_firm_id``). A
+      request-supplied firm/organization value is never consulted, so no actor
+      can cause another firm to be recorded.
+    * **Mode** — the item's canonical processing-mode classification at this
+      boundary, from the authoritative server-side predicate
+      (``item_is_automatic``): ``automatic`` or ``manual``. It is deliberately
+      NOT derived from the actor (automatic vs manual is actor-agnostic) and it
+      is stored separately from ``processing_origin``.
+
+    Non-consultant callers (organisation members, internal staff, PE staff) are
+    a no-op — no consultant firm provenance is recorded for them. Recording is
+    write-once in the repository, so later actions, later firms and later
+    membership/engagement changes never rewrite recorded provenance.
+    """
+    from api.consultant_auth import resolve_consultant_firm_id
+    from api.processing_mode import item_is_automatic
+
+    firm_id = await resolve_consultant_firm_id(current_user, repos)
+    if not firm_id:
+        return
+    mode = "automatic" if await item_is_automatic(repos, item) else "manual"
+    await repos.manual_extraction.record_consultant_provenance(
+        item.id, firm_id=firm_id, processing_mode=mode
+    )
 
 
 def _require_transition(item, target: str) -> None:
@@ -329,7 +403,10 @@ async def start_item(
             status_code=422,
             detail=f"unknown stage {payload.stage!r}; expected one of {WORKFLOW_STAGES}",
         )
-    item, batch = await _get_checked_item(current_user, repos, item_id)
+    item, batch = await _get_checked_item(
+        current_user, repos, item_id,
+        permission=_STAGE_PERMISSION.get(payload.stage),
+    )
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(
             status_code=409, detail=f"batch is {batch.status}"
@@ -338,6 +415,17 @@ async def start_item(
     if working is None:
         return item
     _require_transition(item, working)
+    if payload.stage == "review":
+        # P6-2B-4 — handing work to the Customer Review surface requires the
+        # mandatory CarbonTally CT-QC pass for MANUALLY processed work
+        # (automatic work is exempt). Runs AFTER the state-machine check (so
+        # existing 409 semantics are preserved) and BEFORE any mutation.
+        from api.processing_mode import ensure_manual_ct_qc_prerequisite
+
+        await ensure_manual_ct_qc_prerequisite(
+            repos, item, action="Customer Review"
+        )
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
     return await repos.manual_extraction.set_item_status(item_id, working)
 
 
@@ -349,8 +437,11 @@ async def extract_item(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Data-entry: save extracted fields and advance the item to ``extracted``."""
-    item, batch = await _get_checked_item(current_user, repos, item_id)
+    item, batch = await _get_checked_item(
+        current_user, repos, item_id, permission="extract"
+    )
     _require_transition(item, "extracted")
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
     return await repos.manual_extraction.save_extracted_data(
         item_id, payload.extracted_data, current_user.user_id
     )
@@ -364,7 +455,9 @@ async def map_item(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Mapping: record mapped fields + factor/tenant references; item → ``mapped``."""
-    item, batch = await _get_checked_item(current_user, repos, item_id)
+    item, batch = await _get_checked_item(
+        current_user, repos, item_id, permission="map"
+    )
     _require_transition(item, "mapped")
     if payload.emission_factor_used is None and not (payload.mapped_data or {}).get(
         "factor_id"
@@ -374,6 +467,7 @@ async def map_item(
             detail="an emission factor must be selected (emission_factor_used "
             "or mapped_data.factor_id)",
         )
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
     return await repos.manual_extraction.save_mapped_data(
         item_id,
         payload.mapped_data,
@@ -396,7 +490,9 @@ async def validate_item(
     ``work_item_id``) and the item routes back to ``mapping`` for rework. A
     clean run advances the item to ``validated``.
     """
-    item, batch = await _get_checked_item(current_user, repos, item_id)
+    item, batch = await _get_checked_item(
+        current_user, repos, item_id, permission="validate"
+    )
     _require_transition(item, "validated")
     findings = validate_processing_item(item)
     issues = (
@@ -407,6 +503,7 @@ async def validate_item(
         else []
     )
     target = "mapping" if issues else "validated"
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
     updated = await repos.manual_extraction.set_item_status(item_id, target)
     if not issues:
         # ISC-2 / CL-26 — a clean validation run proves previously blocking
@@ -430,6 +527,273 @@ async def validate_item(
 
 
 # ---------------------------------------------------------------------------
+# Consultant Review (P6-2B-1) — readiness control before the future submit step
+# ---------------------------------------------------------------------------
+
+
+class ConsultantReviewPayload(BaseModel):
+    """P6-2B-1 — Consultant Review decision on one processed item.
+
+    ``passed=True`` records the item as ``consultant_reviewed`` (ready for the
+    future P6-2B-2 submit action). ``passed=False`` routes the item back to
+    ``mapping`` rework. Review NEVER grants CarbonTally QC or Customer
+    Approval authority and NEVER requires ``can_submit``.
+    """
+
+    passed: bool = True
+    rejection_reason: Optional[str] = None
+    consultant_notes: Optional[str] = None
+
+
+async def _audit_consultant_review(
+    repos: RepositoryBundle,
+    *,
+    item_id: str,
+    actor: str,
+    status_from: str,
+    status_to: str,
+    passed: bool,
+    notes: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> None:
+    """Append-only human audit for Consultant Review (best-effort)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id=item_id,
+                entity_type="manual_extraction_item",
+                entity_id=item_id,
+                action="consultant.review:passed" if passed else "consultant.review:rework",
+                actor=actor,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={
+                    "status_from": status_from,
+                    "status_to": status_to,
+                    "consultant_notes": notes,
+                    "rejection_reason": reason,
+                },
+                before={"status": status_from},
+                after={"status": status_to},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the review
+        pass
+
+
+@router.post("/items/{item_id}/consultant-review")
+async def consultant_review_item(
+    item_id: str,
+    payload: ConsultantReviewPayload,
+    current_user: AuthUser = Depends(require_auth()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """P6-2B-1 — Consultant Review action (item-level, consultant capacity).
+
+    Authorization (complete BEFORE any mutation):
+
+        identity → active consultant membership → active engagement →
+        server-derived resource scope → D38 conflict → workflow-state
+        eligibility (item must be ``calculated``) → review decision.
+
+    Self-review is ratified (P6-2B-D1): the processing consultant may review
+    their own item. Review does NOT require ``can_submit`` and does NOT grant
+    QC or Customer Approval authority.
+    """
+    item = await repos.manual_extraction.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="item not found")
+    batch = await repos.manual_extraction.get_batch(item.batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+
+    await ensure_consultant_review_authorized(
+        current_user, repos, batch=batch, item=item
+    )
+
+    # Workflow-state eligibility: Consultant Review is entered ONLY from
+    # `calculated` (processing complete). A reviewed/advanced item cannot be
+    # re-reviewed here; any other state is rejected server-side.
+    if item.status != "calculated":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Consultant Review requires item status 'calculated' "
+                f"(current status: {item.status!r})"
+            ),
+        )
+
+    target = "consultant_reviewed" if payload.passed else "mapping"
+    _require_transition(item, target)
+    if not payload.passed and not (payload.rejection_reason or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="rejection_reason is required when Consultant Review fails",
+        )
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
+    updated = await repos.manual_extraction.set_item_status(item_id, target)
+    await _audit_consultant_review(
+        repos,
+        item_id=item.id,
+        actor=current_user.user_id,
+        status_from=item.status,
+        status_to=target,
+        passed=payload.passed,
+        notes=payload.consultant_notes,
+        reason=payload.rejection_reason,
+    )
+    if not payload.passed:
+        # P6-2E (D11) — lifecycle event 5 "rework" (consultant-review rejection
+        # routes the item back to `mapping`). Emitted only after the rejection
+        # transition + audit succeeded.
+        from services.consultant_lifecycle import (
+            REWORK_SOURCE_CONSULTANT_REVIEW_REJECTED,
+            notify_rework,
+        )
+
+        await notify_rework(
+            repos,
+            item=item,
+            source=REWORK_SOURCE_CONSULTANT_REVIEW_REJECTED,
+            batch=batch,
+        )
+    return {"item": updated}
+
+
+# ---------------------------------------------------------------------------
+# Consultant Submission (P6-2B-2) — Consultant Review → CarbonTally QC intake
+# ---------------------------------------------------------------------------
+
+#: P6-2B-2 — the existing CarbonTally QC intake state reached by Consultant
+#: submission. ``reviewed`` is the canonical internal hand-off state that the
+#: CT-QC pending queue (``list_ct_qc_pending``) lists and the CT-QC decision
+#: endpoint accepts — the work therefore becomes eligible for the EXISTING
+#: internal CarbonTally QC authority with no QC change. Consultant firm/origin
+#: distinction is deferred to the D7 provenance workstream (P6-2D) and is NOT
+#: represented here.
+_CT_QC_INTAKE_STATUS = "reviewed"
+
+
+async def _audit_consultant_submit(
+    repos: RepositoryBundle,
+    *,
+    item_id: str,
+    actor: str,
+    status_from: str,
+    status_to: str,
+) -> None:
+    """Append-only human audit for Consultant submission (best-effort)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id=item_id,
+                entity_type="manual_extraction_item",
+                entity_id=item_id,
+                action="consultant.submit:submitted",
+                actor=actor,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={
+                    "status_from": status_from,
+                    "status_to": status_to,
+                },
+                before={"status": status_from},
+                after={"status": status_to},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the submission
+        pass
+
+
+@router.post("/items/{item_id}/consultant-submit")
+async def consultant_submit_item(
+    item_id: str,
+    current_user: AuthUser = Depends(require_auth()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """P6-2B-2 — Consultant submission of reviewed work to CarbonTally QC.
+
+    Authorization (complete BEFORE any mutation or billing side effect):
+
+        identity → active consultant membership → active engagement →
+        ``can_submit`` capability (no other capability substitutes) →
+        server-derived resource scope → D38 conflict → workflow-state
+        eligibility (item must be ``consultant_reviewed``) → non-charging
+        entitlement availability (D6, fail closed) → submission mutation.
+
+    The item enters the existing CarbonTally QC intake state (``reviewed``)
+    and becomes eligible for the existing internal CarbonTally QC authority.
+    NO charge occurs (Customer Approval remains the canonical charge point).
+    Submission NEVER grants CarbonTally QC or Customer Approval authority.
+    The organization is derived server-side from the item's batch — the
+    request body is never consulted.
+    """
+    item = await repos.manual_extraction.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="item not found")
+    batch = await repos.manual_extraction.get_batch(item.batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+
+    await ensure_consultant_submission_authorized(
+        current_user, repos, batch=batch, item=item
+    )
+
+    # Workflow-state eligibility: submission is ONLY from Consultant Review
+    # completion (`consultant_reviewed`). No other state may be submitted, and
+    # a consultant cannot skip Consultant Review (an item must first have been
+    # reviewed).
+    if item.status != "consultant_reviewed":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Consultant submission requires item status 'consultant_reviewed' "
+                f"(current status: {item.status!r})"
+            ),
+        )
+
+    target = _CT_QC_INTAKE_STATUS
+    _require_transition(item, target)
+
+    # D6 — non-charging entitlement availability (server-authoritative, read
+    # only). Fails closed BEFORE any mutation when the client organisation has
+    # no active processing entitlement. No order/payment/credit/subscription
+    # mutation and no charge occurs here (charge point remains Customer
+    # Approval, D37).
+    try:
+        from services.billing import BillingError, BillingService
+
+        await BillingService(repos).ensure_processing_entitlement(
+            batch.organization_id
+        )
+    except BillingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
+    updated = await repos.manual_extraction.set_item_status(item_id, target)
+    await _audit_consultant_submit(
+        repos,
+        item_id=item.id,
+        actor=current_user.user_id,
+        status_from=item.status,
+        status_to=target,
+    )
+    # P6-2E (D11) — lifecycle event 2 "submitted_to_qc". Emitted only after the
+    # submission + audit succeeded (denial, state conflict and the non-charging
+    # entitlement preflight all raise before this point).
+    from services.consultant_lifecycle import notify_submitted_to_qc
+
+    await notify_submitted_to_qc(repos, item=item, batch=batch)
+    return {"item": updated}
+
+
+# ---------------------------------------------------------------------------
 # Calculation → customer review (verification workflow)
 # ---------------------------------------------------------------------------
 
@@ -449,13 +813,17 @@ async def calculate_item(
     mapped factor, persists the immutable snapshot + ``emissions_logs`` row,
     and only then stamps ``calculated_emissions_kg_co2e`` on the item.
     """
-    item, batch = await _get_checked_item(current_user, repos, item_id)
+    item, batch = await _get_checked_item(
+        current_user, repos, item_id, permission="calculate"
+    )
     _require_transition(item, "calculated")
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(status_code=409, detail=f"batch is {batch.status}")
 
     extracted = item.extracted_data or {}
     mapped = item.mapped_data or {}
+
+    await _record_consultant_provenance(repos, item=item, current_user=current_user)
 
     # D23 — multi-line documents calculate each mapped line and sum the result
     # (shared with the internal surface so both surfaces behave identically).
@@ -561,8 +929,52 @@ async def customer_review_item(
     charge). Pre-commercial orgs (no active subscription) are not charged.
     """
     item, batch = await _get_checked_item(current_user, repos, item_id)
+    # V1.2 / CT-QC-002/005 — Customer Approval must not bypass required
+    # CarbonTally QC. PE-originated work may only be submitted for customer
+    # review AFTER the late CarbonTally QC gate (ct_qc_approved). Internal
+    # items follow the canonical internal Review → CarbonTally QC path for new
+    # work while legacy calculated items keep their existing submission path.
+    origin = await repos.manual_extraction.get_item_origin(item_id)
+    if origin and origin.get("processing_origin") == "PROCESSING_ENTITY":
+        if item.status not in ("ct_qc_approved", "customer_review", "approved"):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "PE-originated work must pass CarbonTally QC "
+                    "(ct_qc_approved) before customer approval"
+                ),
+            )
     target = "approved" if payload.approved else "rejected"
     _require_transition(item, target)
+    # P6-2C (PO-P6-2C-D1 / contract CARBONTALLY-P6-2C-IC-20260910-001) — the
+    # `calculated → approved` transition exists ONLY for the automatic-processing
+    # workflow and is therefore explicitly automatic-processing-only. It is never
+    # a generic approval capability: a manually processed item has no approval
+    # path from `calculated` and must pass CarbonTally QC (`ct_qc_approved`)
+    # first. Runs AFTER the state-machine check (existing 409 semantics
+    # preserved) and BEFORE the D37 charge, so a denied request is zero
+    # workflow/billing mutation.
+    if item.status == "calculated":
+        from api.processing_mode import item_is_automatic
+
+        if not await item_is_automatic(repos, item):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "the calculated -> approved transition is "
+                    "automatic-processing only; manually processed work must "
+                    "pass CarbonTally QC (ct_qc_approved) before customer "
+                    "approval"
+                ),
+            )
+    # P6-2B-4 — mandatory CarbonTally CT-QC prerequisite for MANUALLY processed
+    # work (automatic work is exempt via the P1 containment predicate). Runs
+    # AFTER the state-machine check (preserving existing 409 semantics) and
+    # BEFORE the D37 charge, so a denied approval is zero workflow/billing
+    # mutation.
+    from api.processing_mode import ensure_manual_ct_qc_prerequisite
+
+    await ensure_manual_ct_qc_prerequisite(repos, item, action="Customer Approval")
     if not payload.approved and not (payload.rejection_reason or "").strip():
         raise HTTPException(
             status_code=422, detail="rejection_reason is required when rejecting"
@@ -596,6 +1008,14 @@ async def customer_review_item(
         # ISC-2 / CL-26 — an approved item must not carry stale blocking
         # validation issues; the approval closes them (history preserved).
         await repos.issues.resolve_open_for_item(item.id, current_user.user_id)
+    # P6-2E (D11) — lifecycle event 4 "customer_decision". Emitted only after
+    # the decision + billing/issue side-effects succeeded; recipients are the
+    # engaged firm's members (the client is the actor here).
+    from services.consultant_lifecycle import notify_customer_decision
+
+    await notify_customer_decision(
+        repos, item=item, approved=bool(payload.approved), batch=batch
+    )
     return updated
 
 

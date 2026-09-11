@@ -5,35 +5,44 @@
 // UX/navigation only: they stop an actor from landing on a workspace they do
 // not have, and redirect to an appropriate home. Guards never grant access.
 //
-//   useActorRoles()   — resolves org membership / staff / consultant once
-//   RoleRoute         — renders children only when the required role is held
+// Phase 3 / P1-B — actor roles are resolved from the single server-authoritative
+// /api/v3/me/context endpoint. A resolution failure is FAIL-CLOSED: the guard
+// shows a controlled error/retry state instead of silently redirecting an
+// existing user (previously a probe failure could bounce users to the public
+// site or organisation onboarding).
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { getConsultantProfile, getOpsMe, resolveV3Organization } from '../api';
+import { getMeContext } from '../api';
 
 export function useActorRoles() {
   const [roles, setRoles] = useState({
     org: null,
     isStaff: false,
     isConsultant: false,
+    isNewUser: false,
     loaded: false,
+    failed: false,
   });
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([
-      resolveV3Organization(),
-      getOpsMe().then(() => true).catch(() => false),
-      getConsultantProfile().then(() => true).catch(() => false),
-    ]).then(([orgResult, staffResult, consultantResult]) => {
-      if (!active) return;
-      setRoles({
-        org: orgResult.status === 'fulfilled' ? orgResult.value || null : null,
-        isStaff: staffResult.status === 'fulfilled' && staffResult.value === true,
-        isConsultant: consultantResult.status === 'fulfilled' && consultantResult.value === true,
-        loaded: true,
+    getMeContext()
+      .then((context) => {
+        if (!active) return;
+        const destination = context.destination || context.primary_workspace;
+        setRoles({
+          org: context.actor_type === 'customer' ? context.organization || true : null,
+          isStaff: context.actor_type === 'staff' || context.actor_type === 'entity_staff',
+          isConsultant: context.actor_type === 'consultant',
+          isNewUser: destination === '/onboarding',
+          loaded: true,
+          failed: false,
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setRoles((prev) => ({ ...prev, loaded: true, failed: true }));
       });
-    });
     return () => { active = false; };
   }, []);
 
@@ -52,6 +61,32 @@ export default function RoleRoute({ requireOrg, requireStaff, requireConsultant,
 
   if (!roles.loaded) {
     return <div className="v3-loading"><div className="spinner" />Checking access…</div>;
+  }
+
+  // Fail-closed: resolution failure → controlled error/retry, never a silent
+  // redirect (the UI is never the security boundary, but misrouting an
+  // existing user to the public site or onboarding is a genuine defect).
+  if (roles.failed) {
+    return (
+      <div className="v3-loading">
+        <div role="alert" style={{ color: '#b91c1c', marginBottom: '0.75rem' }}>
+          We couldn&apos;t verify your access just now. Please try again.
+        </div>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{ cursor: 'pointer', padding: '0.4rem 0.9rem', borderRadius: 6, border: '1px solid #94a3b8' }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // A genuinely new authenticated user (server-authoritative) must reach
+  // self-service onboarding — not a fallback redirect loop to the public site.
+  if (roles.isNewUser) {
+    return <Navigate to="/onboarding" replace />;
   }
 
   const required = (requireOrg && !roles.org)

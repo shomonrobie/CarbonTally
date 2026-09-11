@@ -19,7 +19,8 @@ import {
   v3UploadDocument,
 } from '../api';
 import { formatBytes } from '../utils';
-import { Button, EmptyState, ErrorState, LoadingState, StatusBadge } from '../components/ui';
+import { Button, ErrorState, LoadingState, StatusBadge } from '../components/ui';
+import DataTable from '../components/ui/DataTable';
 
 const STAGE_ORDER = ['source', 'extraction', 'mapping', 'validation', 'calculation', 'review', 'approval'];
 
@@ -144,6 +145,127 @@ export default function ProcessingPage() {
     }
   };
 
+  const itemColumns = [
+    {
+      key: 'file_name',
+      header: 'Item',
+      accessor: 'file_name',
+      sortable: true,
+      sortValue: (it) => (it.file_name || '').toLowerCase(),
+      render: (it) => <strong>{it.file_name}</strong>,
+      isHeader: true,
+    },
+    {
+      key: 'batch_name',
+      header: 'Batch',
+      accessor: 'batch_name',
+      sortable: true,
+      sortValue: (it) => (it.batch_name || '').toLowerCase(),
+      render: (it) => <span className="v3-muted">{it.batch_name || '—'}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      sortValue: (it) => (it.status || '').toLowerCase(),
+      render: (it) => <StatusBadge status={it.status} />,
+    },
+    {
+      key: 'document_type',
+      header: 'Type',
+      accessor: 'document_type',
+      sortable: true,
+      sortValue: (it) => (it.document_type || '').toLowerCase(),
+      render: (it) => <span className="v3-muted">{it.document_type || '—'}</span>,
+    },
+    {
+      key: 'calculated',
+      header: 'Calculated',
+      accessor: 'calculated_emissions_kg_co2e',
+      sortable: true,
+      sortValue: (it) => (it.calculated_emissions_kg_co2e != null ? it.calculated_emissions_kg_co2e : -1),
+      render: (it) => (it.calculated_emissions_kg_co2e != null ? `${it.calculated_emissions_kg_co2e} kg` : '—'),
+    },
+    {
+      key: 'actions',
+      header: '',
+      accessor: 'id',
+      render: (it) => (
+        <Button variant="secondary" size="sm" onClick={() => navigate(`/processing/${it.id}`)}>
+          Open workspace
+        </Button>
+      ),
+    },
+  ];
+
+  const jobColumns = [
+    {
+      key: 'file_name',
+      header: 'Document',
+      accessor: 'file_name',
+      sortable: true,
+      sortValue: (j) => (j.file_name || '').toLowerCase(),
+      render: (j) => <strong>{j.file_name}</strong>,
+      isHeader: true,
+    },
+    {
+      key: 'stage',
+      header: 'Stage',
+      accessor: 'stage',
+      sortable: true,
+      sortValue: (j) => (j.stage || '').toLowerCase(),
+      render: (j) => j.stage_label || j.stage,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      sortValue: (j) => (j.status || '').toLowerCase(),
+      render: (j) => <StatusBadge status={j.status} />,
+    },
+    {
+      key: 'attempt',
+      header: 'Attempt',
+      accessor: 'attempt_count',
+      sortable: true,
+      sortValue: (j) => (j.attempt_count != null ? j.attempt_count : -1),
+      render: (j) => <span className="v3-muted">{j.attempt_count}/{j.max_attempts}</span>,
+    },
+    {
+      key: 'detail',
+      header: 'Detail',
+      accessor: 'manual_review_reason',
+      render: (j) => (
+        <span className="v3-muted" style={{ maxWidth: 260 }}>
+          {j.manual_review_reason || (j.completeness != null ? `completeness ${Math.round(j.completeness * 100)}%` : '')}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      accessor: 'id',
+      render: (j) => (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {(j.stage === 'blocked' || j.stage === 'failed') && (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => onRetryJob(j.id)} disabled={busyJob === j.id}>
+                Retry
+              </Button>{' '}
+              {j.stage === 'blocked' && (
+                <Button variant="secondary" size="sm" onClick={() => onConfirmJob(j.id)} disabled={busyJob === j.id}>
+                  Confirm
+                </Button>
+              )}
+            </>
+          )}
+        </span>
+      ),
+    },
+  ];
+
   if (loading) return <LoadingState label="Loading processing..." />;
   if (error && !org) return <ErrorState inline message={error} onRetry={() => setRetryCount((n) => n + 1)} />;
 
@@ -203,71 +325,28 @@ export default function ProcessingPage() {
       </div>
       <div className="v3-card">
         <h2>Items ({items.length})</h2>
-        {items.length === 0 ? (
-          <EmptyState icon="documents" title="No processing items">Upload a document to create the first processing item.</EmptyState>
-        ) : (
-          <table className="v3-table">
-            <thead>
-              <tr><th>Item</th><th>Batch</th><th>Status</th><th>Type</th><th>Calculated</th><th></th></tr>
-            </thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.id}>
-                  <td><strong>{it.file_name}</strong></td>
-                  <td className="v3-muted">{it.batch_name || '—'}</td>
-                  <td><StatusBadge status={it.status} /></td>
-                  <td className="v3-muted">{it.document_type || '—'}</td>
-                  <td>{it.calculated_emissions_kg_co2e != null ? `${it.calculated_emissions_kg_co2e} kg` : '—'}</td>
-                  <td>
-                    <Button variant="secondary" size="sm" onClick={() => navigate(`/processing/${it.id}`)}>
-                      Open workspace
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Processing items"
+          columns={itemColumns}
+          rows={items}
+          clientPaginate
+          defaultPageSize={10}
+          resetKey={org?.id}
+          emptyLabel="No processing items yet. Upload a document to create the first processing item."
+        />
       </div>
 
       <div className="v3-card">
         <h2>Automatic processing jobs ({jobs.length})</h2>
-        {jobs.length === 0 ? (
-          <div className="v3-empty">No automatic-processing jobs yet.</div>
-        ) : (
-          <table className="v3-table">
-            <thead>
-              <tr><th>Document</th><th>Stage</th><th>Status</th><th>Attempt</th><th>Detail</th><th></th></tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => (
-                <tr key={j.id}>
-                  <td><strong>{j.file_name}</strong></td>
-                  <td>{j.stage_label || j.stage}</td>
-                  <td><StatusBadge status={j.status} /></td>
-                  <td className="v3-muted">{j.attempt_count}/{j.max_attempts}</td>
-                  <td className="v3-muted" style={{ maxWidth: 260 }}>
-                    {j.manual_review_reason || (j.completeness != null ? `completeness ${Math.round(j.completeness * 100)}%` : '')}
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {(j.stage === 'blocked' || j.stage === 'failed') && (
-                      <>
-                        <Button variant="secondary" size="sm" onClick={() => onRetryJob(j.id)} disabled={busyJob === j.id}>
-                          Retry
-                        </Button>{' '}
-                        {j.stage === 'blocked' && (
-                          <Button variant="secondary" size="sm" onClick={() => onConfirmJob(j.id)} disabled={busyJob === j.id}>
-                            Confirm
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Automatic processing jobs"
+          columns={jobColumns}
+          rows={jobs}
+          clientPaginate
+          defaultPageSize={10}
+          resetKey={org?.id}
+          emptyLabel="No automatic-processing jobs yet."
+        />
       </div>
     </div>
   );

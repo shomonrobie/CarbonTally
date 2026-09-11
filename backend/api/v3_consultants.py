@@ -18,9 +18,11 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from api.consultant_auth import (
     CLIENT_STATUSES,
+    CONSULTANT_ROLES,
     ConsultantContext,
     ensure_consultant_org_access,
     ensure_consultant_permission,
+    ensure_consultant_revocation_authority,
     require_consultant,
 )
 from api.consultant_branding import (
@@ -35,6 +37,7 @@ from api.dependencies import (
 )
 from auth import AuthUser, get_current_user
 from infra.audit_logger import AuditLogger
+from services.billing import resolve_registration_mode
 
 router = APIRouter(prefix="/api/v3/consultants", tags=["V3 — Consultants"])
 
@@ -210,7 +213,12 @@ async def get_my_profile(
     """The consultant profile plus the firm member's real permission flags
     (D25 — additive: existing profile fields unchanged; the ``can_*`` flags let
     the UI gate client-lifecycle/branding controls the way the backend already
-    enforces them)."""
+    enforces them).
+
+    P6-1B adds the authoritative MEMBERSHIP block (active membership state,
+    operating firm, role) and an ``entitlement_scope`` block. Both are derived
+    server-side from the resolved membership/firm — never from client state.
+    """
     try:
         from dataclasses import asdict
 
@@ -221,6 +229,33 @@ async def get_my_profile(
     base["can_upload_documents"] = bool(context.firm_member.can_upload_documents)
     base["can_generate_reports"] = bool(context.firm_member.can_generate_reports)
     base["can_manage_team"] = bool(context.firm_member.can_manage_team)
+
+    def _iso(value):
+        return value.isoformat() if value else None
+
+    base["membership"] = {
+        "id": context.firm_member.id,
+        "firm_id": context.firm_member.firm_id,
+        "role": context.firm_member.role,
+        "is_active": bool(context.firm_member.is_active),
+        "joined_at": _iso(context.firm_member.joined_at),
+        "invited_at": _iso(context.firm_member.invited_at),
+        "source": "consultant_firm_members",
+    }
+    # Entitlement scope (P6-1B §5/§12): Consultant capability is an
+    # ORGANISATION-scoped commercial entitlement. The organisation↔firm binding
+    # for org-upgraded consultants is not yet established (deferred D-C
+    # mapping), so no capability is bound here; existing pre-commercial
+    # consultant profiles/workspaces remain permitted (preserved distinction).
+    base["entitlement_scope"] = {
+        "consultant_capability_required_for_workspace": False,
+        "bound_organization_id": None,
+        "note": (
+            "Consultant capability is organization-scoped. Firm↔organization "
+            "binding is not yet established; pre-commercial consultant "
+            "workspace access remains permitted by the existing architecture."
+        ),
+    }
     return base
 
 
@@ -230,6 +265,19 @@ async def create_my_profile(
     current_user: AuthUser = Depends(get_current_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    # D-A (ratified, Phase 6): platform registration mode. INVITATION_ONLY
+    # closes CONSULTANT SELF-registration. Registration never authorizes
+    # client access or capabilities — the invited/authorized provisioning flow
+    # owns activation. CarbonTally-created demo/seeded identities are untouched.
+    mode = await resolve_registration_mode(repos)
+    if mode == "INVITATION_ONLY":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Platform registration is currently invitation-only. "
+                "Consultant self-registration is closed; provisioning requires an invitation."
+            ),
+        )
     existing = await repos.consultants.get_profile_by_user(current_user.user_id)
     if existing is not None:
         raise HTTPException(status_code=409, detail="consultant profile already exists")
@@ -346,6 +394,64 @@ async def update_my_branding(
     }
 
 
+def _ensure_firm_transition_allowed(client, target: str) -> None:
+    """P6-1C — gate consultant-side lifecycle moves by relationship origin.
+
+    ``engagement_request`` rows (Case B — pre-existing organisations) are
+    strictly governed by the domain engagement policy: the firm can never
+    activate a pending engagement (customer acceptance is the boundary) and may
+    only withdraw/re-request/suspend/end once live. Legacy and
+    consultant-CREATED client relationships keep the ratified D19 firm
+    lifecycle (target vocabulary enforced by the repository whitelist); the
+    firm may never manufacture a ``pending``/``rejected`` state for them.
+    """
+    from domain.partners import can_transition_consultant_engagement
+
+    origin = getattr(client, "relationship_origin", None) or "legacy"
+    if origin == "engagement_request":
+        if not can_transition_consultant_engagement(
+            client.status, target, actor_side="consultant", origin="engagement_request"
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "consultant-side transition not permitted for this engagement "
+                    f"(status={client.status!r}, origin={origin!r}, target={target!r})"
+                ),
+            )
+        return
+    if target in ("pending", "rejected"):
+        raise HTTPException(
+            status_code=403,
+            detail="pending/rejected engagement states are reserved for pre-existing-"
+            "organisation engagements (engagement_request origin)",
+        )
+
+
+async def _audit_engagement(repos, client_id: str, action: str, actor: str, after: str) -> None:
+    """Append-only audit for engagement lifecycle actions (human actor only)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="consultant_clients",
+                entity_id=client_id,
+                action=action,
+                actor=actor,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"status": after},
+                before=None,
+                after={"status": after},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the request
+        pass
+
+
 @router.get("/me/clients")
 async def list_my_clients(
     context: ConsultantContext = Depends(require_consultant),
@@ -355,26 +461,93 @@ async def list_my_clients(
     return {"clients": clients}
 
 
-@router.post("/me/clients", status_code=201)
-async def add_client(
-    payload: ClientCreate,
+@router.get("/me/engagements")
+async def list_my_engagements(
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    """The firm's Case-B engagement relationships (origin=engagement_request).
+
+    Lets the firm inspect pending/rejected/active engagement state for
+    ALREADY-existing client organisations without treating pending as access.
+    """
+    rows = await repos.consultants.list_clients(context.profile.id)
+    engagements = [
+        c for c in rows
+        if (c.relationship_origin or "legacy") == "engagement_request"
+    ]
+    return {"engagements": engagements}
+
+
+@router.post("/me/clients", status_code=201)
+async def add_client(
+    payload: ClientCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """P6-1C — REQUEST an engagement with an ALREADY-existing organisation.
+
+    A consultant cannot claim or access an existing CarbonTally organisation
+    merely by knowing its id (CT-CONSULT-003). This route creates a PENDING
+    engagement (``status='pending'``, ``relationship_origin=
+    'engagement_request'``); only an authorised customer representative can
+    ACCEPT it into ``active``. Consultant-CREATED customers (Case A) are still
+    granted active immediately through ``POST /me/customers`` and are never
+    routed here.
+    """
     ensure_consultant_permission(context, "manage_clients")
-    existing = await repos.consultants.get_client_by_org(
-        context.profile.id, payload.organization_id
-    )
+    org_id = payload.organization_id
+
+    existing = await repos.consultants.get_client_by_org(context.profile.id, org_id)
     if existing is not None:
-        raise HTTPException(status_code=409, detail="client already linked to this firm")
-    return await repos.consultants.add_client(
+        status = existing.status or "active"
+        if status in ("active", "pending", "suspended"):
+            raise HTTPException(
+                status_code=409,
+                detail="a relationship with this organisation already exists (active or pending)",
+            )
+        # rejected / ended / inactive -> re-request (pending) under the policy.
+        _ensure_firm_transition_allowed(existing, "pending")
+        updated = await repos.consultants.transition_client_lifecycle(
+            existing.id, "pending", actor_id=current_user.user_id
+        )
+        await _audit_engagement(
+            repos, existing.id, "consultant.client.engagement_requested",
+            current_user.user_id, "pending",
+        )
+        return updated
+
+    # Target validation (server-side; never trust the raw id).
+    target_org = await repos.organizations.get(org_id)
+    if target_org is None or not getattr(target_org, "is_active", True):
+        raise HTTPException(
+            status_code=404,
+            detail="organisation not found or not available for engagement",
+        )
+    profile = await repos.organizations.get_profile(org_id)
+    if profile is not None and str(profile.get("customer_type") or "") in ("internal", "pe_only"):
+        raise HTTPException(
+            status_code=403,
+            detail="engagement is not permitted with this organisation type",
+        )
+
+    created = await repos.consultants.add_client(
         context.profile.id,
-        payload.organization_id,
+        org_id,
         payload.client_name,
         payload.client_industry,
         payload.client_contact_email,
         payload.client_contact_name,
+        created_by=current_user.user_id,
+        relationship_origin="engagement_request",
+        status="pending",
     )
+    await _audit_engagement(
+        repos, created.id, "consultant.client.engagement_requested",
+        current_user.user_id, "pending",
+    )
+    return created
 
 
 class CustomerCreate(BaseModel):
@@ -448,6 +621,8 @@ async def create_customer(
     )
 
     # 3. Link the firm (active grant) — the consultant's client workspace.
+    #    Scope E (P6-BILL-1): the actor is the authenticated consultant
+    #    (server-authoritative provenance for the grant).
     await repos.consultants.add_client(
         context.profile.id,
         org_id,
@@ -455,6 +630,7 @@ async def create_customer(
         client_industry=payload.industry,
         client_contact_email=owner_email,
         client_contact_name=payload.owner_name,
+        created_by=current_user.user_id,
     )
 
     await _audit_consultant_created_customer(repos, context, org_id, name, owner_email)
@@ -490,13 +666,14 @@ async def update_client_status(
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    ensure_consultant_permission(context, "manage_clients")
+    ensure_consultant_revocation_authority(context)
     if payload.status not in CLIENT_STATUSES:
         raise HTTPException(
             status_code=422,
             detail=f"invalid client status {payload.status!r}; expected one of {', '.join(CLIENT_STATUSES)}",
         )
     client = await _checked_client(current_user, context, repos, client_id)
+    _ensure_firm_transition_allowed(client, payload.status)
     updated = await repos.consultants.transition_client_lifecycle(
         client.id, payload.status, actor_id=current_user.user_id
     )
@@ -521,8 +698,9 @@ async def suspend_client(
     Access is denied immediately at both the API and RLS layers (only
     ``status='active'`` grants access). Historical audit/provenance remains.
     """
-    ensure_consultant_permission(context, "manage_clients")
+    ensure_consultant_revocation_authority(context)
     client = await _checked_client(current_user, context, repos, client_id)
+    _ensure_firm_transition_allowed(client, "suspended")
     updated = await repos.consultants.transition_client_lifecycle(
         client.id, "suspended", actor_id=current_user.user_id
     )
@@ -547,8 +725,9 @@ async def end_client(
     Historical provenance is NOT authorization; a new relationship requires a
     new explicit grant (D19 §4).
     """
-    ensure_consultant_permission(context, "manage_clients")
+    ensure_consultant_revocation_authority(context)
     client = await _checked_client(current_user, context, repos, client_id)
+    _ensure_firm_transition_allowed(client, "ended")
     updated = await repos.consultants.transition_client_lifecycle(
         client.id, "ended", actor_id=current_user.user_id
     )
@@ -569,8 +748,9 @@ async def reactivate_client(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """D19 lifecycle: restore to ACTIVE (a new explicit grant decision)."""
-    ensure_consultant_permission(context, "manage_clients")
+    ensure_consultant_revocation_authority(context)
     client = await _checked_client(current_user, context, repos, client_id)
+    _ensure_firm_transition_allowed(client, "active")
     updated = await repos.consultants.transition_client_lifecycle(
         client.id, "active", actor_id=current_user.user_id
     )
@@ -703,8 +883,9 @@ async def deactivate_client(
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    ensure_consultant_permission(context, "manage_clients")
+    ensure_consultant_revocation_authority(context)
     client = await _checked_client(current_user, context, repos, client_id)
+    _ensure_firm_transition_allowed(client, "inactive")
     await repos.consultants.update_client_status(client.id, "inactive")
 
 
@@ -781,11 +962,63 @@ async def list_my_team(
 @router.post("/me/team", status_code=201)
 async def add_team_member(
     payload: FirmMemberCreate,
+    current_user: AuthUser = Depends(get_current_user),
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    """P6-1B — hardened firm membership provisioning.
+
+    Only a firm member holding the real ``can_manage_team`` permission may add
+    a member to the FIRM resolved server-side (``context.profile.id``). The new
+    member is created with a validated display role and ALL ``can_*`` permission
+    flags FALSE — no permission flag is grantable through this endpoint (the
+    schema has no such fields, and forged extra payload fields are ignored).
+    The authenticated actor is recorded in the append-only audit trail; a
+    client-supplied actor is never accepted. Duplicate active membership and
+    self-add are rejected.
+    """
     ensure_consultant_permission(context, "manage_team")
-    return await repos.consultants.add_firm_member(context.profile.id, payload.user_id, payload.role)
+    role = (payload.role or "consultant").strip().lower()
+    if role not in CONSULTANT_ROLES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"role must be one of {list(CONSULTANT_ROLES)}",
+        )
+    if payload.user_id == current_user.user_id:
+        raise HTTPException(
+            status_code=422,
+            detail="a consultant cannot add themselves to their own firm",
+        )
+    existing = await repos.consultants.get_firm_member_by_user(
+        context.profile.id, payload.user_id
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="user is already a member of this firm")
+    created = await repos.consultants.add_firm_member(
+        context.profile.id, payload.user_id, role
+    )
+    # Server-authoritative actor for the security-sensitive membership mutation.
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="consultant_firm_member",
+                entity_id=created.id,
+                action="consultant.team.added",
+                actor=current_user.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"user_id": payload.user_id, "role": role},
+                before=None,
+                after={"user_id": payload.user_id, "role": role, "is_active": True},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the team action
+        pass
+    return created
 
 
 @router.post("/me/team/{member_id}/deactivate")

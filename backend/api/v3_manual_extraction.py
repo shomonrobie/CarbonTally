@@ -129,10 +129,42 @@ async def update_item(
     batch = await repos.manual_extraction.get_batch(item.batch_id)
     if batch is not None:
         ensure_org_access(current_user, batch.organization_id)
-    return await repos.manual_extraction.update_item(
+    updated = await repos.manual_extraction.update_item(
         item_id,
         payload.extracted_data,
         payload.mapped_data,
         payload.calculated_emissions_kg_co2e,
         current_user.user_id,
     )
+    # WS4 Gate 6 (workstream W4 / gap G6-D) — human extraction edits are
+    # attributable (item-level audit, machine-origin flag when the previous
+    # extractor was the automatic pipeline's zero-UUID marker).
+    if payload.extracted_data is not None:
+        from api.audit_helpers import (
+            changed_extraction_keys,
+            record_item_extraction_edit,
+        )
+
+        await record_item_extraction_edit(
+            repos,
+            item_id=item_id,
+            action="org_item_extraction:edited",
+            actor=current_user.user_id,
+            correlation_id=(
+                str(item.document_processing_queue_id)
+                if item.document_processing_queue_id
+                else item_id
+            ),
+            job_id=(
+                str(item.document_processing_queue_id)
+                if item.document_processing_queue_id
+                else None
+            ),
+            status_from=item.status,
+            status_to=updated.status if updated is not None else "extracted",
+            previous_extracted_by=item.extracted_by,
+            changed_keys=changed_extraction_keys(
+                item.extracted_data, payload.extracted_data
+            ),
+        )
+    return updated

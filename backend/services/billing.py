@@ -16,6 +16,8 @@ from typing import Any, Optional
 from domain.audit import AuditEntry
 from domain.billing import (
     BILLING_MODES,
+    DEFAULT_REGISTRATION_MODE,
+    REGISTRATION_MODES,
     BillingOrder,
     CreditLedgerEntry,
     IdempotencyKey,
@@ -53,6 +55,24 @@ class OrderStateError(BillingError):
 class IdempotencyConflict(BillingError):
     def __init__(self, message: str) -> None:
         super().__init__(message, status_code=409)
+
+
+async def resolve_registration_mode(repos: Any) -> str:
+    """The platform registration mode from the versioned commercial config.
+
+    Canonical helper (D-A / CT-BILL-004): CarbonTally Administration publishes
+    ``billing_commercial_config`` key ``registration_mode`` =
+    ``{"mode": "INVITATION_ONLY"|"OPEN_REGISTRATION"}``. Missing/invalid values
+    fall back to ``DEFAULT_REGISTRATION_MODE`` (OPEN_REGISTRATION — the
+    pre-existing D35 self-service behaviour). The mode is a provisioning gate
+    only; it never grants authorization, organisation/client access, capability,
+    or CarbonTally Operations/Admin/PE authority.
+    """
+    cfg = await repos.billing_config.get_current("registration_mode")
+    mode = (cfg.config_value or {}).get("mode") if cfg else None
+    if mode not in REGISTRATION_MODES:
+        return DEFAULT_REGISTRATION_MODE
+    return mode
 
 
 class BillingService:
@@ -133,6 +153,9 @@ class BillingService:
             "features": (plan.features if plan else {}) or {},
             "team_member_limit": plan.team_member_limit if plan else None,
             "processing_limits": (plan.processing_limits if plan else {}) or {},
+            "capabilities": {
+                "consultant": self._consultant_capability_from_plan(plan),
+            },
             "config_versions": {
                 "credit_rules": credit_rules.version if credit_rules else None,
                 "storage": storage_cfg.version if storage_cfg else None,
@@ -140,6 +163,31 @@ class BillingService:
                 "standard_allowance": standard_cfg.version if standard_cfg else None,
             },
         }
+
+    async def ensure_processing_entitlement(self, organization_id: str) -> dict[str, Any]:
+        """D6 — non-charging processing-entitlement availability check (read-only).
+
+        Answers only: "can this organisation commercially continue this
+        processing workflow right now?" It uses the SAME server-authoritative
+        source as ``charge_processing`` (the active-subscription lookup) but
+        performs NO charge, NO credit consumption, NO usage recording and NO
+        order/payment/ledger/subscription/plan mutation.
+
+        Fails closed (``EntitlementUnavailableError``, 403) when the
+        organisation has no active processing entitlement — mirroring the
+        first gate of ``charge_processing`` (PO-D7) so work that cannot
+        commercially proceed is never submitted for QC.
+        """
+        entitlement = await self.get_entitlement(organization_id)
+        sub = await self.repos.billing_subscriptions.get_active_for_org(organization_id)
+        if sub is None:
+            raise EntitlementUnavailableError(
+                "No active processing entitlement for this organization — "
+                "consultant submission is denied. An organization must have an "
+                "active subscription/plan before its work can be submitted to "
+                "CarbonTally QC."
+            )
+        return entitlement
 
     async def _standard_usage_this_period(self, org_id: str, subscription: Optional[Subscription]) -> int:
         start = (
@@ -664,9 +712,17 @@ class BillingService:
         plan_version = sub.plan_version if sub else None
 
         if sub is None:
-            # Pre-commercial orgs (no active subscription) are not charged yet.
-            # Once an Admin activates a subscription, billing enforcement begins.
-            return {"mode": "no_subscription", "allowed": True, "charged": False}
+            # PO-D7 (ratified, Phase 6): no active processing entitlement ->
+            # the chargeable processing action is DENIED. Pre-commercial orgs
+            # are no longer silently processed for free. The authoritative org
+            # is always the organisation that owns the work/resource (derived
+            # server-side by the caller from the item/batch) — never a
+            # client/consultant-supplied value.
+            raise EntitlementUnavailableError(
+                "No active processing entitlement for this organization — "
+                "chargeable processing is denied. An organization must have an "
+                "active subscription/plan before its processing can be approved."
+            )
 
         if mode == "STANDARD":
             remaining = entitlement["standard"]["remaining"]
@@ -763,6 +819,61 @@ class BillingService:
             )
         )
 
+
+    # ------------------------------------------------------------------
+    # Consultant capability (D-C / CT-CONSULT-003 — additive org entitlement)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _consultant_capability_from_plan(plan) -> dict[str, Any]:
+        """Canonical consultant-capability projection of a plan's features.
+
+        A plan advertises Consultant capability through the additive feature
+        block ``features.consultant = {enabled, client_capacity,
+        team_member_limit, white_label, workspace, ...}``. Absence of the block
+        (or an inactive/no plan) means NO consultant entitlement. This never
+        grants org/client access by itself — client access stays on the active
+        ``consultant_clients`` grant (D15/D20) and action permissions stay on
+        the real capability model.
+        """
+        if plan is None:
+            return {
+                "entitled": False,
+                "client_capacity": None,
+                "team_member_limit": None,
+                "white_label": False,
+                "workspace": False,
+            }
+        raw = (plan.features or {}).get("consultant")
+        if not isinstance(raw, dict):
+            raw = {}
+        return {
+            "entitled": bool(raw.get("enabled", False)),
+            "client_capacity": raw.get("client_capacity"),
+            "team_member_limit": raw.get("team_member_limit"),
+            "white_label": bool(raw.get("white_label", False)),
+            "workspace": bool(raw.get("workspace", False)),
+        }
+
+    async def consultant_capability(self, organization_id: str) -> dict[str, Any]:
+        """Consultant capability entitlement of an organisation (server-side).
+
+        An existing CarbonTally organisation acquires Consultant capability
+        through its ACTIVE subscription's plan feature block — NO second
+        organisation is created and no org data/identity/history is changed
+        (D-C / CT-CONSULT-003). Returns the canonical capability projection.
+        """
+        sub = await self.repos.billing_subscriptions.get_active_for_org(organization_id)
+        plan = None
+        if sub is not None and sub.plan_code:
+            if sub.plan_version:
+                plan = await self.plans.get_version(sub.plan_code, sub.plan_version)
+            if plan is None:
+                plan = await self.plans.get_current_by_code(sub.plan_code)
+        capability = self._consultant_capability_from_plan(plan)
+        capability["organization_id"] = organization_id
+        capability["plan_code"] = plan.plan_code if plan is not None else None
+        return capability
 
     # ------------------------------------------------------------------
     # Helpers

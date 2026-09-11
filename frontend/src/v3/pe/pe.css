@@ -1,0 +1,147 @@
+/* frontend/src/v3/pe/pe.css — dedicated Processing Entity application shell
+   (V1.2 final architecture: PE → /pe → PEShell). Reuses the shared D21 tokens
+   and v3 shell styles; this file only scopes PE-specific presentation. */
+
+.pe-context-banner {
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-bottom: 1px solid #fecaca;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pe-context-banner button {
+  background: transparent;
+  border: 1px solid #b91c1c;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  color: #b91c1c;
+}
+
+.pe-nav .v3-nav-tag.pe-tag {
+  background: #0f766e; /* D21 semantic tone for the PE surface */
+  color: #fff;
+}
+
+.pe-nav-context .pe-role-chip {
+  background: #0f766e;
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.pe-nav .v3-nav-link.active {
+  color: #0f766e;
+  font-weight: 600;
+}
+
+/* WS3/D40 — PE notification entry point inside the dedicated PEShell */
+.pe-bell-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.v3-nav-icon-btn.pe-bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+}
+
+.pe-bell-btn:hover { background: rgba(15, 118, 110, 0.08); }
+
+.pe-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+.pe-bell-panel {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(70vh, calc(100vh - 80px));
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  z-index: 40;
+  text-align: left;
+  color: #0f172a;
+}
+
+.pe-bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.pe-bell-head strong { font-size: 0.9rem; }
+.pe-bell-head button { background: none; border: none; color: #0f766e; cursor: pointer; font-size: 0.8rem; padding: 0; }
+
+.pe-bell-empty { padding: 1rem 0.85rem; color: #64748b; font-size: 0.85rem; }
+
+.pe-bell-list { list-style: none; margin: 0; padding: 0.35rem 0; }
+
+.pe-bell-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0.5rem 0.85rem;
+}
+
+.pe-bell-item + .pe-bell-item { border-top: 1px solid #f1f5f9; }
+
+.pe-bell-item.unread { background: #f0fdfa; }
+
+.pe-bell-item-main {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pe-bell-title { font-weight: 600; font-size: 0.85rem; }
+.pe-bell-msg { color: #475569; font-size: 0.78rem; }
+
+.pe-bell-item-read {
+  background: none;
+  border: 1px solid #0f766e;
+  color: #0f766e;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+}
+

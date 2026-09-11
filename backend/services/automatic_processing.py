@@ -29,8 +29,10 @@ Gates
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
-from datetime import date as _Date, datetime
+from datetime import date as _Date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
@@ -38,15 +40,21 @@ from core.logging import get_logger
 from domain.automatic_processing import (
     AUTO_EXTRACT_CONFIDENCE_MIN,
     AUTO_MAPPING_CONFIDENCE_MIN,
+    REQUIRED_EXTRACT_FIELDS,
     RUNNABLE_STAGES,
     AutomaticProcessingJob,
 )
 from engines.calculation import CalculationEngine, CalculationRequest
 from engines.calculation import CalculationEngine
 from engines.processing_workflow import has_blocking_findings, validate_processing_item
+from infra.ai_runtime import configured_ai_attribution
 from infra.event_bus import EventBus
 from infra.supabase import get_service_client
-from services.automatic_extraction import extract_document
+from services.automatic_extraction import (
+    completeness_score,
+    extract_document,
+    extract_document_text,
+)
 from services.storage import DOCUMENTS_BUCKET, path_from_url
 
 logger = get_logger(__name__)
@@ -56,6 +64,32 @@ _MAX_INGEST_BYTES = 60 * 1024 * 1024
 
 #: Worker/system actor id recorded on synced manual-extraction items.
 _SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
+
+#: WS4 Gate 5 (task T4) — machine actor label for the automatic-processing
+#: extraction audit event (design 5.3). A machine label, NOT a user/PE/role/D38
+#: identity and never an authorization principal.
+_AUTOMATION_ACTOR = "automatic_pipeline"
+
+
+def _calc_payload_digest(
+    extracted: Optional[dict], mapped: Optional[dict]
+) -> str:
+    """Deterministic digest of the authoritative working data at calculate time.
+
+    WS4 Gate 6 (workstream W4 / gap G6-D): the per-line calculation request id
+    is keyed on this digest so (a) a crashed re-run with IDENTICAL data reuses
+    the exact snapshot (no duplicate calculations), while (b) a human-corrected
+    payload produces a DIFFERENT request id and therefore a NEW snapshot instead
+    of silently reusing the pre-correction snapshot. Canonical JSON keeps the
+    digest stable across value ordering.
+    """
+    canonical = json.dumps(
+        {"e": extracted, "m": mapped},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def _parse_date(value: Any) -> Optional[_Date]:
@@ -92,6 +126,80 @@ def _methodology_for(factor_kind: str, unit: Optional[str]) -> str:
     return "direct_multiply"
 
 
+def _missing_required(extracted: dict) -> list[str]:
+    """Unresolved canonical pipeline fields in ``extracted`` (for gate reasons).
+
+    Mirrors the completeness semantics: for a single-line document the required
+    top-level fields are checked; for a tabular document the union of the fields
+    still missing across every line is returned.
+    """
+    data = extracted or {}
+    lines = data.get("line_items") or []
+    if lines:
+        missing: set[str] = set()
+        for line in lines:
+            if not isinstance(line, dict):
+                continue
+            for field in ("activity", "quantity", "unit"):
+                if not str(line.get(field) or "").strip():
+                    missing.add(field)
+        return sorted(missing)
+    return [
+        field
+        for field in ("activity", "quantity", "unit")
+        if not str(data.get(field) or "").strip()
+    ]
+
+
+def _merge_extraction_candidates(deterministic: dict, ai: dict) -> dict:
+    """Merge an AI candidate under deterministic authority (Phase 2).
+
+    Fields the deterministic extractor already resolved are preserved verbatim;
+    AI fills only what deterministic left unresolved. When deterministic
+    produced no table but AI did, the AI table is the only candidate. The merge
+    never overwrites source evidence — it composes two candidate passes before
+    the deterministic gate.
+    """
+    out = dict(deterministic or {})
+    if not ai:
+        return out
+    det_lines = out.get("line_items") or []
+    ai_lines = ai.get("line_items") or []
+    if det_lines:
+        merged_lines: list[dict] = []
+        for idx, line in enumerate(det_lines):
+            if not isinstance(line, dict):
+                continue
+            merged = dict(line)
+            other = (
+                ai_lines[idx]
+                if idx < len(ai_lines) and isinstance(ai_lines[idx], dict)
+                else {}
+            )
+            for field in (
+                "activity", "quantity", "unit", "date",
+                "supplier", "amount", "currency", "invoice_number",
+            ):
+                if not str(merged.get(field) or "").strip() and str(
+                    other.get(field) or ""
+                ).strip():
+                    merged[field] = other[field]
+            merged_lines.append(merged)
+        out["line_items"] = merged_lines
+        return out
+    if ai.get("line_items"):
+        return dict(ai)
+    for field in (
+        "activity", "quantity", "unit", "date",
+        "supplier", "amount", "currency", "invoice_number",
+    ):
+        if not str(out.get(field) or "").strip() and str(
+            ai.get(field) or ""
+        ).strip():
+            out[field] = ai[field]
+    return out
+
+
 class AutomaticProcessingService:
     """Runs one durable job through the automatic pipeline stages."""
 
@@ -103,13 +211,20 @@ class AutomaticProcessingService:
         audit_logger=None,
         matching_engine=None,
         calculation_engine: Optional[CalculationEngine] = None,
+        ai_extraction_engine=None,
     ) -> None:
         self._repos = repos
         self._event_bus = event_bus
         self._audit_logger = audit_logger
         self._matching_engine = matching_engine
         self._calculation_engine = calculation_engine
+        self._ai_extraction_engine = ai_extraction_engine
         self._content_cache: dict[str, bytes] = {}
+
+    @property
+    def ai_extraction_engine(self):
+        """The optional candidate AI extraction engine (None = deterministic)."""
+        return self._ai_extraction_engine
 
     @property
     def repos(self):
@@ -135,6 +250,12 @@ class AutomaticProcessingService:
             guard += 1
             target = await self._run_stage(current, lock_token)
             if target == "blocked":
+                # The stage already persisted the manual-review gate + reason;
+                # reload and skip the fallback so the specific reason survives.
+                after = await self._repos.processing.get(current.id)
+                if after is not None and after.stage == "blocked":
+                    current = after
+                    break
                 await self._repos.processing.mark_blocked(
                     current.id,
                     reason=current.manual_review_reason or "manual review required",
@@ -270,13 +391,58 @@ class AutomaticProcessingService:
             )
             return "blocked"
         confidence = float(result.get("confidence") or 0.0)
+        method_stamp = method
+        # ------------------------------------------------------------------
+        # Phase 2 — optional candidate AI extraction. Runs only when an AI
+        # engine is configured AND the deterministic pass is below the auto
+        # completeness threshold (manual-review rescue) or the job explicitly
+        # requests AI (prefer_ai / ai_required). AI output is candidate data:
+        # deterministic fields win, the deterministic gate still applies, and
+        # mapping/validation/calculation consume the merged result unchanged.
+        # ------------------------------------------------------------------
+        ai_meta: Optional[dict] = None
+        if self._ai_extraction_engine is not None and (
+            confidence < AUTO_EXTRACT_CONFIDENCE_MIN
+            or job.metadata.get("prefer_ai")
+            or job.metadata.get("force_ai")
+            or job.metadata.get("ai_required")
+        ):
+            ai_meta, extracted, confidence, method_stamp = (
+                await self._run_ai_candidate(
+                    job, content, extracted, confidence, method
+                )
+            )
+            if ai_meta is not None and ai_meta.get("status") != "ok":
+                if (
+                    job.metadata.get("ai_required")
+                    or confidence < AUTO_EXTRACT_CONFIDENCE_MIN
+                ):
+                    # Durable failure: the job is blocked for human review with
+                    # the AI failure reason — never silently successful.
+                    await self._repos.processing.mark_blocked(
+                        job.id,
+                        reason=(
+                            f"AI extraction failed: {ai_meta.get('detail') or 'error'} "
+                            f"(deterministic completeness {confidence:.2f} below "
+                            f"{AUTO_EXTRACT_CONFIDENCE_MIN:.2f} threshold)"
+                        ),
+                        lock_token=lock_token,
+                        last_error=str(ai_meta.get("detail"))[:1000],
+                    )
+                    return "blocked"
+                logger.warning(
+                    "AI extraction failed for job %s but deterministic data "
+                    "already cleared the gate (proceeding)",
+                    job.id,
+                )
         if confidence < AUTO_EXTRACT_CONFIDENCE_MIN:
+            missing = _missing_required(extracted)
             await self._repos.processing.mark_blocked(
                 job.id,
                 reason=(
                     f"extraction completeness {confidence:.2f} below "
                     f"{AUTO_EXTRACT_CONFIDENCE_MIN:.2f} threshold — unresolved: "
-                    f"{', '.join(result.get('unresolved') or [])}"
+                    f"{', '.join(missing) or 'no usable data'}"
                 ),
                 lock_token=lock_token,
             )
@@ -289,6 +455,33 @@ class AutomaticProcessingService:
                 )
             except Exception:  # noqa: BLE001 — item sync must not break the job
                 logger.exception("item extraction sync failed for job %s", job.id)
+        ai_extraction_result = None
+        ai_extracted_at = None
+        ai_processing_time_ms = None
+        if ai_meta is not None:
+            ai_extracted_at = datetime.now(timezone.utc)
+            ai_processing_time_ms = int(ai_meta.get("processing_time_ms") or 0)
+            ai_extraction_result = {
+                "status": ai_meta.get("status"),
+                "method": ai_meta.get("method"),
+                "model": ai_meta.get("model"),
+                "confidence": ai_meta.get("confidence"),
+                "unresolved": ai_meta.get("unresolved") or [],
+                "detail": ai_meta.get("detail"),
+            }
+        # WS4 Gate 5 (task T3) — write-once automated-execution attribution.
+        # Only a CONTRIBUTING AI pass (status ok) records provider/model/version;
+        # deterministic-only outputs and failed-AI attempts leave the block NULL
+        # (truthful provenance). Facts come from the accepted T2 helper and are
+        # written via COALESCE (first-write-wins) in the repository.
+        automation_attribution: dict = {}
+        if ai_meta is not None and ai_meta.get("status") == "ok":
+            try:
+                automation_attribution = configured_ai_attribution()
+            except Exception:  # noqa: BLE001 - attribution must never break the job
+                logger.exception(
+                    "AI attribution facts unavailable for job %s", job.id
+                )
         await self._repos.processing.advance_stage(
             job.id,
             target_stage="mapping",
@@ -297,9 +490,173 @@ class AutomaticProcessingService:
             attempt_count=job.attempt_count + 1,
             page_count=result.get("page_count") or 0,
             ai_confidence_score=confidence,
-            ai_extraction_method=method,
+            ai_extraction_method=method_stamp,
+            metadata={"ai_extraction": ai_meta} if ai_meta is not None else None,
+            ai_extraction_result=ai_extraction_result,
+            ai_extracted_at=ai_extracted_at,
+            ai_processing_time_ms=ai_processing_time_ms,
+            automation_provider=automation_attribution.get("provider"),
+            automation_model=automation_attribution.get("model"),
+            automation_model_version=automation_attribution.get("model_version"),
+            # WS4 Gate 6 (workstream W1 / gap G6-A) — preserve the ORIGINAL
+            # machine-produced extraction output at the same write-once advance
+            # that first persists it. Deterministic-only runs are eligible (the
+            # automatic pipeline produced the output); the automation_* block
+            # above stays NULL for them. Human edits of `extracted_data` later
+            # can never replace or delete this preserved original.
+            automation_extracted_data=extracted,
+        )
+        # WS4 Gate 5 (task T4) — append-only extraction audit event with the
+        # machine actor, fired AFTER the persisted advance (best-effort; audit
+        # failure never breaks the job).
+        await self._audit_extraction(
+            job,
+            method_stamp=method_stamp,
+            automation_attribution=automation_attribution,
+            ai_meta=ai_meta,
+            confidence=confidence,
         )
         return "mapping"
+
+    async def _run_ai_candidate(
+        self,
+        job: AutomaticProcessingJob,
+        content: bytes,
+        extracted: dict,
+        confidence: float,
+        deterministic_method: str,
+    ) -> tuple[Optional[dict], dict, float, str]:
+        """Run one candidate AI extraction pass over the deterministic text.
+
+        Returns ``(ai_meta, extracted, confidence, method_stamp)``. On success
+        the deterministic and AI candidates are merged (deterministic wins) and
+        the merged completeness is returned. Every failure path returns an
+        ``error`` ai_meta so the durable caller can represent it durably.
+        """
+        # WS4 Gate 5 (task T3, G5) — failure envelopes must record the model id
+        # that was actually attempted (the engine's configured model) instead of
+        # ``None``, so the durable record can answer "which model was attempted?"
+        # truthfully. Never a credential.
+        def _attempted_model() -> Optional[str]:
+            try:
+                return self._ai_extraction_engine.llm_client.model
+            except Exception:  # noqa: BLE001 - attribution must never break the job
+                return None
+
+        try:
+            from time import monotonic
+
+            text_layer = extract_document_text(
+                content, job.file_name, job.metadata.get("mime") or ""
+            )
+            if text_layer.get("status") != "ok":
+                return (
+                    {
+                        "status": "error",
+                        "method": "ai",
+                        "model": _attempted_model(),
+                        "detail": text_layer.get("detail")
+                        or f"no text layer ({text_layer.get('status')})",
+                    },
+                    extracted,
+                    confidence,
+                    deterministic_method,
+                )
+            started = monotonic()
+            candidate = await self._ai_extraction_engine.extract_candidate(
+                text_layer.get("text") or "",
+                filename=job.file_name,
+                method=text_layer.get("method") or deterministic_method,
+            )
+            elapsed_ms = int((monotonic() - started) * 1000)
+        except Exception as exc:  # noqa: BLE001 — AI failure is a durable event
+            logger.exception("AI extraction crashed for job %s", job.id)
+            return (
+                {
+                    "status": "error",
+                    "method": "ai",
+                    "model": _attempted_model(),
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                },
+                extracted,
+                confidence,
+                deterministic_method,
+            )
+        model = candidate.get("model") or _attempted_model()
+        ai_method = candidate.get("method") or "ai"
+        if candidate.get("status") != "ok":
+            return (
+                {
+                    "status": "error",
+                    "method": ai_method,
+                    "model": model,
+                    "detail": candidate.get("detail") or candidate.get("status"),
+                    "processing_time_ms": elapsed_ms,
+                },
+                extracted,
+                confidence,
+                deterministic_method,
+            )
+        merged = _merge_extraction_candidates(
+            extracted, candidate.get("extracted_data") or {}
+        )
+        merged_confidence = completeness_score(merged)
+        ai_meta = {
+            "status": "ok",
+            "method": ai_method,
+            "model": model,
+            "confidence": round(float(candidate.get("confidence") or 0.0), 4),
+            "merged_confidence": round(merged_confidence, 4),
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
+            "processing_time_ms": elapsed_ms,
+            "unresolved": candidate.get("unresolved") or [],
+        }
+        method_stamp = f"{deterministic_method}+{ai_method}"
+        return ai_meta, merged, merged_confidence, method_stamp
+
+    async def _audit_extraction(
+        self,
+        job: AutomaticProcessingJob,
+        *,
+        method_stamp: str,
+        automation_attribution: dict,
+        ai_meta: Optional[dict],
+        confidence: float,
+    ) -> None:
+        """Best-effort append-only audit of one persisted automated extraction.
+
+        WS4 Gate 5 (task T4, design 5.3): one ``automatic_processing:extracted``
+        event per persisted extraction execution, correlated directly to the
+        durable job (``entity_id``/``correlation_id`` = job id) and carrying the
+        machine-attribution block plus the machine actor label. The audit trail
+        is append-only/deny-by-default and service-role written. Audit failures
+        are logged and never break the job.
+        """
+        if self._audit_logger is None:
+            return
+        try:
+            await self._audit_logger.log_action(
+                action="automatic_processing:extracted",
+                entity_type="document_processing_queue",
+                entity_id=job.id,
+                correlation_id=job.id,
+                actor=_AUTOMATION_ACTOR,
+                after={
+                    "method": method_stamp,
+                    "pipeline_version": job.pipeline_version,
+                    "provider": automation_attribution.get("provider"),
+                    "model": automation_attribution.get("model"),
+                    "model_version": automation_attribution.get("model_version"),
+                    "confidence": round(float(confidence), 4),
+                    "attempt_count": job.attempt_count + 1,
+                    "source_item_id": job.source_item_id,
+                    "ai_status": (ai_meta or {}).get("status"),
+                },
+            )
+        except Exception:  # noqa: BLE001 - audit must never break the job
+            logger.exception(
+                "automatic-extraction audit failed for job %s", job.id
+            )
 
     # ------------------------------------------------------------------
     # Stage: mapping
@@ -605,10 +962,19 @@ class AutomaticProcessingService:
         line_items = extracted.get("line_items") or []
         targets = line_items if line_items else [dict(extracted)]
 
-        # Deterministic request ids per job: a crashed re-run reuses the exact
-        # snapshot already persisted for this request (no duplicate calculations).
+        # Deterministic request ids per job+data-generation: a crashed re-run
+        # with identical data reuses the exact snapshot already persisted for
+        # this request (no duplicate calculations), while human-corrected data
+        # (G6-D) yields a different digest -> a NEW request id -> a NEW snapshot
+        # is calculated instead of silently reusing the pre-correction one.
+        calc_digest = _calc_payload_digest(extracted, job.mapped_data)
         request_ids = [
-            str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{job.id}::calc::{idx}"))
+            str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_DNS,
+                    f"{job.id}::calc::{idx}::c1::{calc_digest}",
+                )
+            )
             for idx in range(len(targets))
         ]
         if request_ids:
@@ -670,16 +1036,20 @@ class AutomaticProcessingService:
             lock_token=lock_token,
             calculation_snapshot_id=snapshot_ids[0],
         )
-        await self._notify(
-            job,
-            "processing.completed",
-            "Document processed automatically",
-            (
-                f"{job.file_name} was automatically extracted, mapped, validated "
-                f"and calculated ({float(total_co2e):g} kg CO2e). Review and "
-                f"approve it to record the emissions."
-            ),
-        )
+        # G6-D: a correction-driven recalculation reaches review again; notify
+        # only on the job's first completion so reprocessing never spams the
+        # owners/admins with duplicate "processed" notifications.
+        if job.notified_at is None:
+            await self._notify(
+                job,
+                "processing.completed",
+                "Document processed automatically",
+                (
+                    f"{job.file_name} was automatically extracted, mapped, "
+                    f"validated and calculated ({float(total_co2e):g} kg CO2e). "
+                    f"Review and approve it to record the emissions."
+                ),
+            )
         return "review"
 
     async def _calculate_line(

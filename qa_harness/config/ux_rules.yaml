@@ -1,0 +1,68 @@
+# Reusable workspace-UX rules (spec §20–§21).
+
+rules:
+  - key: queue_workspace_position
+    label: Long queue → workspace appears far below the queue
+    severity: P1
+    description: >
+      For long operational queues the preferred pattern is:
+      Queue page → Open Workspace → focused workspace page/route → Back to Queue.
+      Embedding the workbench at the bottom of a very long queue page (e.g.
+      y≈3180px below a 2579px 53-batch queue — historical UH-1) is flagged.
+      The harness measures queue length, workspace position, scroll distance,
+      route change, modal/drawer/page type and back navigation.
+
+  - key: permanent_loading
+    label: Permanent loading / spinner without progress
+    severity: P1
+    description: "Detect spinners that never resolve, blank screens and perpetual 'Loading…'."
+
+  - key: blank_screen
+    label: Blank screen
+    severity: P1
+    description: "A route that renders nothing visible while the API is healthy."
+
+  - key: raw_js_exception
+    label: Raw JavaScript exception on screen
+    severity: P1
+    description: "e.g. 'orgs.map is not a function' rendered into the page; capture console + network + route + role."
+
+  - key: raw_backend_exception
+    label: Raw backend exception surfaced to the client
+    severity: P2
+    description: "Stack traces or PGRST errors shown in the UI instead of a friendly message."
+
+  - key: unhandled_promise_rejection
+    label: Unhandled promise rejection
+    severity: P2
+    description: "Browser console captures; includes the failing network request when identifiable."
+
+  - key: broken_retry
+    label: Broken retry
+    severity: P2
+    description: "A retry button that does not re-issue the request or re-renders the same error."
+
+  - key: meaningless_error
+    label: Meaningless error message
+    severity: P2
+    description: "Generic 'Network error — please check your connection' hiding a 500 (historical API-8)."
+
+  - key: missing_empty_state
+    label: Missing empty state
+    severity: P3
+    description: "Empty data renders as a broken table or blank area rather than a designed empty state."
+
+  - key: misleading_edit_affordance
+    label: Misleading edit affordance for denied capability
+    severity: P2
+    description: "Read-only roles see enabled edit inputs/Save buttons that 403 on submit (historical CUS-4)."
+
+  - key: inconsistent_state_handling
+    label: Inconsistent error/empty state handling
+    severity: P3
+    description: "Some 403s surface as generic toasts; empty states that are really swallowed API errors."
+
+  - key: raw_identifier_display
+    label: Raw identifier displayed instead of a label
+    severity: P3
+    description: "Raw facility_id UUID in the assets list (historical MD-4/CL-19); raw floats without units (CON-7)."

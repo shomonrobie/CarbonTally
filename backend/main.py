@@ -335,7 +335,12 @@ async def health_check():
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
-    """Custom HTTP exception handler for consistent error responses."""
+    """Custom HTTP exception handler for consistent error responses.
+
+    RV-1 — forward ``exc.headers`` (e.g. the ``WWW-Authenticate: Bearer``
+    challenge raised by ``auth.get_current_user``) so the wire response keeps
+    standard auth semantics. The error envelope itself is unchanged.
+    """
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -346,7 +351,8 @@ async def http_exception_handler(request, exc):
                 "timestamp": datetime.now().isoformat(),
                 "path": request.url.path
             }
-        }
+        },
+        headers=exc.headers,
     )
 
 @app.exception_handler(Exception)
@@ -387,8 +393,12 @@ async def shutdown_event():
     except Exception:
         pass
     try:
-        from infra.supabase import close_service_pool
+        from infra.supabase import close_service_pool, reset_service_client
+
         close_service_pool()
+        # Phase 3 / P1-A — drop the process-wide service-role client reference so
+        # the client and its connection pool can be released on shutdown.
+        reset_service_client()
     except Exception:
         pass
 

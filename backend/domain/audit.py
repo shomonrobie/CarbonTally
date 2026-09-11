@@ -77,7 +77,10 @@ class AuditQuery:
     """Filters for querying and exporting the audit trail.
 
     Every filter is optional; unfiltered dimensions are ignored. ``limit`` and
-    ``offset`` page the result set.
+    ``offset`` page the result set. ``q`` is a free-text search across the
+    action, resource, actor, entity id and stored reason; ``sort``/``order``
+    select the server-side ordering (BL-4) so the audit console can page over
+    a full trail without loading it all.
     """
 
     correlation_id: Optional[str] = None
@@ -87,8 +90,13 @@ class AuditQuery:
     actor: Optional[str] = None
     occurred_after: Optional[datetime] = None
     occurred_before: Optional[datetime] = None
+    q: Optional[str] = None
+    sort: Optional[str] = None
+    order: str = "desc"
     limit: int = 100
     offset: int = 0
+
+    SORTABLE = ("occurred_at", "action", "actor", "entity_type")
 
     def __post_init__(self) -> None:
         if self.limit < 1:
@@ -101,3 +109,9 @@ class AuditQuery:
             and self.occurred_before < self.occurred_after
         ):
             raise ValueError("occurred_before is before occurred_after")
+        if self.sort is not None and self.sort not in self.SORTABLE:
+            raise ValueError(f"sort must be one of {sorted(self.SORTABLE)}")
+        if self.order not in ("asc", "desc"):
+            raise ValueError("order must be 'asc' or 'desc'")
+        if self.q is not None and not self.q.strip():
+            object.__setattr__(self, "q", None)

@@ -103,3 +103,51 @@ export function useFocusTrap(active, { onEscape } = {}) {
 
   return ref;
 }
+
+/**
+ * Client-side pagination state for the V3 DataTable (D20/D36).
+ *
+ * BL-2 — the customer operational tables (documents, processing, reports) are
+ * per-organisation, bounded-growable lists whose data is already loaded in
+ * full for filtering; the shared DataTable intentionally does not paginate
+ * over-broad server lists itself, so pages slice here instead. The page index
+ * is clamped whenever the row set shrinks (e.g. a server-side filter applies)
+ * so the UI never lands past the last page.
+ *
+ * @param {Array} rows        the full sorted/filtered row set
+ * @param {number} defaultLimit initial page size
+ */
+export function useClientTablePage(rows = [], defaultLimit = 10) {
+  const [limit, setLimit] = useState(defaultLimit);
+  const [page, setPage] = useState(0);
+
+  const total = Array.isArray(rows) ? rows.length : 0;
+  const pageCount = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount - 1));
+  }, [pageCount]);
+
+  const safePage = Math.min(page, pageCount - 1);
+  const start = safePage * limit;
+  const pageRows = Array.isArray(rows) ? rows.slice(start, start + limit) : [];
+
+  const onPage = (target) => {
+    setPage(Math.max(0, Math.min(target, pageCount - 1)));
+  };
+  const onLimitChange = (nextLimit) => {
+    setLimit(nextLimit);
+    setPage(0);
+  };
+
+  return {
+    pageRows,
+    total,
+    page: safePage,
+    pageCount,
+    limit,
+    onPage,
+    onLimitChange,
+  };
+}
+

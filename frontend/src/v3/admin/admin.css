@@ -58,11 +58,9 @@
   border-bottom-color: var(--ct-color-primary);
 }
 
-.v3-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
-}
+/* P0-4 — .v3-form-grid is defined once in v3.css (canonical shared foundation).
+   This duplicate (280px minmax) made the effective track width load-order
+   dependent and is removed; admin screens inherit the shared responsive rule. */
 
 .v3-form-group label {
   display: block;

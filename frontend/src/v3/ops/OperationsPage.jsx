@@ -3,15 +3,14 @@
 // /api/v3/ops/* surface. Every screen reads live server data; the frontend
 // never fabricates numbers.
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { getOpsMe } from '../api';
 import { LoadingState } from '../components/ui';
-import EntityExtractionWorkspace from './EntityExtractionWorkspace';
-import PEManagerDashboard from './PEManagerDashboard';
 import OpsDashboard from './OpsDashboard';
 import OperatorQueue from './OperatorQueue';
 import ProcessingEntitiesTab from './ProcessingEntitiesTab';
 import ReviewQueue from './ReviewQueue';
+import CtQcTab from './CtQcTab';
 import QcQueue from './QcQueue';
 import SlaTab from './SlaTab';
 import StaffRoster from './StaffRoster';
@@ -21,6 +20,8 @@ import SettingsTab from './SettingsTab';
 import IssuesTriageTab from './IssuesTriageTab';
 import AuditConsoleTab from './AuditConsoleTab';
 import OpsMessagingTab from './OpsMessagingTab';
+import OpsPeMessagingTab from './OpsPeMessagingTab';
+import OpsAssignmentsTab from './OpsAssignmentsTab';
 import './ops.css';
 
 export default function OperationsPage() {
@@ -44,16 +45,12 @@ export default function OperationsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // D22: Processing Entity staff never see the CarbonTally-internal tabs — they
-  // get the entity-scoped extraction workspace for their own entity.
+  // V1.2 FINAL (PEShell) — Processing Entity staff never see the shared
+  // Internal Operations hub: /ops redirects to the dedicated PE application
+  // (/pe → PEShell). The backend /api/v3/pe/* + /api/v3/me/context surfaces
+  // remain authoritative; this is navigation-only defence-in-depth.
   if (me?.profile?.entity_id) {
-    // Phase F close-out (F1) — a distinct PE Manager experience: managers land
-    // on the entity-wide manager dashboard; ?view=work switches to the item
-    // work surface. PE staff always get the work surface.
-    if (me?.profile?.role_name === 'pe_manager' && searchParams.get('view') !== 'work') {
-      return <PEManagerDashboard entityId={me.profile.entity_id} />;
-    }
-    return <EntityExtractionWorkspace entityId={me.profile.entity_id} />;
+    return <Navigate to="/pe" replace />;
   }
 
   // CL-62 — tabs are permission-aware: a tab is only rendered when the API it
@@ -69,6 +66,17 @@ export default function OperationsPage() {
   if (p.can_view_all) TABS.push({ id: 'dashboard', label: 'Dashboard', component: OpsDashboard });
   if (p.can_process) TABS.push({ id: 'data-entry', label: 'Data entry', component: OperatorQueue });
   if (p.can_review) TABS.push({ id: 'review', label: 'Review', component: ReviewQueue });
+  // WS4 continuation — Operations D38 assignment tab for internal staff with
+  // process/review capability.
+  if (p.can_process || p.can_review) {
+    TABS.push({ id: 'assignments', label: 'Assignments', component: OpsAssignmentsTab });
+  }
+  // V1.2 — late CarbonTally QC gate: the shared row permission `can_qc`
+  // (granted to internal qc_specialist + admin by the V1.2 migration) is the
+  // nav gate. Processing Entity staff never reach this code path (the
+  // entity_id branch above returns the PE workspace first); the backend
+  // require_internal_staff + can_qc checks stay authoritative.
+  if (p.can_qc) TABS.push({ id: 'ctqc', label: 'CarbonTally QC', component: CtQcTab });
   if (isGlobalAdmin) TABS.push({ id: 'qc', label: 'QC', component: QcQueue });
   if (p.can_manage_staff) {
     TABS.push(
@@ -77,6 +85,7 @@ export default function OperationsPage() {
       { id: 'entities', label: 'Entities', component: ProcessingEntitiesTab },
       { id: 'sla', label: 'SLA', component: SlaTab },
       { id: 'messaging', label: 'Messaging', component: OpsMessagingTab },
+      { id: 'peops', label: 'PE messages', component: OpsPeMessagingTab },
       { id: 'audit', label: 'Audit', component: AuditConsoleTab },
       { id: 'settings', label: 'Settings', component: SettingsTab },
     );

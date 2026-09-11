@@ -317,6 +317,7 @@ class MemoryLogs:
     def __init__(self, logs: Optional[list[EmissionLog]] = None) -> None:
         self._logs: list[EmissionLog] = list(logs or [])
         self._snapshots: dict[str, CalculationSnapshot] = {}
+        self._snapshot_actors: dict[str, Optional[str]] = {}
 
     async def save_snapshot(
         self,
@@ -328,10 +329,13 @@ class MemoryLogs:
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        performed_by: Optional[str] = None,
         factor_kind: Optional[str] = None,
         customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
         self._snapshots[snapshot.id] = snapshot
+        # Gate-4 remediation F1 — retain the actual human actor for assertions.
+        self._snapshot_actors[snapshot.id] = performed_by
         return snapshot
 
     async def count_snapshots(self, org_id: str, period: object) -> int:
@@ -606,6 +610,35 @@ class MemoryOrganizations:
             for m in self._members.values()
             if m["user_id"] == user_id and m.get("is_active", True)
         ]
+
+    def seed_org(
+        self,
+        org_id: str,
+        name: str = "Org",
+        country: str = "GB",
+        *,
+        is_active: bool = True,
+        customer_type: Optional[str] = None,
+    ) -> Organization:
+        """Sync helper: register an ALREADY-EXISTING organisation (P6-1C Case B)."""
+        org = Organization(
+            id=org_id,
+            name=name,
+            country=country,
+            is_active=is_active,
+            created_at=datetime.now(timezone.utc),
+        )
+        self._orgs[org_id] = org
+        self._profiles[org_id] = {
+            "id": org_id,
+            "name": name,
+            "country": country,
+            "is_active": is_active,
+            "created_at": org.created_at.isoformat(),
+            "updated_at": None,
+            "customer_type": customer_type,
+        }
+        return org
 
     async def create_with_owner(
         self,
@@ -1224,6 +1257,14 @@ class MemoryTenant:
         return None
 
     async def add_member(self, org_id: str, user_id: str, role: str) -> dict[str, Any]:
+        # BL-1 — mirror the real repository: an existing (org, user) membership
+        # (active or inactive) is a controlled 409, never a second row.
+        if await self.get_member_by_user(org_id, user_id) is not None:
+            from core.exceptions import DuplicateMembershipError
+
+            raise DuplicateMembershipError(
+                "user is already a member of this organisation"
+            )
         member = {
             "id": str(uuid.uuid4()),
             "organization_id": org_id,
@@ -1402,9 +1443,9 @@ class MemoryConsultants:
         self._tasks: list[object] = []
         self._brandings: dict[str, object] = {}
 
-    def seed_profile(self, profile_id, user_id, company_name="Acme Consultants"):
+    def seed_profile(self, profile_id, user_id, company_name="Acme Consultants", *, is_active=True):
         profile = self._profile_type(
-            id=profile_id, user_id=user_id, company_name=company_name, is_active=True
+            id=profile_id, user_id=user_id, company_name=company_name, is_active=is_active
         )
         self._profiles[profile_id] = profile
         return profile
@@ -1419,6 +1460,12 @@ class MemoryConsultants:
         can_upload_documents=False,
         can_generate_reports=False,
         can_manage_team=False,
+        can_extract=False,
+        can_map=False,
+        can_validate=False,
+        can_calculate=False,
+        can_confirm_automation=False,
+        can_submit=False,
         client_access=None,
         is_active=True,
     ):
@@ -1432,18 +1479,25 @@ class MemoryConsultants:
             can_upload_documents=can_upload_documents,
             can_generate_reports=can_generate_reports,
             can_manage_team=can_manage_team,
+            can_extract=can_extract,
+            can_map=can_map,
+            can_validate=can_validate,
+            can_calculate=can_calculate,
+            can_confirm_automation=can_confirm_automation,
+            can_submit=can_submit,
             client_access=list(client_access or []),
         )
         self._members.append(member)
         return member
 
-    def seed_client(self, client_id, consultant_id, organization_id, client_name, status="active"):
+    def seed_client(self, client_id, consultant_id, organization_id, client_name, status="active", relationship_origin="consultant_created_customer"):
         client = self._client_type(
             id=client_id,
             consultant_id=consultant_id,
             organization_id=organization_id,
             client_name=client_name,
             status=status,
+            relationship_origin=relationship_origin,
         )
         self._clients.append(client)
         return client
@@ -1478,6 +1532,13 @@ class MemoryConsultants:
             (m for m in self._members if m.firm_id == firm_id and m.user_id == user_id),
             None,
         )
+
+    async def get_active_memberships_by_user(self, user_id: str):
+        """Canonical Layer-2 membership query (active rows only)."""
+        return [
+            m for m in self._members
+            if m.user_id == user_id and bool(getattr(m, "is_active", True))
+        ]
 
     async def add_firm_member(self, firm_id: str, user_id: str, role: str):
         member = self._member_type(
@@ -1514,7 +1575,12 @@ class MemoryConsultants:
         client_industry=None,
         client_contact_email=None,
         client_contact_name=None,
+        created_by=None,
+        relationship_origin="consultant_created_customer",
+        status="active",
     ):
+        from datetime import datetime, timezone
+
         client = self._client_type(
             id=f"client-{organization_id}",
             consultant_id=consultant_id,
@@ -1523,10 +1589,24 @@ class MemoryConsultants:
             client_industry=client_industry,
             client_contact_email=client_contact_email,
             client_contact_name=client_contact_name,
-            status="active",
+            status=status,
+            created_by=created_by,
+            relationship_origin=relationship_origin,
+            engagement_requested_at=(
+                datetime.now(timezone.utc) if status == "pending" else None
+            ),
         )
         self._clients.append(client)
         return client
+
+    async def list_engagements_for_org(
+        self, organization_id: str, statuses=None
+    ):
+        statuses = tuple(statuses or ("pending",))
+        return [
+            c for c in self._clients
+            if c.organization_id == organization_id and c.status in statuses
+        ]
 
     async def get_client(self, client_id: str):
         return next((c for c in self._clients if c.id == client_id), None)
@@ -1556,12 +1636,20 @@ class MemoryConsultants:
 
         for i, client in enumerate(self._clients):
             if client.id == client_id:
+                now = datetime.now(timezone.utc)
+                decided = client.engagement_decided_by
+                decided_at = client.engagement_decided_at
+                if target_status in ("active", "rejected"):
+                    decided = actor_id
+                    decided_at = now
                 updated = replace(
                     client,
                     status=target_status,
-                    ended_at=datetime.now(timezone.utc) if target_status == "ended" else client.ended_at,
+                    ended_at=now if target_status == "ended" else client.ended_at,
                     ended_by=actor_id if target_status == "ended" else client.ended_by,
-                    lifecycle_updated_at=datetime.now(timezone.utc),
+                    lifecycle_updated_at=now,
+                    engagement_decided_by=decided,
+                    engagement_decided_at=decided_at,
                 )
                 self._clients[i] = updated
                 return updated
@@ -2133,6 +2221,46 @@ class MemoryManualExtraction:
         self._items[item_id] = updated
         return updated
 
+    async def ct_qc_decision(
+        self,
+        item_id: str,
+        approved: bool,
+        qc_by: str,
+        quality_score: int,
+        qc_notes: Optional[str],
+    ) -> Optional[ManualExtractionItem]:
+        """Mirror of ``ManualExtractionRepository.ct_qc_decision`` (late CT-QC).
+
+        Only items still in CT-QC intake (``reviewed`` / ``pe_qc_approved`` /
+        ``ct_qc``) may be decided; anything else returns ``None`` (no mutation).
+        """
+        item = self._items.get(item_id)
+        if item is None or item.status not in ("reviewed", "pe_qc_approved", "ct_qc"):
+            return None
+        from dataclasses import replace
+
+        updated = replace(
+            item,
+            status="ct_qc_approved" if approved else "ct_qc_rejected",
+            quality_score=quality_score,
+            qc_notes=qc_notes,
+            qc_by=qc_by,
+            qc_at=datetime.now(timezone.utc),
+        )
+        self._items[item_id] = updated
+        return updated
+
+    async def list_ct_qc_pending(self) -> list[ManualExtractionItem]:
+        """Mirror of ``ManualExtractionRepository.list_ct_qc_pending`` (global
+        CT-QC intake queue: items in ``reviewed``/``pe_qc_approved`` without a
+        quality score)."""
+        return [
+            i
+            for i in self._items.values()
+            if i.status in ("reviewed", "pe_qc_approved")
+            and i.quality_score is None
+        ]
+
 
     # -- operations (Phase 8) ------------------------------------------------
     async def ops_dashboard_all(self) -> dict:
@@ -2265,6 +2393,33 @@ class MemoryManualExtraction:
             key=lambda i: i.created_at or datetime.min.replace(tzinfo=timezone.utc),
         )[0]
 
+    async def next_entity_item_effective(
+        self,
+        entity_id: str,
+        stage: str,
+        exclude_item_id: Optional[str] = None,
+    ) -> Optional[ManualExtractionItem]:
+        statuses = WORKFLOW_STAGE_STATUSES.get(stage)
+        if statuses is None:
+            return None
+        candidates = []
+        for i in self._items.values():
+            if i.status not in statuses or i.id == (exclude_item_id or ""):
+                continue
+            batch = self._batches.get(i.batch_id)
+            if batch is None or batch.status == "cancelled":
+                continue
+            eff = await self.work_item_effective_entity(i.id)
+            if eff == entity_id:
+                candidates.append(i)
+        if not candidates:
+            return None
+        return sorted(
+            candidates,
+            key=lambda i: i.created_at or datetime.min.replace(tzinfo=timezone.utc),
+        )[0]
+
+
     async def entity_workflow_dashboard(self, entity_id: str) -> dict:
         batches = [b for b in self._batches.values() if b.entity_id == entity_id]
         by_status: dict[str, int] = {}
@@ -2311,8 +2466,188 @@ class MemoryManualExtraction:
         return None
 
 
+    # -- WS4 Gate 3 / 4B — item-level effective assignment (in-memory mirror) --
+    async def is_active_internal_staff(self, user_id: str) -> bool:
+        return str(user_id) in getattr(self, "_internal_staff", set())
+
+    def seed_internal_staff(self, user_id: str) -> None:
+        if not hasattr(self, "_internal_staff"):
+            self._internal_staff = set()
+        self._internal_staff.add(str(user_id))
+
+    def _ledger_rows(self) -> dict:
+        if not hasattr(self, "_assignments"):
+            self._assignments: dict[str, list[dict]] = {}
+        return self._assignments
+
+    def _ledger_next_id(self) -> str:
+        n = getattr(self, "_ledger_seq", 0) + 1
+        self._ledger_seq = n
+        return f"assignment-{n}"
+
+    def _effective_for(self, item_id: str):
+        rows = self._ledger_rows().get(item_id) or []
+        open_row = next((r for r in rows if r.get("status") == "open"), None)
+        if open_row is not None:
+            return open_row
+        item = self._items.get(item_id)
+        batch = self._batches.get(item.batch_id) if item is not None else None
+        if batch is not None and batch.entity_id is not None:
+            return {
+                "id": None, "status": "open", "action": "assign",
+                "assignee_kind": "processing_entity",
+                "assigned_to": None,
+                "processing_entity_id": str(batch.entity_id),
+                "assigned_by": None, "actor_domain": "internal_staff",
+                "previous_assigned_to": None,
+                "previous_processing_entity_id": None,
+                "reason": None, "close_action": None,
+                "closed_by": None, "closed_at": None,
+                "created_at": None, "updated_at": None,
+            }
+        if batch is not None and batch.assigned_to is not None:
+            return {
+                "id": None, "status": "open", "action": "assign",
+                "assignee_kind": "internal_staff",
+                "assigned_to": str(batch.assigned_to),
+                "processing_entity_id": None,
+                "assigned_by": None, "actor_domain": "internal_staff",
+                "previous_assigned_to": None,
+                "previous_processing_entity_id": None,
+                "reason": None, "close_action": None,
+                "closed_by": None, "closed_at": None,
+                "created_at": None, "updated_at": None,
+            }
+        return None
+
+
+    async def work_item_current(self, item_id: str) -> Optional[dict]:
+        rows = self._ledger_rows().get(item_id) or []
+        return next((r for r in rows if r.get("status") == "open"), None)
+
+    async def work_item_history(self, item_id: str, limit: int = 200) -> list[dict]:
+        rows = list(self._ledger_rows().get(item_id) or [])
+        rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+        return rows[:limit]
+
+    async def work_item_open(self, **kwargs) -> dict:
+        item_id = kwargs["item_id"]
+        rows = self._ledger_rows().setdefault(item_id, [])
+        prev = next((r for r in rows if r.get("status") == "open"), None)
+        if prev is not None:
+            prev["status"] = "closed"
+            prev["close_action"] = kwargs.get("close_action")
+            prev["closed_by"] = kwargs["actor"]
+            prev["closed_at"] = datetime.now(timezone.utc)
+        row = {
+            "id": self._ledger_next_id(),
+            "manual_extraction_item_id": item_id,
+            "status": "open",
+            "action": kwargs["action"],
+            "assignee_kind": kwargs["assignee_kind"],
+            "assigned_to": kwargs.get("assigned_to"),
+            "processing_entity_id": kwargs.get("processing_entity_id"),
+            "assigned_by": kwargs["actor"],
+            "actor_domain": kwargs["actor_domain"],
+            "previous_assigned_to": (prev or {}).get("assigned_to"),
+            "previous_processing_entity_id": (prev or {}).get("processing_entity_id"),
+            "reason": kwargs.get("reason"),
+            "close_action": None,
+            "closed_by": None,
+            "closed_at": None,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        }
+        rows.append(row)
+        return row
+
+    async def work_item_close(self, **kwargs) -> Optional[dict]:
+        rows = self._ledger_rows().setdefault(kwargs["item_id"], [])
+        open_row = next((r for r in rows if r.get("status") == "open"), None)
+        if open_row is None:
+            return None
+        open_row["status"] = "closed"
+        open_row["close_action"] = kwargs["close_action"]
+        open_row["closed_by"] = kwargs["actor"]
+        open_row["closed_at"] = datetime.now(timezone.utc)
+        return open_row
+
+    async def get_item_origin(self, item_id: str) -> Optional[dict]:
+        """In-memory default origin (items are CarbonTally-internal unless the
+        test seeds a PE origin via ``seed_item_origin``)."""
+        if hasattr(self, "_origins") and item_id in self._origins:
+            return self._origins[item_id]
+        return None
+
+    # -- P6-2D (D7) consultant firm + processing-mode provenance -------------
+    async def record_consultant_provenance(
+        self, item_id: str, *, firm_id: str, processing_mode: str
+    ) -> bool:
+        """In-memory mirror of the write-once D7 provenance record.
+
+        Returns ``True`` only when this call established the record; a second
+        call (any firm, any action) returns ``False`` and changes nothing.
+        """
+        if not hasattr(self, "_consultant_provenance"):
+            self._consultant_provenance: dict[str, dict] = {}
+        if self._consultant_provenance.get(item_id) is not None:
+            return False
+        if item_id not in self._items:
+            return False
+        self._consultant_provenance[item_id] = {
+            "consultant_firm_id": firm_id,
+            "processing_mode": processing_mode,
+            "consultant_provenance_at": datetime.now(timezone.utc),
+        }
+        return True
+
+    async def get_item_consultant_provenance(self, item_id: str) -> Optional[dict]:
+        """``None`` when no provenance was ever recorded (no fabrication)."""
+        return getattr(self, "_consultant_provenance", {}).get(item_id)
+
+    def seed_item_origin(self, item_id: str, origin: str, entity_id: Optional[str]):
+        if not hasattr(self, "_origins"):
+            self._origins = {}
+        self._origins[item_id] = {
+            "processing_origin": origin,
+            "processing_entity_id": entity_id,
+        }
+
+    async def work_item_effective_entity(self, item_id: str) -> Optional[str]:
+        eff = self._effective_for(item_id)
+        if eff is not None and eff.get("assignee_kind") == "processing_entity":
+            return eff.get("processing_entity_id")
+        return None
+
+    async def effective_entity_map(self, batch_id: str) -> dict:
+        out = {}
+        for item in self._items.values():
+            if item.batch_id != batch_id:
+                continue
+            eff = self._effective_for(item.id)
+            if eff is not None and eff.get("assignee_kind") == "processing_entity":
+                out[item.id] = eff.get("processing_entity_id")
+            else:
+                out[item.id] = None
+        return out
+
+    async def list_batches_with_open_entity_item(self, entity_id: str) -> list:
+        rows = self._ledger_rows()
+        ids = []
+        for item_id, assignments in rows.items():
+            for r in assignments:
+                if r.get("status") == "open" \
+                        and r.get("assignee_kind") == "processing_entity" \
+                        and r.get("processing_entity_id") == entity_id:
+                    item = self._items.get(item_id)
+                    if item is not None and item.batch_id not in ids:
+                        ids.append(item.batch_id)
+        return [self._batches[b] for b in ids if b in self._batches]
+
+
 class MemoryFiles:
     """Minimal in-memory organization-files surface (documents)."""
+
 
     def __init__(self) -> None:
         self._rows: dict[str, list] = {}
@@ -2384,6 +2719,167 @@ class MemoryFiles:
 
     async def delete(self, id: str) -> None:
         return None
+
+
+class MemoryNotifications:
+    """In-memory ``NotificationsRepository`` surface.
+
+    Mirrors the real repository's durable contract closely enough to test the
+    D11 consultant lifecycle producers:
+
+    * ``create_idempotent`` dedupes on ``(recipient_id, event_key)`` exactly
+      like the database's ``uq_notifications_event_key`` partial unique index
+      (an existing row is returned and NO second row is created);
+    * ``support_staff_user_ids`` resolves active internal staff whose role
+      grants ``can_manage_staff`` (the real SQL predicate).
+
+    ``rows`` exposes the raw persisted rows (incl. ``event_key`` /
+    ``actor_domain``, which are not part of the ``Notification`` domain object)
+    so tests can assert event identity, recipients and idempotency.
+    """
+
+    def __init__(self, staff: Optional["MemoryStaff"] = None) -> None:
+        self._staff = staff
+        self.rows: list[dict[str, Any]] = []
+        self._by_event_key: dict[tuple[str, str], dict[str, Any]] = {}
+
+    # -- producers ----------------------------------------------------------
+    async def create_idempotent(
+        self,
+        user_id: str,
+        event_key: str,
+        *,
+        notification_type: Optional[str] = None,
+        title: Optional[str] = None,
+        message: Optional[str] = None,
+        priority: int = 0,
+        link: Optional[str] = None,
+        actor_domain: Optional[str] = None,
+    ) -> "Notification":
+        if event_key is not None:
+            existing = self._by_event_key.get((str(user_id), str(event_key)))
+            if existing is not None:
+                return self._to_notification(existing)
+        row = {
+            "id": f"ntf-{len(self.rows) + 1}",
+            "recipient_type": "user",
+            "recipient_id": str(user_id),
+            "notification_type": notification_type,
+            "title": title,
+            "message": message,
+            "priority": int(priority or 0),
+            "link": link,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc),
+            "event_key": event_key,
+            "actor_domain": actor_domain,
+        }
+        self.rows.append(row)
+        if event_key is not None:
+            self._by_event_key[(str(user_id), str(event_key))] = row
+        return self._to_notification(row)
+
+    async def create(self, **kwargs: Any) -> "Notification":
+        row = {
+            "id": f"ntf-{len(self.rows) + 1}",
+            "recipient_type": "user",
+            "recipient_id": str(kwargs.get("recipient_id") or kwargs.get("user_id") or ""),
+            "notification_type": kwargs.get("notification_type"),
+            "title": kwargs.get("title"),
+            "message": kwargs.get("message"),
+            "priority": int(kwargs.get("priority") or 0),
+            "link": kwargs.get("link"),
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc),
+            "event_key": kwargs.get("event_key"),
+            "actor_domain": kwargs.get("actor_domain"),
+        }
+        self.rows.append(row)
+        return self._to_notification(row)
+
+    # -- recipient resolvers ------------------------------------------------
+    async def support_staff_user_ids(self) -> list[str]:
+        if self._staff is None:
+            return []
+        out: list[str] = []
+        for profile in await self._staff.list_profiles():
+            if getattr(profile, "entity_id", None) is not None:
+                continue
+            if not getattr(profile, "is_active", True):
+                continue
+            role = self._staff._roles.get(profile.role_id)  # noqa: SLF001 (test fake)
+            permissions = getattr(role, "permissions", None) or {}
+            if permissions.get("can_manage_staff") is True:
+                out.append(str(profile.user_id))
+        return sorted(set(out))
+
+    async def entity_participant_user_ids(
+        self, conversation_id: str, entity_id: str, exclude_user: Optional[str] = None
+    ) -> list[str]:
+        return []
+
+    # -- reads --------------------------------------------------------------
+    async def list_for_user(
+        self, user_id: str, unread_only: bool = False, limit: int = 100, offset: int = 0
+    ) -> list["Notification"]:
+        rows = [
+            r
+            for r in self.rows
+            if r["recipient_id"] == str(user_id)
+            and (not unread_only or not r["is_read"])
+        ]
+        return [self._to_notification(r) for r in rows[offset : offset + int(limit)]]
+
+    async def count_for_user(self, user_id: str, unread_only: bool = False) -> int:
+        return len(await self.list_for_user(user_id, unread_only, limit=10_000))
+
+    async def mark_read(self, notification_id: str, user_id: str) -> bool:
+        for row in self.rows:
+            if row["id"] == notification_id and row["recipient_id"] == str(user_id):
+                row["is_read"] = True
+                return True
+        return False
+
+    async def mark_all_read(self, user_id: str) -> None:
+        for row in self.rows:
+            if row["recipient_id"] == str(user_id):
+                row["is_read"] = True
+
+    # -- helpers (test assertions) -----------------------------------------
+    def event_keys(self) -> list[str]:
+        return [r["event_key"] for r in self.rows if r["event_key"]]
+
+    def recipients_for(self, event_key: str) -> list[str]:
+        return sorted(r["recipient_id"] for r in self.rows if r["event_key"] == event_key)
+
+    def event_keys_of_type(self, notification_type: str) -> list[str]:
+        return [
+            r["event_key"]
+            for r in self.rows
+            if r["notification_type"] == notification_type and r["event_key"]
+        ]
+
+    def event_key_of_type(self, notification_type: str) -> Optional[str]:
+        keys = self.event_keys_of_type(notification_type)
+        return keys[0] if keys else None
+
+    @staticmethod
+    def _to_notification(row: dict[str, Any]) -> "Notification":
+        from domain.operations import Notification
+
+        return Notification(
+            id=str(row["id"]),
+            recipient_type=str(row["recipient_type"]),
+            recipient_id=str(row["recipient_id"]),
+            notification_type=row["notification_type"],
+            title=row["title"],
+            message=row["message"],
+            priority=int(row["priority"]),
+            link=row["link"],
+            is_read=bool(row["is_read"]),
+            created_at=row["created_at"],
+        )
+
 
 
 class _StubRepo:
@@ -2510,7 +3006,7 @@ class MemoryAudit:
         self._entries.append(entry)
         return entry
 
-    async def query(self, filters: AuditQuery) -> list[AuditEntry]:
+    def _filter(self, filters: AuditQuery) -> list[AuditEntry]:
         rows = list(self._entries)
         if filters.correlation_id is not None:
             rows = [e for e in rows if e.correlation_id == filters.correlation_id]
@@ -2526,8 +3022,31 @@ class MemoryAudit:
             rows = [e for e in rows if e.occurred_at >= filters.occurred_after]
         if filters.occurred_before is not None:
             rows = [e for e in rows if e.occurred_at <= filters.occurred_before]
-        rows.sort(key=lambda e: e.occurred_at, reverse=True)
+        if filters.q is not None:
+            q = filters.q.lower()
+            rows = [
+                e
+                for e in rows
+                if any(q in (getattr(e, f) or "").lower() for f in ("action", "entity_type", "actor", "entity_id", "reason"))
+            ]
+        return rows
+
+    async def query(self, filters: AuditQuery) -> list[AuditEntry]:
+        rows = self._filter(filters)
+        if filters.sort is not None:
+            key = {
+                "occurred_at": lambda e: e.occurred_at,
+                "action": lambda e: e.action or "",
+                "actor": lambda e: e.actor or "",
+                "entity_type": lambda e: e.entity_type or "",
+            }[filters.sort]
+            rows.sort(key=key, reverse=(filters.order == "desc"))
+        else:
+            rows.sort(key=lambda e: e.occurred_at, reverse=True)
         return rows[filters.offset : filters.offset + filters.limit]
+
+    async def count(self, filters: AuditQuery) -> int:
+        return len(self._filter(filters))
 
     async def export_csv(self, filters: AuditQuery) -> str:
         buffer = io.StringIO()
@@ -3650,6 +4169,8 @@ class InMemoryWorld:
         self.staff = MemoryStaff()
         self.discovery = MemoryDiscovery()
         self.messaging = MemoryMessaging()
+        # P6-2E — stateful notifications surface (D11 lifecycle event tests).
+        self.notifications = MemoryNotifications(self.staff)
         self.whitelabel = MemoryWhiteLabel()
         self.reporting = MemoryReporting()
         self.billing_plans = MemoryBillingPlans()
@@ -3691,7 +4212,7 @@ class InMemoryWorld:
             settings=self.settings,
             search=_SearchStub(),
             verifications=_StubRepo(),
-            notifications=_StubRepo(),
+            notifications=self.notifications,
             exports=self.exports,
             consultants=self.consultants,
             discovery=self.discovery,

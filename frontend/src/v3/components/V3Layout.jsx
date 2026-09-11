@@ -13,7 +13,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { getConsultantProfile, getOpsMe, resolveV3Organization } from '../api';
+import { getMeContext } from '../api';
 import Icon from './ui/Icon';
 import Drawer from './ui/Drawer';
 import SearchBox from './SearchBox';
@@ -44,38 +44,48 @@ export default function V3Layout({ children }) {
   const [isConsultant, setIsConsultant] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
+  const [contextError, setContextError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    // CL-49 — role probes are cascaded and quiet so a normal authenticated
-    // page load never fires unrelated role APIs (no 403 console noise):
-    //   org member -> customer nav only (no staff/consultant probe)
-    //   non-org    -> probe staff, then consultant
+    // Phase 3 / P1-B — the shell resolves the actor through the single
+    // server-authoritative /api/v3/me/context endpoint. A resolution failure
+    // renders a controlled error/retry banner and NEVER navigates anyone to
+    // onboarding (the old hardcoded navigate('/onboarding') is gone).
     (async () => {
-      const org = await resolveV3Organization().catch(() => null);
-      let staff = false;
-      let consultant = false;
-      if (!org) {
-        staff = await getOpsMe({ quiet: true }).then(() => true).catch(() => false);
-        if (!staff) {
-          consultant = await getConsultantProfile({ quiet: true }).then(() => true).catch(() => false);
+      try {
+        const context = await getMeContext();
+        if (!active) return;
+        const destination = context.destination || context.primary_workspace;
+        if (destination === '/onboarding') {
+          navigate('/onboarding', { replace: true });
+          return;
         }
-      }
-      if (!active) return;
-      setOrg(org);
-      setIsStaff(staff);
-      setIsConsultant(consultant);
-      setLoaded(true);
-      // D35 — an authenticated user with no org / staff / consultant
-      // relationship is a brand-new customer: send them to self-service
-      // onboarding instead of the legacy empty-state dead end.
-      if (!org && !staff && !consultant) {
-        navigate('/onboarding', { replace: true });
+        // V1.2 FINAL (PEShell) — Processing Entity staff belong to the dedicated
+        // PE application (/pe), never the shared shell. Any shared-shell page a
+        // PE member opens (e.g. /notifications) redirects to /pe so the PE
+        // surface never exposes Operations/Customer/Consultant/Admin nav.
+        if (context.actor_type === 'entity_staff') {
+          navigate('/pe', { replace: true });
+          return;
+        }
+        setOrg(context.actor_type === 'customer' ? context.organization || null : null);
+        setIsStaff(context.actor_type === 'staff' || context.actor_type === 'entity_staff');
+        setIsConsultant(context.actor_type === 'consultant');
+        setContextError(false);
+        setLoaded(true);
+      } catch (_e) {
+        if (!active) return;
+        // Fail-closed: stay on the (role-gated, data-protected) surface with a
+        // controlled error instead of guessing the actor's workspace.
+        setContextError(true);
+        setLoaded(true);
       }
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -109,6 +119,36 @@ export default function V3Layout({ children }) {
 
   return (
     <div className="v3-shell">
+      {contextError && (
+        <div
+          role="alert"
+          style={{
+            padding: '0.75rem 1rem',
+            background: '#fef2f2',
+            color: '#b91c1c',
+            borderBottom: '1px solid #fecaca',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <span>We couldn&apos;t load your workspace just now. Please try again.</span>
+          <button
+            type="button"
+            onClick={() => { setContextError(false); setAttempt((n) => n + 1); }}
+            style={{
+              background: 'transparent',
+              border: '1px solid #b91c1c',
+              borderRadius: 6,
+              padding: '0.3rem 0.75rem',
+              cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <header className="v3-nav">
         <button
           type="button"

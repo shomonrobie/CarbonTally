@@ -1,0 +1,36 @@
+# Severity definitions (spec §29).
+
+severities:
+  P0:
+    label: Critical — block release
+    examples:
+      - security breach
+      - cross-tenant data leak
+      - authentication bypass
+      - destructive corruption
+      - critical production failure
+  P1:
+    label: High — core business workflow blocked
+    examples:
+      - core business workflow blocked
+      - calculation impossible
+      - approval impossible
+      - consultant unable to operate customers
+      - critical admin failure
+      - critical messaging failure
+  P2:
+    label: Medium — major degradation
+    examples:
+      - major functionality degradation
+      - missing operational controls
+      - major UX problem
+      - significant runtime error
+      - major responsive/accessibility problem
+  P3:
+    label: Low — minor polish
+    examples:
+      - minor UX
+      - copy
+      - cosmetic
+      - minor accessibility
+      - minor inconsistency

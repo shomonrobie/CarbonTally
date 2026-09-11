@@ -21,6 +21,7 @@ from api.dependencies import (
 )
 from auth import AuthUser, require_auth, require_org_member, require_org_admin
 from domain.audit import AuditEntry
+from services.billing import resolve_registration_mode
 from services.v3_email import render_simple_html, send_transactional_email
 
 router = APIRouter(prefix="/api/v3/organizations", tags=["V3 — Organizations"])
@@ -128,6 +129,22 @@ async def create_organization(
         raise HTTPException(status_code=422, detail="organization name must not be empty")
     if len(name) > 200:
         raise HTTPException(status_code=422, detail="organization name is too long (max 200 characters)")
+
+    # D-A (ratified, Phase 6): platform registration mode. INVITATION_ONLY
+    # closes SELF-SERVICE platform entry (org creation via this route). This is
+    # a provisioning gate only — it never grants authorization, org/client
+    # access, capability or staff/PE/CT privileges. Authorized provisioning
+    # (consultant-created customers, org invitations, CarbonTally onboarding)
+    # is unaffected.
+    mode = await resolve_registration_mode(repos)
+    if mode == "INVITATION_ONLY":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Platform registration is currently invitation-only. "
+                "Organization creation requires an invitation or CarbonTally provisioning."
+            ),
+        )
 
     memberships = await repos.organizations.get_active_memberships_for_user(
         current_user.user_id
@@ -600,6 +617,159 @@ async def revoke_invitation(
         raise HTTPException(status_code=404, detail="invitation not found")
     ensure_org_access(current_user, invitation["organization_id"])
     await repos.invitations.revoke(invitation_id)
+
+
+# ---------------------------------------------------------------------------
+# Consultant engagement confirmation (P6-1C) — customer authorizes/refuses
+# ---------------------------------------------------------------------------
+
+
+async def _engagement_row_or_404(
+    repos: RepositoryBundle, engagement_id: str, org_id: str
+):
+    """Fetch a consultant_clients row and verify it targets THIS organisation."""
+    row = await repos.consultants.get_client(engagement_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="engagement not found")
+    if str(row.organization_id) != str(org_id):
+        raise HTTPException(
+            status_code=403,
+            detail="engagement does not belong to this organisation",
+        )
+    return row
+
+
+async def _audit_customer_engagement(
+    repos: RepositoryBundle,
+    engagement_id: str,
+    action: str,
+    actor: str,
+    org_id: str,
+) -> None:
+    """Append-only audit of a customer engagement decision (human actor)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="consultant_clients",
+                entity_id=engagement_id,
+                action=f"consultant.client.engagement_{action}",
+                actor=actor,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"organization_id": org_id, "status": action},
+                before=None,
+                after={"organization_id": org_id, "status": action},
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the decision
+        pass
+
+
+@router.get("/{org_id}/consultant-engagements")
+async def list_consultant_engagements(
+    org_id: str,
+    current_user: AuthUser = Depends(require_org_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Pending Consultant engagement requests addressed to THIS organisation.
+
+    Requires an authorised customer representative (org owner/admin). The
+    organisation can see which Consultant firm is requesting access before it
+    decides — no global consultant directory is exposed.
+    """
+    ensure_org_access(current_user, org_id)
+    rows = await repos.consultants.list_engagements_for_org(org_id)
+    enriched = []
+    for row in rows:
+        profile = await repos.consultants.get_profile_by_id(row.consultant_id)
+        enriched.append(
+            {
+                "id": row.id,
+                "consultant_id": row.consultant_id,
+                "firm_name": profile.company_name if profile else None,
+                "status": row.status,
+                "client_name": row.client_name,
+                "requested_by": row.created_by,
+                "requested_at": (
+                    row.engagement_requested_at.isoformat()
+                    if row.engagement_requested_at else None
+                ),
+            }
+        )
+    return {"engagements": enriched}
+
+
+@router.post("/{org_id}/consultant-engagements/{engagement_id}/accept")
+async def accept_consultant_engagement(
+    org_id: str,
+    engagement_id: str,
+    current_user: AuthUser = Depends(require_org_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Customer acceptance — the ONLY path from a pending engagement to active.
+
+    P6-1C: consultant request alone never grants client access. The acceptance
+    actor is the authenticated org owner/admin (never a client-supplied id).
+    """
+    ensure_org_access(current_user, org_id)
+    row = await _engagement_row_or_404(repos, engagement_id, org_id)
+    from domain.partners import can_transition_consultant_engagement
+
+    if not can_transition_consultant_engagement(
+        row.status, "active", actor_side="customer",
+        origin=row.relationship_origin or "legacy",
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="engagement is not in a pending state",
+        )
+    updated = await repos.consultants.transition_client_lifecycle(
+        engagement_id, "active", actor_id=current_user.user_id
+    )
+    await _audit_customer_engagement(
+        repos, engagement_id, "accepted", current_user.user_id, org_id
+    )
+    # P6-2E (D11) — lifecycle event 1 "accepted". Emitted ONLY after the
+    # transition + audit succeeded, so a denied/conflicted acceptance (409
+    # above) never produces an event. Recipients are derived server-side from
+    # the engagement's firm membership.
+    from services.consultant_lifecycle import notify_engagement_accepted
+
+    await notify_engagement_accepted(repos, client=updated if updated is not None else row)
+    return {"engagement": updated}
+
+
+@router.post("/{org_id}/consultant-engagements/{engagement_id}/reject")
+async def reject_consultant_engagement(
+    org_id: str,
+    engagement_id: str,
+    current_user: AuthUser = Depends(require_org_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Customer rejection of a pending Consultant engagement (no access)."""
+    ensure_org_access(current_user, org_id)
+    row = await _engagement_row_or_404(repos, engagement_id, org_id)
+    from domain.partners import can_transition_consultant_engagement
+
+    if not can_transition_consultant_engagement(
+        row.status, "rejected", actor_side="customer",
+        origin=row.relationship_origin or "legacy",
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="engagement is not in a pending state",
+        )
+    updated = await repos.consultants.transition_client_lifecycle(
+        engagement_id, "rejected", actor_id=current_user.user_id
+    )
+    await _audit_customer_engagement(
+        repos, engagement_id, "rejected", current_user.user_id, org_id
+    )
+    return {"engagement": updated}
 
 
 # -- facilities -------------------------------------------------------------

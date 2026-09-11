@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ErrorState } from '../components/StateViews';
+import DataTable from '../components/ui/DataTable';
 import {
   downloadExport,
   downloadReport,
@@ -123,7 +124,7 @@ export default function ReportsPage() {
       if (filters.report_type) params.report_type = filters.report_type;
       if (filters.reporting_year) params.reporting_year = filters.reporting_year;
       const [list, typeList] = await Promise.all([
-        listReports(org.id, params),
+        listReports(org.id, { ...params, limit: 500 }),
         getReportTypes().catch(() => ({ report_types: [{ id: 'annual', name: 'Annual emissions report' }] })),
       ]);
       setReports(list.reports || []);
@@ -178,6 +179,94 @@ export default function ReportsPage() {
     { key: 'generating', label: 'Generating', value: counts.generating || 0 },
     { key: 'failed', label: 'Failed', value: counts.failed || 0 },
   ], [counts]);
+
+  const reportColumns = [
+    {
+      key: 'report_name',
+      header: 'Report',
+      accessor: 'report_name',
+      sortable: true,
+      sortValue: (r) => (r.report_name || `${r.report_type} ${r.reporting_year}`).toLowerCase(),
+      render: (r) => (
+        <>
+          <Link className="v3-report-name" to={`/reports/${r.id}`}>
+            {r.report_name || `${r.report_type} ${r.reporting_year}`}
+          </Link>
+          {r.error_log && <div className="v3-muted" title={r.error_log}>Failed: {r.error_log.slice(0, 80)}</div>}
+        </>
+      ),
+      isHeader: true,
+    },
+    {
+      key: 'report_type',
+      header: 'Type',
+      accessor: 'report_type',
+      sortable: true,
+      sortValue: (r) => (r.report_type || '').toLowerCase(),
+      render: (r) => <span className="v3-muted">{r.report_type}</span>,
+    },
+    {
+      key: 'reporting_year',
+      header: 'Period',
+      accessor: 'reporting_year',
+      sortable: true,
+      sortValue: (r) => (r.reporting_year != null ? r.reporting_year : -1),
+      render: (r) => r.reporting_year,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      sortValue: (r) => (r.status || '').toLowerCase(),
+      render: (r) => <StatusBadge status={r.status} />,
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      accessor: 'created_at',
+      sortable: true,
+      sortValue: (r) => (r.created_at ? new Date(r.created_at).getTime() : -1),
+      render: (r) => formatDate(r.created_at),
+    },
+    {
+      key: 'completed_at',
+      header: 'Generated',
+      accessor: 'completed_at',
+      sortable: true,
+      sortValue: (r) => (r.completed_at ? new Date(r.completed_at).getTime() : -1),
+      render: (r) => formatDate(r.completed_at),
+    },
+    {
+      key: 'version',
+      header: 'Version',
+      accessor: 'current_version',
+      sortable: true,
+      sortValue: (r) => r.current_version?.version_number || 0,
+      render: (r) => r.current_version?.version_number || (r.status === 'completed' ? 'v1' : '—'),
+    },
+    {
+      key: 'created_by',
+      header: 'Created by',
+      accessor: 'created_by',
+      sortable: true,
+      sortValue: (r) => (r.created_by || '').toLowerCase(),
+      render: (r) => <span className="v3-muted">{r.created_by ? r.created_by.slice(0, 8) : '—'}</span>,
+    },
+    {
+      key: 'actions',
+      header: '',
+      accessor: 'id',
+      render: (r) => (
+        <>
+          <Link className="v3-btn v3-btn-sm" to={`/reports/${r.id}`}>View</Link>{' '}
+          {r.status === 'completed' && r.ready && (
+            <button className="v3-btn v3-btn-sm" onClick={() => onDownload(r)}>Download</button>
+          )}
+        </>
+      ),
+    },
+  ];
 
   return (
     <div className="v3-report-page">
@@ -254,46 +343,15 @@ export default function ReportsPage() {
         </div></div>
       ) : (
         <div className="v3-card">
-          <table className="v3-table">
-            <thead>
-              <tr>
-                <th>Report</th>
-                <th>Type</th>
-                <th>Period</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Generated</th>
-                <th>Version</th>
-                <th>Created by</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <Link className="v3-report-name" to={`/reports/${r.id}`}>
-                      {r.report_name || `${r.report_type} ${r.reporting_year}`}
-                    </Link>
-                    {r.error_log && <div className="v3-muted" title={r.error_log}>Failed: {r.error_log.slice(0, 80)}</div>}
-                  </td>
-                  <td className="v3-muted">{r.report_type}</td>
-                  <td>{r.reporting_year}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td>{formatDate(r.created_at)}</td>
-                  <td>{formatDate(r.completed_at)}</td>
-                  <td>{r.current_version?.version_number || (r.status === 'completed' ? 'v1' : '—')}</td>
-                  <td className="v3-muted">{r.created_by ? r.created_by.slice(0, 8) : '—'}</td>
-                  <td>
-                    <Link className="v3-btn v3-btn-sm" to={`/reports/${r.id}`}>View</Link>{' '}
-                    {r.status === 'completed' && r.ready && (
-                      <button className="v3-btn v3-btn-sm" onClick={() => onDownload(r)}>Download</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption="Organisation reports"
+            columns={reportColumns}
+            rows={reports}
+            clientPaginate
+            defaultPageSize={10}
+            resetKey={JSON.stringify(filters)}
+            emptyLabel="No reports match the current filters."
+          />
         </div>
       )}
 

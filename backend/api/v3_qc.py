@@ -31,10 +31,26 @@ async def qc_queue(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     # CL-58 — server-side pagination over the QC pending queue.
+    # V1.2 / CT-QC-004 — CarbonTally QC may verify data from EITHER origin
+    # (CarbonTally internal OR Processing Entity). Each queue row carries its
+    # processing_origin so the independent internal QC gate can identify what
+    # it is reviewing and which upstream controls already apply.
+    import dataclasses
+
+    from domain.processing_origin import processing_origin_for_batch
+
     items = await repos.manual_extraction.list_qc_pending()
-    total = len(items)
+    out = []
+    for item in items:
+        row = dataclasses.asdict(item)
+        batch = await repos.manual_extraction.get_batch(item.batch_id)
+        row["processing_origin"] = processing_origin_for_batch(
+            batch.entity_id if batch is not None else None
+        )
+        out.append(row)
+    total = len(out)
     return {
-        "items": items[offset:offset + limit],
+        "items": out[offset:offset + limit],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -46,11 +62,23 @@ async def qc_stats(
     current_user: AuthUser = Depends(require_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    from domain.processing_origin import (
+        ORIGIN_CARBONTALLY_INTERNAL,
+        ORIGIN_PROCESSING_ENTITY,
+        processing_origin_for_batch,
+    )
+
     items = await repos.manual_extraction.list_qc_pending()
+    by_origin = {ORIGIN_CARBONTALLY_INTERNAL: 0, ORIGIN_PROCESSING_ENTITY: 0}
+    for item in items:
+        batch = await repos.manual_extraction.get_batch(item.batch_id)
+        origin = processing_origin_for_batch(
+            batch.entity_id if batch is not None else None
+        )
+        by_origin[origin] = by_origin.get(origin, 0) + 1
     return {
         "pending_qc": len(items),
-        "approved": 0,
-        "rejected": 0,
+        "by_origin": by_origin,
     }
 
 

@@ -128,10 +128,17 @@ def get_supabase_health() -> dict:
 
 
 def get_supabase_admin() -> Client:
-    """Get Supabase client with service role key (admin)."""
+    """Return the process-wide service-role Supabase client (admin surface).
+
+    Phase 3 / P1-A — reuses the ``infra.supabase`` singleton instead of
+    creating a fresh service-role client per call (which leaked file
+    descriptors under sustained load). Same service-role authority as before.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    from infra.supabase import get_service_client
+
+    return get_service_client()
 
 # ==========================================
 # CLEANUP

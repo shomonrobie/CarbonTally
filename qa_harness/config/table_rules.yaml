@@ -1,0 +1,129 @@
+# Table/data-grid expectations (spec §19).
+#
+# The table auditor verifies pagination, page-size, sorting, filtering,
+# search, record counts, loading/empty/error states, responsive behavior,
+# meaningful columns and contextual org/client/entity identification —
+# per-rule, with thresholds. Small static tables must NOT be forced to
+# paginate.
+
+tables:
+  documents:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: true
+    notes: "Documents UI should emphasize emissions outcome (not only file size) — PO observation."
+
+  emissions:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: false
+    require_context_columns: true
+    notes: "Emissions history; meaningful columns: date, scope, activity, kg CO2e, source document, evidence."
+
+  processing_queue:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: true
+    notes: "Ops/PE queues grow large; the 53-batch queue must paginate (UH-1 context)."
+
+  review_queue:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: true
+    notes: "Customer review queue and ops review queue."
+
+  reports:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: false
+    require_context_columns: true
+    notes: "Report versions list; statuses Ready/Queued/Failed must render honestly."
+
+  conversations:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: true
+    notes: "Messaging conversations."
+
+  issues:
+    operational: true
+    min_rows_for_pagination: 20
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: true
+    notes: "Issue triage; counts must reflect reality (ISC-2)."
+
+  staff_roster:
+    operational: true
+    min_rows_for_pagination: 50
+    require_pagination: true
+    require_page_size: true
+    require_sorting: true
+    require_filtering: true
+    require_search: true
+    require_context_columns: false
+    notes: "Internal staff roster; may stay small but supports growth."
+
+  entities:
+    operational: false
+    min_rows_for_pagination: 50
+    require_pagination: false
+    require_page_size: false
+    require_sorting: false
+    require_filtering: false
+    require_search: false
+    require_context_columns: false
+    notes: "Small static control-plane table — pagination NOT required."
+
+  members:
+    operational: false
+    min_rows_for_pagination: 50
+    require_pagination: false
+    require_page_size: false
+    require_sorting: false
+    require_filtering: false
+    require_search: false
+    require_context_columns: false
+    notes: "Org members list — typically small; search optional."
+
+  facilities:
+    operational: false
+    min_rows_for_pagination: 50
+    require_pagination: false
+    require_page_size: false
+    require_sorting: false
+    require_filtering: false
+    require_search: false
+    require_context_columns: false
+    notes: "Facilities list — small; search optional."

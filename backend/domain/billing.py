@@ -19,6 +19,20 @@ from typing import Any, Optional
 #: NEW customers; per-customer override on the commercial relationship.
 BILLING_MODES: tuple[str, ...] = ("CREDIT", "STANDARD")
 
+#: Platform registration modes (CT-BILL / D-A — ratified for Phase 6).
+#: ``INVITATION_ONLY`` closes self-service platform entry (org creation /
+#: consultant profile self-registration); ``OPEN_REGISTRATION`` permits it.
+#: Registration mode is a COMMERCIAL/PROVISIONING configuration only — it never
+#: grants authorization, org access, client access, capability or staff/PE/CT
+#: privileges.
+REGISTRATION_MODES: tuple[str, ...] = ("INVITATION_ONLY", "OPEN_REGISTRATION")
+
+#: Behaviour when no ``registration_mode`` commercial config row exists yet.
+#: The pre-existing behaviour (open self-service org creation, D35) is the safe
+#: additive default; CarbonTally Administration switches the platform to
+#: INVITATION_ONLY by publishing the config key.
+DEFAULT_REGISTRATION_MODE: str = "OPEN_REGISTRATION"
+
 #: Credit ledger entry types (D37-0 §22).
 CREDIT_LEDGER_ENTRY_TYPES: tuple[str, ...] = (
     "grant",

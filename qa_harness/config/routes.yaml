@@ -1,0 +1,47 @@
+# Route catalog for application-separation QA (spec §12).
+#
+# workspace: public | customer | consultant | pe | ops | admin
+# auth:      public (no session) | authenticated (session required)
+# roles:     roles expected to reach this route; empty = any authenticated user
+#            of the workspace.
+
+routes:
+  # --- PUBLIC WEBSITE (no authentication) ---
+  - { path: /, workspace: public, auth: public, label: Public homepage }
+  - { path: /login, workspace: public, auth: public, label: Login }
+  - { path: /signup, workspace: public, auth: public, label: Self-service signup }
+  - { path: /platform, workspace: public, auth: public, label: Platform page }
+  - { path: /services, workspace: public, auth: public, label: Services page }
+  - { path: /pricing, workspace: public, auth: public, label: Pricing page }
+  - { path: /faq, workspace: public, auth: public, label: FAQ }
+  - { path: /privacy, workspace: public, auth: public, label: Privacy policy }
+  - { path: /terms, workspace: public, auth: public, label: Terms }
+  - { path: /about, workspace: public, auth: public, label: About us }
+
+  # --- CUSTOMER APPLICATION ---
+  - { path: /home, workspace: customer, auth: authenticated, label: Customer dashboard }
+  - { path: /emissions, workspace: customer, auth: authenticated, label: Emissions history }
+  - { path: /documents, workspace: customer, auth: authenticated, label: Documents }
+  - { path: /processing, workspace: customer, auth: authenticated, label: Processing }
+  - { path: /review, workspace: customer, auth: authenticated, label: Review and approve }
+  - { path: /messaging, workspace: customer, auth: authenticated, label: Messaging }
+  - { path: /issues, workspace: customer, auth: authenticated, label: Issues }
+  - { path: /notifications, workspace: customer, auth: authenticated, label: Notifications }
+  - { path: /reports, workspace: customer, auth: authenticated, label: Reports }
+  - { path: /billing, workspace: customer, auth: authenticated, label: Billing }
+  - { path: /organization, workspace: customer, auth: authenticated, label: Organisation profile }
+  - { path: /onboarding, workspace: customer, auth: authenticated, label: Onboarding (new orgs only) }
+
+  # --- CONSULTANT WORKSPACE ---
+  - { path: /consultant, workspace: consultant, auth: authenticated, label: Consultant workspace }
+
+  # --- PROCESSING ENTITY + INTERNAL OPERATIONS (shared /ops shell) ---
+  - { path: /ops, workspace: ops, auth: authenticated, label: Ops / PE workspace }
+
+# Expected landing route per workspace (post-login).
+landings:
+  customer: /home
+  consultant: /consultant
+  pe: /ops
+  ops: /ops
+  admin: /ops

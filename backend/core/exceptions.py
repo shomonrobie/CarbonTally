@@ -108,6 +108,20 @@ class UnitMismatchError(CarbonTallyError):
     http_status: ClassVar[int] = 422
 
 
+class DuplicateMembershipError(CarbonTallyError):
+    """Raised when an organisation membership already exists (409).
+
+    BL-1 (QA-DB-024) — the real V3 schema enforces membership uniqueness via
+    the ``organization_members_org_user_uniq`` unique index; an unguarded
+    second ``INSERT`` for the same (organisation, user) would otherwise surface
+    as a raw 500. This error translates that invariant into a controlled 409
+    conflict response without changing roles or membership semantics.
+    """
+
+    code: ClassVar[str] = "DUPLICATE_MEMBERSHIP"
+    http_status: ClassVar[int] = 409
+
+
 class UnknownProviderError(CarbonTallyError):
     """Raised when an emission-factor provider key is not registered (404)."""
 

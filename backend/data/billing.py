@@ -850,7 +850,8 @@ class UsageTrackingRepository(AbstractRepository[object]):
             """
             INSERT INTO public.usage_tracking
                 (organization_id, usage_date, usage_month, ai_files_processed)
-            VALUES ($1, $2, to_char($2, 'YYYY-MM'), $3)
+            VALUES ($1, $2::timestamptz,
+                    date_trunc('month', $2::timestamptz)::date, $3)
             """,
             organization_id, day, units,
         )

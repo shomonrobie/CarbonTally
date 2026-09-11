@@ -91,6 +91,7 @@ export default function ExtractionPanel({
   allowDownload = false,
   suggestions,
   validation,
+  onSaved,
 }) {
   const [header, setHeader] = useState(headerFromData(item?.extracted_data) || {});
   const [lines, setLines] = useState(() => {
@@ -263,6 +264,7 @@ export default function ExtractionPanel({
         );
       }
       if (onItemChange) await onItemChange(itemId);
+      if (onSaved) await onSaved();
     } catch (e) {
       setError(e.message || 'Action failed');
     } finally {
@@ -420,7 +422,9 @@ export default function ExtractionPanel({
       <Button variant="approve" icon="save" loading={busy} disabled={locked} onClick={() => run('extract')}>Save extraction</Button>
       <Button variant="secondary" icon="save" loading={busy} disabled={locked} onClick={() => run('draft')}>Save draft</Button>
       <Button variant="primary" icon="link" loading={busy} disabled={locked || status === 'pending'} onClick={() => run('map')}>Save mapping</Button>
-      <Button variant="primary" icon="calculator" loading={busy} disabled={locked} onClick={() => run('calculate')}>Calculate</Button>
+      <Button variant="primary" icon="calculator" loading={busy} disabled={mode === 'staff' || mode === 'entity'
+        ? !(status === 'validated' || status === 'calculating' || status === 'calculated')
+        : (locked || status === 'pending')} onClick={() => run('calculate')}>Calculate</Button>
       <span style={{ flex: 1 }} />
       <Button variant="secondary" icon="arrowLeft" loading={busy} disabled={!hasPrev} onClick={() => onItemChange(items[index - 1].id)}>Previous</Button>
       <Button variant="secondary" icon="arrowRight" loading={busy} disabled={!hasNext} onClick={() => onItemChange(items[index + 1].id)}>Next</Button>

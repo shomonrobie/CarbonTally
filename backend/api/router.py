@@ -49,6 +49,7 @@ from api.v3_qc import router as v3_qc_router
 from api.v3_suppliers import router as v3_suppliers_router
 from api.v3_processing_workflow import router as v3_processing_workflow_router
 from api.v3_automatic_processing import router as v3_automatic_processing_router
+from api.v3_pe import router as v3_pe_router
 from api.v3_search import router as v3_search_router
 from api.v3_settings import router as v3_settings_router
 from api.v3_emissions import router as v3_emissions_router
@@ -58,6 +59,8 @@ from api.v3_messaging import router as v3_messaging_router
 from api.v3_vehicles import router as v3_vehicles_router
 from api.v3_whitelabel import router as v3_whitelabel_router
 from api.v3_reporting import router as v3_reporting_router
+from api.v3_context import router as v3_context_router
+from api.v3_health import router as v3_health_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -111,13 +114,24 @@ async def carbon_tally_error_handler(request: Request, exc: CarbonTallyError) ->
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-    """Preserve HTTPException semantics (incl. auth WWW-Authenticate headers)."""
+    """Preserve HTTPException semantics (incl. auth WWW-Authenticate headers).
+
+    RV-1 — forward ``exc.headers`` verbatim so a challenge attached by the auth
+    dependency (``auth.get_current_user`` → ``WWW-Authenticate: Bearer``)
+    reaches the wire. If the exception carries no headers, keep the previous
+    behaviour: emit a standard Bearer challenge for 401, no headers otherwise.
+    """
     code = _STATUS_CODES_TO_CODES.get(exc.status_code, f"HTTP_{exc.status_code}")
     payload = ErrorResponse(
         error=ErrorDetail(code=code, message=str(exc.detail), details={}),
         request_id=_request_id(request),
     )
-    headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+    if exc.headers:
+        headers = dict(exc.headers)
+    elif exc.status_code == 401:
+        headers = {"WWW-Authenticate": "Bearer"}
+    else:
+        headers = None
     return JSONResponse(status_code=exc.status_code, content=payload.model_dump(), headers=headers)
 
 
@@ -191,6 +205,7 @@ router.include_router(v3_consultants_router)
 router.include_router(v3_processing_router)
 router.include_router(v3_processing_workflow_router)
 router.include_router(v3_automatic_processing_router)
+router.include_router(v3_pe_router)
 router.include_router(v3_search_router)
 router.include_router(v3_settings_router)
 router.include_router(v3_emissions_router)
@@ -204,6 +219,8 @@ router.include_router(v3_messaging_router)
 router.include_router(v3_vehicles_router)
 router.include_router(v3_whitelabel_router)
 router.include_router(v3_reporting_router)
+router.include_router(v3_context_router)
+router.include_router(v3_health_router)
 
 
 # ---------------------------------------------------------------------------

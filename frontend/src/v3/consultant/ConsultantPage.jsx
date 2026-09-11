@@ -204,8 +204,8 @@ function ClientWorkspace({ client, clientId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (clientIdParam) => {
-    setLoading(true);
+  const load = useCallback(async (clientIdParam, { silent } = {}) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const [rep, dash, proc, iss, docs, itemList, ev] = await Promise.all([
@@ -225,15 +225,39 @@ function ClientWorkspace({ client, clientId }) {
       setItems(itemList.items || []);
       setEvidence(ev);
     } catch (e) {
-      setError(e.message || 'Failed to load client workspace');
+      if (!silent) setError(e.message || 'Failed to load client workspace');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [stageFilter]);
 
   useEffect(() => {
     load(clientId);
   }, [clientId, load]);
+
+  // BL-6 — while any client item is still in flight, poll the REAL backend
+  // stage state (same pattern as the customer ProcessingPage) so the
+  // extraction → mapping → validation → calculation progression is visible
+  // without a manual refresh. No fake completion is ever shown: the items'
+  // status and the stage-count card both come from the API.
+  useEffect(() => {
+    const inFlight = items.some(
+      (i) => !['approved', 'rejected', 'qc_approved', 'qc_rejected', 'completed', 'failed'].includes(i.status)
+    );
+    if (!inFlight) return undefined;
+    const timer = setInterval(() => {
+      Promise.all([
+        getClientProcessingItems(clientId, stageFilter || undefined),
+        getClientProcessingStatus(clientId),
+      ])
+        .then(([itemList, proc]) => {
+          setItems(itemList.items || []);
+          setProcessing(proc);
+        })
+        .catch(() => { /* next poll or manual refresh recovers */ });
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [clientId, stageFilter, items]);
 
   const onUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -242,14 +266,26 @@ function ClientWorkspace({ client, clientId }) {
     setUploadError('');
     setUploadNotice('');
     try {
-      await uploadConsultantDocument(clientId, file, 'utility');
-      setUploadNotice(`“${file.name}” uploaded — it is now in the client's processing pipeline.`);
+      const result = await uploadConsultantDocument(clientId, file, 'utility');
+      const documentId = result?.document?.id;
+      setUploadNotice(
+        `“${file.name}” uploaded — it has entered the client's processing pipeline. Track its progress in the pipeline below.`
+      );
       const [docs, itemList] = await Promise.all([
         getClientDocuments(clientId),
         getClientProcessingItems(clientId, stageFilter || undefined),
       ]);
       setDocuments(docs.documents || []);
       setItems(itemList.items || []);
+      // BL-6 — surface the document's REAL initial stage from the refreshed
+      // items (file_id → item), never a fake completion.
+      const uploadedItem = (itemList.items || []).find((it) => it.file_id === documentId);
+      if (uploadedItem) {
+        setUploadNotice(
+          `“${file.name}” uploaded — current stage: ${uploadedItem.status}. `
+          + `The client's pipeline continues automatically through mapping, validation and calculation.`
+        );
+      }
     } catch (e) {
       setUploadError(e.message || 'Upload failed');
     } finally {
@@ -705,6 +741,86 @@ function BrandingView() {
   );
 }
 
+// BL-7 — the firm's client directory + lifecycle management as a dedicated,
+// always-available tab. Previously the directory rendered below the workspace
+// content, burying lifecycle actions (Suspend/End/Reactivate/Deactivate) under
+// the active client's data. Selection stays on the top-level switcher; this is
+// the firm-level directory. Every action and the canManageClients gate are
+// preserved unchanged.
+export function ClientsDirectory({
+  clients,
+  activeClientId,
+  canManageClients,
+  notice,
+  onSwitchClient,
+  onLifecycleAction,
+  onToggleClientStatus,
+  onNewCustomer,
+}) {
+  return (
+    <div className="v3-admin-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <h2>Clients</h2>
+        {canManageClients && (
+          <button className="v3-btn primary v3-btn-sm" onClick={onNewCustomer}>
+            + New customer
+          </button>
+        )}
+      </div>
+      {notice && <div className="v3-note" style={{ marginBottom: 10 }}>{notice}</div>}
+      {clients.map((client) => (
+        <div
+          key={client.id}
+          className={`v3-client-list-item ${client.id === activeClientId ? 'active' : ''}`}
+          onClick={() => onSwitchClient(client.id)}
+        >
+          <div>
+            <div className="primary">{client.client_name}</div>
+            <div className="secondary" title={client.organization_id}>{client.client_industry || 'Client'} · {client.status || 'active'}</div>
+          </div>
+          <span className={`v3-badge ${client.status === 'active' ? 'active' : 'inactive'}`}>
+            {(client.status || 'active').toUpperCase()}
+          </span>
+          {canManageClients && (
+            <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+              {client.status === 'active' && (
+                <>
+                  <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'suspend'); }}>
+                    Suspend
+                  </button>
+                  <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'end'); }}>
+                    End
+                  </button>
+                </>
+              )}
+              {client.status === 'suspended' && (
+                <>
+                  <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'reactivate'); }}>
+                    Reactivate
+                  </button>
+                  <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'end'); }}>
+                    End
+                  </button>
+                </>
+              )}
+              {client.status === 'ended' && (
+                <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'reactivate'); }}>
+                  Reactivate
+                </button>
+              )}
+              {client.status === 'active' && (
+                <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onToggleClientStatus(client, 'inactive'); }}>
+                  Deactivate
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ConsultantPage() {
   const [profile, setProfile] = useState(null);
   const [clients, setClients] = useState([]);
@@ -919,6 +1035,9 @@ export default function ConsultantPage() {
         <button className={`v3-tab ${view === 'workspace' ? 'active' : ''}`} onClick={() => setView('workspace')} disabled={!activeClient}>
           Client workspace
         </button>
+        <button className={`v3-tab ${view === 'clients' ? 'active' : ''}`} onClick={() => setView('clients')}>
+          Clients
+        </button>
         <button className={`v3-tab ${view === 'branding' ? 'active' : ''}`} onClick={() => setView('branding')}>
           Firm branding
         </button>
@@ -943,6 +1062,17 @@ export default function ConsultantPage() {
               .catch(() => setError('Created the customer but failed to refresh the client list.'));
           }}
         />
+      ) : view === 'clients' ? (
+        <ClientsDirectory
+          clients={clients}
+          activeClientId={activeClientId}
+          canManageClients={canManageClients}
+          notice={notice}
+          onSwitchClient={onSwitchClient}
+          onLifecycleAction={onLifecycleAction}
+          onToggleClientStatus={onToggleClientStatus}
+          onNewCustomer={() => setShowNewCustomer(true)}
+        />
       ) : view === 'branding' ? (
         <BrandingView />
       ) : view === 'whitelabel' ? (
@@ -955,69 +1085,6 @@ export default function ConsultantPage() {
         <DashboardView dashboard={dashboard} />
       ) : (
         <ClientWorkspace client={activeClient} clientId={activeClient.id} />
-      )}
-
-      {clients.length > 0 && (
-        <div className="v3-admin-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h2>Clients</h2>
-            {canManageClients && (
-              <button className="v3-btn primary v3-btn-sm" onClick={() => setShowNewCustomer(true)}>
-                + New customer
-              </button>
-            )}
-          </div>
-          {notice && <div className="v3-note" style={{ marginBottom: 10 }}>{notice}</div>}
-          {clients.map((client) => (
-            <div
-              key={client.id}
-              className={`v3-client-list-item ${client.id === activeClientId ? 'active' : ''}`}
-              onClick={() => onSwitchClient(client.id)}
-            >
-              <div>
-                <div className="primary">{client.client_name}</div>
-                <div className="secondary" title={client.organization_id}>{client.client_industry || 'Client'} · {client.status || 'active'}</div>
-              </div>
-              <span className={`v3-badge ${client.status === 'active' ? 'active' : 'inactive'}`}>
-                {(client.status || 'active').toUpperCase()}
-              </span>
-              {canManageClients && (
-                <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-                  {client.status === 'active' && (
-                    <>
-                      <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'suspend'); }}>
-                        Suspend
-                      </button>
-                      <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'end'); }}>
-                        End
-                      </button>
-                    </>
-                  )}
-                  {client.status === 'suspended' && (
-                    <>
-                      <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'reactivate'); }}>
-                        Reactivate
-                      </button>
-                      <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'end'); }}>
-                        End
-                      </button>
-                    </>
-                  )}
-                  {client.status === 'ended' && (
-                    <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onLifecycleAction(client, 'reactivate'); }}>
-                      Reactivate
-                    </button>
-                  )}
-                  {client.status === 'active' && (
-                    <button className="v3-btn v3-btn-sm" onClick={(e) => { e.stopPropagation(); onToggleClientStatus(client, 'inactive'); }}>
-                      Deactivate
-                    </button>
-                  )}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
       )}
     </div>
   );

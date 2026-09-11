@@ -71,6 +71,27 @@ def _row_to_message(row: Any) -> Message:
     )
 
 
+def _entity_conv_row(r: Any) -> dict:
+    """Serialize an entity-scoped conversation row (dict payload for the API)."""
+    d = dict(r)
+    return {
+        "id": str(d["id"]),
+        "organization_id": str(d["organization_id"]) if d.get("organization_id") else None,
+        "conversation_kind": d["conversation_kind"],
+        "processing_entity_id": str(d["processing_entity_id"])
+        if d.get("processing_entity_id")
+        else None,
+        "subject": d.get("subject"),
+        "status": d.get("status") or "open",
+        "context": loads_jsonb(d.get("context")) if d.get("context") else None,
+        "created_by": str(d["created_by"]) if d.get("created_by") else None,
+        "created_at": d.get("created_at"),
+        "updated_at": d.get("updated_at"),
+        "last_message_at": d.get("last_message_at"),
+    }
+
+
+
 class MessagingRepository(AbstractRepository[Conversation]):
     """Service-role persistence for the Realtime messaging tables."""
 
@@ -192,7 +213,7 @@ class MessagingRepository(AbstractRepository[Conversation]):
         *,
         conversation_id: str,
         sender_id: str,
-        organization_id: str,
+        organization_id: Optional[str],
         content: str,
     ) -> Message:
         row = await self._fetch_one(
@@ -259,6 +280,84 @@ class MessagingRepository(AbstractRepository[Conversation]):
             "updated_at = NOW() WHERE id = $1",
             conversation_id,
         )
+
+    # -- Phase 5 / WS2 (D39) — entity-scoped PE operational conversations -------
+    async def list_entity_conversations(
+        self, processing_entity_id: Optional[str] = None, *, limit: int = 200
+    ) -> list[dict]:
+        query = (
+            "SELECT id, organization_id, conversation_kind, processing_entity_id, "
+            "subject, status, context, created_by, created_at, updated_at, last_message_at "
+            "FROM public.conversations WHERE conversation_kind = 'entity'"
+        )
+        args: list[Any] = []
+        if processing_entity_id:
+            args.append(processing_entity_id)
+            query += " AND processing_entity_id = $1"
+        query += " ORDER BY created_at DESC LIMIT " + str(int(limit))
+        rows = await self._fetch_all(query, *args)
+        return [_entity_conv_row(r) for r in rows]
+
+    async def get_entity_conversation(
+        self, conversation_id: str
+    ) -> Optional[dict]:
+        row = await self._fetch_one(
+            "SELECT id, organization_id, conversation_kind, processing_entity_id, "
+            "subject, status, context, created_by, created_at, updated_at, last_message_at "
+            "FROM public.conversations WHERE id = $1",
+            conversation_id,
+        )
+        return _entity_conv_row(row) if row is not None else None
+
+    async def create_entity_conversation(
+        self,
+        *,
+        processing_entity_id: str,
+        subject: str,
+        created_by: str,
+        context: Optional[dict],
+    ) -> dict:
+        row = await self._fetch_one(
+            """
+            INSERT INTO public.conversations (
+                organization_id, conversation_kind, processing_entity_id,
+                subject, status, context, created_by, created_at, updated_at
+            ) VALUES (NULL, 'entity', $1, $2, 'open', $3, $4, NOW(), NOW())
+            RETURNING id, organization_id, conversation_kind, processing_entity_id,
+                      subject, status, context, created_by, created_at, updated_at,
+                      last_message_at
+            """,
+            processing_entity_id,
+            subject,
+            None if context is None else dumps_jsonb(context),
+            created_by,
+        )
+        if row is None:
+            raise RuntimeError("conversations insert returned no row")
+        return _entity_conv_row(row)
+
+    async def ensure_participant(
+        self, conversation_id: str, user_id: str
+    ) -> bool:
+        updated = await self._fetch_one(
+            "UPDATE public.conversation_participants "
+            "SET is_active = TRUE, updated_at = NOW() "
+            "WHERE conversation_id = $1 AND user_id = $2 RETURNING id",
+            conversation_id,
+            user_id,
+        )
+        if updated is not None:
+            return True
+        inserted = await self._fetch_one(
+            "INSERT INTO public.conversation_participants "
+            "(conversation_id, user_id, is_active, joined_at) "
+            "SELECT $1, $2, TRUE, NOW() "
+            "WHERE NOT EXISTS (SELECT 1 FROM public.conversation_participants "
+            "WHERE conversation_id = $1 AND user_id = $2) RETURNING id",
+            conversation_id,
+            user_id,
+        )
+        return inserted is not None
 
     async def save(self, entity: Conversation) -> Conversation:
         return entity

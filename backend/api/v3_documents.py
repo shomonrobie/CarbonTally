@@ -159,6 +159,51 @@ def _classify(filename: str, mime: str) -> str:
     return "OTHER"
 
 
+#: Canonical browser-renderable content types keyed by file extension (P0-1).
+_RENDERABLE_MIME_BY_EXT: dict[str, str] = {
+    "pdf": "application/pdf",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+    "csv": "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+}
+
+#: Generic/missing content types that defeat inline browser rendering. PDFs
+#: stored as ``application/octet-stream`` are downloaded instead of rendered,
+#: which broke the SecureDocumentViewer preview (document-preview defect).
+_GENERIC_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "application/octet-stream",
+        "application/binary",
+        "binary/octet-stream",
+        "",
+    }
+)
+
+
+def _renderable_content_type(filename: str, file_type: str, supplied: str) -> str:
+    """Return the canonical content type used when storing a new upload.
+
+    P0-1: new documents must be stored with a content type the document viewer
+    can render inline. A specific browser-supplied type is trusted; a generic
+    or missing type is replaced by the canonical type for the classified file
+    type (PDF → ``application/pdf``, images → ``image/*``, spreadsheets →
+    ``text/csv`` / xlsx types). Existing stored objects are untouched; unknown
+    types fall back to the supplied value so uploads never fail.
+    """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    mapped = _RENDERABLE_MIME_BY_EXT.get(ext)
+    if mapped and (supplied or "").strip().lower() in _GENERIC_MIME_TYPES:
+        return mapped
+    return supplied or "application/octet-stream"
+
+
+
 @router.post("/uploads", status_code=201)
 async def upload_document(
     organization_id: str = Form(...),
@@ -212,6 +257,10 @@ async def create_document_and_enqueue(
     """
     day = datetime.utcnow().strftime("%Y/%m/%d")
     path = f"uploads/{organization_id}/{day}/{uuid4().hex}_{filename}"
+    # P0-1 — store new documents with a browser-renderable content type so the
+    # document viewer can render PDFs/images inline instead of triggering a
+    # download (an existing object is never altered; this only affects uploads).
+    mime_type = _renderable_content_type(filename, file_type, mime_type)
     client = get_service_client()
     try:
         client.storage.from_(DOCUMENTS_BUCKET).upload(

@@ -36,7 +36,7 @@ from api.operations_auth import (
     require_staff,
 )
 from domain.audit import AuditEntry
-from domain.billing import BILLING_MODES, BillingPlan
+from domain.billing import BILLING_MODES, REGISTRATION_MODES, BillingPlan
 
 router = APIRouter(prefix="/api/v3/commercial", tags=["V3 — Commercial (D37-0)"])
 
@@ -49,6 +49,7 @@ CONFIG_KEYS: tuple[str, ...] = (
     "assisted_pricing",
     "credit_policy",
     "standard_allowance",
+    "registration_mode",
 )
 
 
@@ -218,6 +219,7 @@ async def commercial_overview(
         "plans": [_plan_out(p) for p in plans],
         "default_billing_mode": await repos.billing_config.get_default_billing_mode(),
         "billing_modes": list(BILLING_MODES),
+        "registration_modes": list(REGISTRATION_MODES),
     }
 
 
@@ -270,6 +272,15 @@ async def update_config(
             raise HTTPException(
                 status_code=422,
                 detail=f"default_billing_mode.mode must be one of {list(BILLING_MODES)}",
+            )
+    if config_key == "registration_mode":
+        mode = payload.config_value.get("mode")
+        if mode not in REGISTRATION_MODES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"registration_mode.mode must be one of {list(REGISTRATION_MODES)}"
+                ),
             )
     current = await repos.billing_config.get_current(config_key)
     updated = await repos.billing_config.update_version(

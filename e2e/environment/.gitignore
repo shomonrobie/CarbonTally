@@ -1,0 +1,4 @@
+# P6-2F isolated E2E environment — local artifacts (never commit secrets/state)
+.env.e2e
+.env.personas
+*.state.json

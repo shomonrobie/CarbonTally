@@ -7,8 +7,15 @@ from typing import Optional, Dict, List, Any, Callable
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from supabase import create_client, Client
+from supabase import Client
 from dotenv import load_dotenv
+
+# Phase 3 / P1-A — the service-role Supabase client is owned by
+# ``infra.supabase`` (the architecture's single place that constructs Supabase
+# clients). Reusing it here stops the per-request client creation that leaked
+# file descriptors until the process exhausted its FD limit.
+from infra.supabase import get_service_client
+
 
 load_dotenv()
 
@@ -90,7 +97,16 @@ class AuthUser(BaseModel):
 # ==========================================
 
 def get_supabase_client() -> Client:
-    """Get Supabase client instance."""
+    """Return the process-wide service-role Supabase client.
+
+    Phase 3 / P1-A — the previous implementation created a NEW service-role
+    client on every call, leaking file descriptors under sustained load until
+    the process hit its FD limit and every authenticated request returned
+    ``500 ... Too many open files``. The process-wide singleton owned by
+    ``infra.supabase`` is now reused. Service-role authority, the repository
+    layer's RLS-bypass behaviour and the explicit ``SUPABASE_SERVICE_KEY``
+    requirement are all preserved.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -98,8 +114,7 @@ def get_supabase_client() -> Client:
         )
     
     try:
-        client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        return client
+        return get_service_client()
     except Exception as e:
         print(f"❌ Supabase client creation error: {e}")
         raise HTTPException(
@@ -111,7 +126,12 @@ def get_supabase_client() -> Client:
 # SECURITY
 # ==========================================
 
-security = HTTPBearer()
+# WS3 / API-0001 — HTTPBearer(auto_error=False): a *missing* Authorization
+# header now flows into get_current_user (as None) instead of being rejected
+# by the scheme with an HTTP 403 "Not authenticated". This lets the API return
+# the correct 401 + WWW-Authenticate for unauthenticated requests while
+# keeping invalid-token → 401 and insufficient-permission → 403 semantics.
+security = HTTPBearer(auto_error=False)
 
 # ==========================================
 # PERMISSION HELPERS
@@ -145,6 +165,15 @@ async def get_current_user(
 ) -> AuthUser:
     """Get current authenticated user."""
     try:
+        # WS3 / API-0001 — missing credentials (HTTPBearer(auto_error=False)
+        # yields None) must be reported as 401 Unauthorized with a standard
+        # auth challenge, not 403 Forbidden.
+        if credentials is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         token = credentials.credentials
         supabase_client = get_supabase_client()
         user = None

@@ -260,6 +260,9 @@ def test_add_client_requires_manage_clients(client, world, user_provider) -> Non
 
 
 def test_add_client_succeeds_with_permission(client, world, user_provider) -> None:
+    # P6-1C: engaging an ALREADY-EXISTING organisation creates a PENDING
+    # request — never an instant active grant. Customer acceptance is required.
+    world.organizations.seed_org("org-d", name="Org D")
     user = _seed_consultant(world, can_manage_clients=True)
     user_provider.set_user(user)
     response = client.post(
@@ -267,7 +270,11 @@ def test_add_client_succeeds_with_permission(client, world, user_provider) -> No
         json={"organization_id": "org-d", "client_name": "Org D"},
     )
     assert response.status_code == 201
-    assert response.json()["organization_id"] == "org-d"
+    body = response.json()
+    assert body["organization_id"] == "org-d"
+    assert body["status"] == "pending"
+    assert body["relationship_origin"] == "engagement_request"
+    assert body["engagement_requested_at"] is not None
 
 
 def test_add_client_duplicate_409(client, world, user_provider) -> None:

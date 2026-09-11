@@ -54,20 +54,33 @@ export default function ReviewPage() {
       key: 'file_name',
       header: 'Item',
       accessor: 'file_name',
+      sortable: true,
+      sortValue: (row) => (row.file_name || '').toLowerCase(),
       render: (row) => <strong>{row.file_name || 'Unnamed item'}</strong>,
       isHeader: true,
     },
-    { key: 'status', header: 'Status', accessor: 'status', render: (row) => <StatusBadge status={row.status} /> },
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      sortValue: (row) => (row.status || '').toLowerCase(),
+      render: (row) => <StatusBadge status={row.status} />,
+    },
     {
       key: 'calculated',
       header: 'Calculated (kg CO₂e)',
       accessor: 'calculated_emissions_kg_co2e',
+      sortable: true,
+      sortValue: (row) => (row.calculated_emissions_kg_co2e != null ? row.calculated_emissions_kg_co2e : -1),
       render: (row) => row.calculated_emissions_kg_co2e ?? '—',
     },
     {
       key: 'reviewed',
       header: 'Reviewed',
       accessor: 'customer_reviewed_at',
+      sortable: true,
+      sortValue: (row) => (row.customer_reviewed_at ? new Date(row.customer_reviewed_at).getTime() : -1),
       render: (row) => (row.customer_reviewed_at ? new Date(row.customer_reviewed_at).toLocaleDateString() : 'Not yet'),
     },
   ];
@@ -99,6 +112,9 @@ export default function ReviewPage() {
           caption="Items awaiting customer review"
           columns={columns}
           rows={items}
+          clientPaginate
+          defaultPageSize={10}
+          resetKey={org?.id}
           onRowClick={(row) => navigate(`/review/${row.id}`)}
         />
       )}

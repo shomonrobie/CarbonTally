@@ -90,7 +90,7 @@ class NotificationsRepository(AbstractRepository[Notification]):
             notification_type,
             title,
             message,
-            priority,
+            str(priority),
             link,
         )
         if row is None:
@@ -112,6 +112,86 @@ class NotificationsRepository(AbstractRepository[Notification]):
             "WHERE recipient_type = 'user' AND recipient_id = $1",
             user_id,
         )
+
+    async def create_idempotent(
+        self,
+        user_id: str,
+        event_key: str,
+        *,
+        notification_type: Optional[str] = None,
+        title: Optional[str] = None,
+        message: Optional[str] = None,
+        priority: int = 0,
+        link: Optional[str] = None,
+        actor_domain: Optional[str] = None,
+    ) -> Notification:
+        """Create a recipient notification exactly once per ``event_key``.
+
+        ``event_key`` is a deterministic per-(recipient, business-event)
+        identifier supplied by the event producer; retries of the same event
+        can never create duplicate notifications (unique partial index on
+        ``(recipient_id, event_key) WHERE event_key IS NOT NULL``).
+        """
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.notifications (
+                recipient_type, recipient_id, notification_type, title, message,
+                priority, link, event_key, actor_domain, is_read, created_at
+            ) VALUES ('user', $1, $2, $3, $4, $5::text, $6, $7, $8, FALSE, NOW())
+            ON CONFLICT (recipient_id, event_key) WHERE event_key IS NOT NULL
+            DO NOTHING
+            RETURNING {_NOTIF_COLUMNS}
+            """,
+            user_id,
+            notification_type,
+            title,
+            message,
+            str(priority),
+            link,
+            event_key,
+            actor_domain,
+        )
+        if row is None:
+            existing = await self._fetch_one(
+                f"SELECT {_NOTIF_COLUMNS} FROM public.notifications "
+                "WHERE recipient_id = $1 AND event_key = $2 LIMIT 1",
+                user_id,
+                event_key,
+            )
+            return _row_to_notification(existing) if existing is not None else _row_to_notification(
+                {"id": "", "recipient_type": "user", "recipient_id": user_id,
+                 "notification_type": notification_type, "title": title,
+                 "message": message, "priority": priority, "link": link,
+                 "is_read": False, "created_at": None}
+            )
+        return _row_to_notification(row)
+
+    async def support_staff_user_ids(self) -> list[str]:
+        """Authorised CarbonTally Operations recipients for PE operational
+        events: active INTERNAL staff whose role grants can_manage_staff."""
+        rows = await self._fetch_all(
+            "SELECT sp.user_id FROM public.staff_profiles sp "
+            "JOIN public.staff_roles sr ON sr.id = sp.role_id "
+            "WHERE sp.entity_id IS NULL AND coalesce(sp.is_active, true) = true "
+            "AND coalesce((sr.permissions->>'can_manage_staff')::boolean, false) = true"
+        )
+        return [str(r["user_id"]) for r in rows]
+
+    async def entity_participant_user_ids(
+        self, conversation_id: str, entity_id: str, exclude_user: Optional[str] = None
+    ) -> list[str]:
+        """PE staff participants of an entity conversation (own entity only)."""
+        rows = await self._fetch_all(
+            "SELECT cp.user_id FROM public.conversation_participants cp "
+            "JOIN public.staff_profiles sp ON sp.user_id = cp.user_id "
+            "WHERE cp.conversation_id = $1 AND coalesce(cp.is_active, true) = true "
+            "AND sp.entity_id = $2 AND coalesce(sp.is_active, true) = true "
+            "AND ($3::uuid IS NULL OR cp.user_id <> $3)",
+            conversation_id,
+            entity_id,
+            exclude_user,
+        )
+        return [str(r["user_id"]) for r in rows]
 
     async def get(self, id: str) -> Optional[Notification]:
         row = await self._fetch_one(

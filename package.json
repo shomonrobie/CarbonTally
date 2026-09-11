@@ -9,11 +9,11 @@
     "@faker-js/faker": "^10.5.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@radix-ui/react-popover": "^1.1.23",
-    "@snaplet/seed": "^0.98.0",
+    "@snaplet/seed": "^0.89.6",
     "@supabase/realtime-js": "^2.111.0",
     "@supabase/supabase-js": "^2.111.0",
     "pg": "^8.22.0",
-    "prisma": "^7.9.1",
+    "prisma": "^6.12.0",
     "react-hot-toast": "^2.6.0",
     "tsx": "^4.23.5"
   },
@@ -33,8 +33,10 @@
   },
   "homepage": "https://github.com/shomonrobie/CarbonTally#readme",
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@prisma/client": "^7.9.1",
     "@snaplet/copycat": "^6.0.0",
+    "@types/node": "^26.4.0",
     "@types/pg": "^8.20.3"
   },
   "allowScripts": {

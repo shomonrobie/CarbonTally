@@ -1,0 +1,36 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Tiny fixture API", "version": "1.0.0"},
+  "paths": {
+    "/api/v3/orgs": {
+      "get": {
+        "tags": ["organizations"],
+        "summary": "List organisations",
+        "security": [{"bearer": []}],
+        "responses": {"200": {"description": "OK"}}
+      },
+      "post": {
+        "tags": ["organizations"],
+        "summary": "Create organisation",
+        "security": [{"bearer": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object"}}}},
+        "responses": {"201": {"description": "Created"}}
+      }
+    },
+    "/api/v3/ops/me": {
+      "get": {
+        "tags": ["ops"],
+        "summary": "Internal staff surface",
+        "security": [{"bearer": []}],
+        "responses": {"200": {"description": "OK"}}
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "Health check",
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  },
+  "components": {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}}}
+}

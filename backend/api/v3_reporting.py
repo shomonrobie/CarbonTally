@@ -242,6 +242,9 @@ async def audit_reporting(
     actor: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
     entity_type: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, max_length=200),
+    sort: Optional[str] = Query(None),
+    order: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     context=Depends(require_staff),
@@ -252,6 +255,10 @@ async def audit_reporting(
     Reuses the existing ``AuditRepository.query`` over ``audit_trail``. The
     before/after payloads are deliberately excluded to avoid exposing sensitive
     data; only action/actor/resource/timestamp/changed-field-names are shown.
+
+    ``q`` is a free-text search, ``sort``/``order`` select the server ordering
+    (BL-4). ``total`` is the real COUNT of matching rows (BL-4), so the console
+    paginates an honest total rather than the page length.
     """
     require_internal_staff(context)
     ensure_staff_permission(context, "can_manage_staff")
@@ -259,14 +266,21 @@ async def audit_reporting(
 
     from domain.audit import AuditQuery
 
-    filters = AuditQuery(
-        action=action,
-        entity_type=entity_type,
-        actor=actor,
-        limit=limit,
-        offset=offset,
-    )
+    try:
+        filters = AuditQuery(
+            action=action,
+            entity_type=entity_type,
+            actor=actor,
+            q=q,
+            sort=sort,
+            order=order or "desc",
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     entries = await repos.audit.query(filters)
+    total = await repos.audit.count(filters)
     return {
         "entries": [
             {
@@ -283,7 +297,7 @@ async def audit_reporting(
             }
             for e in entries
         ],
-        "total": len(entries),
+        "total": total,
     }
 
 

@@ -433,6 +433,123 @@ def test_audit_reporting_denies_entity_staff(client, world, user_provider):
 
 
 # ---------------------------------------------------------------------------
+# BL-4 — audit search / sort / honest total
+# ---------------------------------------------------------------------------
+
+
+def _seed_audit_entries(world, n=120, prefix="item"):
+    """Seed ``n`` audit entries with deterministic actor/action/resource values."""
+    from datetime import datetime, timedelta, timezone
+
+    from domain.audit import AuditEntry
+
+    base = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    for i in range(n):
+        asyncio.run(world.audit.record(
+            AuditEntry(
+                id=f"audit-{i}",
+                correlation_id="corr-1",
+                entity_type="manual_extraction_item" if i % 2 == 0 else "issue",
+                entity_id=f"ent-{i}",
+                action=f"{prefix}:updated" if i % 3 == 0 else f"{prefix}:created",
+                actor=f"user-{i % 7}",
+                occurred_at=base + timedelta(minutes=i),
+                changed_fields={"status": "updated"},
+                reason="review needed" if i % 5 == 0 else None,
+            )
+        ))
+
+
+def _staff_admin(world, user_provider):
+    _seed_staff(world, "u-admin", {"can_manage_staff": True, "can_view_all": True})
+    user_provider.set_user(
+        staff_user("u-admin", permissions={"can_manage_staff": True, "can_view_all": True})
+    )
+
+
+def test_audit_reporting_returns_honest_total_across_pages(client, world, user_provider):
+    """BL-4 — ``total`` is the real COUNT of matching rows, not the page length."""
+    _seed_audit_entries(world, n=120)
+    _staff_admin(world, user_provider)
+
+    first = client.get("/api/v3/ops/reporting/audit?limit=50&offset=0")
+    assert first.status_code == 200
+    assert first.json()["total"] == 120
+    assert len(first.json()["entries"]) == 50
+
+    last = client.get("/api/v3/ops/reporting/audit?limit=50&offset=100")
+    assert last.status_code == 200
+    assert last.json()["total"] == 120
+    assert len(last.json()["entries"]) == 20
+
+
+def test_audit_reporting_free_text_search(client, world, user_provider):
+    """BL-4 — ``q`` matches action/resource/actor/reason and keeps the total honest."""
+    _seed_audit_entries(world, n=30)
+    _staff_admin(world, user_provider)
+
+    by_action = client.get("/api/v3/ops/reporting/audit?q=item%3Acreated")
+    assert by_action.status_code == 200
+    assert all("item:created" in e["action"] for e in by_action.json()["entries"])
+    assert by_action.json()["total"] == len(by_action.json()["entries"]) == 20
+
+    by_actor = client.get("/api/v3/ops/reporting/audit?q=user-3")
+    assert by_actor.status_code == 200
+    assert all(e["actor"] == "user-3" for e in by_actor.json()["entries"])
+    assert by_actor.json()["total"] == 4
+
+    by_reason = client.get("/api/v3/ops/reporting/audit?q=review%20needed")
+    assert by_reason.status_code == 200
+    assert by_reason.json()["total"] == 6
+    assert all(e["reason"] == "review needed" for e in by_reason.json()["entries"])
+
+    none = client.get("/api/v3/ops/reporting/audit?q=zzz-nothing-matches")
+    assert none.status_code == 200
+    assert none.json()["total"] == 0
+    assert none.json()["entries"] == []
+
+
+def test_audit_reporting_sort_and_order(client, world, user_provider):
+    """BL-4 — server-side sort/order are applied before pagination."""
+    _seed_audit_entries(world, n=12)
+    _staff_admin(world, user_provider)
+
+    asc = client.get("/api/v3/ops/reporting/audit?sort=actor&order=asc&limit=3")
+    actors_asc = [e["actor"] for e in asc.json()["entries"]]
+    assert actors_asc == sorted(actors_asc)
+
+    desc = client.get("/api/v3/ops/reporting/audit?sort=actor&order=desc&limit=3")
+    actors_desc = [e["actor"] for e in desc.json()["entries"]]
+    assert actors_desc == sorted(actors_desc, reverse=True)
+
+    # Default ordering (no sort) is newest-first by occurred_at.
+    default = client.get("/api/v3/ops/reporting/audit?limit=3")
+    times = [e["occurred_at"] for e in default.json()["entries"]]
+    assert times == sorted(times, reverse=True)
+
+
+def test_audit_reporting_invalid_sort_returns_422(client, world, user_provider):
+    """BL-4 — unknown sort columns and bad order values are rejected, never raw SQL."""
+    _seed_audit_entries(world, n=5)
+    _staff_admin(world, user_provider)
+    assert client.get("/api/v3/ops/reporting/audit?sort=not_a_column").status_code == 422
+    assert client.get("/api/v3/ops/reporting/audit?sort=actor&order=sideways").status_code == 422
+
+
+def test_audit_query_validation_unit():
+    from domain.audit import AuditQuery
+
+    assert AuditQuery().sort is None
+    assert AuditQuery(q="   ").q is None  # whitespace-only search is dropped
+    try:
+        AuditQuery(sort="hacked; DROP TABLE")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid sort must be rejected")
+
+
+# ---------------------------------------------------------------------------
 # D31 — extended review / QC / entity payloads
 # ---------------------------------------------------------------------------
 

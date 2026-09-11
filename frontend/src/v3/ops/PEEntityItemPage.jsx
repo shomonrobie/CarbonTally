@@ -12,10 +12,12 @@ import {
   entityExtractItem,
   entityMapItem,
   entityStartItem,
+  entityValidateItem,
   getEntityExtractionBatchItems,
   getEntityExtractionBatches,
   getEntityExtractionItem,
   getEntityMappingOptions,
+  getPeMe,
 } from '../api';
 import ExtractionPanel from './ExtractionPanel';
 import { Button, LoadingState, ErrorState } from '../components/ui';
@@ -40,6 +42,9 @@ export default function PEEntityItemPage() {
   const [clarifyError, setClarifyError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [validateNotice, setValidateNotice] = useState('');
+  const [validateError, setValidateError] = useState('');
+  const [me, setMe] = useState(null);
 
   const load = useCallback(async (id) => {
     setLoading(true);
@@ -71,6 +76,7 @@ export default function PEEntityItemPage() {
 
   useEffect(() => {
     if (itemId) load(itemId);
+    getPeMe().then(setMe).catch(() => setMe(null));
   }, [itemId, load]);
 
   const onNavigate = useCallback((nextId) => {
@@ -88,6 +94,24 @@ export default function PEEntityItemPage() {
     }
   };
 
+  const onValidate = async () => {
+    if (!item) return;
+    setValidateError('');
+    setValidateNotice('');
+    try {
+      const result = await entityValidateItem(entityId, item.id);
+      if (result.blocking) {
+        const msg = (result.findings && result.findings[0] && result.findings[0].message) || '';
+        setValidateError(`Blocking findings — routed back to mapping. ${msg}`.trim());
+      } else {
+        setValidateNotice('Validated.');
+      }
+      await load(item.id);
+    } catch (e) {
+      setValidateError(e.message || 'PE validation could not be applied.');
+    }
+  };
+
   if (loading) return <LoadingState label="Loading entity item workspace…" />;
   if (error) return <ErrorState message={error} onRetry={() => load(itemId)} />;
   if (!item) return <ErrorState message="Item not found." onRetry={() => load(itemId)} />;
@@ -101,7 +125,7 @@ export default function PEEntityItemPage() {
             {item.file_name || '—'} · {item.status || 'pending'}
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => navigate(`/ops?tab=entity`)}>
+        <Button variant="secondary" size="sm" onClick={() => navigate('/pe')}>
           ← Back to entity work
         </Button>
       </div>
@@ -119,11 +143,21 @@ export default function PEEntityItemPage() {
         </div>
       </div>
 
+      {validateError && <div className="v3-ops-error" role="alert">{validateError}</div>}
+      {validateNotice && <div className="v3-ops-notice">{validateNotice}</div>}
+
+      {item.status === 'mapped' && (me?.capabilities || []).includes('review') && (
+        <div className="workspace-actions" style={{ marginBottom: 12 }}>
+          <button className="v3-btn primary" onClick={onValidate}>Validate (PE Review)</button>
+        </div>
+      )}
+
       <ExtractionPanel
         item={item}
         items={items}
         api={ENTITY_API(entityId)}
         onItemChange={onNavigate}
+        onSaved={() => load(itemId)}
         mode="entity"
         suggestions={suggestions}
         validation={validation}

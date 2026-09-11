@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { resolvePostLoginPath } from './v3/api';
+import { goToWorkspace } from './v3/api';
 import toast from 'react-hot-toast';
 
 export default function MagicLink() {
@@ -61,7 +61,14 @@ export default function MagicLink() {
             await supabase.auth.setSession(data.session);
             toast.success('🎉 Welcome to CarbonTally Beta! Your account has been created.');
             // D29/F5 — land on the actor's server-authoritative workspace.
-            navigate(await resolvePostLoginPath());
+            // Fail-closed: a resolution failure shows a controlled error/retry.
+            try {
+              await goToWorkspace(navigate);
+            } catch (err) {
+              console.error('❌ Workspace resolution failed:', err);
+              setError('Failed to load your workspace. Please try again.');
+              toast.error('Failed to load your workspace');
+            }
             return;
           }
 

@@ -438,7 +438,7 @@ export default function DataSecurity() {
               <Link to="/contact" className="btn-primary btn-gradient">
                 Contact CarbonTally
               </Link>
-              <Link to="/privacy-policy" className="btn-outline">
+              <Link to="/privacy" className="btn-outline">
                 View Privacy Policy
               </Link>
             </div>

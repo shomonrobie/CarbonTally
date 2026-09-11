@@ -1,9 +1,11 @@
 // AssetManager.jsx - Fixed API Endpoints
+// WS4 / ARCH-0003 — HTTP migrated to the shared legacy API client
+// (frontend/src/services/apiClient.js) for consistent auth/header handling.
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
 import './css/AssetManager.css';
 import toast from 'react-hot-toast';
+import { apiRequest } from './services/apiClient';
 
 function AssetManager({ organization }) {
   const [activeTab, setActiveTab] = useState('facilities');
@@ -33,13 +35,6 @@ function AssetManager({ organization }) {
     facility_id: ''
   });
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || localStorage.getItem('access_token');
-  };
-
   const fetchData = async () => {
     if (!organization?.id) {
       console.log('⏳ Waiting for organization ID...');
@@ -47,31 +42,24 @@ function AssetManager({ organization }) {
     }
 
     setLoading(true);
-    const token = await getToken();
-    
+
     try {
       // ✅ FIX: Include organization ID in the path
       // GET /api/organizations/{org_id}/facilities
-      const facResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities?limit=1000`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const facResponse = await apiRequest(`/api/organizations/${organization.id}/facilities?limit=1000`);
       if (facResponse.ok) {
-        const data = await facResponse.json();
-        setFacilities(data.facilities || []);
-        console.log('✅ Facilities loaded:', data.facilities?.length || 0);
+        setFacilities(facResponse.data?.facilities || []);
+        console.log('✅ Facilities loaded:', facResponse.data?.facilities?.length || 0);
       } else {
         console.error('❌ Failed to fetch facilities:', facResponse.status);
       }
 
       // ✅ FIX: Include organization ID in the path
       // GET /api/organizations/{org_id}/assets
-      const assetResponse = await fetch(`${API_URL}/api/organizations/${organization.id}/assets?limit=1000`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const assetResponse = await apiRequest(`/api/organizations/${organization.id}/assets?limit=1000`);
       if (assetResponse.ok) {
-        const data = await assetResponse.json();
-        setAssets(data.assets || []);
-        console.log('✅ Assets loaded:', data.assets?.length || 0);
+        setAssets(assetResponse.data?.assets || []);
+        console.log('✅ Assets loaded:', assetResponse.data?.assets?.length || 0);
       } else {
         console.error('❌ Failed to fetch assets:', assetResponse.status);
       }
@@ -110,17 +98,12 @@ function AssetManager({ organization }) {
     }
 
     setIsSubmitting(true);
-    const token = await getToken();
 
     try {
       // ✅ FIX: POST /api/organizations/{org_id}/facilities
-      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities`, {
+      const response = await apiRequest(`/api/organizations/${organization.id}/facilities`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+        body: {
           name: newFacility.name,
           address_line1: newFacility.address_line1 || null,
           address_line2: newFacility.address_line2 || null,
@@ -129,7 +112,7 @@ function AssetManager({ organization }) {
           postcode: newFacility.postcode,
           country: newFacility.country || 'United Kingdom',
           type: newFacility.type || 'office'
-        })
+        }
       });
 
       if (response.ok) {
@@ -146,8 +129,7 @@ function AssetManager({ organization }) {
         });
         fetchData();
       } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to add facility');
+        toast.error(response.data?.detail || 'Failed to add facility');
       }
     } catch (error) {
       console.error('Error adding facility:', error);
@@ -171,22 +153,17 @@ function AssetManager({ organization }) {
     }
 
     setIsSubmitting(true);
-    const token = await getToken();
 
     try {
       // ✅ FIX: POST /api/organizations/{org_id}/assets
-      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/assets`, {
+      const response = await apiRequest(`/api/organizations/${organization.id}/assets`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+        body: {
           facility_id: newAsset.facility_id,
           name: newAsset.name,
           description: newAsset.description || null,
           type: newAsset.type || 'other'
-        })
+        }
       });
 
       if (response.ok) {
@@ -199,8 +176,7 @@ function AssetManager({ organization }) {
         });
         fetchData();
       } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to add asset');
+        toast.error(response.data?.detail || 'Failed to add asset');
       }
     } catch (error) {
       console.error('Error adding asset:', error);
@@ -213,21 +189,17 @@ function AssetManager({ organization }) {
   const handleDeleteFacility = async (facilityId, facilityName) => {
     if (!window.confirm(`Are you sure you want to deactivate "${facilityName}"?`)) return;
 
-    const token = await getToken();
-
     try {
       // ✅ FIX: DELETE /api/organizations/{org_id}/facilities/{facility_id}
-      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/facilities/${facilityId}?permanent=false`, {
+      const response = await apiRequest(`/api/organizations/${organization.id}/facilities/${facilityId}?permanent=false`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
         toast.success(`Facility "${facilityName}" deactivated`);
         fetchData();
       } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to delete facility');
+        toast.error(response.data?.detail || 'Failed to delete facility');
       }
     } catch (error) {
       console.error('Error deleting facility:', error);
@@ -238,21 +210,17 @@ function AssetManager({ organization }) {
   const handleDeleteAsset = async (assetId, assetName) => {
     if (!window.confirm(`Are you sure you want to deactivate "${assetName}"?`)) return;
 
-    const token = await getToken();
-
     try {
       // ✅ FIX: DELETE /api/organizations/{org_id}/assets/{asset_id}
-      const response = await fetch(`${API_URL}/api/organizations/${organization.id}/assets/${assetId}?permanent=false`, {
+      const response = await apiRequest(`/api/organizations/${organization.id}/assets/${assetId}?permanent=false`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
         toast.success(`Asset "${assetName}" deactivated`);
         fetchData();
       } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to delete asset');
+        toast.error(response.data?.detail || 'Failed to delete asset');
       }
     } catch (error) {
       console.error('Error deleting asset:', error);

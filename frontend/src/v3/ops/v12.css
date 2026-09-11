@@ -1,0 +1,118 @@
+/* ==========================================================================
+   frontend/src/v3/ops/v12.css — V1.2 dual-origin workflow UI surfaces (D21).
+
+   Shared by the CarbonTally QC surface (ops tab) and the dedicated Processing
+   Entity application (/pe). Purely presentational on top of the ct-* design
+   tokens — no authorization is expressed in CSS.
+   ========================================================================== */
+
+.v12-origin-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.v12-origin-chip.internal {
+  background: var(--ct-color-info-bg, #ebf8ff);
+  color: var(--ct-color-info-text, #2b6cb0);
+  border: 1px solid var(--ct-color-info-border, #90cdf4);
+}
+
+.v12-origin-chip.pe {
+  background: var(--ct-color-warning-bg-soft, #fffaf0);
+  color: var(--ct-color-warning-text, #744210);
+  border: 1px solid var(--ct-color-warning-border, #fbd38d);
+}
+
+.v12-stage-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.v12-stage {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ct-color-border, #e2e8f0);
+  background: var(--ct-color-surface, #ffffff);
+  color: var(--ct-color-text-muted, #718096);
+  white-space: nowrap;
+}
+
+.v12-stage.active {
+  border-color: var(--ct-color-primary-border, #bee3d8);
+  background: var(--ct-color-primary-soft, #f0fff4);
+  color: var(--ct-color-primary-dark, #1b4332);
+  font-weight: 600;
+}
+
+.v12-stage.stop {
+  border-color: var(--ct-color-warning-border, #fbd38d);
+  background: var(--ct-color-warning-bg-soft, #fffaf0);
+  color: var(--ct-color-warning-text, #744210);
+}
+
+.v12-stage-arrow {
+  color: var(--ct-color-text-muted, #718096);
+  font-size: 12px;
+}
+
+.v12-panel {
+  border: 1px solid var(--ct-color-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--ct-color-surface, #ffffff);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.v12-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.v12-label {
+  font-size: 12px;
+  color: var(--ct-color-text-muted, #718096);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 2px;
+}
+
+.v12-value {
+  font-size: 14px;
+  color: var(--ct-color-text, #1a202c);
+  font-weight: 500;
+}
+
+.v12-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.v12-muted {
+  color: var(--ct-color-text-muted, #718096);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .v12-stage-rail {
+    gap: 6px 2px;
+  }
+  .v12-panel {
+    padding: 10px;
+  }
+  .v12-grid {
+    grid-template-columns: 1fr;
+  }
+}

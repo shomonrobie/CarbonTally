@@ -30,6 +30,7 @@ from typing import Optional, Protocol
 
 from core.exceptions import UnitMismatchError, ValidationFailedError
 from core.logging import get_logger
+from core.units import is_currency_unit, resolve_unit_for_factor
 from domain.calculation import (
     CalculationMethodology,
     CalculationResult,
@@ -51,6 +52,51 @@ DEFAULT_ALGORITHM_VERSION = "v1.0"
 
 #: Tonnes conversion precision (kg -> tonnes, 6 decimal places).
 _TONNES_PRECISION = Decimal("0.000001")
+
+#: Internal factor-matching / methodology labels that must never reach the
+#: public CalculationMethodology contract. They are implementation details of
+#: the matching stage names / factor kinds and are derived server-side into a
+#: canonical methodology before persistence (P0-3).
+_INTERNAL_METHODOLOGY_LABELS: frozenset[str] = frozenset(
+    {
+        "customer_factor",
+        "keyword_search",
+        "exact_match",
+        "natural_key",
+        "alias",
+        "fuzzy",
+        "semantic",
+        "provider",
+    }
+)
+
+
+def derive_methodology(
+    value: str,
+    *,
+    is_customer_factor: bool,
+    quantity_unit: Optional[str],
+) -> Optional[str]:
+    """Map an internal methodology label to a canonical CalculationMethodology.
+
+    Returns ``None`` when ``value`` is neither a canonical methodology value
+    (handled by the caller) nor a known internal label — the caller then fails
+    safely (invalid methodology values are never silently accepted).
+
+    Derivation is deterministic and mirrors the automatic-pipeline rule:
+    * a customer factor with a currency unit is ``spend_based``;
+    * a distance unit (km / miles) is ``distance_based``;
+    * everything else is ``direct_multiply``.
+    """
+    if value not in _INTERNAL_METHODOLOGY_LABELS:
+        return None
+    unit = str(quantity_unit or "").strip()
+    if is_customer_factor and is_currency_unit(unit):
+        return CalculationMethodology.SPEND_BASED.value
+    if unit.lower() in ("km", "miles", "mile"):
+        return CalculationMethodology.DISTANCE_BASED.value
+    return CalculationMethodology.DIRECT_MULTIPLY.value
+
 
 
 class CalculationSink(Protocol):
@@ -119,6 +165,13 @@ class CalculationRequest:
     source_file: Optional[str] = None
     source_page: Optional[int] = None
     source_item_id: Optional[str] = None
+    #: Actual human actor (auth.users id — CarbonTally internal staff or
+    #: Processing-Entity staff) who requested the calculation. Persisted on the
+    #: immutable snapshot as ``calculation_snapshots.performed_by``. ``None``
+    #: for automatic-pipeline runs (machine provenance is out of scope); the
+    #: organisation context is always carried separately by
+    #: ``organization_id`` / the snapshot's ``calculated_by``.
+    performed_by: Optional[str] = None
     log_id: Optional[str] = None
     asset_id: Optional[str] = None
     facility_id: Optional[str] = None
@@ -160,13 +213,47 @@ class CalculationRequest:
             raise ValueError("activity must not be empty")
         if not self.activity_type:
             raise ValueError("activity_type must not be empty")
+        # ------------------------------------------------------------------
+        # P0-2 — canonical unit resolution at the deterministic engine boundary.
+        # Every calculation path (automatic pipeline, operations, customer,
+        # consultant, exports) funnels through CalculationRequest, so
+        # normalising quantity_unit here guarantees unit aliases (m3 ↔ cubic
+        # metres, L ↔ litres, kWh ↔ kWh (Gross CV)) never reach the mismatch
+        # check unresolved, while genuinely incompatible units still fail
+        # deterministically downstream (UNIT_MISMATCH). Snapshots and emission
+        # logs therefore persist canonical units.
+        # ------------------------------------------------------------------
+        _factor_unit: Optional[str] = (
+            self.factor.unit
+            if self.factor is not None
+            else (self.customer_factor.unit if self.customer_factor is not None else None)
+        )
+        if _factor_unit:
+            _resolved = resolve_unit_for_factor(self.quantity_unit, _factor_unit)
+            if _resolved != self.quantity_unit:
+                object.__setattr__(self, "quantity_unit", _resolved)
+        # ------------------------------------------------------------------
+        # P0-3 — methodology normalisation at the engine boundary. Only
+        # canonical CalculationMethodology values may reach persistence.
+        # Internal implementation labels from factor matching
+        # ("customer_factor", "keyword_search", matching stage names) are
+        # derived into a canonical methodology; any other non-canonical value
+        # fails safely (never silently accepted).
+        # ------------------------------------------------------------------
         try:
             CalculationMethodology(self.methodology)
-        except ValueError as exc:
-            raise ValidationFailedError(
-                f"unknown calculation methodology {self.methodology!r}",
-                details={"methodology": self.methodology},
-            ) from exc
+        except ValueError:
+            _canonical = derive_methodology(
+                self.methodology,
+                is_customer_factor=self.customer_factor is not None,
+                quantity_unit=self.quantity_unit,
+            )
+            if _canonical is None:
+                raise ValidationFailedError(
+                    f"unknown calculation methodology {self.methodology!r}",
+                    details={"methodology": self.methodology},
+                ) from None
+            object.__setattr__(self, "methodology", _canonical)
 
     @classmethod
     def from_match_result(
@@ -188,6 +275,7 @@ class CalculationRequest:
         asset_id: Optional[str] = None,
         facility_id: Optional[str] = None,
         customer_factor: Optional[CustomerFactor] = None,
+        performed_by: Optional[str] = None,
     ) -> CalculationRequest:
         """Build a calculation request from the Phase 4 matching output.
 
@@ -243,6 +331,7 @@ class CalculationRequest:
             asset_id=asset_id,
             facility_id=facility_id,
             customer_factor=customer_factor,
+            performed_by=performed_by,
         )
 
 
@@ -310,6 +399,11 @@ class CalculationEngine:
             factor_set="CUSTOMER" if request.customer_factor is not None else request.factor.factor_set or None,
             import_batch_id=None if request.customer_factor is not None else request.factor.import_batch_id,
             calculated_by=request.organization_id,
+            # Gate-4 remediation F1 — the actual human/entity actor (when the
+            # calculation was performed by a human through the ops/PE surfaces)
+            # is persisted on the snapshot instead of relying on the
+            # organisation id alone.
+            performed_by=request.performed_by,
             factor_kind=request.factor_kind,
             customer_factor_id=request.customer_factor_id,
         )
@@ -505,7 +599,10 @@ class CalculationEngine:
                 entity_type="calculation_snapshot",
                 entity_id=snapshot.id,
                 correlation_id=request.match_request_id,
-                actor="calculation_engine",
+                # Gate-4 remediation F1 — prefer the actual human actor when a
+                # calculation was requested by a human; fall back to the engine
+                # label for automatic runs.
+                actor=request.performed_by or "calculation_engine",
                 after={
                     "co2e_kg": str(co2e_kg),
                     "methodology": snapshot.methodology,

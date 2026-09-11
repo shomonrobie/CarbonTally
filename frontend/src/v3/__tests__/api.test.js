@@ -3,8 +3,21 @@
 // The supabase client is stubbed so network-bound helpers (notifications/issues
 // pagination, D26) can be exercised without a live Auth session.
 jest.mock('../../supabaseClient', () => ({
-  supabase: { auth: { getSession: async () => ({ data: { session: null } }) } },
+  supabase: {
+    auth: {
+      getSession: jest.fn(),
+      getUser: jest.fn(),
+    },
+  },
 }));
+
+// CRA's jest config sets `resetMocks: true`, which wipes jest.fn() implementations
+// before EVERY test — so the default Auth behaviour is re-established here.
+beforeEach(() => {
+  const { supabase } = require('../../supabaseClient');
+  supabase.auth.getSession.mockImplementation(async () => ({ data: { session: null } }));
+  supabase.auth.getUser.mockImplementation(async () => ({ data: { user: null } }));
+});
 
 import { exportDocumentsUrl, exportEmissionsUrl } from '../api';
 
@@ -311,10 +324,124 @@ describe('V3 D35 self-service onboarding API client', () => {
     expect(result.onboarding.role).toBe('owner');
   });
 
+
+// ---------------------------------------------------------------------------
+// D29/F5 — post-login workspace routing regression guard.
+//
+// This is the exact routing contract that must hold after authentication:
+//   org member (customer owner/admin/member/viewer) -> /home
+//   staff (operator/reviewer/QC/staff-admin/entity staff) -> /ops
+//   consultant -> /consultant
+//   authenticated with NO org/staff/consultant relationship -> /onboarding
+//
+// Regression context (2026-08): when the compiled REACT_APP_API_URL pointed at
+// a non-CarbonTally service, every role-resolution endpoint returned 404 and
+// ALL authenticated users were misrouted to /onboarding. These tests exercise
+// resolvePostLoginPath through the real fetch path so that routing cannot
+// silently degrade to onboarding for provisioned actors.
+// ---------------------------------------------------------------------------
+describe('resolvePostLoginPath role routing (D29/F5 · Phase 3 / P1-B)', () => {
+  const supabaseMock = require('../../supabaseClient').supabase;
+  const api = require('../api');
+
+  const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+  const serverError = () => ({ ok: false, status: 500, json: async () => ({ detail: 'Internal Server Error' }) });
+
+  beforeEach(() => {
+    localStorage.setItem('access_token', 'test-token');
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'u-1' } } });
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    delete global.fetch;
+  });
+
+  test('existing customer owner resolves /home from the server context endpoint', async () => {
+    global.fetch.mockResolvedValue(ok({
+      actor_type: 'customer',
+      primary_workspace: 'customer',
+      destination: '/home',
+      organization: { id: 'org-1', name: 'CarbonTally Demo Ltd' },
+    }));
+    expect(await api.resolvePostLoginPath()).toBe('/home');
+  });
+
+  test('CarbonTally operator/reviewer/QC/staff-admin and PE staff resolve /ops', async () => {
+    global.fetch.mockResolvedValue(ok({ actor_type: 'staff', primary_workspace: 'ops', destination: '/ops' }));
+    expect(await api.resolvePostLoginPath()).toBe('/ops');
+  });
+
+  test('consultant resolves /consultant', async () => {
+    global.fetch.mockResolvedValue(ok({ actor_type: 'consultant', primary_workspace: 'consultant', destination: '/consultant' }));
+    expect(await api.resolvePostLoginPath()).toBe('/consultant');
+  });
+
+  test('genuinely new authenticated user resolves /onboarding (server decision)', async () => {
+    global.fetch.mockResolvedValue(ok({ actor_type: 'new_user', primary_workspace: 'onboarding', destination: '/onboarding' }));
+    expect(await api.resolvePostLoginPath()).toBe('/onboarding');
+  });
+
+  test('API failure REJECTS instead of falling back to /onboarding (fail-closed)', async () => {
+    global.fetch.mockResolvedValue(serverError());
+    await expect(api.resolvePostLoginPath()).rejects.toThrow();
+  });
+
+  test('network failure REJECTS instead of falling back to /onboarding (fail-closed)', async () => {
+    global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(api.resolvePostLoginPath()).rejects.toThrow();
+  });
+
+  test('empty me/context destination REJECTS (fail-closed)', async () => {
+    global.fetch.mockResolvedValue(ok({}));
+    await expect(api.resolvePostLoginPath()).rejects.toThrow();
+  });
+});
+
   test('resolvePostLoginPath returns /login without a session', async () => {
     const api = require('../api');
     // The mocked supabase client never returns a session.
     expect(await api.resolvePostLoginPath()).toBe('/login');
+  });
+});
+
+describe('V3 ops audit API client (BL-4)', () => {
+  let ok;
+
+  beforeEach(() => {
+    const supabaseMock = require('../../supabaseClient').supabase;
+    const api = require('../api');
+    ok = (body) => ({ ok: true, status: 200, json: async () => body });
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: { id: 'u-1' } } });
+    supabaseMock.auth.getSession.mockResolvedValue({
+      data: { session: { access_token: 'test-token', user: { id: 'u-1' } } },
+    });
+    global.fetch = jest.fn().mockResolvedValue(ok({ entries: [], total: 0 }));
+    expect(api).toBeDefined();
+  });
+
+  test('forwards search, sort and pagination parameters', async () => {
+    const { getOpsAudit } = require('../api');
+    await getOpsAudit({ q: 'item:created', sort: 'actor', order: 'asc', limit: 50, offset: 25 });
+    const url = global.fetch.mock.calls[0][0];
+    expect(url).toContain('/api/v3/ops/reporting/audit?');
+    expect(url).toContain('q=item%3Acreated');
+    expect(url).toContain('sort=actor');
+    expect(url).toContain('order=asc');
+    expect(url).toContain('limit=50');
+    expect(url).toContain('offset=25');
+  });
+
+  test('omits empty search/sort parameters', async () => {
+    const { getOpsAudit } = require('../api');
+    await getOpsAudit({ limit: 50, offset: 0, q: '', action: '', sort: undefined });
+    const url = global.fetch.mock.calls[0][0];
+    expect(url).not.toContain('q=');
+    expect(url).not.toContain('action=');
+    expect(url).not.toContain('sort=');
+    expect(url).toContain('limit=50');
+    expect(url).toContain('offset=0');
   });
 });
 

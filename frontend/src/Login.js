@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { resolvePostLoginPath } from './v3/api';
+import { goToWorkspace } from './v3/api';
 import './css/Login.css';
 
 function Login() {
@@ -33,7 +33,11 @@ function Login() {
         if (session) {
           console.log('✅ User already logged in:', session.user.email);
           // D29/F5 — land on the actor's server-authoritative workspace.
-          resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+          // Fail-closed (Phase 3/P1-B): a resolution failure shows a
+          // controlled error instead of misrouting to onboarding.
+          goToWorkspace(navigate).catch((err) =>
+            setError(err?.message || 'Failed to load your workspace. Please try again.')
+          );
           return;
         }
 
@@ -65,7 +69,9 @@ function Login() {
           if (newSession) {
             console.log('✅ OAuth callback successful! User:', newSession.user.email);
             // D29/F5 — land on the actor's server-authoritative workspace.
-            resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+            goToWorkspace(navigate).catch((err) =>
+              setError(err?.message || 'Failed to load your workspace. Please try again.')
+            );
           } else {
             console.log('⏳ Session not ready yet, waiting for auth state change...');
           }
@@ -85,7 +91,9 @@ function Login() {
         if (event === 'SIGNED_IN' && session) {
           console.log('✅ User signed in:', session.user.email);
           // D29/F5 — land on the actor's server-authoritative workspace.
-          resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+          goToWorkspace(navigate).catch((err) =>
+            setError(err?.message || 'Failed to load your workspace. Please try again.')
+          );
         } else if (event === 'SIGNED_OUT') {
           console.log('👋 User signed out');
         }
@@ -140,7 +148,9 @@ function Login() {
         if (error) throw error;
         // D29/F5 — land on the actor's server-authoritative workspace
         // (org member -> /home, staff -> /ops, consultant -> /consultant).
-        navigate(await resolvePostLoginPath());
+        // Fail-closed: a resolution failure is caught below (controlled error,
+        // never /onboarding).
+        await goToWorkspace(navigate);
       }
     } catch (err) {
       console.error("FULL ERROR OBJECT:", err);

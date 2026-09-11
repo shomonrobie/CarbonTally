@@ -1,0 +1,49 @@
+# Exclusions / noise suppressions (spec §31, §36).
+#
+# These encode EXPECTED noise from historical audits — e.g. role-probe 403s
+# (AUTH-3) are known console noise, not defects. They are context for the
+# finder/classifier, not a way to hide genuine findings: a finding is only
+# suppressed when the pattern matches exactly and the reason is recorded.
+
+exclusions:
+  - kind: console_error
+    pattern: "GET /api/v3/ops/me 403"
+    reason: "Role-probe 403 noise (historical AUTH-3): every page fires /ops/me and /consultants/me which 403 for non-staff/non-consultants. Not a defect."
+    global: true
+
+  - kind: console_error
+    pattern: "GET /api/v3/consultants/me 403"
+    reason: "Role-probe 403 noise (historical AUTH-3)."
+    global: true
+
+  - kind: route
+    pattern: "/onboarding"
+    reason: "Onboarding is only expected for brand-new organisations (D35); existing users must NOT be redirected there. Absence is a defect; presence for new users is expected."
+
+  - kind: endpoint
+    pattern: "/api/reference/fuel-types"
+    reason: "Historical CAL-3 PGRST205 stale-schema 500 — tracked as a regression target, not a current finding until re-verified by the harness."
+
+  - kind: finding
+    pattern: "QA-AUTH-role-probe-403"
+    reason: "Suppress known role-probe noise at the classifier level only when exactly matching the AUTH-3 pattern."
+
+  - kind: table
+    pattern: "entities"
+    reason: "Small static control-plane table — pagination not required (see table_rules.yaml)."
+
+  - kind: table
+    pattern: "members"
+    reason: "Small static table — pagination not required."
+
+  - kind: table
+    pattern: "facilities"
+    reason: "Small static table — pagination not required."
+
+  - kind: tool
+    pattern: "zap"
+    reason: "OWASP ZAP not part of the default environment; report SKIPPED — TOOL UNAVAILABLE, never a failure."
+
+  - kind: tool
+    pattern: "pgtap"
+    reason: "pgTAP not installed; report SKIPPED — TOOL UNAVAILABLE."

@@ -262,6 +262,73 @@ def test_add_member_requires_admin(client, user_provider) -> None:
     assert response.status_code == 403
 
 
+def _seed_member_for_add(world, member_id, org_id, user_id, role="member", is_active=True):
+    world.tenant.seed_member({
+        "id": member_id,
+        "organization_id": org_id,
+        "user_id": user_id,
+        "role": role,
+        "is_active": is_active,
+        "created_at": "2025-01-01T00:00:00+00:00",
+        "updated_at": "2025-01-01T00:00:00+00:00",
+    })
+
+
+def test_add_member_duplicate_returns_409(client, world, user_provider) -> None:
+    """BL-1 — an existing (org, user) membership is a controlled 409, never a second row."""
+    _seed_member_for_add(world, "member-1", "org-a", "u-9")
+    user_provider.set_user(org_admin_user("org-a", "admin-a", "admin.a@test"))
+    response = client.post(
+        "/api/v3/organizations/org-a/members",
+        json={"user_id": "u-9", "role": "member"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DUPLICATE_MEMBERSHIP"
+    # No additional membership row was created in the tenant store.
+    assert len(world.tenant._members) == 1
+    assert next(iter(world.tenant._members.values()))["id"] == "member-1"
+
+
+def test_add_member_duplicate_inactive_returns_409(client, world, user_provider) -> None:
+    """BL-1 — re-adding a deactivated member is a 409 (reactivate via UPDATE), not a second row."""
+    _seed_member_for_add(world, "member-1", "org-a", "u-9", is_active=False)
+    user_provider.set_user(org_admin_user("org-a", "admin-a", "admin.a@test"))
+    response = client.post(
+        "/api/v3/organizations/org-a/members",
+        json={"user_id": "u-9", "role": "member"},
+    )
+    assert response.status_code == 409
+    assert len(world.tenant._members) == 1
+    assert next(iter(world.tenant._members.values()))["is_active"] is False
+
+
+def test_add_member_valid_new_member_201(client, world, user_provider) -> None:
+    """BL-1 — a genuinely new (org, user) membership still succeeds."""
+    user_provider.set_user(org_admin_user("org-a", "admin-a", "admin.a@test"))
+    response = client.post(
+        "/api/v3/organizations/org-a/members",
+        json={"user_id": "u-new", "role": "member"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_id"] == "u-new"
+    assert body["role"] == "member"
+    assert body["is_active"] is True
+
+
+def test_add_member_same_user_different_org_allowed(client, world, user_provider) -> None:
+    """BL-1 — uniqueness is per (org, user); the same user may join another org."""
+    _seed_member_for_add(world, "member-a", "org-a", "u-9")
+    user_provider.set_user(org_admin_user("org-b", "admin-b", "admin.b@test"))
+    response = client.post(
+        "/api/v3/organizations/org-b/members",
+        json={"user_id": "u-9", "role": "viewer"},
+    )
+    assert response.status_code == 201
+    assert response.json()["organization_id"] == "org-b"
+
+
+
 def test_update_member_validates_role(client, world, user_provider) -> None:
     world.tenant.seed_member({
         "id": "member-1",

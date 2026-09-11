@@ -1,0 +1,43 @@
+# QA Harness target environments. URL values are placeholders resolved at run
+# time; secrets are NEVER stored here (DSN comes from the env var named in
+# postgres_dsn_env).
+
+environments:
+  local:
+    name: local
+    frontend_url: http://localhost:3000
+    api_url: http://localhost:8050
+    api_prefix: /api/v3
+    supabase_auth_url: http://127.0.0.1:54425
+    supabase_rest_url: http://127.0.0.1:54425/rest/v1
+    postgres_dsn_env: DATABASE_URL
+    postgres_host: 127.0.0.1
+    postgres_port: 54426
+    postgres_db: postgres
+    notes: "Local dev stack (CORS allowlist requires localhost, not 127.0.0.1, for the frontend)."
+
+  staging:
+    name: staging
+    frontend_url: ""
+    api_url: ""
+    api_prefix: /api/v3
+    supabase_auth_url: ""
+    supabase_rest_url: ""
+    postgres_dsn_env: STAGING_DATABASE_URL
+    postgres_host: ""
+    postgres_port: 0
+    postgres_db: ""
+    notes: "Not configured; do not run without explicit credentials from the operator."
+
+  production:
+    name: production
+    frontend_url: https://carbontally.co.uk
+    api_url: ""
+    api_prefix: /api/v3
+    supabase_auth_url: ""
+    supabase_rest_url: ""
+    postgres_dsn_env: PRODUCTION_DATABASE_URL
+    postgres_host: ""
+    postgres_port: 0
+    postgres_db: ""
+    notes: "PRODUCTION — requires explicit authorization; QA default is local only."

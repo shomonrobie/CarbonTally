@@ -41,7 +41,11 @@ _JOB_COLUMNS = (
     "manual_review_reason, notified_at, pipeline_version, source_item_id, "
     "ingested_at, extracted_at, mapped_at, validated_at, calculated_at, "
     "review_ready_at, reprocess_count, created_at, updated_at, completed_at, "
-    "emission_factor_used, batch_id, workflow_error_count"
+    "emission_factor_used, batch_id, workflow_error_count, "
+    "automation_provider, automation_model, automation_model_version, "
+    "automation_extracted_data, created_by, updated_by, customer_reviewed_by, "
+    "customer_reviewed_at, customer_approved, customer_notes, "
+    "customer_rejection_reason"
 )
 
 
@@ -93,7 +97,25 @@ def _row_to_job(row: Any) -> AutomaticProcessingJob:
         calculated_at=_dt(r.get("calculated_at")),
         review_ready_at=_dt(r.get("review_ready_at")),
         notified_at=_dt(r.get("notified_at")),
+        automation_provider=r.get("automation_provider"),
+        automation_model=r.get("automation_model"),
+        automation_model_version=r.get("automation_model_version"),
+        automation_extracted_data=loads_jsonb(r.get("automation_extracted_data"))
+        or None,
         reprocess_count=int(r.get("reprocess_count") or 0),
+        # WS4 Gate 6 (workstream W3 / gap G6-C) — authoritative human actor
+        # fields persisted by the human gates (read-only; see domain model).
+        created_by=_uid(r.get("created_by")),
+        updated_by=_uid(r.get("updated_by")),
+        customer_reviewed_by=_uid(r.get("customer_reviewed_by")),
+        customer_reviewed_at=_dt(r.get("customer_reviewed_at")),
+        customer_approved=(
+            bool(r["customer_approved"])
+            if r.get("customer_approved") is not None
+            else None
+        ),
+        customer_notes=r.get("customer_notes"),
+        customer_rejection_reason=r.get("customer_rejection_reason"),
     )
 
 
@@ -273,6 +295,23 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         ai_extraction_method: Optional[str] = None,
         ai_mapping_confidence: Optional[float] = None,
         emission_factor_used: Optional[str] = None,
+        metadata: Optional[dict] = None,
+        ai_extraction_result: Optional[dict] = None,
+        ai_extracted_at: Optional[datetime] = None,
+        ai_processing_time_ms: Optional[int] = None,
+        # WS4 Gate 5 (task T3) — write-once automated-execution attribution block.
+        # Written only at the extraction->mapping advance; COALESCE semantics keep
+        # the first persisted value immutable (never overwritten by re-runs or
+        # later human processing).
+        automation_provider: Optional[str] = None,
+        automation_model: Optional[str] = None,
+        automation_model_version: Optional[str] = None,
+        # WS4 Gate 6 (workstream W1 / gap G6-A) — original automated extraction
+        # output, persisted write-once at the SAME extraction advance that first
+        # persists `extracted_data` (deterministic AND AI-contributing runs).
+        # COALESCE first-write-wins: re-runs and human saves can never replace
+        # or clear the preserved original output.
+        automation_extracted_data: Optional[dict] = None,
     ) -> Optional[AutomaticProcessingJob]:
         """Persist one stage transition with its outputs and timestamps.
 
@@ -323,6 +362,41 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         if emission_factor_used is not None:
             args.append(emission_factor_used)
             sets.append(f"emission_factor_used = ${len(args)}")
+        if metadata is not None:
+            # JSONB top-level merge — never clobbers existing job metadata
+            # (mime/page_count/document_id, prior provenance, ...).
+            args.append(dumps_jsonb(metadata))
+            sets.append(f"metadata = COALESCE(metadata, '{{}}'::jsonb) || ${len(args)}")
+        if ai_extraction_result is not None:
+            args.append(dumps_jsonb(ai_extraction_result))
+            sets.append(f"ai_extraction_result = ${len(args)}")
+        if ai_extracted_at is not None:
+            args.append(ai_extracted_at)
+            sets.append(f"ai_extracted_at = ${len(args)}")
+        if ai_processing_time_ms is not None:
+            args.append(int(ai_processing_time_ms))
+            sets.append(f"ai_processing_time_ms = ${len(args)}")
+        # Write-once automation attribution (COALESCE = first write wins; a NULL
+        # column is filled, a non-NULL column is never overwritten).
+        if automation_provider is not None:
+            args.append(automation_provider)
+            sets.append(f"automation_provider = COALESCE(automation_provider, ${len(args)})")
+        if automation_model is not None:
+            args.append(automation_model)
+            sets.append(f"automation_model = COALESCE(automation_model, ${len(args)})")
+        if automation_model_version is not None:
+            args.append(automation_model_version)
+            sets.append(
+                f"automation_model_version = COALESCE(automation_model_version, ${len(args)})"
+            )
+        # WS4 Gate 6 (workstream W1 / gap G6-A) — write-once preservation of the
+        # original automated extraction output (COALESCE = first write wins).
+        if automation_extracted_data is not None:
+            args.append(dumps_jsonb(automation_extracted_data))
+            sets.append(
+                "automation_extracted_data = "
+                f"COALESCE(automation_extracted_data, ${len(args)})"
+            )
 
         # Per-stage completion stamps (persisted progress).
         if target_stage == "extracting":
@@ -516,19 +590,39 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         the item workbench and confirms the job; this method persists the
         corrected values so the resumed pipeline validates the corrections
         (and the validation/calculation outputs are regenerated from them).
+
+        WS4 Gate 6 (workstream W4 / gap G6-D) — stale-resume integrity: when a
+        supplied value is DISTINCT from the persisted value, the downstream
+        resume markers that would otherwise let the pipeline skip validation /
+        calculation on the corrected data are invalidated
+        (``validation_result`` and ``calculation_snapshot_id`` are cleared; the
+        per-line snapshot dedupe additionally keys request ids on the data
+        digest, so a corrected payload cannot reuse the pre-correction
+        snapshot). Identical (no-op) syncs leave the markers intact so a plain
+        confirm/retry never causes unnecessary re-validation/duplicate
+        snapshots. ``automation_extracted_data`` and the Gate-5 automation
+        block are never touched here.
         """
-        sets = ["updated_at = NOW()"]
-        args: list[Any] = [job_id]
-        if extracted_data is not None:
-            args.append(dumps_jsonb(extracted_data))
-            sets.append(f"extracted_data = ${len(args)}")
-        if mapped_data is not None:
-            args.append(dumps_jsonb(mapped_data))
-            sets.append(f"mapped_data = ${len(args)}")
         row = await self._fetch_one(
-            f"UPDATE public.document_processing_queue "
-            f"SET {', '.join(sets)} WHERE id = $1 RETURNING {_JOB_COLUMNS}",
-            *args,
+            f"""
+            UPDATE public.document_processing_queue
+            SET extracted_data = COALESCE($2::jsonb, extracted_data),
+                mapped_data = COALESCE($3::jsonb, mapped_data),
+                validation_result = CASE
+                    WHEN ($2::jsonb IS NOT NULL AND $2::jsonb IS DISTINCT FROM extracted_data)
+                      OR ($3::jsonb IS NOT NULL AND $3::jsonb IS DISTINCT FROM mapped_data)
+                    THEN NULL ELSE validation_result END,
+                calculation_snapshot_id = CASE
+                    WHEN ($2::jsonb IS NOT NULL AND $2::jsonb IS DISTINCT FROM extracted_data)
+                      OR ($3::jsonb IS NOT NULL AND $3::jsonb IS DISTINCT FROM mapped_data)
+                    THEN NULL ELSE calculation_snapshot_id END,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING {_JOB_COLUMNS}
+            """,
+            job_id,
+            dumps_jsonb(extracted_data) if extracted_data is not None else None,
+            dumps_jsonb(mapped_data) if mapped_data is not None else None,
         )
         return _row_to_job(row) if row is not None else None
 

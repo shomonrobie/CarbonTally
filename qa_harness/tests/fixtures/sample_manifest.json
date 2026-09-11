@@ -1,0 +1,32 @@
+{
+  "namespace": "qa_harness_self_test",
+  "environment": {
+    "supabase": "http://127.0.0.1:1",
+    "api": "http://localhost:1"
+  },
+  "password_hint": "DO NOT STORE PASSWORDS IN MANIFESTS",
+  "personas": [
+    {
+      "persona": "Customer Owner",
+      "email": "owner.demo0001@demo.carbontally.local",
+      "org": "Quayside Energy",
+      "landing": "/home"
+    },
+    {
+      "persona": "Customer Admin",
+      "email": "admin.demo0001@demo.carbontally.local",
+      "org": "Quayside Energy",
+      "landing": "/home"
+    },
+    {
+      "persona": "Consultant",
+      "email": "consultant.demo0001@demo.carbontally.local",
+      "landing": "/consultant"
+    },
+    {
+      "persona": "Processing Entity Staff",
+      "email": "pe-manager-1.demo@demo.carbontally.local",
+      "landing": "/ops (entity workspace)"
+    }
+  ]
+}

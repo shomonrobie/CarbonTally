@@ -5,7 +5,7 @@
 // exposed by the backend; only actor/action/resource/timestamp/field names.
 import React, { useCallback, useEffect, useState } from 'react';
 import { getOpsAudit } from '../api';
-import { LoadingState, ErrorState, Alert, Button, SelectInput } from '../components/ui';
+import { LoadingState, ErrorState, Alert, Button, SelectInput, TextInput } from '../components/ui';
 import DataTable from '../components/ui/DataTable';
 
 const PAGE_SIZE = 50;
@@ -14,7 +14,10 @@ export default function AuditConsoleTab({ canManage }) {
   const [entries, setEntries] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [filters, setFilters] = useState({ action: '', entity_type: '', actor: '' });
+  const [filters, setFilters] = useState({ action: '', entity_type: '', actor: '', q: '' });
+  const [qDraft, setQDraft] = useState('');
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
@@ -26,6 +29,11 @@ export default function AuditConsoleTab({ canManage }) {
     if (filters.action) params.action = filters.action;
     if (filters.entity_type) params.entity_type = filters.entity_type;
     if (filters.actor) params.actor = filters.actor;
+    if (filters.q) params.q = filters.q;
+    if (sortKey) {
+      params.sort = sortKey;
+      params.order = sortDir;
+    }
     try {
       const result = await getOpsAudit(params);
       setEntries(result.entries || []);
@@ -35,12 +43,29 @@ export default function AuditConsoleTab({ canManage }) {
     } finally {
       setLoading(false);
     }
-  }, [offset, filters]);
+  }, [offset, filters, sortKey, sortDir]);
 
-  useEffect(() => { load(); }, [load, retryCount]);
+  useEffect(() => {
+    if (!canManage) return;
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load, retryCount, canManage]);
 
-  if (loading) return <LoadingState label="Loading audit trail…" />;
+  // Debounce the free-text search: only hit the API once the operator pauses.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const q = qDraft.trim();
+      if (q !== filters.q) {
+        setFilters((f) => ({ ...f, q }));
+        setOffset(0);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qDraft]);
 
+  // The audit trail is staff-admin-only: gate BEFORE loading/fetching so a
+  // non-manager never triggers a read of the trail (BL-4, authorization).
   if (!canManage) {
     return (
       <Alert tone="info" title="Audit is admin-only">
@@ -49,16 +74,20 @@ export default function AuditConsoleTab({ canManage }) {
     );
   }
 
+  if (loading) return <LoadingState label="Loading audit trail…" />;
+
   const columns = [
     {
       key: 'occurred_at',
       header: 'When',
       accessor: 'occurred_at',
+      sortable: true,
+      sortValue: (row) => (row.occurred_at ? new Date(row.occurred_at).getTime() : -1),
       render: (row) => (row.occurred_at ? new Date(row.occurred_at).toLocaleString() : '—'),
     },
-    { key: 'actor', header: 'Actor', accessor: 'actor' },
-    { key: 'action', header: 'Action', accessor: 'action' },
-    { key: 'entity_type', header: 'Resource', accessor: 'entity_type' },
+    { key: 'actor', header: 'Actor', accessor: 'actor', sortable: true, sortValue: (row) => (row.actor || '').toLowerCase() },
+    { key: 'action', header: 'Action', accessor: 'action', sortable: true, sortValue: (row) => (row.action || '').toLowerCase() },
+    { key: 'entity_type', header: 'Resource', accessor: 'entity_type', sortable: true, sortValue: (row) => (row.entity_type || '').toLowerCase() },
     {
       key: 'entity_id',
       header: 'Entity',
@@ -73,6 +102,12 @@ export default function AuditConsoleTab({ canManage }) {
     },
   ];
 
+  const onSortChange = ({ key, direction }) => {
+    setSortKey(key);
+    setSortDir(direction);
+    setOffset(0);
+  };
+
   const page = Math.floor(offset / PAGE_SIZE) + 1;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -81,6 +116,12 @@ export default function AuditConsoleTab({ canManage }) {
       {error && <Alert tone="error" title="Failed to load">{error}</Alert>}
 
       <div className="v3-form-grid" style={{ marginBottom: 12 }}>
+        <TextInput
+          label="Search"
+          placeholder="action, resource, actor, entity id…"
+          value={qDraft}
+          onChange={(e) => setQDraft(e.target.value)}
+        />
         <SelectInput
           label="Action"
           value={filters.action}
@@ -121,7 +162,15 @@ export default function AuditConsoleTab({ canManage }) {
         </SelectInput>
       </div>
 
-      <DataTable caption={`Audit trail — ${total} entries`} columns={columns} rows={entries} rowKey="id" />
+      <DataTable
+        caption={`Audit trail — ${total} entries`}
+        columns={columns}
+        rows={entries}
+        rowKey="id"
+        onSortChange={onSortChange}
+        sortKey={sortKey}
+        sortDir={sortDir}
+      />
 
       <div className="v3-actions" style={{ alignItems: 'center' }}>
         <Button variant="secondary" icon="arrowLeft" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>

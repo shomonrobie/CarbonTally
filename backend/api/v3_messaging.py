@@ -223,3 +223,248 @@ async def mark_read(
     await _authorize_org_actor(repos, current_user, conversation.organization_id)
     await repos.messaging.mark_conversation_read(conversation_id, current_user.user_id)
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 / WS2 (D39) — PE <-> CarbonTally Operations operational messaging
+# (PE-MSG-001). Same conversation family; conversation_kind='entity' rows.
+# ---------------------------------------------------------------------------
+import logging  # noqa: E402
+import uuid  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+
+from domain.audit import AuditEntry  # noqa: E402
+
+
+class EntityConversationCreate(BaseModel):
+    processing_entity_id: Optional[str] = None
+    subject: str = Field(..., min_length=1, max_length=300)
+    context: Optional[dict] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+async def _resolve_entity_actor(
+    repos: RepositoryBundle, current_user: AuthUser
+):
+    """Return (domain, entity_id): ('pe', entity) for active PE members,
+    ('ops', None) for authorised CarbonTally Operations, else 403."""
+    if not current_user.is_staff:
+        raise HTTPException(status_code=403, detail="Not authorised for PE operational messaging")
+    context = await _resolve_context(current_user, repos)
+    if context is None:
+        raise HTTPException(status_code=403, detail="Not authorised for PE operational messaging")
+    if context.profile.entity_id is not None:
+        entity_id = context.profile.entity_id
+        entity = await repos.entities.get(entity_id)
+        if entity is None or entity.status != "active":
+            raise HTTPException(status_code=403, detail="Processing entity is not active")
+        return "pe", entity_id
+    # CarbonTally internal staff must hold the support permission (same gate as
+    # N1 org-support messaging) to join PE operational conversations.
+    try:
+        ensure_staff_permission(context, "can_manage_staff")
+        return "ops", None
+    except HTTPException as exc:
+        raise HTTPException(status_code=403, detail="Operations support permission required") from exc
+
+
+async def _entity_conv_read_access(
+    repos: RepositoryBundle, current_user: AuthUser, conversation: dict
+):
+    """Authorize access to one entity conversation; returns actor domain."""
+    if conversation is None or conversation.get("conversation_kind") != "entity":
+        raise HTTPException(status_code=404, detail="conversation not found")
+    entity_id = conversation.get("processing_entity_id")
+    if not entity_id:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    domain, actor_entity = await _resolve_entity_actor(repos, current_user)
+    if domain == "pe" and actor_entity != entity_id:
+        raise HTTPException(status_code=403, detail="Not a member of this processing entity's conversation")
+    return domain
+
+
+async def _validate_entity_context(repos, entity_id: str, context: Optional[dict]):
+    """Entity conversations may carry batch/item work context ONLY when the
+    entity is the assigned processor. Returns normalized context."""
+    if context is None:
+        return None
+    ctx_type = context.get("type")
+    ctx_id = context.get("id")
+    if ctx_type not in ("batch", "item") or not ctx_id:
+        raise HTTPException(status_code=422, detail="context.type must be 'batch' or 'item' with a context.id")
+    if ctx_type == "batch":
+        batch = await repos.manual_extraction.get_batch(ctx_id)
+        if batch is None:
+            raise HTTPException(status_code=422, detail="context batch not found")
+        if str(batch.entity_id or "") != entity_id:
+            raise HTTPException(status_code=403, detail="Context batch is not assigned to this processing entity")
+        return {"type": "batch", "id": ctx_id}
+    item = await repos.manual_extraction.get_item(ctx_id)
+    if item is None:
+        raise HTTPException(status_code=422, detail="context item not found")
+    batch = await repos.manual_extraction.get_batch(item.batch_id)
+    if batch is None or str(batch.entity_id or "") != entity_id:
+        raise HTTPException(status_code=403, detail="Context item is not assigned to this processing entity")
+    return {"type": "item", "id": ctx_id}
+
+
+async def _audit_entity(repos, *, conversation_id, action, actor, details):
+    await repos.audit.record(
+        AuditEntry(
+            id=str(uuid.uuid4()),
+            correlation_id=conversation_id,
+            entity_type="conversation",
+            entity_id=conversation_id,
+            action=action,
+            actor=actor,
+            occurred_at=datetime.now(timezone.utc),
+            changed_fields=details,
+            ip_address=None,
+        )
+    )
+
+
+async def _entity_conversation_rows(repos, rows):
+    out = []
+    for conv in rows:
+        participants = await repos.messaging.list_participants(conv["id"])
+        out.append({
+            **conv,
+            "participant_count": len(participants),
+            "message_count": await repos.messaging.count_messages(conv["id"]),
+        })
+    return out
+
+
+@router.get("/entity-conversations")
+async def list_entity_conversations(
+    entity_id: Optional[str] = None,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """List PE operational conversations (own entity for PE members; all or
+    filtered for authorised Operations)."""
+    domain, actor_entity = await _resolve_entity_actor(repos, current_user)
+    scope = actor_entity if domain == "pe" else (entity_id or None)
+    rows = await repos.messaging.list_entity_conversations(scope)
+    return {"conversations": await _entity_conversation_rows(repos, rows),
+            "total": len(rows), "scope": scope}
+
+
+@router.post("/entity-conversations", status_code=201)
+async def create_entity_conversation(
+    payload: EntityConversationCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Create a PE operational conversation. For PE members the entity is their
+    own ACTIVE entity (client-supplied entity ids are never trusted for PE
+    callers). Authorised Operations may open one for any active entity."""
+    domain, actor_entity = await _resolve_entity_actor(repos, current_user)
+    if domain == "pe":
+        entity_id = actor_entity
+    else:
+        if not payload.processing_entity_id:
+            raise HTTPException(status_code=422, detail="processing_entity_id is required for Operations")
+        entity = await repos.entities.get(payload.processing_entity_id)
+        if entity is None or entity.status != "active":
+            raise HTTPException(status_code=422, detail="processing entity not found or not active")
+        entity_id = payload.processing_entity_id
+    context = await _validate_entity_context(repos, entity_id, payload.context)
+    conv = await repos.messaging.create_entity_conversation(
+        processing_entity_id=entity_id,
+        subject=payload.subject.strip(),
+        created_by=current_user.user_id,
+        context=context,
+    )
+    await repos.messaging.ensure_participant(conv["id"], current_user.user_id)
+    await _audit_entity(repos, conversation_id=conv["id"], action="pe_msg:conversation_created",
+                        actor=current_user.user_id,
+                        details={"processing_entity_id": entity_id,
+                                 "subject": conv["subject"], "context": context,
+                                 "actor_domain": domain})
+    return {"conversation": conv}
+
+
+@router.get("/entity-conversations/{conversation_id}/messages")
+async def list_entity_messages(
+    conversation_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    conv = await repos.messaging.get_entity_conversation(conversation_id)
+    await _entity_conv_read_access(repos, current_user, conv)
+    await repos.messaging.ensure_participant(conversation_id, current_user.user_id)
+    messages = await repos.messaging.list_messages(conversation_id)
+    return {
+        "conversation_id": conversation_id,
+        "messages": [
+            {"id": m.id, "sender_id": m.sender_id, "content": m.content,
+             "is_read": m.is_read, "created_at": m.created_at}
+            for m in messages
+        ],
+        "total": await repos.messaging.count_messages(conversation_id),
+    }
+
+
+@router.post("/entity-conversations/{conversation_id}/messages", status_code=201)
+async def send_entity_message(
+    conversation_id: str,
+    payload: MessageSend,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    conv = await repos.messaging.get_entity_conversation(conversation_id)
+    domain = await _entity_conv_read_access(repos, current_user, conv)
+    await repos.messaging.ensure_participant(conversation_id, current_user.user_id)
+    message = await repos.messaging.send_message(
+        conversation_id=conversation_id,
+        sender_id=current_user.user_id,
+        organization_id=None,
+        content=payload.content.strip(),
+    )
+    await _audit_entity(repos, conversation_id=conversation_id, action="pe_msg:message_sent",
+                        actor=current_user.user_id,
+                        details={"sender": current_user.user_id, "actor_domain": domain,
+                                 "message_id": message.id})
+    # D40 — notify the opposite side (server-resolved recipients only).
+    entity_id = conv.get("processing_entity_id")
+    try:
+        if domain == "pe":
+            recipients = await repos.notifications.support_staff_user_ids()
+            ntype, title, link = "pe_msg.message",                 "PE operational message received", "/ops"
+        else:
+            recipients = await repos.notifications.entity_participant_user_ids(
+                conversation_id, entity_id, exclude_user=current_user.user_id)
+            ntype, title, link = "pe_msg.ops_reply",                 "Operations response received", "/pe"
+        for recipient in recipients:
+            await repos.notifications.create_idempotent(
+                recipient,
+                f"pe_msg:{message.id}:{recipient}",
+                notification_type=ntype,
+                title=title,
+                message="A PE operational conversation was updated",
+                priority=40,
+                link=link,
+                actor_domain=domain,
+            )
+    except Exception:  # best effort; business action already committed
+        logging.getLogger("carbon_tally.pe_msg").warning(
+            "notification producer failed for conversation %s", conversation_id)
+    return {"message": {"id": message.id, "conversation_id": message.conversation_id,
+                         "sender_id": message.sender_id, "content": message.content,
+                         "created_at": message.created_at}}
+
+
+@router.post("/entity-conversations/{conversation_id}/read")
+async def mark_entity_conversation_read(
+    conversation_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    conv = await repos.messaging.get_entity_conversation(conversation_id)
+    await _entity_conv_read_access(repos, current_user, conv)
+    await repos.messaging.ensure_participant(conversation_id, current_user.user_id)
+    await repos.messaging.mark_conversation_read(conversation_id, current_user.user_id)
+    return {"success": True}

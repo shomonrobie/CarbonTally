@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { resolvePostLoginPath } from './v3/api';
+import { goToWorkspace } from './v3/api';
 import './css/BetaSignup.css';
 
 export default function BetaSignup() {
@@ -150,8 +150,12 @@ export default function BetaSignup() {
       setSuccess(true);
       // D35 — never land a customer on the legacy /dashboard. Route through
       // the server-authoritative resolver (new users go to /onboarding).
+      // Fail-closed: a resolution failure shows a controlled error/retry.
       setTimeout(() => {
-        resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+        goToWorkspace(navigate).catch((err) => {
+          console.error('❌ Workspace resolution failed:', err);
+          setError('Failed to load your workspace. Please try again.');
+        });
       }, 2000);
 
     } catch (err) {

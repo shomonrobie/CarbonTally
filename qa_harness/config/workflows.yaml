@@ -1,0 +1,156 @@
+# Executable workflow definitions (spec §13–§18).
+#
+# Each workflow is a sequence of ACTIONS with expected HTTP statuses and a
+# requirement to verify persisted state (DB) — never UI animations. The
+# verification layer runs later; these files encode requirements only.
+
+workflows:
+  customer_document_to_emissions:
+    label: Customer document → emissions → report
+    personas: [customer_owner, customer_admin, consultant]
+    description: "The primary customer outcome. States must persist end-to-end."
+    steps:
+      - { action: login, expected_status: "200" }
+      - { action: upload_document, expected_status: "201" }
+      - { action: storage_object, expected_status: "201" }
+      - { action: file_record, expected_status: "201" }
+      - { action: processing_job, expected_status: "201" }
+      - { action: ingestion, expected_status: "200" }
+      - { action: extraction, expected_status: "200" }
+      - { action: mapping, expected_status: "200" }
+      - { action: validation, expected_status: "200" }
+      - { action: calculation, expected_status: "200" }
+      - { action: evidence, expected_status: "200" }
+      - { action: review, expected_status: "200" }
+      - { action: approval, expected_status: "200" }
+      - { action: completed, expected_status: "200" }
+      - { action: emissions, expected_status: "200" }
+      - { action: reporting, expected_status: "200" }
+
+  automatic_processing:
+    label: Automatic processing state machine
+    personas: [customer_owner, internal_operator, pe_staff]
+    steps:
+      - { action: upload, expected_status: "201" }
+      - { action: enqueue, expected_status: "201" }
+      - { action: ingest, expected_status: "200" }
+      - { action: extract, expected_status: "200" }
+      - { action: map, expected_status: "200" }
+      - { action: validate, expected_status: "200" }
+      - { action: calculate, expected_status: "200" }
+      - { action: evidence, expected_status: "200" }
+      - { action: review, expected_status: "200" }
+      - { action: approval, expected_status: "200" }
+      - { action: completed, expected_status: "200" }
+    checks:
+      - manual_review_gate
+      - retry
+      - failure
+      - dead_letter
+      - resume
+      - idempotency
+      - duplicate_prevention
+      - source_item_id
+      - calculation_snapshot
+      - emissions
+      - evidence
+
+  manual_processing:
+    label: Manual extraction → calculation (ops / PE workbench)
+    personas: [internal_operator, pe_staff, internal_qc]
+    steps:
+      - { action: claim_item, expected_status: "200" }
+      - { action: manual_extraction, expected_status: "200" }
+      - { action: save_extraction, expected_status: "200" }
+      - { action: map_item, expected_status: "200" }
+      - { action: validate_item, expected_status: "200" }
+      - { action: start_calculation, expected_status: "200" }
+      - { action: calculate_item, expected_status: "200" }
+      - { action: snapshot_evidence, expected_status: "200" }
+
+  consultant_operate_customer:
+    label: Consultant operating a customer end-to-end
+    personas: [consultant]
+    description: "Detects the historical CON-1..3 problem (consultant cannot operate customers)."
+    steps:
+      - { action: login, expected_status: "200" }
+      - { action: consultant_dashboard, expected_status: "200" }
+      - { action: client_portfolio, expected_status: "200" }
+      - { action: create_customer, expected_status: "201" }
+      - { action: manage_customer, expected_status: "200" }
+      - { action: create_team_member, expected_status: "201" }
+      - { action: assign_team, expected_status: "200" }
+      - { action: select_client, expected_status: "200" }
+      - { action: enter_client_workspace, expected_status: "200" }
+      - { action: upload_document, expected_status: "201" }
+      - { action: drive_processing, expected_status: "200" }
+      - { action: reporting, expected_status: "200" }
+      - { action: messaging, expected_status: "200" }
+
+  pe_workspace:
+    label: Processing Entity workspace & boundaries
+    personas: [pe_manager, pe_staff]
+    steps:
+      - { action: login, expected_status: "200" }
+      - { action: pe_workspace, expected_status: "200" }
+      - { action: batch_visibility, expected_status: "200" }
+      - { action: manual_extraction, expected_status: "200" }
+      - { action: processing, expected_status: "200" }
+      - { action: allowed_messaging, expected_status: "200" }
+      - { action: document_boundaries, expected_status: "403" }
+      - { action: cross_pe_isolation, expected_status: "403" }
+    checks:
+      - pe_cannot_access_prohibited_customer_source_documents
+
+  internal_operations:
+    label: CarbonTally internal operations capabilities
+    personas: [internal_operator, internal_reviewer, internal_qc, staff_admin, system_admin]
+    description: "Capability boundaries. Reviewer ≠ admin; only approved admin/system-admin capabilities may manage users/roles."
+    steps:
+      - { action: login, expected_status: "200" }
+      - { action: ops_dashboard, expected_status: "200" }
+      - { action: data_entry_queue, expected_status: "200" }
+      - { action: review_queue, expected_status: "200" }
+      - { action: qc_queue, expected_status: "200" }
+      - { action: staff_roster, expected_status: "200" }
+      - { action: entities, expected_status: "200" }
+      - { action: retention, expected_status: "200" }
+      - { action: commercial, expected_status: "200" }
+      - { action: audit, expected_status: "200" }
+    checks:
+      - reviewer_cannot_run_operator_queue
+      - reviewer_cannot_calculate
+      - staff_cannot_admin
+      - staff_admin_can_admin
+      - system_admin_can_admin
+
+  admin_control_plane:
+    label: Admin control plane
+    personas: [staff_admin, system_admin]
+    steps:
+      - { action: login, expected_status: "200" }
+      - { action: staff_management, expected_status: "200" }
+      - { action: role_management, expected_status: "200" }
+      - { action: billing_config, expected_status: "200" }
+      - { action: retention_config, expected_status: "200" }
+      - { action: audit_log, expected_status: "200" }
+
+  messaging:
+    label: Authenticated messaging (N1)
+    personas: [customer_owner, customer_admin, consultant, pe_manager, pe_staff]
+    description: "Conversation creation, participants, messages, realtime, unread, notifications, isolation."
+    steps:
+      - { action: create_conversation, expected_status: "201" }
+      - { action: add_participants, expected_status: "200" }
+      - { action: send_message, expected_status: "200" }
+      - { action: receive_message, expected_status: "200" }
+      - { action: realtime_delivery, expected_status: "200" }
+      - { action: unread_state, expected_status: "200" }
+      - { action: notifications, expected_status: "200" }
+    checks:
+      - cross_org_isolation
+      - cross_client_isolation
+      - pe_boundaries
+      - internal_messaging
+      - authenticated_user_messaging_only
+      - visitor_assistant_not_used_as_messaging

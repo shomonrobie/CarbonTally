@@ -13,6 +13,7 @@ import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
 import PrivacyPolicy from './PrivacyPolicy';
+import DataSecurity from './DataSecurity';
 import PricingPage from './PricingPage';
 import CookiePolicy from './CookiePolicy';
 import TermsPage from './TermsPage';
@@ -56,6 +57,10 @@ import OperatorItemPage from './v3/ops/OperatorItemPage';
 import ReviewItemPage from './v3/ops/ReviewItemPage';
 import QcItemPage from './v3/ops/QcItemPage';
 import PEEntityItemPage from './v3/ops/PEEntityItemPage';
+import PEDedicatedHome from './v3/pe/PEDedicatedHome';
+import PEShell from './v3/pe/PEShell';
+import PeMessagingPage from './v3/pe/PeMessagingPage';
+import PeWorkItemsPage from './v3/pe/PeWorkItemsPage';
 import DashboardPage from './v3/customer/DashboardPage';
 import EmissionsPage from './v3/customer/EmissionsPage';
 import DocumentsPage from './v3/customer/DocumentsPage';
@@ -1995,6 +2000,7 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/data-security" element={<DataSecurity />} />
             <Route path="/cookies" element={<CookiePolicy />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/about" element={<AboutUs />} />
@@ -2205,12 +2211,39 @@ export default function App() {
                 </RoleRoute>
               </ProtectedRoute>
             } />
+            <Route path="/pe" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <PEShell>
+                    <PEDedicatedHome />
+                  </PEShell>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/pe/assignments" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <PEShell>
+                    <PeWorkItemsPage />
+                  </PEShell>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/pe/messages" element={
+              <ProtectedRoute>
+                <RoleRoute requireStaff>
+                  <PEShell>
+                    <PeMessagingPage />
+                  </PEShell>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/pe/items/:entityId/:itemId" element={
               <ProtectedRoute>
                 <RoleRoute requireStaff>
-                  <V3Layout>
+                  <PEShell>
                     <PEEntityItemPage />
-                  </V3Layout>
+                  </PEShell>
                 </RoleRoute>
               </ProtectedRoute>
             } />

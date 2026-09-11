@@ -129,6 +129,39 @@ def _row_to_item(row: Any) -> ManualExtractionItem:
     )
 
 
+#: Ledger columns for the Phase 5 (WS1/D38) canonical assignment attribution.
+_WORK_ASSIGNMENT_COLUMNS = (
+    "id, manual_extraction_item_id, status, action, assignee_kind, assigned_to, "
+    "processing_entity_id, assigned_by, actor_domain, previous_assigned_to, "
+    "previous_processing_entity_id, reason, close_action, closed_by, closed_at, "
+    "created_at, updated_at"
+)
+
+
+def _row_to_work_assignment(row: Any) -> dict:
+    """Serialize one ``work_item_assignments`` row (uuids/timestamps → JSON-safe)."""
+    r = dict(row)
+    return {
+        "id": str(r["id"]),
+        "manual_extraction_item_id": str(r["manual_extraction_item_id"]),
+        "status": r["status"],
+        "action": r["action"],
+        "assignee_kind": r["assignee_kind"],
+        "assigned_to": _uid(r.get("assigned_to")),
+        "processing_entity_id": _uid(r.get("processing_entity_id")),
+        "assigned_by": _uid(r.get("assigned_by")),
+        "actor_domain": r["actor_domain"],
+        "previous_assigned_to": _uid(r.get("previous_assigned_to")),
+        "previous_processing_entity_id": _uid(r.get("previous_processing_entity_id")),
+        "reason": r.get("reason"),
+        "close_action": r.get("close_action"),
+        "closed_by": _uid(r.get("closed_by")),
+        "closed_at": r["closed_at"].isoformat() if r.get("closed_at") else None,
+        "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+        "updated_at": r["updated_at"].isoformat() if r.get("updated_at") else None,
+    }
+
+
 class ManualExtractionRepository(AbstractRepository[dict]):
     """Manual-extraction batches, items and the QC surface."""
 
@@ -536,6 +569,188 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         )
         return _row_to_item(row) if row is not None else None
 
+    # -- V1.2 dual-origin workflow (CT-QC-001..005) --------------------------
+    async def mark_pe_origin_if_unset(
+        self,
+        item_id: str,
+        processing_entity_id: str,
+    ) -> bool:
+        """Set the IMMUTABLE PE origin exactly once (V1.2 §7).
+
+        Never overwrites an existing origin (reassignment, retries and
+        reprocessing cannot change it). ``manual_extraction_batches.entity_id``
+        remains the mutable current-assignment carrier.
+        """
+        status = await self._execute(
+            "UPDATE public.manual_extraction_items "
+            "SET processing_origin = 'PROCESSING_ENTITY', processing_entity_id = $2 "
+            "WHERE id = $1 AND processing_entity_id IS NULL "
+            "AND processing_origin = 'CARBONTALLY_INTERNAL'",
+            item_id,
+            processing_entity_id,
+        )
+        return "UPDATE 1" in status
+
+    async def get_item_origin(self, item_id: str) -> Optional[dict]:
+        """Return the item's immutable origin + originating PE (if any)."""
+        row = await self._fetch_one(
+            "SELECT processing_origin, processing_entity_id "
+            "FROM public.manual_extraction_items WHERE id = $1",
+            item_id,
+        )
+        if row is None:
+            return None
+        return {
+            "processing_origin": str(row["processing_origin"]),
+            "processing_entity_id": str(row["processing_entity_id"])
+            if row.get("processing_entity_id")
+            else None,
+        }
+
+    # -- P6-2D (D7) consultant firm + processing-mode provenance -------------
+    async def record_consultant_provenance(
+        self,
+        item_id: str,
+        *,
+        firm_id: str,
+        processing_mode: str,
+    ) -> bool:
+        """Record durable consultant firm + processing-mode provenance ONCE.
+
+        P6-2D (D7) — ``PO-PHASE6-D7-R-20260910``. The values are computed
+        server-side by the caller (the firm from the authorised consultant
+        membership/engagement relationship, the mode from the authoritative
+        processing-mode predicate); this repository only persists them.
+
+        Write-once: the UPDATE is guarded by ``consultant_firm_id IS NULL``, so
+        the firm that FIRST established the item's consultant provenance is
+        never overwritten by a later action, a later firm, a later membership /
+        engagement change, or any client-supplied value. No historical row is
+        ever backfilled (``PO-PHASE6-D7c-R-20260910``) — rows that never
+        recorded provenance stay NULL.
+        """
+        status = await self._execute(
+            "UPDATE public.manual_extraction_items "
+            "SET consultant_firm_id = $2, processing_mode = $3, "
+            "consultant_provenance_at = NOW(), updated_at = NOW() "
+            "WHERE id = $1 AND consultant_firm_id IS NULL",
+            item_id,
+            firm_id,
+            processing_mode,
+        )
+        return "UPDATE 1" in status
+
+    async def get_item_consultant_provenance(self, item_id: str) -> Optional[dict]:
+        """Return the item's durable D7 provenance (or ``None`` when unrecorded).
+
+        ``None`` is the honest answer for every pre-P6-2D row: no provenance was
+        captured, and none is fabricated.
+        """
+        row = await self._fetch_one(
+            "SELECT consultant_firm_id, processing_mode, consultant_provenance_at "
+            "FROM public.manual_extraction_items WHERE id = $1",
+            item_id,
+        )
+        if row is None:
+            return None
+        return {
+            "consultant_firm_id": _uid(row.get("consultant_firm_id")),
+            "processing_mode": row.get("processing_mode"),
+            "consultant_provenance_at": row.get("consultant_provenance_at"),
+        }
+
+    async def pe_review_decision(
+        self,
+        item_id: str,
+        approved: bool,
+        reviewer: str,
+    ) -> Optional[ManualExtractionItem]:
+        """Record a PE Review decision (PE Reviewer, frozen role).
+
+        Actor/timestamp provenance is stamped immutably on the item
+        (``pe_reviewed_by``/``pe_reviewed_at``). ``calculated`` (direct) and
+        ``pe_review`` (queue-opened) are the acceptable source states.
+        """
+        target = "pe_reviewed" if approved else "pe_review_rejected"
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.manual_extraction_items
+            SET status = $2, pe_reviewed_by = $3, pe_reviewed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1 AND status IN ('calculated', 'pe_review', 'pe_reviewed')
+            RETURNING {_ITEM_COLUMNS}
+            """,
+            item_id,
+            target,
+            reviewer,
+        )
+        return _row_to_item(row) if row is not None else None
+
+    async def pe_qc_decision(
+        self,
+        item_id: str,
+        approved: bool,
+        qc_specialist: str,
+    ) -> Optional[ManualExtractionItem]:
+        """Record a PE QC decision (PE QC Specialist, frozen role).
+
+        PE QC is PE-domain only and NEVER grants CarbonTally QC authority.
+        Provenance: ``pe_qc_by``/``pe_qc_at`` + status transition.
+        """
+        target = "pe_qc_approved" if approved else "pe_qc_rejected"
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.manual_extraction_items
+            SET status = $2, pe_qc_by = $3, pe_qc_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND status IN ('pe_reviewed', 'pe_qc', 'pe_qc_approved')
+            RETURNING {_ITEM_COLUMNS}
+            """,
+            item_id,
+            target,
+            qc_specialist,
+        )
+        return _row_to_item(row) if row is not None else None
+
+    async def ct_qc_decision(
+        self,
+        item_id: str,
+        approved: bool,
+        qc_by: str,
+        quality_score: int,
+        qc_notes: Optional[str],
+    ) -> Optional[ManualExtractionItem]:
+        """Record the late CarbonTally QC decision (internal can_qc only).
+
+        Accepts internal-reviewed items (``reviewed``) and PE-QC-approved items
+        (``pe_qc_approved``) — CarbonTally QC verifies data from EITHER origin.
+        """
+        target = "ct_qc_approved" if approved else "ct_qc_rejected"
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.manual_extraction_items
+            SET status = $2, qc_by = $3, qc_at = NOW(), quality_score = $4,
+                qc_notes = $5, updated_at = NOW()
+            WHERE id = $1 AND status IN ('reviewed', 'pe_qc_approved', 'ct_qc')
+            RETURNING {_ITEM_COLUMNS}
+            """,
+            item_id,
+            target,
+            qc_by,
+            quality_score,
+            qc_notes,
+        )
+        return _row_to_item(row) if row is not None else None
+
+    async def list_ct_qc_pending(self) -> list[ManualExtractionItem]:
+        """CarbonTally QC queue: items awaiting the late CT QC gate from either
+        origin (internal ``reviewed`` or PE ``pe_qc_approved``)."""
+        rows = await self._fetch_all(
+            f"SELECT {_ITEM_COLUMNS} FROM public.manual_extraction_items "
+            "WHERE status IN ('reviewed', 'pe_qc_approved') "
+            "AND quality_score IS NULL ORDER BY created_at"
+        )
+        return [_row_to_item(r) for r in rows]
+
     # -- queues / dashboards ------------------------------------------------
     #: ``_ITEM_COLUMNS`` qualified with an ``i.`` prefix — safe for JOINs where
     #: both ``manual_extraction_items`` and ``manual_extraction_batches`` expose
@@ -613,7 +828,7 @@ class ManualExtractionRepository(AbstractRepository[dict]):
             f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
             "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
             "WHERE b.organization_id = $1 "
-            "AND i.status IN ('customer_review', 'calculated') "
+            "AND i.status IN ('customer_review', 'ct_qc_approved', 'calculated') "
             "AND b.status <> 'cancelled' "
             "ORDER BY i.created_at",
             org_id,
@@ -870,7 +1085,49 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         row = await self._fetch_one(query, entity_id, list(statuses), exclude_item_id)
         return _row_to_item(row) if row is not None else None
 
+    async def next_entity_item_effective(
+        self,
+        entity_id: str,
+        stage: str,
+        exclude_item_id: Optional[str] = None,
+    ) -> Optional[ManualExtractionItem]:
+        """Return the next item awaiting ``stage`` work whose EFFECTIVE
+        processing entity is ``entity_id`` (WS4 4B/4C).
+
+        Mirrors ``next_entity_item`` but resolves the item-level effective
+        assignment (open D38 processing-entity assignment, else batch default)
+        so an entity staff queue can never surface another party's items that
+        merely share a batch default.
+        """
+        statuses = WORKFLOW_STAGE_STATUSES.get(stage)
+        if statuses is None:
+            return None
+        query = (
+            f"SELECT i.{_ITEM_COLUMNS.replace(', ', ', i.')} "
+            "FROM public.manual_extraction_items i "
+            "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
+            "LEFT JOIN LATERAL ("
+            "  SELECT a.id, a.assignee_kind, a.processing_entity_id "
+            "    FROM public.work_item_assignments a "
+            "   WHERE a.manual_extraction_item_id = i.id AND a.status = 'open' "
+            "   ORDER BY a.created_at DESC, a.id DESC LIMIT 1"
+            ") oa ON TRUE "
+            "WHERE i.status = ANY($2::text[]) "
+            "AND b.status <> 'cancelled' "
+            "AND (i.id IS DISTINCT FROM $3::uuid) "
+            "AND CASE "
+            "      WHEN oa.id IS NULL THEN b.entity_id "
+            "      WHEN oa.assignee_kind = 'processing_entity' THEN oa.processing_entity_id "
+            "      ELSE NULL "
+            "    END = $1 "
+            "ORDER BY b.created_at, i.created_at "
+            "LIMIT 1"
+        )
+        row = await self._fetch_one(query, entity_id, list(statuses), exclude_item_id)
+        return _row_to_item(row) if row is not None else None
     async def entity_workflow_dashboard(self, entity_id: str) -> dict:
+
+
         """Pipeline aggregates for one processing entity's assigned batches."""
         batch_rows = await self._fetch_all(
             "SELECT status, COUNT(*) AS n FROM public.manual_extraction_batches "
@@ -946,6 +1203,192 @@ class ManualExtractionRepository(AbstractRepository[dict]):
             "qc_approved" if approved else "qc_rejected",
         )
         return _row_to_item(row) if row is not None else None
+
+    # -- Phase 5 / WS1 (D38) — canonical assignment attribution ledger ---------
+    async def is_active_internal_staff(self, user_id: str) -> bool:
+        row = await self._fetch_one(
+            "SELECT 1 AS ok FROM public.staff_profiles "
+            "WHERE user_id = $1 AND entity_id IS NULL AND is_active = TRUE LIMIT 1",
+            user_id,
+        )
+        return row is not None
+
+    async def work_item_current(self, item_id: str) -> Optional[dict]:
+        row = await self._fetch_one(
+            f"SELECT {_WORK_ASSIGNMENT_COLUMNS} FROM public.work_item_assignments "
+            "WHERE manual_extraction_item_id = $1 AND status = 'open' "
+            "ORDER BY created_at DESC LIMIT 1",
+            item_id,
+        )
+        return _row_to_work_assignment(row) if row is not None else None
+
+    async def work_item_history(
+        self, item_id: str, limit: int = 200
+    ) -> list[dict]:
+        rows = await self._fetch_all(
+            f"SELECT {_WORK_ASSIGNMENT_COLUMNS} FROM public.work_item_assignments "
+            "WHERE manual_extraction_item_id = $1 "
+            "ORDER BY created_at DESC, id DESC LIMIT $2",
+            item_id,
+            limit,
+        )
+        return [_row_to_work_assignment(r) for r in rows]
+
+    async def work_item_open(
+        self,
+        *,
+        item_id: str,
+        action: str,
+        assignee_kind: str,
+        assigned_to: Optional[str],
+        processing_entity_id: Optional[str],
+        actor: str,
+        actor_domain: str,
+        reason: Optional[str],
+        close_action: str,
+    ) -> Optional[dict]:
+        """Atomically repoint the item's open assignment.
+
+        Any existing open row is closed (``close_action``) and the new open row
+        is inserted in the same statement. The unique partial index on
+        ``(manual_extraction_item_id) WHERE status='open'`` guarantees at most
+        one open assignment per item even under concurrency.
+        """
+        row = await self._fetch_one(
+            f"""
+            WITH prev AS (
+                UPDATE public.work_item_assignments
+                   SET status = 'closed', close_action = $9,
+                       closed_by = $6, closed_at = NOW(), updated_at = NOW()
+                 WHERE manual_extraction_item_id = $1 AND status = 'open'
+                 RETURNING assigned_to, processing_entity_id, assigned_by
+            )
+            INSERT INTO public.work_item_assignments
+                (manual_extraction_item_id, status, action, assignee_kind,
+                 assigned_to, processing_entity_id, assigned_by, actor_domain,
+                 previous_assigned_to, previous_processing_entity_id, reason,
+                 created_at, updated_at)
+            SELECT $1, 'open', $2, $3, $4, $5, $6, $7,
+                   (SELECT assigned_to FROM prev),
+                   (SELECT processing_entity_id FROM prev),
+                   $8, NOW(), NOW()
+            RETURNING {_WORK_ASSIGNMENT_COLUMNS}
+            """,
+            item_id,
+            action,
+            assignee_kind,
+            assigned_to,
+            processing_entity_id,
+            actor,
+            actor_domain,
+            reason,
+            close_action,
+        )
+        return _row_to_work_assignment(row) if row is not None else None
+
+    async def work_item_close(
+        self,
+        *,
+        item_id: str,
+        close_action: str,
+        actor: str,
+        reason: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Close the item's open assignment (release/complete) without opening
+        a new one. Idempotent — closing when nothing is open returns None."""
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.work_item_assignments
+               SET status = 'closed', close_action = $2, closed_by = $3,
+                   reason = COALESCE($4, reason),
+                   closed_at = NOW(), updated_at = NOW()
+             WHERE manual_extraction_item_id = $1 AND status = 'open'
+             RETURNING {_WORK_ASSIGNMENT_COLUMNS}
+            """,
+            item_id,
+            close_action,
+            actor,
+            reason,
+        )
+        return _row_to_work_assignment(row) if row is not None else None
+    # -- WS4 Gate 3 / 4B — item-level effective assignment (service layer) -----
+    async def work_item_effective_entity(self, item_id: str) -> Optional[str]:
+        """Effective processing entity for an item (mirrors the RLS helper).
+
+        Uses the same ``public.work_item_effective_entity`` SQL function as the
+        RLS layer so service and RLS always agree: open processing_entity
+        assignment wins; an open internal_staff assignment overrides the batch
+        default (=> NULL); otherwise the batch default entity applies.
+        """
+        row = await self._fetch_one(
+            "SELECT public.work_item_effective_entity($1) AS effective_entity",
+            item_id,
+        )
+        value = row["effective_entity"] if row is not None else None
+        return str(value) if value is not None else None
+
+    async def effective_entity_map(self, batch_id: str) -> dict[str, Optional[str]]:
+        """item_id -> effective processing entity for every item in one batch.
+
+        Single query mirror of ``public.work_item_effective_entity`` so list
+        endpoints can filter an entity workspace without an N+1.
+        """
+        rows = await self._fetch_all(
+            """
+            SELECT i.id AS item_id,
+                   CASE
+                       WHEN oa.id IS NULL THEN b.entity_id
+                       WHEN oa.assignee_kind = 'processing_entity'
+                           THEN oa.processing_entity_id
+                       ELSE NULL
+                   END AS effective_entity
+              FROM public.manual_extraction_items i
+              JOIN public.manual_extraction_batches b ON b.id = i.batch_id
+              LEFT JOIN LATERAL (
+                  SELECT a.id, a.assignee_kind, a.processing_entity_id
+                    FROM public.work_item_assignments a
+                   WHERE a.manual_extraction_item_id = i.id
+                     AND a.status = 'open'
+                   ORDER BY a.created_at DESC, a.id DESC
+                   LIMIT 1
+              ) oa ON TRUE
+             WHERE i.batch_id = $1
+            """,
+            batch_id,
+        )
+        return {
+            str(r["item_id"]): (str(r["effective_entity"])
+                                if r["effective_entity"] is not None else None)
+            for r in rows
+        }
+
+    async def list_batches_with_open_entity_item(
+        self, entity_id: str
+    ) -> list[ManualExtractionBatch]:
+        """Batches containing at least one item with an OPEN processing-entity
+        assignment for ``entity_id`` (item-level work, batch default or not).
+
+        Used by the PE work queue so an entity sees batches that only contain
+        item-level assignments for it (e.g. an item overridden to this entity in
+        a batch whose default belongs to another entity).
+        """
+        cols = ", ".join(f"b.{col.strip()}" for col in _BATCH_COLUMNS.split(","))
+        rows = await self._fetch_all(
+            f"""
+            SELECT DISTINCT {cols}
+              FROM public.manual_extraction_batches b
+              JOIN public.manual_extraction_items i ON i.batch_id = b.id
+              JOIN public.work_item_assignments a ON a.manual_extraction_item_id = i.id
+             WHERE a.status = 'open'
+               AND a.assignee_kind = 'processing_entity'
+               AND a.processing_entity_id = $1
+               AND b.status <> 'cancelled'
+             ORDER BY b.created_at DESC
+            """,
+            entity_id,
+        )
+        return [_row_to_batch(r) for r in rows]
+
 
     async def get(self, id: str):
         return await self.get_item(id)

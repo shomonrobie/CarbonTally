@@ -199,14 +199,23 @@
 .v3-result-card h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--ct-color-primary-hover); }
 
 /* Forms */
+/* P0-4 — canonical responsive form grid (single shared definition; the
+   duplicated 280px rule in admin.css is removed so the effective track width
+   is no longer load-order dependent). Grid/flex children may shrink
+   (min-width: 0) and long text wraps instead of one-character-per-line or
+   horizontal page overflow at 100% zoom. */
 .v3-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-.v3-form-group { display: flex; flex-direction: column; gap: 6px; }
-.v3-form-group label { font-size: 12px; font-weight: 600; color: var(--ct-color-text-secondary); }
+.v3-form-grid > *,
+.v3-grid-2 > *,
+.v3-form .form-group { min-width: 0; }
+.v3-form-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.v3-form-group label { font-size: 12px; font-weight: 600; color: var(--ct-color-text-secondary); overflow-wrap: anywhere; }
 .v3-form-group input,
 .v3-form-group select,
 .v3-form-group textarea,
 .v3-input,
 .v3-search-input {
+  min-width: 0;
   border: 1px solid var(--ct-color-border-strong);
   border-radius: 8px;
   padding: 9px 12px;
@@ -225,6 +234,14 @@
 }
 .v3-form-check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .v3-form-hint { font-size: 12px; color: var(--ct-color-text-muted); margin: 4px 0 0; }
+/* P0-4 — contain wide raw tables (members/security tabs, ops panes) inside
+   their card/pane on narrow viewports: the container scrolls horizontally
+   instead of the page overflowing. No table display semantics change. */
+.v3-admin-card,
+.workspace-pane {
+  min-width: 0;
+  overflow-x: auto;
+}
 .v3-actions, .v3-admin-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
 /* Buttons / badges / tables / states */
@@ -281,10 +298,10 @@
 .v3-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 /* Shared meta list */
-.v3-meta-list { display: flex; flex-direction: column; gap: 8px; }
-.v3-meta-item { display: flex; gap: 12px; font-size: 14px; }
+.v3-meta-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.v3-meta-item { display: flex; gap: 12px; font-size: 14px; min-width: 0; }
 .v3-meta-item .k { width: 190px; flex: none; color: var(--ct-color-text-muted); font-size: 13px; }
-.v3-meta-item .v { font-weight: 500; word-break: break-word; }
+.v3-meta-item .v { font-weight: 500; word-break: break-word; min-width: 0; overflow-wrap: anywhere; }
 
 /* Tabs */
 .v3-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--ct-color-border); margin-bottom: 20px; }

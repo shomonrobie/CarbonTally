@@ -4,7 +4,7 @@
 // restored. Deep-linkable, refresh-safe, history-aware.
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { assignReview, completeReview, validateItem } from '../api';
+import { assignReview, completeReview, submitInternalReview, validateItem } from '../api';
 import WorkItemWorkspace from './WorkItemWorkspace';
 import { Button } from '../components/ui';
 
@@ -29,6 +29,16 @@ export default function ReviewItemPage() {
       setNotice('Review assigned.');
       setRefreshKey((k) => k + 1);
     } catch (e) { setError(e.message); }
+  };
+
+  const onSubmitForCtQc = async () => {
+    try {
+      await submitInternalReview(itemId);
+      setNotice('Review submitted — item queued for CarbonTally QC.');
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e.message || 'Could not submit for CarbonTally QC.');
+    }
   };
 
   const onComplete = async () => {
@@ -63,6 +73,11 @@ export default function ReviewItemPage() {
               Validate
             </button>
             <button className="v3-btn" onClick={onAssign}>Assign to me</button>
+            {item.status === 'calculated' && (
+              <button className="v3-btn primary" onClick={onSubmitForCtQc}>
+                Submit for CarbonTally QC
+              </button>
+            )}
             <button className="v3-btn primary" onClick={onComplete}>Complete review</button>
           </div>
         )}

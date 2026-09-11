@@ -99,33 +99,49 @@ export const resolveV3Organization = async () => {
   return data?.primary_organization || data?.organization || null;
 };
 
-// D29/F5 — resolve the authenticated actor's landing workspace from
-// SERVER-AUTHORITATIVE role endpoints. This is the single post-login /
-// session-restore routing decision; it never uses localStorage as an
-// authorization source and never trusts client-supplied role claims.
-//   org member (customer/owner)  -> /home
-//   staff (incl. entity staff)   -> /ops  (OperationsPage renders the
-//                                       entity workspace for entity staff)
-//   consultant                   -> /consultant
-//   authenticated but no role    -> /home (role guards redirect gracefully)
+// D29/F5 — resolve the authenticated actor's landing workspace from the SINGLE
+// SERVER-AUTHORITATIVE context endpoint (GET /api/v3/me/context).
+//
+// Phase 3 / P1-B — this replaces the old probe chain (org → staff →
+// consultant) which treated ANY failure (500/403/network) as "brand-new
+// customer" and misrouted existing users to /onboarding. Fail-closed: on
+// failure this THROWS so callers show a controlled error/retry state. An API
+// error is never interpreted as "new customer".
+export const getMeContext = async () => {
+  const data = await v3Fetch('/api/v3/me/context');
+  const destination = data && (data.destination || data.primary_workspace);
+  if (!destination) {
+    console.error('[CarbonTally V3] /api/v3/me/context returned no destination');
+    const err = new Error('Unable to resolve your workspace. Please try again.');
+    err.status = 0;
+    err.raw = 'empty-me-context';
+    throw err;
+  }
+  return data;
+};
+
+// D29/F5 — resolve the authenticated actor's landing workspace.
+//   org member   -> /home
+//   staff/entity -> /ops
+//   consultant   -> /consultant
+//   no relationship (server decision) -> /onboarding
+//   no session   -> /login
+// On ANY resolution failure it throws (never /onboarding).
 export const resolvePostLoginPath = async () => {
   if (!(await getV3Token())) return '/login';
-  // CL-49 — quiet probes: expected 403s during cascading role resolution are
-  // never logged as console errors on a normal page load.
-  try {
-    if (await resolveV3Organization()) return '/home';
-  } catch (_e) { /* continue to staff/consultant resolution */ }
-  try {
-    if (await getOpsMe({ quiet: true })) return '/ops';
-  } catch (_e) { /* continue to consultant resolution */ }
-  try {
-    if (await getConsultantProfile({ quiet: true })) return '/consultant';
-  } catch (_e) { /* continue to onboarding */ }
-  // D35 — an authenticated user with no org/staff/consultant relationship is a
-  // brand-new customer: land on the self-service onboarding surface instead of
-  // the legacy /dashboard or a dead-end /home empty state.
-  return '/onboarding';
+  const context = await getMeContext();
+  return context.destination || context.primary_workspace;
 };
+
+// Phase 3 / P1-B — shared post-login navigation helper for login/signup
+// callers. On success it navigates to the server-authoritative workspace; on
+// failure it THROWS so the caller can render a controlled error/retry state.
+// An API/network failure can never be turned into /onboarding here.
+export const goToWorkspace = async (navigate) => {
+  const path = await resolvePostLoginPath();
+  navigate(path, { replace: true });
+};
+
 
 // ---------------------------------------------------------------------------
 // Reports API (V3 authoritative surface)
@@ -504,8 +520,11 @@ export const updateOpsStaff = (profileId, payload) =>
     body: JSON.stringify(payload),
   });
 
-export const listProcessingEntities = (limit = 25, offset = 0) =>
-  v3Fetch(`/api/v3/ops/entities?limit=${limit}&offset=${offset}`);
+export const listProcessingEntities = (limit = 25, offset = 0, status) => {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (status) query.set('status', status);
+  return v3Fetch(`/api/v3/ops/entities?${query.toString()}`);
+};
 
 // Creating a Processing Entity is a CarbonTally-internal admin action
 // (backend: /api/v3/processing-entities, require_admin).
@@ -549,6 +568,11 @@ export const getEntityNextItem = (entityId, stage, excludeItemId = '') => {
   return v3Fetch(`/api/v3/ops/entities/${entityId}/extraction/next-item?${query}`);
 };
 
+export const entityValidateItem = (entityId, itemId) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/validate`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 export const entityStartItem = (entityId, itemId, stage) =>
   v3Fetch(`/api/v3/ops/entities/${entityId}/extraction/items/${itemId}/start`, {
     method: 'POST',
@@ -610,6 +634,27 @@ export const getNextItem = (stage) =>
 
 export const getItemWorkspace = (itemId) =>
   v3Fetch(`/api/v3/ops/items/${itemId}/workspace`);
+
+// P6-2F (consultant surface, IV-N6) — the consultant item workspace must use
+// the scope-aware processing route. The internal-staff /api/v3/ops workspace
+// is guarded by require_staff(), which correctly denies consultants, so the
+// consultant page must not call it.
+export const getConsultantItemWorkspace = (itemId) =>
+  v3Fetch(`/api/v3/processing/items/${itemId}/workspace`);
+
+// P6-2F — consultant review + submit actions on the consultant surface
+// (P6-2B boundaries: review needs active grant + stage eligibility; submit
+// needs the `can_submit` capability). The backend re-authorizes every call.
+export const consultantReviewItem = (itemId, payload) =>
+  v3Fetch(`/api/v3/processing/items/${itemId}/consultant-review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const consultantSubmitItem = (itemId) =>
+  v3Fetch(`/api/v3/processing/items/${itemId}/consultant-submit`, {
+    method: 'POST',
+  });
 
 export const getMappingOptions = (itemId, params = {}) => {
   const query = new URLSearchParams();
@@ -689,6 +734,117 @@ export const getQcStats = () => v3Fetch('/api/v3/qc/stats');
 
 export const qcReviewItemAdmin = (itemId, payload) =>
   v3Fetch(`/api/v3/qc/items/${itemId}/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+// ---------------------------------------------------------------------------
+// V1.2 — Processing Entity contract (/api/v3/pe/*) — dedicated PE application
+// ---------------------------------------------------------------------------
+
+export const getPeMe = () => v3Fetch('/api/v3/pe/me');
+
+export const getPeWork = (status) =>
+  v3Fetch(`/api/v3/pe/work${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+
+export const getPeBatchItems = (batchId) => v3Fetch(`/api/v3/pe/batches/${batchId}/items`);
+
+// WS4 — D38 work-item controls surfaced on the PE application.
+export const peWorkInfo = (itemId) => v3Fetch(`/api/v3/pe/items/${itemId}/work`);
+export const peWorkClaim = (itemId, reason) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/work/claim`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  });
+export const peWorkRelease = (itemId, reason) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/work/release`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  });
+export const peWorkComplete = (itemId, reason) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/work/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  });
+
+// WS4 — D39 PE operational messaging (entity-scoped conversations).
+export const listEntityConversations = (entityId) => {
+  const qs = entityId ? `?entity_id=${encodeURIComponent(entityId)}` : '';
+  return v3Fetch(`/api/v3/messaging/entity-conversations${qs}`);
+};
+export const createEntityConversation = (payload) =>
+  v3Fetch('/api/v3/messaging/entity-conversations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const listEntityMessages = (conversationId) =>
+  v3Fetch(`/api/v3/messaging/entity-conversations/${conversationId}/messages`);
+export const sendEntityMessage = (conversationId, content) =>
+  v3Fetch(`/api/v3/messaging/entity-conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+export const markEntityConversationRead = (conversationId) =>
+  v3Fetch(`/api/v3/messaging/entity-conversations/${conversationId}/read`, {
+    method: 'POST',
+  });
+
+// WS4 continuation — Operations D38 work-item assignment controls.
+export const listStaff = () => v3Fetch('/api/v3/ops/staff');
+export const opsWorkInfo = (itemId) => v3Fetch(`/api/v3/ops/items/${itemId}/work`);
+export const opsWorkClaim = (itemId, reason) =>
+  v3Fetch(`/api/v3/ops/items/${itemId}/work/claim`, { method: 'POST', body: JSON.stringify({ reason: reason || null }) });
+export const opsWorkAssign = (itemId, targetUserId, reason) =>
+  v3Fetch(`/api/v3/ops/items/${itemId}/work/assign`, { method: 'POST', body: JSON.stringify({ assigned_to: targetUserId, reason: reason || null }) });
+// WS4 Gate 3 / 4C — item-level assignment to a Processing Entity OR an internal
+// staff member (exactly one of entity_id / assigned_to; the server validates the
+// target and records actor + previous_*). Reassign records the transition.
+export const opsWorkAssignTarget = (itemId, target, reason) => {
+  const payload = { reason: reason || null };
+  if (target.assigned_to) payload.assigned_to = target.assigned_to;
+  if (target.entity_id) payload.entity_id = target.entity_id;
+  return v3Fetch(`/api/v3/ops/items/${itemId}/work/assign`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+export const opsWorkReassignTarget = (itemId, target, reason) => {
+  const payload = { reason: reason || null };
+  if (target.assigned_to) payload.assigned_to = target.assigned_to;
+  if (target.entity_id) payload.entity_id = target.entity_id;
+  return v3Fetch(`/api/v3/ops/items/${itemId}/work/reassign`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+export const opsWorkRelease = (itemId, reason) =>
+  v3Fetch(`/api/v3/ops/items/${itemId}/work/release`, { method: 'POST', body: JSON.stringify({ reason: reason || null }) });
+export const opsWorkComplete = (itemId, reason) =>
+  v3Fetch(`/api/v3/ops/items/${itemId}/work/complete`, { method: 'POST', body: JSON.stringify({ reason: reason || null }) });
+
+export const peReviewDecision = (itemId, approved) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/pe-review`, {
+    method: 'POST',
+    body: JSON.stringify({ approved: !!approved }),
+  });
+
+export const peQcDecision = (itemId, approved) =>
+  v3Fetch(`/api/v3/pe/items/${itemId}/pe-qc`, {
+    method: 'POST',
+    body: JSON.stringify({ approved: !!approved }),
+  });
+
+// ---------------------------------------------------------------------------
+// V1.2 — Internal Review submit + late CarbonTally QC gate (/api/v3/ops/qc/*)
+// ---------------------------------------------------------------------------
+
+export const submitInternalReview = (itemId) =>
+  v3Fetch(`/api/v3/ops/items/${itemId}/submit-review`, { method: 'POST' });
+
+export const getCtQcQueue = () => v3Fetch('/api/v3/ops/qc/ct-queue');
+
+export const ctQcDecision = (itemId, payload) =>
+  v3Fetch(`/api/v3/ops/qc/items/${itemId}/decision`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -1097,8 +1253,11 @@ export const getOpsQcReporting = () =>
 
 export const getOpsAudit = (params = {}) => {
   const query = new URLSearchParams();
-  if (params.limit) query.set('limit', params.limit);
-  if (params.offset) query.set('offset', params.offset);
+  // BL-4 — forward every supported audit filter/search/sort parameter.
+  ['limit', 'offset', 'action', 'entity_type', 'actor', 'q', 'sort', 'order'].forEach((key) => {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== '') query.set(key, value);
+  });
   return v3Fetch(`/api/v3/ops/reporting/audit${query.toString() ? `?${query.toString()}` : ''}`);
 };
 

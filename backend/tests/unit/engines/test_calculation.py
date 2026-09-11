@@ -82,6 +82,7 @@ class _MemorySink:
     def __init__(self) -> None:
         self.snapshots: dict[str, CalculationSnapshot] = {}
         self.logs: dict[str, EmissionLog] = {}
+        self.actors: dict[str, Optional[str]] = {}
         self.fail_snapshot = False
 
     async def save_snapshot(
@@ -94,6 +95,7 @@ class _MemorySink:
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        performed_by: Optional[str] = None,
         factor_kind: Optional[str] = None,
         customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
@@ -101,6 +103,8 @@ class _MemorySink:
             raise RuntimeError("snapshot persistence failed")
         stored = dataclasses.replace(snapshot)
         self.snapshots[stored.id] = stored
+        # Gate-4 remediation F1 — retain the actual human actor for assertions.
+        self.actors[stored.id] = performed_by
         return stored
 
     async def create(
@@ -447,6 +451,129 @@ class TestEngineSideEffects:
         engine = CalculationEngine(sink)
         result = await engine.calculate(make_request())
         assert result.co2e_kg == Decimal("18.400000")
+
+
+class TestP0UnitNormalizationAtEngineBoundary:
+    """P0-2 — unit aliases resolve to the factor's canonical unit at the
+    deterministic calculation-engine boundary (CalculationRequest), so no
+    caller can bypass normalisation and genuinely incompatible units still
+    fail with UNIT_MISMATCH."""
+
+    def test_request_normalizes_m3_to_cubic_metres(self) -> None:
+        factor = make_factor(unit="cubic metres")
+        request = make_request(factor=factor, quantity_unit="m3")
+        assert request.quantity_unit == "cubic metres"
+
+    def test_request_normalizes_l_to_litres(self) -> None:
+        factor = make_factor(unit="litres")
+        request = make_request(factor=factor, quantity_unit="L")
+        assert request.quantity_unit == "litres"
+
+    async def test_calculate_succeeds_with_normalized_alias(self) -> None:
+        sink = _MemorySink()
+        engine = CalculationEngine(sink)
+        factor = make_factor(unit="cubic metres", multiplier="0.00200")
+        result = await engine.calculate(
+            make_request(factor=factor, quantity_unit="m3", quantity="10")
+        )
+        # The snapshot/log persist the canonical unit, not the alias.
+        assert result.snapshot.quantity_unit == "cubic metres"
+        assert result.co2e_kg == Decimal("0.020000")
+
+    async def test_genuine_unit_mismatch_still_raises(self) -> None:
+        sink = _MemorySink()
+        engine = CalculationEngine(sink)
+        factor = make_factor(unit="cubic metres")
+        with pytest.raises(UnitMismatchError):
+            await engine.calculate(make_request(factor=factor, quantity_unit="litres"))
+        assert sink.snapshots == {}
+
+
+class TestP0MethodologyNormalizationAtEngineBoundary:
+    """P0-3 — internal implementation labels ("customer_factor",
+    "keyword_search", matching stage names) never reach the public
+    CalculationMethodology contract; they are derived into a canonical
+    methodology server-side. Invalid values still fail safely and valid
+    canonical values remain unchanged."""
+
+    def test_customer_factor_currency_label_derives_spend_based(self) -> None:
+        from datetime import date as _date
+
+        from domain.customer_factor import CustomerFactor
+
+        cf = CustomerFactor(
+            id="cf-1",
+            organization_id="org-1",
+            name="Purchased goods",
+            activity_type="Purchased goods",
+            co2e_multiplier=Decimal("0.50"),
+            reporting_year=2025,
+            unit="GBP",
+        )
+        request = CalculationRequest(
+            match_request_id="match-1",
+            organization_id="org-1",
+            factor=None,
+            customer_factor=cf,
+            quantity=Decimal("100"),
+            quantity_unit="GBP",
+            date=_date(2025, 6, 1),
+            reporting_year=2025,
+            activity="Purchased goods",
+            activity_type="Purchased goods",
+            methodology="customer_factor",
+        )
+        assert request.methodology == "spend_based"
+
+    def test_keyword_search_label_derives_direct_multiply(self) -> None:
+        request = make_request(quantity_unit="kWh", methodology="keyword_search")
+        assert request.methodology == "direct_multiply"
+
+    def test_valid_canonical_methodology_is_preserved(self) -> None:
+        # A caller may legitimately supply a canonical methodology; it must not
+        # be overridden by derivation (compatibility preserved).
+        request = make_request(quantity_unit="km", methodology="spend_based")
+        assert request.methodology == "spend_based"
+
+    def test_unknown_label_fails_safely(self) -> None:
+        with pytest.raises(ValidationFailedError, match="methodology"):
+            make_request(methodology="some_mystery_label")
+
+    async def test_persisted_snapshot_uses_canonical_methodology(self) -> None:
+        from datetime import date as _date
+
+        from domain.customer_factor import CustomerFactor
+
+        sink = _MemorySink()
+        engine = CalculationEngine(sink)
+        cf = CustomerFactor(
+            id="cf-2",
+            organization_id="org-1",
+            name="Purchased goods",
+            activity_type="Purchased goods",
+            co2e_multiplier=Decimal("0.50"),
+            reporting_year=2025,
+            unit="GBP",
+        )
+        result = await engine.calculate(
+            CalculationRequest(
+                match_request_id="match-2",
+                organization_id="org-1",
+                factor=None,
+                customer_factor=cf,
+                quantity=Decimal("100"),
+                quantity_unit="GBP",
+                date=_date(2025, 6, 1),
+                reporting_year=2025,
+                activity="Purchased goods",
+                activity_type="Purchased goods",
+                methodology="customer_factor",
+            )
+        )
+        assert result.snapshot.methodology == "spend_based"
+        assert result.snapshot.factor_kind == "customer_factor"
+        assert result.snapshot.customer_factor_id == "cf-2"
+
 
 
 

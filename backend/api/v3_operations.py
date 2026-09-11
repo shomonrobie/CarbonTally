@@ -35,7 +35,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.contracts import calculation_out
 from api.dependencies import (
@@ -237,7 +237,15 @@ def _ensure_operator_batch(
     """An operator may only work CarbonTally-internal batches assigned to them
     (or unassigned/open). Entity-assigned batches are the entity's work — unless
     ``allow_entity_gate`` (CarbonTally's validation/review gate over entity
-    output)."""
+    output).
+
+    WS4 Gate 3 / Option B supersedes this for item-level assigned work: internal
+    staff may process an item whose EFFECTIVE assignment is internal even when
+    the batch default is a Processing Entity. New code should use
+    ``_ensure_internal_item_processing`` (which also honours an item-level open
+    internal assignment). This legacy helper remains only for read/oversight
+    paths that pass no item context.
+    """
     if batch.entity_id is not None:
         if allow_entity_gate:
             return
@@ -250,6 +258,59 @@ def _ensure_operator_batch(
             status_code=403,
             detail="Operator is not assigned to this batch",
         )
+
+
+async def _ensure_internal_item_processing(
+    context: StaffContext,
+    repos: RepositoryBundle,
+    item,
+    *,
+    allow_entity_gate: bool = False,
+) -> None:
+    """Effective-assignment gate for CarbonTally internal item *processing*.
+
+    An internal operator/reviewer may process an item when its EFFECTIVE
+    assignment is internal:
+      * an open item-level internal_staff D38 assignment assigned to this user,
+        even when the batch default is a Processing Entity (4B rule); or
+      * a CarbonTally-internal batch (no PE default) assigned to this user or
+        unassigned (legacy self-serve queue).
+    Items whose effective assignment is a Processing Entity are denied (the PE
+    surface owns them). ``allow_entity_gate`` preserves the CarbonTally review
+    gate over entity output (validation/review on entity batches).
+    """
+    if allow_entity_gate:
+        return
+    effective_entity = await repos.manual_extraction.work_item_effective_entity(item.id)
+    if effective_entity is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Item is effectively assigned to a Processing Entity; CarbonTally "
+            "internal processing requires an internal item-level assignment",
+        )
+    current = await repos.manual_extraction.work_item_current(item.id)
+    if current is not None and current.get("assignee_kind") == "internal_staff":
+        if str(current.get("assigned_to")) != context.profile.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Item is assigned to another CarbonTally internal staff member",
+            )
+        return
+    batch = await repos.manual_extraction.get_batch(item.batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+    if batch.entity_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Item belongs to a Processing Entity default batch and has no "
+            "internal item-level assignment",
+        )
+    if batch.assigned_to not in (None, context.profile.user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Operator is not assigned to this batch",
+        )
+
 
 
 async def _open_validation_issues(
@@ -327,6 +388,51 @@ async def _record_batch_assignment_audit(
 
 
 
+async def _record_item_action_audit(
+    repos: RepositoryBundle,
+    audit: AuditContext,
+    *,
+    item_id: str,
+    action: str,
+    actor: str,
+    status_from: Optional[str],
+    status_to: Optional[str],
+    extra: Optional[dict] = None,
+) -> None:
+    """Record one canonical processing-action audit entry (Gate-4 F1).
+
+    Mirrors the append-only audit pattern used by ``submit_internal_review``,
+    PE validate/review/QC and the work-item events: the entity is the
+    ``manual_extraction_item``, ``actor`` is the authenticated human/PE user id
+    (CarbonTally internal staff or Processing-Entity staff), and the immutable
+    processing origin is captured so internal-vs-PE actions remain
+    distinguishable even after assignment changes.
+    """
+    origin = await repos.manual_extraction.get_item_origin(item_id)
+    origin = origin or {}
+    changed: dict[str, object] = {
+        "status_from": status_from,
+        "status_to": status_to,
+        "processing_origin": origin.get("processing_origin"),
+        "processing_entity_id": origin.get("processing_entity_id"),
+    }
+    if extra:
+        changed.update(extra)
+    await repos.audit.record(
+        AuditEntry(
+            id=str(uuid.uuid4()),
+            correlation_id=audit.correlation_id if audit is not None else item_id,
+            entity_type="manual_extraction_item",
+            entity_id=item_id,
+            action=action,
+            actor=actor,
+            occurred_at=datetime.now(timezone.utc),
+            changed_fields=changed,
+            ip_address=audit.ip_address if audit is not None else None,
+        )
+    )
+
+
 def _resolve_unit_for_factor(extracted_unit: str, factor) -> str:
     """Normalise a human-typed unit against the selected factor's unit.
 
@@ -351,6 +457,8 @@ async def _run_line_calculation(
     item,
     batch,
     payload,
+    *,
+    performed_by: Optional[str] = None,
 ) -> dict:
     """Calculate every mapped line of a multi-line item (D23).
 
@@ -445,6 +553,7 @@ async def _run_line_calculation(
             source_item_id=item.id,  # D33: snapshot → extraction-item link
             asset_id=payload.asset_id,
             facility_id=payload.facility_id,
+            performed_by=performed_by,
             factor=factor,
             customer_factor=customer_factor,
         )
@@ -714,11 +823,30 @@ async def _entity_checked_item(
     entity_id: str,
     item_id: str,
 ):
-    """Load an item + its batch inside the entity workspace (batch must be
-    assigned to ``entity_id`` — re-checked server-side on every touch)."""
+    """Load an item + its batch inside the entity workspace.
+
+    Processing-entity staff are authorised per ITEM by the item's effective
+    processing entity (WS4 Gate 3 / Option B); the batch default alone is never
+    sufficient when an item-level override exists. CarbonTally-internal staff
+    retain the batch-scoped oversight path (batch must be assigned to the
+    requested entity).
+    """
     item = await repos.manual_extraction.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")
+    if context.profile.entity_id is not None and context.profile.entity_id == entity_id:
+        effective = await repos.manual_extraction.work_item_effective_entity(item_id)
+        if effective is None or effective != entity_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Item is not effectively assigned to this processing entity",
+            )
+        batch = await repos.manual_extraction.get_batch(item.batch_id)
+        if batch is None or batch.status == "cancelled":
+            raise HTTPException(
+                status_code=409, detail="work item batch is unavailable"
+            )
+        return item, batch
     batch = await ensure_entity_batch_access(context, repos, entity_id, item.batch_id)
     return item, batch
 
@@ -732,7 +860,18 @@ async def entity_extraction_batches(
 ):
     """The entity's assigned extraction batches (own-entity only)."""
     await _entity_workspace_guard(context, repos, entity_id)
-    batches = await repos.manual_extraction.list_entity_batches(entity_id, status)
+    if context.profile.entity_id is not None and context.profile.entity_id == entity_id:
+        # Entity staff see their batch-default batches PLUS batches that only
+        # carry item-level assignments for them (WS4 Gate 3 item-level model).
+        seen = {}
+        for batch in await repos.manual_extraction.list_entity_batches(entity_id, status):
+            seen[batch.id] = batch
+        for batch in await repos.manual_extraction.list_batches_with_open_entity_item(entity_id):
+            if status is None or batch.status == status:
+                seen[batch.id] = batch
+        batches = list(seen.values())
+    else:
+        batches = await repos.manual_extraction.list_entity_batches(entity_id, status)
     return {"batches": batches, "total": len(batches)}
 
 
@@ -766,6 +905,10 @@ async def entity_extraction_batch_items(
     await _entity_workspace_guard(context, repos, entity_id)
     batch = await ensure_entity_batch_access(context, repos, entity_id, batch_id)
     items = await repos.manual_extraction.list_items(batch_id)
+    if context.profile.entity_id is not None and context.profile.entity_id == entity_id:
+        # Entity staff see only items effectively assigned to their entity.
+        effective = await repos.manual_extraction.effective_entity_map(batch_id)
+        items = [i for i in items if effective.get(str(i.id)) == entity_id]
     return {"batch": batch, "items": [signed_item(i) for i in items]}
 
 
@@ -855,9 +998,15 @@ async def entity_extraction_next_item(
 ):
     """The next item awaiting ``stage`` work in the entity's batches."""
     await _entity_workspace_guard(context, repos, entity_id)
-    item = await repos.manual_extraction.next_entity_item(
-        entity_id, stage, exclude_item_id
-    )
+    if context.profile.entity_id is not None and context.profile.entity_id == entity_id:
+        # Entity staff queue only items effectively assigned to their entity.
+        item = await repos.manual_extraction.next_entity_item_effective(
+            entity_id, stage, exclude_item_id
+        )
+    else:
+        item = await repos.manual_extraction.next_entity_item(
+            entity_id, stage, exclude_item_id
+        )
     if item is None:
         raise HTTPException(
             status_code=404, detail=f"no item awaiting {stage!r} work"
@@ -903,6 +1052,14 @@ async def entity_extraction_start_item(
         )
     working = _STAGE_WORKING_STATUS[payload.stage]
     _require_transition(item, working)
+    # V1.2 — immutable processing origin is established the first time a PE
+    # staff member claims/extracts the work; never overwritten afterwards.
+    if context.profile.entity_id and context.profile.entity_id == entity_id:
+        mark_origin = getattr(
+            repos.manual_extraction, "mark_pe_origin_if_unset", None
+        )
+        if mark_origin is not None:
+            await mark_origin(item_id, entity_id)
     updated = await repos.manual_extraction.set_item_status(item_id, working)
     return {"item": updated, "stage": payload.stage, "working_status": working}
 
@@ -914,13 +1071,48 @@ async def entity_extraction_save(
     payload: ExtractPayload,
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Save extraction output for an entity-assigned item."""
     await _entity_workspace_guard(context, repos, entity_id)
     item, batch = await _entity_checked_item(context, repos, entity_id, item_id)
     _require_transition(item, "extracted")
+    if context.profile.entity_id and context.profile.entity_id == entity_id:
+        mark_origin = getattr(
+            repos.manual_extraction, "mark_pe_origin_if_unset", None
+        )
+        if mark_origin is not None:
+            await mark_origin(item_id, entity_id)
     updated = await repos.manual_extraction.save_extracted_data(
         item_id, payload.extracted_data, context.profile.user_id
+    )
+    # WS4 Gate 6 (workstream W4 / gap G6-D) — PE human extraction edits are
+    # attributable (item-level audit, machine-origin flag when the previous
+    # extractor was the automatic pipeline's zero-UUID marker).
+    from api.audit_helpers import changed_extraction_keys, record_item_extraction_edit
+
+    await record_item_extraction_edit(
+        repos,
+        item_id=item_id,
+        action="pe_extract:applied",
+        actor=context.profile.user_id,
+        correlation_id=(
+            str(item.document_processing_queue_id)
+            if item.document_processing_queue_id
+            else item_id
+        ),
+        job_id=(
+            str(item.document_processing_queue_id)
+            if item.document_processing_queue_id
+            else None
+        ),
+        status_from=item.status,
+        status_to=updated.status if updated is not None else "extracted",
+        previous_extracted_by=item.extracted_by,
+        changed_keys=changed_extraction_keys(
+            item.extracted_data, payload.extracted_data
+        ),
+        ip_address=audit.ip_address,
     )
     return {"item": updated}
 
@@ -932,6 +1124,7 @@ async def entity_extraction_map(
     payload: MapPayload,
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Save mapping output for an entity-assigned item."""
     await _entity_workspace_guard(context, repos, entity_id)
@@ -945,6 +1138,19 @@ async def entity_extraction_map(
         payload.mapped_supplier_id,
         payload.emission_factor_used,
     )
+    # Gate-4 remediation F1 — persist the responsible PE actor for the mapping
+    # action (entity context recorded; the item's processing origin is added by
+    # the shared audit helper).
+    await _record_item_action_audit(
+        repos,
+        audit,
+        item_id=item_id,
+        action="pe_map:applied",
+        actor=context.profile.user_id,
+        status_from=item.status,
+        status_to="mapped",
+        extra={"entity_id": context.profile.entity_id or entity_id},
+    )
     return {"item": updated}
 
 @router.post("/entities/{entity_id}/extraction/items/{item_id}/calculate")
@@ -955,6 +1161,7 @@ async def entity_extraction_calculate(
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
     calculation_engine: CalculationEngine = Depends(get_calculation_engine),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Authoritative calculation for an entity-assigned item — identical to the
     internal pipeline (the engine computes and persists the result; the client
@@ -971,9 +1178,23 @@ async def entity_extraction_calculate(
 
     # D23: multi-line documents calculate each mapped line and sum the result.
     if isinstance(extracted.get("line_items"), list) and extracted["line_items"]:
-        return await _run_line_calculation(
-            repos, calculation_engine, item, batch, payload
+        outcome = await _run_line_calculation(
+            repos, calculation_engine, item, batch, payload,
+            performed_by=context.profile.user_id,
         )
+        # Gate-4 remediation F1 — persist the responsible PE actor for the
+        # calculation action.
+        await _record_item_action_audit(
+            repos,
+            audit,
+            item_id=item_id,
+            action="pe_calculate:applied",
+            actor=context.profile.user_id,
+            status_from=item.status,
+            status_to="calculated",
+            extra={"entity_id": context.profile.entity_id or entity_id},
+        )
+        return outcome
 
     raw_qty = extracted.get("quantity")
     if raw_qty in (None, ""):
@@ -1035,11 +1256,28 @@ async def entity_extraction_calculate(
         source_file=item.file_name,
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
+        source_item_id=item.id,  # Gate-4 remediation F2: item → snapshot link
+        performed_by=context.profile.user_id,
         factor=factor,
         customer_factor=customer_factor,
     )
     result = await calculation_engine.calculate(request)
     updated = await repos.manual_extraction.save_calculation(item_id, float(result.co2e_kg))
+    # Gate-4 remediation F1 — persist the responsible PE actor for the
+    # calculation action and reference the immutable snapshot it produced.
+    await _record_item_action_audit(
+        repos,
+        audit,
+        item_id=item_id,
+        action="pe_calculate:applied",
+        actor=context.profile.user_id,
+        status_from=item.status,
+        status_to="calculated",
+        extra={
+            "entity_id": context.profile.entity_id or entity_id,
+            "snapshot_id": result.snapshot.id,
+        },
+    )
     return {"result": calculation_out(result), "item": updated}
 
 
@@ -1391,8 +1629,17 @@ async def start_item(
         )
     working = _STAGE_WORKING_STATUS[payload.stage]
     _require_transition(item, working)
-    _ensure_operator_batch(
-        context, batch, allow_entity_gate=(payload.stage in ("validation", "review"))
+    if payload.stage == "review":
+        # P6-2B-4 — internal/Ops manual work may not be handed to Customer Review
+        # before the mandatory CarbonTally CT-QC pass (automatic work exempt).
+        from api.processing_mode import ensure_manual_ct_qc_prerequisite
+
+        await ensure_manual_ct_qc_prerequisite(
+            repos, item, action="Customer Review"
+        )
+    await _ensure_internal_item_processing(
+        context, repos, item,
+        allow_entity_gate=(payload.stage in ("validation", "review")),
     )
     updated = await repos.manual_extraction.set_item_status(item_id, working)
     return {"item": updated, "stage": payload.stage, "working_status": working}
@@ -1404,15 +1651,44 @@ async def extract_item(
     payload: ExtractPayload,
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Save extraction output (data entry, ``can_process`` + batch assignment)."""
     require_internal_staff(context)
     ensure_staff_permission(context, "can_process")
     item, batch = await _get_item_and_batch(context, repos, item_id)
     _require_transition(item, "extracted")
-    _ensure_operator_batch(context, batch)
+    await _ensure_internal_item_processing(context, repos, item)
     updated = await repos.manual_extraction.save_extracted_data(
         item_id, payload.extracted_data, context.profile.user_id
+    )
+    # WS4 Gate 6 (workstream W4 / gap G6-D) — human extraction edits are
+    # attributable: item-level audit distinguishing the correction from the
+    # machine extraction (no payloads stored).
+    from api.audit_helpers import changed_extraction_keys, record_item_extraction_edit
+
+    await record_item_extraction_edit(
+        repos,
+        item_id=item_id,
+        action="ops_extract:applied",
+        actor=context.profile.user_id,
+        correlation_id=(
+            str(item.document_processing_queue_id)
+            if item.document_processing_queue_id
+            else item_id
+        ),
+        job_id=(
+            str(item.document_processing_queue_id)
+            if item.document_processing_queue_id
+            else None
+        ),
+        status_from=item.status,
+        status_to=updated.status if updated is not None else "extracted",
+        previous_extracted_by=item.extracted_by,
+        changed_keys=changed_extraction_keys(
+            item.extracted_data, payload.extracted_data
+        ),
+        ip_address=audit.ip_address,
     )
     return {"item": updated}
 
@@ -1423,13 +1699,14 @@ async def map_item(
     payload: MapPayload,
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Save mapping output (data entry, ``can_process`` + batch assignment)."""
     require_internal_staff(context)
     ensure_staff_permission(context, "can_process")
     item, batch = await _get_item_and_batch(context, repos, item_id)
     _require_transition(item, "mapped")
-    _ensure_operator_batch(context, batch)
+    await _ensure_internal_item_processing(context, repos, item)
     updated = await repos.manual_extraction.save_mapped_data(
         item_id,
         payload.mapped_data,
@@ -1437,6 +1714,17 @@ async def map_item(
         payload.mapped_asset_id,
         payload.mapped_supplier_id,
         payload.emission_factor_used,
+    )
+    # Gate-4 remediation F1 — persist the responsible internal actor for the
+    # mapping action (previously no actor evidence was recorded).
+    await _record_item_action_audit(
+        repos,
+        audit,
+        item_id=item_id,
+        action="ops_map:applied",
+        actor=context.profile.user_id,
+        status_from=item.status,
+        status_to="mapped",
     )
     return {"item": updated}
 
@@ -1446,6 +1734,7 @@ async def validate_item(
     item_id: str,
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Run the authoritative validation engine (reviewer, ``can_review``).
 
@@ -1462,6 +1751,17 @@ async def validate_item(
     if blocking:
         await _open_validation_issues(repos, context, item, batch, findings)
         await repos.manual_extraction.set_item_status(item.id, "mapping")
+        # Gate-4 remediation F1 — persist the responsible internal reviewer.
+        await _record_item_action_audit(
+            repos,
+            audit,
+            item_id=item_id,
+            action="ops_validate:blocked",
+            actor=context.profile.user_id,
+            status_from=item.status,
+            status_to="mapping",
+            extra={"blocking_count": len([f for f in findings if f.severity == "error"])},
+        )
         return {
             "status": "mapping",
             "blocking": True,
@@ -1471,6 +1771,16 @@ async def validate_item(
     # ISC-2 / CL-26 — a clean run resolves previously blocking findings
     # (internal issues are batch-linked through manual_extraction_batch_id).
     await repos.issues.resolve_open_for_batch(batch.id, context.profile.user_id)
+    # Gate-4 remediation F1 — persist the responsible internal reviewer.
+    await _record_item_action_audit(
+        repos,
+        audit,
+        item_id=item_id,
+        action="ops_validate:validated",
+        actor=context.profile.user_id,
+        status_from=item.status,
+        status_to="validated",
+    )
     return {
         "status": "validated",
         "blocking": False,
@@ -1485,6 +1795,7 @@ async def calculate_item(
     context: StaffContext = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
     engine: CalculationEngine = Depends(get_calculation_engine),
+    audit: AuditContext = Depends(get_audit_context),
 ):
     """Run the authoritative V3 calculation (``can_process``).
 
@@ -1496,6 +1807,7 @@ async def calculate_item(
     ensure_staff_permission(context, "can_process")
     item, batch = await _get_item_and_batch(context, repos, item_id)
     _require_transition(item, "calculated")
+    await _ensure_internal_item_processing(context, repos, item)
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(status_code=409, detail=f"batch is {batch.status}")
 
@@ -1503,7 +1815,22 @@ async def calculate_item(
     mapped = item.mapped_data or {}
     # D23: multi-line documents calculate each mapped line and sum the result.
     if isinstance(extracted.get("line_items"), list) and extracted["line_items"]:
-        return await _run_line_calculation(repos, engine, item, batch, payload)
+        outcome = await _run_line_calculation(
+            repos, engine, item, batch, payload,
+            performed_by=context.profile.user_id,
+        )
+        # Gate-4 remediation F1 — persist the responsible internal actor for
+        # the calculation action.
+        await _record_item_action_audit(
+            repos,
+            audit,
+            item_id=item_id,
+            action="ops_calculate:applied",
+            actor=context.profile.user_id,
+            status_from=item.status,
+            status_to="calculated",
+        )
+        return outcome
 
 
     raw_qty = extracted.get("quantity")
@@ -1563,11 +1890,24 @@ async def calculate_item(
         source_item_id=item.id,  # D33: snapshot → extraction-item link
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
+        performed_by=context.profile.user_id,
         factor=factor,
         customer_factor=customer_factor,
     )
     result = await engine.calculate(request)
     updated = await repos.manual_extraction.save_calculation(item_id, float(result.co2e_kg))
+    # Gate-4 remediation F1 — persist the responsible internal actor for the
+    # calculation action and reference the immutable snapshot it produced.
+    await _record_item_action_audit(
+        repos,
+        audit,
+        item_id=item_id,
+        action="ops_calculate:applied",
+        actor=context.profile.user_id,
+        status_from=item.status,
+        status_to="calculated",
+        extra={"snapshot_id": result.snapshot.id},
+    )
     return {"result": calculation_out(result), "item": updated}
 
 
@@ -1599,6 +1939,183 @@ async def qc_item(
         context.profile.user_id,
         payload.approved,
     )
+    return {"item": updated}
+
+
+# ---------------------------------------------------------------------------
+# V1.2 — Internal Review submit + late CarbonTally QC gate (internal only)
+# ---------------------------------------------------------------------------
+
+
+class CTQCReview(BaseModel):
+    quality_score: int
+    approved: bool = True
+    qc_notes: Optional[str] = None
+
+
+@router.post("/items/{item_id}/submit-review")
+async def submit_internal_review(
+    item_id: str,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
+):
+    """Internal Review completion (PATH A): ``calculated → reviewed``.
+
+    CarbonTally internal reviewer (``can_review``) submits internally processed
+    work for the late CarbonTally QC gate. Internal-origin work never requires
+    PE Review/PE QC. Append-only audit recorded.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_review")
+    item, batch = await _get_item_and_batch(context, repos, item_id)
+    origin = await repos.manual_extraction.get_item_origin(item_id)
+    if origin and origin.get("processing_origin") == "PROCESSING_ENTITY":
+        raise HTTPException(
+            status_code=403,
+            detail="PE-originated work uses PE Review/PE QC before CarbonTally QC",
+        )
+    _require_transition(item, "reviewed")
+    updated = await repos.manual_extraction.set_item_status(item_id, "reviewed")
+    await repos.audit.record(
+        AuditEntry(
+            id=str(uuid.uuid4()),
+            correlation_id=audit.correlation_id if audit is not None else item_id,
+            entity_type="manual_extraction_item",
+            entity_id=item_id,
+            action="review:submitted",
+            actor=context.profile.user_id,
+            occurred_at=datetime.now(timezone.utc),
+            changed_fields={
+                "status_from": item.status,
+                "status_to": "reviewed",
+                "processing_origin": (origin or {}).get("processing_origin"),
+            },
+            ip_address=audit.ip_address if audit is not None else None,
+        )
+    )
+    return {"item": updated}
+
+
+@router.get("/qc/ct-queue")
+async def ct_qc_queue(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Late CarbonTally QC queue — data from EITHER origin.
+
+    Internal-only (``can_qc``): CarbonTally QC verifies internally reviewed
+    items and PE-QC-approved items. Each row exposes processing origin and the
+    originating Processing Entity where applicable.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_qc")
+    items = await repos.manual_extraction.list_ct_qc_pending()
+    out = []
+    for item in items:
+        origin = await repos.manual_extraction.get_item_origin(item.id)
+        pe_name = None
+        if origin and origin.get("processing_entity_id"):
+            pe = await repos.entities.get(origin["processing_entity_id"])
+            pe_name = pe.name if pe is not None else None
+        out.append(
+            {
+                "id": item.id,
+                "batch_id": item.batch_id,
+                "file_name": item.file_name,
+                "status": item.status,
+                "extracted_by": item.extracted_by,
+                "processing_origin": (origin or {}).get("processing_origin"),
+                "processing_entity_id": (origin or {}).get("processing_entity_id"),
+                "processing_entity_name": pe_name,
+            }
+        )
+    return {"items": out[offset:offset + limit], "total": len(out)}
+
+
+@router.post("/qc/items/{item_id}/decision")
+async def ct_qc_decision_endpoint(
+    item_id: str,
+    payload: CTQCReview,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+    audit: AuditContext = Depends(get_audit_context),
+):
+    """Late CarbonTally QC decision (internal ``can_qc`` only).
+
+    Accepts internal ``reviewed`` items and PE ``pe_qc_approved`` items and
+    routes them to ``ct_qc_approved`` / ``ct_qc_rejected``. Append-only audit
+    recorded with processing origin + originating PE.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_qc")
+    if not 0 <= payload.quality_score <= 100:
+        raise HTTPException(status_code=422, detail="quality_score must be 0..100")
+    item = await repos.manual_extraction.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="item not found")
+    if item.status not in ("reviewed", "pe_qc_approved", "ct_qc"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"only reviewed / pe_qc_approved items enter CarbonTally QC "
+            f"(status is {item.status!r})",
+        )
+    updated = await repos.manual_extraction.ct_qc_decision(
+        item_id,
+        payload.approved,
+        context.profile.user_id,
+        payload.quality_score,
+        payload.qc_notes,
+    )
+    if updated is None:
+        # P6-2B-3 — duplicate/race safety: the repository only mutates items still
+        # in CT-QC intake (`reviewed`/`pe_qc_approved`/`ct_qc`). A None result
+        # means the item was concurrently decided/advanced after the pre-check —
+        # reject with zero mutation and NO success audit (a decision that did not
+        # occur must not be recorded as one).
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "item is no longer in CarbonTally QC intake — "
+                "it was already decided or concurrently changed"
+            ),
+        )
+    origin = await repos.manual_extraction.get_item_origin(item_id)
+    await repos.audit.record(
+        AuditEntry(
+            id=str(uuid.uuid4()),
+            correlation_id=audit.correlation_id if audit is not None else item_id,
+            entity_type="manual_extraction_item",
+            entity_id=item_id,
+            action="ct_qc:approved" if payload.approved else "ct_qc:rejected",
+            actor=context.profile.user_id,
+            occurred_at=datetime.now(timezone.utc),
+            changed_fields={
+                "status_from": item.status,
+                "status_to": "ct_qc_approved" if payload.approved else "ct_qc_rejected",
+                "quality_score": payload.quality_score,
+                "processing_origin": (origin or {}).get("processing_origin"),
+                "processing_entity_id": (origin or {}).get("processing_entity_id"),
+            },
+            ip_address=audit.ip_address if audit is not None else None,
+        )
+    )
+    # P6-2E (D11) — lifecycle events 3 "qc_outcome" and (on rejection) 5
+    # "rework". Emitted only after a real decision + audit: the 409/no-mutation
+    # paths above return before this point, so a denied or non-occurring
+    # decision emits nothing. Recipients are derived server-side from the
+    # item's organisation and its active consultant grants.
+    from services.consultant_lifecycle import (
+        REWORK_SOURCE_CT_QC_REJECTED,
+        notify_qc_outcome,
+        notify_rework,
+    )
+
+    await notify_qc_outcome(repos, item=item, approved=bool(payload.approved))
+    if not payload.approved:
+        await notify_rework(repos, item=item, source=REWORK_SOURCE_CT_QC_REJECTED)
     return {"item": updated}
 
 
@@ -2085,3 +2602,192 @@ async def _staff_out(context: StaffContext, repos: RepositoryBundle) -> dict:
         "permissions": context.permissions,
     }
 
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 / WS1 (D38) — canonical WorkItem assignment / attribution (ops)
+# ---------------------------------------------------------------------------
+import asyncpg  # noqa: E402
+
+from services.work_items import (  # noqa: E402
+    WorkItemError,
+    ops_assign_item,
+    ops_claim_item,
+    ops_complete_item,
+    ops_reassign_item,
+    ops_recover_item,
+    ops_release_item,
+    work_item_read,
+)
+
+
+class WorkItemTarget(BaseModel):
+    """CarbonTally assignment target (item-level D38).
+
+    Exactly one of ``assigned_to`` (an active CarbonTally internal staff user)
+    or ``entity_id`` (an active Processing Entity) is required. PE users can
+    never invoke these endpoints — this surface is internal CarbonTally
+    Operations only.
+    """
+
+    assigned_to: Optional[str] = None
+    entity_id: Optional[str] = None
+    reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self):
+        if (self.assigned_to is None) == (self.entity_id is None):
+            raise ValueError(
+                "exactly one of assigned_to (internal staff) or entity_id "
+                "(processing entity) is required"
+            )
+        return self
+
+
+class WorkItemReason(BaseModel):
+    reason: Optional[str] = None
+
+
+def _raise_work_error(exc: WorkItemError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+def _require_work_mutation(context: StaffContext) -> None:
+    require_internal_staff(context)
+    if not (context.permissions.get("can_process") or context.permissions.get("can_review")):
+        raise HTTPException(
+            status_code=403, detail="staff lacks permission: can_process or can_review"
+        )
+
+
+def _require_work_read(context: StaffContext) -> None:
+    require_internal_staff(context)
+    if not (
+        context.permissions.get("can_view_all")
+        or context.permissions.get("can_process")
+        or context.permissions.get("can_review")
+    ):
+        raise HTTPException(status_code=403, detail="staff lacks work visibility permission")
+
+
+async def _call_work(fn, *args, **kwargs) -> dict:
+    try:
+        return await fn(*args, **kwargs)
+    except WorkItemError as exc:
+        _raise_work_error(exc)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=409, detail="work item already has an open assignment"
+        )
+
+
+@router.get("/items/{item_id}/work")
+async def ops_work_item_read(
+    item_id: str,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Current assignment + attribution history for an internal-origin item."""
+    _require_work_read(context)
+    try:
+        return await work_item_read(repos, item_id)
+    except WorkItemError as exc:
+        _raise_work_error(exc)
+
+
+@router.post("/items/{item_id}/work/claim")
+async def ops_work_claim(
+    item_id: str,
+    payload: Optional[WorkItemReason] = None,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_claim_item, repos, item_id=item_id,
+        actor_user_id=context.profile.user_id,
+        reason=(payload.reason if payload else None),
+    )
+
+
+@router.post("/items/{item_id}/work/assign")
+async def ops_work_assign(
+    item_id: str,
+    payload: WorkItemTarget,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_assign_item, repos, item_id=item_id,
+        target_user_id=payload.assigned_to,
+        target_entity_id=payload.entity_id,
+        actor_user_id=context.profile.user_id,
+        reason=payload.reason,
+    )
+
+
+@router.post("/items/{item_id}/work/reassign")
+async def ops_work_reassign(
+    item_id: str,
+    payload: WorkItemTarget,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_reassign_item, repos, item_id=item_id,
+        target_user_id=payload.assigned_to,
+        target_entity_id=payload.entity_id,
+        actor_user_id=context.profile.user_id,
+        reason=payload.reason,
+    )
+
+
+@router.post("/items/{item_id}/work/recover")
+async def ops_work_recover(
+    item_id: str,
+    payload: WorkItemTarget,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Internal partial-work recovery: close a stale open assignment and reopen
+    for ``assigned_to`` (internal domain only)."""
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_recover_item, repos, item_id=item_id,
+        target_user_id=payload.assigned_to,
+        target_entity_id=payload.entity_id,
+        actor_user_id=context.profile.user_id,
+        reason=payload.reason,
+    )
+
+
+@router.post("/items/{item_id}/work/release")
+async def ops_work_release(
+    item_id: str,
+    payload: Optional[WorkItemReason] = None,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_release_item, repos, item_id=item_id,
+        actor_user_id=context.profile.user_id,
+        reason=(payload.reason if payload else None),
+    )
+
+
+@router.post("/items/{item_id}/work/complete")
+async def ops_work_complete(
+    item_id: str,
+    payload: Optional[WorkItemReason] = None,
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    _require_work_mutation(context)
+    return await _call_work(
+        ops_complete_item, repos, item_id=item_id,
+        actor_user_id=context.profile.user_id,
+        reason=(payload.reason if payload else None),
+    )

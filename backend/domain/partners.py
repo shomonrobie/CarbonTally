@@ -24,29 +24,46 @@ ITEM_STATUSES: tuple[str, ...] = (
     "validating", "validated", "calculating", "calculated",
     "customer_review", "approved", "rejected",
     "qc_approved", "qc_rejected", "failed",
+    # P6-2B-1 — Consultant Review completion (readiness control). Distinguishable
+    # from internal `reviewed`, PE review/QC, CarbonTally QC and Customer Review.
+    "consultant_reviewed",
 )
 
 #: The core processing workflow stages, in pipeline order.
 WORKFLOW_STAGES: tuple[str, ...] = (
     "source", "extraction", "mapping", "validation",
-    "calculation", "review", "approval",
+    "calculation", "review", "qc", "pe_review", "pe_qc",
+    "carbon_tally_qc", "approval",
 )
 
 #: Maps each workflow stage to the item statuses that belong to it.
+#: ``review`` keeps its legacy ``customer_review`` member so existing by-stage
+#: reporting is unchanged; new V1.2 statuses are additive.
 WORKFLOW_STAGE_STATUSES: dict[str, tuple[str, ...]] = {
     "source": ("pending",),
     "extraction": ("extracting", "extracted"),
     "mapping": ("mapping", "mapped"),
     "validation": ("validating", "validated"),
     "calculation": ("calculating", "calculated"),
-    "review": ("customer_review",),
+    "review": ("review", "reviewed", "customer_review", "consultant_reviewed"),
+    "qc": ("qc_approved", "qc_rejected"),  # legacy early extraction-QC markers
+    "pe_review": ("pe_review", "pe_reviewed", "pe_review_rejected"),
+    "pe_qc": ("pe_qc", "pe_qc_approved", "pe_qc_rejected"),
+    "carbon_tally_qc": ("ct_qc", "ct_qc_approved", "ct_qc_rejected"),
     "approval": ("approved", "rejected"),
-    "qc": ("qc_approved", "qc_rejected"),
 }
 
 #: Permitted item status transitions (the workflow state machine). Validation
 #: failures and customer rejections route items back to ``mapping``/``extracting``
 #: (rework loop) instead of introducing new statuses.
+#:
+#: V1.2 (CT-QC-001..005) — dual-origin canonical paths:
+#:   CARBONTALLY_INTERNAL: … → calculated → review → reviewed → ct_qc →
+#:       ct_qc_approved → customer_review → approved
+#:   PROCESSING_ENTITY:    … → calculated → pe_review → pe_reviewed → pe_qc →
+#:       pe_qc_approved → ct_qc → ct_qc_approved → customer_review → approved
+#: Legacy early-QC statuses (qc_approved/qc_rejected) remain valid as historical
+#: markers and are never reinterpreted as CarbonTally QC.
 ITEM_STATUS_FLOW: dict[str, tuple[str, ...]] = {
     "pending": ("extracting", "extracted"),
     "extracting": ("extracted", "pending"),
@@ -56,7 +73,39 @@ ITEM_STATUS_FLOW: dict[str, tuple[str, ...]] = {
     "validating": ("validated", "mapping"),
     "validated": ("calculating", "mapping"),
     "calculating": ("calculated", "validated"),
-    "calculated": ("customer_review", "approved", "rejected", "mapping"),
+    "calculated": (
+        "customer_review", "approved", "rejected", "mapping",
+        "reviewed", "pe_review",
+        # P6-2B-1 — Consultant Review (readiness control) may follow Consultant
+        # processing; it never reaches ct_qc_*/approved by itself.
+        "consultant_reviewed",
+    ),
+    # P6-2B-1/2 — Consultant Review completion. The item is submitted by the
+    # P6-2B-2 `can_submit` action into the existing CarbonTally QC intake state
+    # (`reviewed` — the internal-reviewed hand-off state that feeds the CT-QC
+    # pending queue and CT-QC decision endpoint). Ops rework is the fallback
+    # path out of this state (mapping/calculated); Consultants cannot re-enter
+    # review once reviewed (endpoint requires status='calculated').
+    "consultant_reviewed": ("mapping", "calculated", "reviewed"),
+    # V1.2 canonical review / QC stages.
+    # P6-2B-4 — `reviewed` is the awaiting-CT-QC intake for MANUAL work and may
+    # only advance to the CarbonTally QC gate (or rework). The legacy
+    # `reviewed -> customer_review` escape is REMOVED: manual work must pass
+    # CT-QC (reviewed -> ct_qc -> ct_qc_approved) before any customer surface.
+    "review": ("reviewed", "ct_qc", "calculated", "mapping"),
+    "reviewed": ("ct_qc", "mapping", "calculated"),
+    "pe_review": ("pe_reviewed", "pe_review_rejected", "mapping"),
+    "pe_reviewed": ("pe_qc", "mapping", "calculated"),
+    "pe_review_rejected": ("mapping", "extracting"),
+    "pe_qc": ("pe_qc_approved", "pe_qc_rejected", "mapping"),
+    "pe_qc_approved": ("ct_qc", "mapping"),
+    "pe_qc_rejected": ("mapping", "extracting"),
+    "ct_qc": ("ct_qc_approved", "ct_qc_rejected", "mapping"),
+    # V1.2 — CarbonTally QC approval releases the item to the customer review
+    # surface. Customers decide from `ct_qc_approved` (guard: PE-origin work must
+    # have passed CT QC) or the legacy `customer_review` handoff state.
+    "ct_qc_approved": ("customer_review", "mapping", "approved", "rejected"),
+    "ct_qc_rejected": ("mapping", "extracting"),
     "customer_review": ("approved", "rejected", "calculated"),
     "approved": ("customer_review",),
     "rejected": ("mapping", "extracting"),
@@ -112,31 +161,50 @@ class ConsultantFirmMember:
     can_upload_documents: bool = False
     can_generate_reports: bool = False
     can_manage_team: bool = False
+    # P6-2A — consultant processing capability flags (deny-by-default; the
+    # server-side authorization surface for consultant processing actions).
+    can_extract: bool = False
+    can_map: bool = False
+    can_validate: bool = False
+    can_calculate: bool = False
+    can_confirm_automation: bool = False
+    can_submit: bool = False
     client_access: list = field(default_factory=list)
     invited_at: Optional[datetime] = None
     joined_at: Optional[datetime] = None
 
 
-#: ``consultant_clients.status`` lifecycle vocabulary (D27/D19 — the RLS/API
-#: enforcement layer; the schema column stays free-varchar for data safety).
-#: Only ``active`` grants consultant access (D15); ``suspended`` / ``ended``
-#: carry no access; ``inactive`` is the legacy soft-deactivate value.
+#: ``consultant_clients.status`` lifecycle vocabulary (D27/D19 + P6-1C — the
+#: RLS/API enforcement layer; the schema column stays free-varchar for data
+#: safety). Only ``active`` grants consultant access (D15); ``pending`` /
+#: ``rejected`` / ``suspended`` / ``ended`` / ``inactive`` / ``onboarding``
+#: carry NO access.
 CLIENT_LIFECYCLE_STATUSES: tuple[str, ...] = (
-    "active", "suspended", "ended", "inactive",
+    "active", "pending", "rejected", "suspended", "ended", "inactive",
+    "onboarding",
 )
 
-#: Allowed lifecycle transitions (D27/D19 Part 4):
-#:   active -> suspended (temporary loss of access)
-#:   active -> ended     (permanent loss of access)
-#:   suspended -> active (restore)
-#:   suspended -> ended  (make permanent)
-#:   ended -> active     (a NEW explicit grant reactivation — the firm may
-#:                        re-grant only with a new explicit act)
+#: Origin of a consultant↔organisation relationship (P6-1C provenance).
+#:   * ``consultant_created_customer`` — the firm CREATED the client org via the
+#:     approved provisioning flow (Case A); the active grant is legitimate
+#:     without a separate customer acceptance step.
+#:   * ``engagement_request`` — the firm requested an engagement with an
+#:     ALREADY-EXISTING organisation (Case B); customer acceptance is the
+#:     required authorization boundary (status: pending -> active).
+#:   * ``legacy`` — rows that predate P6-1C (kept active per ratified data).
+RELATIONSHIP_ORIGINS: tuple[str, ...] = (
+    "legacy", "consultant_created_customer", "engagement_request",
+)
+
+#: Raw (actor-agnostic) state machine used by the existing lifecycle checker.
+#: ``None``/unknown statuses remain ``active``-compatible for legacy rows.
 CLIENT_LIFECYCLE_TRANSITIONS: dict[str, tuple[str, ...]] = {
     "active": ("suspended", "ended"),
     "suspended": ("active", "ended"),
-    "ended": ("active",),
+    "ended": ("active", "pending"),
     "inactive": ("active", "suspended", "ended"),
+    "pending": ("active", "rejected", "ended"),
+    "rejected": ("pending",),
 }
 
 
@@ -151,6 +219,54 @@ def can_transition_client_lifecycle(current: Optional[str], target: str) -> bool
         return True
     base = current if current in CLIENT_LIFECYCLE_TRANSITIONS else "active"
     return target in CLIENT_LIFECYCLE_TRANSITIONS.get(base, ())
+
+
+def can_transition_consultant_engagement(
+    current: Optional[str],
+    target: str,
+    *,
+    actor_side: str,
+    origin: Optional[str] = "consultant_created_customer",
+) -> bool:
+    """P6-1C — the CANONICAL engagement transition policy.
+
+    ``actor_side`` is ``'customer'`` (an authorized representative of the
+    client organisation) or ``'consultant'`` (an authorized firm actor).
+
+    Customer side (the required authorization boundary for pre-existing
+    organisations): only a PENDING engagement may be accepted (-> active) or
+    rejected (-> rejected). Customer approval is the ONLY path from pending to
+    active.
+
+    Consultant side:
+    * Legacy / consultant-created relationships keep the D19 firm lifecycle
+      (active <-> suspended, active/... -> ended, ended -> active reactivation,
+      inactive -> active/suspended/ended).
+    * ``engagement_request`` relationships: the firm may withdraw a pending
+      request (-> ended), RE-REQUEST after rejection/termination
+      (rejected/ended/inactive -> pending), and use the normal active/
+      suspended/ended lifecycle once accepted. The firm can NEVER move a row
+      to ``active`` from ``pending``/``rejected`` — that requires customer
+      acceptance.
+    """
+    if origin in ("engagement_request",):
+        if actor_side == "customer":
+            # Customer acceptance/rejection is the authorized decision on a
+            # pending engagement — the ONLY pending -> active path.
+            return str(current) == "pending" and target in ("active", "rejected")
+        allowed = {
+            "pending": ("ended",),          # firm may withdraw a request
+            "rejected": ("pending",),       # firm may re-request
+            "ended": ("pending",),          # re-request after termination
+            "inactive": ("pending",),       # legacy deactivate -> re-request
+            "active": ("suspended", "ended"),
+            "suspended": ("active", "ended"),
+        }
+        return target in allowed.get(str(current or "pending"), ())
+    # legacy + consultant_created_customer keep the ratified D19 firm lifecycle.
+    if actor_side == "customer":
+        return str(current) == "pending" and target in ("active", "rejected")
+    return can_transition_client_lifecycle(current, target)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +289,13 @@ class ConsultantClient:
     ended_at: Optional[datetime] = None
     ended_by: Optional[str] = None
     lifecycle_updated_at: Optional[datetime] = None
+    #: Server-authoritative creator of the grant (authenticated actor).
+    created_by: Optional[str] = None
+    # P6-1C — engagement provenance.
+    relationship_origin: Optional[str] = "consultant_created_customer"
+    engagement_requested_at: Optional[datetime] = None
+    engagement_decided_by: Optional[str] = None
+    engagement_decided_at: Optional[datetime] = None
 
 
 

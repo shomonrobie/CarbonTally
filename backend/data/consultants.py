@@ -49,13 +49,17 @@ _BRANDING_UPDATE_COLUMNS: dict[str, str] = {
 _MEMBER_COLUMNS = (
     "id, firm_id, user_id, role, is_active, can_manage_clients, "
     "can_upload_documents, can_generate_reports, can_manage_team, "
+    "can_extract, can_map, can_validate, can_calculate, "
+    "can_confirm_automation, can_submit, "
     "client_access, invited_at, joined_at"
 )
 
 _CLIENT_COLUMNS = (
     "id, consultant_id, organization_id, client_name, client_industry, "
     "client_contact_email, client_contact_name, status, billing_plan, notes, "
-    "created_at, suspended_at, ended_at, ended_by, lifecycle_updated_at"
+    "created_by, created_at, suspended_at, ended_at, ended_by, "
+    "lifecycle_updated_at, relationship_origin, engagement_requested_at, "
+    "engagement_decided_by, engagement_decided_at"
 )
 
 _TASK_COLUMNS = (
@@ -114,6 +118,12 @@ def _row_to_member(row: Any) -> ConsultantFirmMember:
         can_upload_documents=bool(r.get("can_upload_documents", False)),
         can_generate_reports=bool(r.get("can_generate_reports", False)),
         can_manage_team=bool(r.get("can_manage_team", False)),
+        can_extract=bool(r.get("can_extract", False)),
+        can_map=bool(r.get("can_map", False)),
+        can_validate=bool(r.get("can_validate", False)),
+        can_calculate=bool(r.get("can_calculate", False)),
+        can_confirm_automation=bool(r.get("can_confirm_automation", False)),
+        can_submit=bool(r.get("can_submit", False)),
         client_access=list(r.get("client_access") or []),
         invited_at=r.get("invited_at"),
         joined_at=r.get("joined_at"),
@@ -138,6 +148,11 @@ def _row_to_client(row: Any) -> ConsultantClient:
         ended_at=r.get("ended_at"),
         ended_by=str(r["ended_by"]) if r.get("ended_by") else None,
         lifecycle_updated_at=r.get("lifecycle_updated_at"),
+        created_by=str(r["created_by"]) if r.get("created_by") else None,
+        relationship_origin=str(r["relationship_origin"]) if r.get("relationship_origin") else "consultant_created_customer",
+        engagement_requested_at=r.get("engagement_requested_at"),
+        engagement_decided_by=str(r["engagement_decided_by"]) if r.get("engagement_decided_by") else None,
+        engagement_decided_at=r.get("engagement_decided_at"),
     )
 
 
@@ -275,6 +290,23 @@ class ConsultantsRepository(AbstractRepository[dict]):
         )
         return _row_to_member(row) if row is not None else None
 
+    async def get_active_memberships_by_user(self, user_id: str) -> list[ConsultantFirmMember]:
+        """Every ACTIVE firm-membership row for a user (canonical Layer-2 query).
+
+        This is the authoritative answer to "which Consultant firm(s) is this
+        user an active member of?" and mirrors the RLS helper
+        ``is_org_consultant`` (which resolves membership by ``user_id`` +
+        ``is_active`` + the firm's client grants). Returns active rows only;
+        inactive/revoked membership never resolves here.
+        """
+        rows = await self._fetch_all(
+            f"SELECT {_MEMBER_COLUMNS} FROM public.consultant_firm_members "
+            "WHERE user_id = $1 AND coalesce(is_active, true) = true "
+            "ORDER BY created_at NULLS LAST",
+            user_id,
+        )
+        return [_row_to_member(r) for r in rows]
+
     async def add_firm_member(self, firm_id: str, user_id: str, role: str) -> ConsultantFirmMember:
         row = await self._fetch_one(
             f"""
@@ -364,7 +396,9 @@ class ConsultantsRepository(AbstractRepository[dict]):
         ``status = 'active'`` (D15). ``actor_id`` records who performed the
         transition (provenance, not authorization).
         """
-        if target_status not in ("active", "suspended", "ended", "inactive"):
+        if target_status not in (
+            "active", "pending", "rejected", "suspended", "ended", "inactive"
+        ):
             raise ValueError(f"unknown client lifecycle status {target_status!r}")
         row = await self._fetch_one(
             f"""
@@ -376,6 +410,10 @@ class ConsultantsRepository(AbstractRepository[dict]):
                                    ELSE ended_at END,
                    ended_by = CASE WHEN $2 = 'ended' THEN $3
                                    ELSE ended_by END,
+                   engagement_decided_by = CASE WHEN $2 IN ('active', 'rejected')
+                                                THEN $3 ELSE engagement_decided_by END,
+                   engagement_decided_at = CASE WHEN $2 IN ('active', 'rejected')
+                                                THEN NOW() ELSE engagement_decided_at END,
                    lifecycle_updated_at = NOW(),
                    updated_at = NOW()
              WHERE id = $1
@@ -397,6 +435,25 @@ class ConsultantsRepository(AbstractRepository[dict]):
         )
         return [_row_to_client(r) for r in rows]
 
+    async def list_engagements_for_org(
+        self, organization_id: str, statuses: Optional[tuple[str, ...]] = None
+    ) -> list[ConsultantClient]:
+        """Consultant relationships targeting ``organization_id`` (customer side).
+
+        Used by the customer engagement surface (P6-1C). Defaults to PENDING
+        rows so the organisation can see requests awaiting its decision;
+        other statuses may be listed explicitly for auditing.
+        """
+        statuses = statuses or ("pending",)
+        rows = await self._fetch_all(
+            f"SELECT {_CLIENT_COLUMNS} FROM public.consultant_clients "
+            "WHERE organization_id = $1 AND status = ANY($2) "
+            "ORDER BY created_at",
+            organization_id,
+            list(statuses),
+        )
+        return [_row_to_client(r) for r in rows]
+
     async def add_client(
         self,
         consultant_id: str,
@@ -405,13 +462,33 @@ class ConsultantsRepository(AbstractRepository[dict]):
         client_industry: Optional[str],
         client_contact_email: Optional[str],
         client_contact_name: Optional[str],
+        created_by: Optional[str] = None,
+        relationship_origin: str = "consultant_created_customer",
+        status: str = "active",
     ) -> ConsultantClient:
+        """Insert a consultant↔organisation relationship row.
+
+        ``relationship_origin`` distinguishes consultant-CREATED client
+        organisations (Case A — active immediately via the approved
+        provisioning flow) from ``engagement_request`` rows for ALREADY-existing
+        organisations (Case B — inserted PENDING; only customer acceptance may
+        move them to active). ``created_by`` is the authenticated actor.
+        """
+        if relationship_origin not in ("legacy", "consultant_created_customer", "engagement_request"):
+            raise ValueError(f"unknown relationship_origin {relationship_origin!r}")
+        if status not in ("active", "pending"):
+            raise ValueError(f"new relationship status must be active or pending, got {status!r}")
+        if relationship_origin == "engagement_request" and status != "pending":
+            raise ValueError("engagement_request relationships must start PENDING (customer acceptance required)")
+        requested = "NOW()" if status == "pending" else "NULL"
         row = await self._fetch_one(
             f"""
             INSERT INTO public.consultant_clients (
                 consultant_id, organization_id, client_name, client_industry,
-                client_contact_email, client_contact_name, status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW(), NOW())
+                client_contact_email, client_contact_name, status, created_by,
+                relationship_origin, engagement_requested_at,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, {requested}, NOW(), NOW())
             RETURNING {_CLIENT_COLUMNS}
             """,
             consultant_id,
@@ -420,6 +497,9 @@ class ConsultantsRepository(AbstractRepository[dict]):
             client_industry,
             client_contact_email,
             client_contact_name,
+            status,
+            created_by,
+            relationship_origin,
         )
         if row is None:
             raise RuntimeError("consultant_clients insert returned no row")

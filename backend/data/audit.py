@@ -77,6 +77,57 @@ def _row_to_entry(row: Any) -> AuditEntry:
     )
 
 
+_SORT_CLAUSES = {
+    "occurred_at": "performed_at",
+    "action": "action_type",
+    "actor": "metadata->>'actor'",
+    "entity_type": "table_name",
+}
+
+
+def _where_clause(filters: AuditQuery) -> tuple[list[str], list[object]]:
+    """Build the parameterised WHERE clause shared by ``query`` and ``count``.
+
+    ``q`` is a free-text search across the fields an operator would recognise
+    (action, resource, entity id, actor, stored reason); it deliberately also
+    matches ``record_id``/``performed_by`` casts so UUIDs stay findable.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    if filters.correlation_id is not None:
+        params.append(filters.correlation_id)
+        clauses.append(f"metadata->>'correlation_id' = ${len(params)}")
+    if filters.entity_type is not None:
+        params.append(filters.entity_type)
+        clauses.append(f"table_name = ${len(params)}")
+    if filters.entity_id is not None:
+        params.append(filters.entity_id)
+        clauses.append(f"record_id = ${len(params)}::uuid")
+    if filters.action is not None:
+        params.append(filters.action)
+        clauses.append(f"action_type = ${len(params)}")
+    if filters.actor is not None:
+        params.append(_actor_uuid(filters.actor))
+        clauses.append(
+            f"(performed_by = ${len(params)}::uuid OR metadata->>'actor' = ${len(params)}::text)"
+        )
+    if filters.occurred_after is not None:
+        params.append(filters.occurred_after)
+        clauses.append(f"performed_at >= ${len(params)}")
+    if filters.occurred_before is not None:
+        params.append(filters.occurred_before)
+        clauses.append(f"performed_at <= ${len(params)}")
+    if filters.q is not None:
+        params.append(f"%{filters.q}%")
+        p = len(params)
+        clauses.append(
+            f"(action_type ILIKE ${p} OR table_name ILIKE ${p} "
+            f"OR record_id::text ILIKE ${p} OR performed_by::text ILIKE ${p} "
+            f"OR metadata->>'actor' ILIKE ${p} OR metadata->>'reason' ILIKE ${p})"
+        )
+    return clauses, params
+
+
 class AuditRepository(AbstractRepository[AuditEntry]):
     """Append-only audit trail repository."""
 
@@ -108,42 +159,40 @@ class AuditRepository(AbstractRepository[AuditEntry]):
         return _row_to_entry(row)
 
     async def query(self, filters: AuditQuery) -> list[AuditEntry]:
-        """Search the audit trail with the given filters."""
-        clauses: list[str] = []
-        params: list[object] = []
-        if filters.correlation_id is not None:
-            params.append(filters.correlation_id)
-            clauses.append(f"metadata->>'correlation_id' = ${len(params)}")
-        if filters.entity_type is not None:
-            params.append(filters.entity_type)
-            clauses.append(f"table_name = ${len(params)}")
-        if filters.entity_id is not None:
-            params.append(filters.entity_id)
-            clauses.append(f"record_id = ${len(params)}::uuid")
-        if filters.action is not None:
-            params.append(filters.action)
-            clauses.append(f"action_type = ${len(params)}")
-        if filters.actor is not None:
-            params.append(_actor_uuid(filters.actor))
-            clauses.append(
-                f"(performed_by = ${len(params)}::uuid OR metadata->>'actor' = ${len(params)}::text)"
-            )
-        if filters.occurred_after is not None:
-            params.append(filters.occurred_after)
-            clauses.append(f"performed_at >= ${len(params)}")
-        if filters.occurred_before is not None:
-            params.append(filters.occurred_before)
-            clauses.append(f"performed_at <= ${len(params)}")
+        """Search the audit trail with the given filters.
+
+        ``sort``/``order`` (BL-4) select the server ordering from a fixed
+        whitelist — never raw SQL — so the audit console can page a fully
+        ordered result set without loading it client-side.
+        """
+        clauses, params = _where_clause(filters)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        if filters.sort is not None:
+            order_sql = f"ORDER BY {_SORT_CLAUSES[filters.sort]} {filters.order.upper()}, id"
+        else:
+            order_sql = "ORDER BY performed_at DESC, id"
         params.append(filters.limit)
         params.append(filters.offset)
-        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         query = (
-            f"SELECT {_AUDIT_COLUMNS} FROM public.audit_trail{where}"
-            " ORDER BY performed_at DESC, id"
+            f"SELECT {_AUDIT_COLUMNS} FROM public.audit_trail{where} {order_sql}"
             + f" LIMIT ${len(params) - 1} OFFSET ${len(params)}"
         )
         rows = await self._fetch_all(query, *params)
         return [_row_to_entry(r) for r in rows]
+
+    async def count(self, filters: AuditQuery) -> int:
+        """Return the number of rows matching ``filters`` (BL-4).
+
+        Uses the same WHERE clause as ``query`` so the audit console can report
+        an honest total across pages/filters instead of the page length.
+        """
+        clauses, params = _where_clause(filters)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        row = await self._fetch_one(
+            f"SELECT COUNT(*) AS n FROM public.audit_trail{where}",
+            *params,
+        )
+        return int(row["n"]) if row else 0
 
     async def export_csv(self, filters: AuditQuery) -> str:
         """Export the audit trail matching ``filters`` as CSV."""

@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { resolvePostLoginPath } from './v3/api';
+import { goToWorkspace } from './v3/api';
 import './css/BetaSignup.css';
 
 export default function SelfServiceSignup() {
@@ -53,7 +53,10 @@ export default function SelfServiceSignup() {
       // route straight into the server-authoritative destination. Otherwise the
       // customer confirms their email first and lands back via /auth/callback.
       if (authData?.session) {
-        resolvePostLoginPath().then((path) => navigate(path, { replace: true }));
+        goToWorkspace(navigate).catch((err) => {
+          console.error('❌ Workspace resolution failed:', err);
+          setError('Failed to load your workspace. Please try again.');
+        });
         return;
       }
       setConfirmEmail(true);

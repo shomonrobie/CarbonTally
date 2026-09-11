@@ -20,10 +20,8 @@ import {
   chooseOnboardingAdoption,
   createOnboardingDiscoveryRequest,
   createOrganization,
-  getConsultantProfile,
-  getOpsMe,
+  getMeContext,
   onboardingDiscoveryLookup,
-  resolveV3Organization,
   verifyOnboardingDiscoveryRequest,
 } from './v3/api';
 import './v3/v3.css';
@@ -69,16 +67,17 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [contextError, setContextError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   // Authenticated route guard: a customer with an organization, or a
   // staff/consultant identity, never sees onboarding (server-authoritative).
-  // D35: the guard is BOUNDED — the user must never be stuck indefinitely on
-  // the checking screen, even if an upstream resolution call is slow.
+  // Phase 3 / P1-B — resolved through the single /api/v3/me/context endpoint
+  // and FAIL-CLOSED: a resolution error shows a controlled error/retry state
+  // (the old 12 s fallback timer and the probe-chain that treated ANY failure
+  // as "brand-new customer" are gone).
   useEffect(() => {
     let active = true;
-    let fallbackTimer = setTimeout(() => {
-      if (active) setChecking(false);
-    }, 12000);
     (async () => {
       const {
         data: { session },
@@ -88,40 +87,24 @@ export default function OnboardingPage() {
         return;
       }
       try {
-        if (await resolveV3Organization()) {
-          navigate('/home', { replace: true });
+        const context = await getMeContext();
+        if (!active) return;
+        const destination = context.destination || context.primary_workspace;
+        if (destination && destination !== '/onboarding') {
+          navigate(destination, { replace: true });
           return;
         }
-      } catch (_e) {
-        /* no org -> continue */
-      }
-      try {
-        if (await getOpsMe()) {
-          navigate('/ops', { replace: true });
-          return;
-        }
-      } catch (_e) {
-        /* not staff -> continue */
-      }
-      try {
-        if (await getConsultantProfile()) {
-          navigate('/consultant', { replace: true });
-          return;
-        }
-      } catch (_e) {
-        /* not consultant -> continue */
-      }
-      if (active) {
-        clearTimeout(fallbackTimer);
+        setContextError(false);
         setChecking(false);
+      } catch (_e) {
+        if (!active) return;
+        // Fail-closed: never fall through to the onboarding UI on error.
+        setContextError(true);
       }
     })();
-    return () => {
-      active = false;
-      clearTimeout(fallbackTimer);
-    };
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [attempt]);
 
   const goHome = () => navigate('/home', { replace: true });
 
@@ -276,8 +259,26 @@ export default function OnboardingPage() {
       <div className="v3-shell">
         <div className="v3-onboarding">
           <div className="v3-card v3-card-padded" style={{ textAlign: 'center' }}>
-            <div className="v3-spinner" aria-label="Loading" />
-            <p>Checking your account…</p>
+            {contextError ? (
+              <>
+                <div className="v3-error">
+                  We couldn&apos;t check your account just now. Please try again.
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ marginTop: '1rem' }}
+                  onClick={() => { setContextError(false); setAttempt((n) => n + 1); }}
+                >
+                  Retry
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="v3-spinner" aria-label="Loading" />
+                <p>Checking your account…</p>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from domain.billing import Subscription
 from services.billing import (
     BillingService,
+    EntitlementUnavailableError,
     IdempotencyConflict,
     InsufficientCreditsError,
 )
@@ -316,13 +317,23 @@ def test_managed_order_uses_common_model(client, world, user_provider) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_charge_processing_no_subscription_allowed(world) -> None:
+def test_charge_processing_no_subscription_denied(world) -> None:
+    """PO-D7 (P6-BILL-1): no active processing entitlement -> action DENIED.
+
+    The pre-P6-BILL-1 'no_subscription -> allowed/free' behaviour is replaced
+    by server-side entitlement enforcement: an organization without an active
+    subscription cannot complete chargeable processing.
+    """
     svc = BillingService(world.bundle())
-    result = asyncio.run(svc.charge_processing(
-        "org-a", job={"kind": "document", "page_count": 1},
-        idempotency_key="chg-1"))
-    assert result["mode"] == "no_subscription"
-    assert result["allowed"] is True
+    try:
+        asyncio.run(svc.charge_processing(
+            "org-a", job={"kind": "document", "page_count": 1},
+            idempotency_key="chg-1"))
+    except EntitlementUnavailableError as exc:
+        assert exc.status_code == 403
+        assert "processing entitlement" in str(exc)
+    else:  # pragma: no cover - must raise
+        raise AssertionError("charge_processing without an active entitlement must raise")
 
 
 def test_charge_processing_credit_complexity(world) -> None:

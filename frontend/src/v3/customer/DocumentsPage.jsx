@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getDocumentEmissions, resolveV3Organization, v3ListDocuments, v3ListUploadBatches, v3UploadDocument } from '../api';
 import { formatBytes } from '../utils';
 import { ErrorState } from '../components/StateViews';
+import DataTable from '../components/ui/DataTable';
 
 export default function DocumentsPage() {
   const [org, setOrg] = useState(null);
@@ -32,7 +33,7 @@ export default function DocumentsPage() {
   const load = useCallback(async (organizationId) => {
     try {
       const [docs, batchesResult] = await Promise.all([
-        v3ListDocuments(organizationId),
+        v3ListDocuments(organizationId, { limit: 500 }),
         v3ListUploadBatches(organizationId).catch(() => ({ batches: [] })),
       ]);
       setDocuments(docs.documents || []);
@@ -79,6 +80,80 @@ export default function DocumentsPage() {
     }
   };
 
+  const documentColumns = [
+    {
+      key: 'name',
+      header: 'Name',
+      accessor: 'name',
+      sortable: true,
+      sortValue: (d) => (d.name || d.file_name || '').toLowerCase(),
+      render: (d) => <strong>{d.name || d.file_name}</strong>,
+      isHeader: true,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      accessor: 'file_type',
+      sortable: true,
+      sortValue: (d) => (d.file_type || d.document_type || '').toLowerCase(),
+      render: (d) => d.file_type || d.document_type || '—',
+    },
+    {
+      key: 'size',
+      header: 'Size',
+      accessor: 'size_bytes',
+      sortable: true,
+      sortValue: (d) => (d.size_bytes != null ? d.size_bytes : -1),
+      render: (d) => <span className="v3-muted">{d.size_bytes != null ? formatBytes(d.size_bytes) : '—'}</span>,
+    },
+    {
+      key: 'created',
+      header: 'Uploaded',
+      accessor: 'created_at',
+      sortable: true,
+      sortValue: (d) => (d.created_at ? new Date(d.created_at).getTime() : -1),
+      render: (d) => <span className="v3-muted">{d.created_at || '—'}</span>,
+    },
+    {
+      key: 'actions',
+      header: '',
+      accessor: 'id',
+      render: (d) => (
+        <button className="v3-btn v3-btn-sm" onClick={() => openDocumentEmissions(d.id)}>
+          Emissions from this document
+        </button>
+      ),
+    },
+  ];
+
+  const batchColumns = [
+    {
+      key: 'batch_name',
+      header: 'Batch',
+      accessor: 'batch_name',
+      sortable: true,
+      sortValue: (b) => (b.batch_name || b.id).toLowerCase(),
+      render: (b) => <strong>{b.batch_name || b.id}</strong>,
+      isHeader: true,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      sortValue: (b) => (b.status || '').toLowerCase(),
+      render: (b) => b.status || '—',
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      accessor: 'created_at',
+      sortable: true,
+      sortValue: (b) => (b.created_at ? new Date(b.created_at).getTime() : -1),
+      render: (b) => <span className="v3-muted">{b.created_at || '—'}</span>,
+    },
+  ];
+
   if (loading) return <div className="v3-loading"><div className="spinner" />Loading documents…</div>;
   if (error && !org) return <ErrorState message={error} onRetry={() => setRetryCount((n) => n + 1)} />;
 
@@ -120,84 +195,58 @@ export default function DocumentsPage() {
 
       <div className="v3-card">
         <h2>Documents ({documents.length})</h2>
-        {documents.length === 0 ? (
-          <div className="v3-empty">No documents uploaded yet.</div>
-        ) : (
-          <>
-            <table className="v3-table">
-              <thead>
-                <tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr>
-              </thead>
-              <tbody>
-                {documents.map((d) => (
-                  <tr key={d.id}>
-                    <td>{d.name || d.file_name}</td>
-                    <td>{d.file_type || d.document_type || '—'}</td>
-                    <td className="v3-muted">{d.size_bytes != null ? formatBytes(d.size_bytes) : '—'}</td>
-                    <td className="v3-muted">{d.created_at || '—'}</td>
-                    <td>
-                      <button className="v3-btn v3-btn-sm" onClick={() => openDocumentEmissions(d.id)}>
-                        Emissions from this document
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <DataTable
+          caption="Organisation documents"
+          columns={documentColumns}
+          rows={documents}
+          clientPaginate
+          defaultPageSize={10}
+          resetKey={org?.id}
+          emptyLabel="No documents uploaded yet."
+        />
 
-            {docEmissionsError && (
-              <div className="v3-muted" style={{ marginTop: 12 }}>{docEmissionsError}</div>
-            )}
+        {docEmissionsError && (
+          <div className="v3-muted" style={{ marginTop: 12 }}>{docEmissionsError}</div>
+        )}
 
-            {docEmissions && (
-              <div className="v3-result-card" style={{ marginTop: 12 }}>
-                <h3>Emissions derived from {docEmissions.document_name}</h3>
-                {docEmissions.emissions?.length === 0 ? (
-                  <p className="v3-empty">No emissions have been calculated from this document yet.</p>
-                ) : (
-                  <table className="v3-table" style={{ marginTop: 8 }}>
-                    <thead>
-                      <tr><th>Period</th><th>Activity</th><th>Scope</th><th>kg CO₂e</th><th>Snapshot</th></tr>
-                    </thead>
-                    <tbody>
-                      {docEmissions.emissions.map((e) => (
-                        <tr key={e.id}>
-                          <td>{e.start_date || '—'}</td>
-                          <td>{e.activity || e.source_file || '—'}</td>
-                          <td>{e.scope || '—'}</td>
-                          <td>{e.calculated_kg_co2e ?? '—'}</td>
-                          <td className="v3-muted">{e.snapshot_id || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+        {docEmissions && (
+          <div className="v3-result-card" style={{ marginTop: 12 }}>
+            <h3>Emissions derived from {docEmissions.document_name}</h3>
+            {docEmissions.emissions?.length === 0 ? (
+              <p className="v3-empty">No emissions have been calculated from this document yet.</p>
+            ) : (
+              <table className="v3-table" style={{ marginTop: 8 }}>
+                <thead>
+                  <tr><th>Period</th><th>Activity</th><th>Scope</th><th>kg CO₂e</th><th>Snapshot</th></tr>
+                </thead>
+                <tbody>
+                  {docEmissions.emissions.map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.start_date || '—'}</td>
+                      <td>{e.activity || e.source_file || '—'}</td>
+                      <td>{e.scope || '—'}</td>
+                      <td>{e.calculated_kg_co2e ?? '—'}</td>
+                      <td className="v3-muted">{e.snapshot_id || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </>
+          </div>
         )}
       </div>
 
       <div className="v3-card">
         <h2>Upload batches ({batches.length})</h2>
-        {batches.length === 0 ? (
-          <div className="v3-empty">No upload batches yet.</div>
-        ) : (
-          <table className="v3-table">
-            <thead>
-              <tr><th>Batch</th><th>Status</th><th>Created</th></tr>
-            </thead>
-            <tbody>
-              {batches.map((b) => (
-                <tr key={b.id}>
-                  <td>{b.batch_name || b.id}</td>
-                  <td>{b.status || '—'}</td>
-                  <td className="v3-muted">{b.created_at || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Upload batches"
+          columns={batchColumns}
+          rows={batches}
+          clientPaginate
+          defaultPageSize={10}
+          resetKey={org?.id}
+          emptyLabel="No upload batches yet."
+        />
       </div>
     </div>
   );

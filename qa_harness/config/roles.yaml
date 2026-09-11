@@ -1,0 +1,173 @@
+# CarbonTally V3 role model (per DEMO_IDENTITIES.md + persona audit).
+# These are EXPECTED behaviors encoded as requirements — the harness verifies
+# them independently when run. Boundaries list what the role must NOT do.
+
+roles:
+  customer_owner:
+    label: Customer Owner
+    workspace: customer
+    landing_route: /home
+    capabilities:
+      - view_dashboard, edit_org_profile, manage_members, upload_document
+      - manage_facilities, manage_assets, manage_suppliers, manage_vehicles
+      - create_custom_factor, approve_custom_factor, review_and_approve_items
+      - view_emissions, generate_reports, use_messaging
+    boundaries:
+      - must_not_access_other_orgs, must_not_access_staff_surfaces
+      - must_not_approve_own_custom_factor_without_po_decision
+    description: "Owner of a direct demo customer organisation (owner.demoNNNN)."
+
+  customer_admin:
+    label: Customer Admin
+    workspace: customer
+    landing_route: /home
+    capabilities:
+      - edit_org_profile, manage_members, upload_document, manage_facilities
+      - manage_assets, manage_suppliers, approve_custom_factor
+      - review_and_approve_items, view_emissions, generate_reports, use_messaging
+    boundaries:
+      - must_not_access_other_orgs, must_not_access_staff_surfaces
+    description: "Admin member of a direct demo customer organisation (admin.demoNNNN)."
+
+  customer_member:
+    label: Customer Member
+    workspace: customer
+    landing_route: /home
+    capabilities:
+      - upload_document, view_dashboard, view_emissions, use_messaging
+    boundaries:
+      - must_not_edit_org_profile, must_not_manage_members
+      - must_not_approve_items, must_not_manage_master_data
+    description: "Member of a direct demo customer organisation (member.demoNNNN)."
+
+  customer_viewer:
+    label: Customer Viewer
+    workspace: customer
+    landing_route: /home
+    capabilities: [view_dashboard, view_documents, view_emissions]
+    boundaries:
+      - must_not_upload_documents, must_not_edit_anything, must_not_manage_members
+    description: "READ-ONLY role (viewer.demoNNNN). Historical defect SEC-1: viewer upload must be denied."
+
+  client_owner:
+    label: Consultant Client Owner
+    workspace: customer
+    landing_route: /home
+    capabilities:
+      - view_own_client_org_data, upload_document, review_and_approve_items
+      - use_messaging_with_consultant
+    boundaries:
+      - must_not_access_other_client_orgs, must_not_access_consultant_workspace
+    description: "Owner of a consultant-managed client organisation (client.owner.demoCCCC.K)."
+
+  consultant:
+    label: Consultant
+    workspace: consultant
+    landing_route: /consultant
+    capabilities:
+      - view_client_portfolio, switch_active_client, create_customer
+      - enter_client_workspace, upload_document, drive_processing
+      - mapping, validation, review, reporting, messaging
+      - manage_consultant_team
+    boundaries:
+      - must_not_access_other_consultant_portfolios
+      - must_not_operate_outside_active_client
+    description: "First-class operator (consultant.demoCCCC). Historical defect CON-1..3: consultant must be able to operate customers."
+
+  pe_manager:
+    label: PE Manager
+    workspace: pe
+    landing_route: /ops
+    capabilities:
+      - view_entity_assigned_batches, view_entity_performance
+      - approve_review_within_entity, allowed_messaging
+    boundaries:
+      - must_not_access_customer_source_documents
+      - must_not_access_other_processing_entities
+      - must_not_access_internal_ops_workspace
+    description: "Processing Entity manager (pe-manager-E.demo). Historical defect PE-2: manager batch list must work."
+
+  pe_staff:
+    label: PE Staff / Operator
+    workspace: pe
+    landing_route: /ops
+    capabilities:
+      - view_entity_assigned_batches, manual_extraction, mapping
+      - validation, calculation_within_entity
+    boundaries:
+      - must_not_download_customer_documents, must_not_access_other_entities
+      - must_not_access_customer_org_queues_or_docs
+    description: "Processing Entity operator (pe-staff-E.demo). D20 no-download boundary."
+
+  internal_operator:
+    label: CarbonTally Operator
+    workspace: ops
+    landing_route: /ops
+    capabilities:
+      - data_entry_queue, extraction, mapping, validation, calculation
+      - view_all (roster/entities view)
+    boundaries:
+      - must_not_edit_retention_or_commercial
+    description: "CarbonTally internal operator (operator.demo)."
+
+  internal_reviewer:
+    label: CarbonTally Reviewer
+    workspace: ops
+    landing_route: /ops
+    capabilities: [review_queue, validate_item]
+    boundaries:
+      - must_not_run_operator_queue, must_not_calculate
+      - must_not_edit_retention_or_commercial
+    description: "Reviewer is NOT an admin (reviewer.demo)."
+
+  internal_qc:
+    label: CarbonTally QC
+    workspace: ops
+    landing_route: /ops
+    capabilities: [qc_queue, validate_item, calculate]
+    boundaries: [must_not_edit_retention_or_commercial]
+    description: "QC specialist (qc.demo)."
+
+  staff_admin:
+    label: Staff Admin
+    workspace: ops
+    landing_route: /ops
+    capabilities:
+      - dashboard, staff_roster, roles, entities, sla, issues
+      - retention_config, commercial_config, audit, messaging, settings
+    boundaries: []
+    description: "Internal staff admin (staff-admin.demo) — admin control plane."
+
+  system_admin:
+    label: System Admin
+    workspace: ops
+    landing_route: /ops
+    capabilities:
+      - dashboard, staff_roster, entities, queues
+      - retention_config, commercial_config, audit
+    boundaries: []
+    description: "System admin (system-admin.demo). Historical defect OPS-6: must reach admin-gated config."
+
+  legacy_fixture:
+    label: Legacy Demo Fixture
+    workspace: mixed
+    landing_route: ""
+    capabilities: []
+    boundaries: []
+    description: "11 legacy @demo.carbontally.local accounts (owner@demo … staff-admin@demo) — demo credentials, outside the standard persona sweep."
+
+  audit_fixture:
+    label: OHD Audit Account
+    workspace: mixed
+    landing_route: ""
+    capabilities: []
+    boundaries: []
+    description: "OHD audit accounts @test.carbontally.local (ohd.owner.a … ohd.consultant) — NOT demo credentials; never authenticated with the shared demo password."
+
+  system_fixture:
+    label: System / Selftest Fixture
+    workspace: mixed
+    landing_route: ""
+    capabilities: []
+    boundaries: []
+    description: "Non-demo system/selftest accounts (cline.con.probe@test, rv2.*@rev2-selftest.test) — NOT demo credentials."

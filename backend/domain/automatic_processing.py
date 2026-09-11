@@ -164,7 +164,40 @@ class AutomaticProcessingJob:
     manual_review_reason: Optional[str] = None
     source_item_id: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+    # WS4 Gate 5 (task T3) — write-once automated-execution attribution block.
+    # NULL = deterministic-only result / no AI contributed / legacy row.
+    automation_provider: Optional[str] = None
+    automation_model: Optional[str] = None
+    automation_model_version: Optional[str] = None
+    # WS4 Gate 6 (workstream W1 / gap G6-A) — the original automated extraction
+    # output, preserved independently of later human edits. Populated ONCE by
+    # the automatic-processing worker at the extraction → mapping advance that
+    # first persists `extracted_data` — for BOTH deterministic-only and
+    # AI-contributing runs (the automatic pipeline produced this output either
+    # way; the automation_* block above remains AI-contribution-specific and
+    # NULL for deterministic-only runs). NULL = no automated extraction output
+    # was ever durably produced (failed/blocked attempt) or a legacy row that
+    # predates this column (never fabricated/backfilled). Human saves never
+    # write this column, so a later human correction of the working
+    # `extracted_data` can neither replace nor delete the original output.
+    automation_extracted_data: Optional[dict] = None
     pipeline_version: Optional[str] = None
+    # WS4 Gate 6 (workstream W3 / gap G6-C) — authoritative human-after
+    # automation attribution fields on the canonical job record. These are the
+    # existing DB actor columns that human gates already persist (server-side
+    # only): ``created_by`` = authenticated user who uploaded/enqueued the job;
+    # ``updated_by`` = authenticated user of the last confirm/retry
+    # re-enqueue; ``customer_reviewed_by/at`` + ``customer_approved`` +
+    # notes/reason = the owner/admin review decision. Read-only exposure; never
+    # taken from client input and never an authorization signal. A human action
+    # is distinct from the machine ``automation_*`` block / ``automatic_pipeline``.
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+    customer_reviewed_by: Optional[str] = None
+    customer_reviewed_at: Optional[datetime] = None
+    customer_approved: Optional[bool] = None
+    customer_notes: Optional[str] = None
+    customer_rejection_reason: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

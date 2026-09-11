@@ -196,7 +196,12 @@ def _completeness(extracted: dict) -> float:
 
 
 
-def _extract_pdf(content: bytes) -> dict:
+def _pdf_text(content: bytes) -> tuple[str, str, int]:
+    """Deterministic PDF → ``(text, method, page_count)`` (never raises).
+
+    Shared by the deterministic suggestion pass and the optional AI extraction
+    step (Phase 2) so the document text is extracted exactly once per pipeline.
+    """
     from pdf_engine import PDFExtractor
 
     extractor = PDFExtractor()
@@ -215,6 +220,11 @@ def _extract_pdf(content: bytes) -> dict:
                 if joined and len(joined.strip()) >= 20:
                     text, method = joined, "onnx_ocr"
     page_count = extractor._get_page_count(content)
+    return (text or ""), method, int(page_count or 0)
+
+
+def _extract_pdf(content: bytes) -> dict:
+    text, method, page_count = _pdf_text(content)
     if not text or len(text.strip()) < 20:
         return {
             "status": "no_text",
@@ -259,7 +269,8 @@ def _render_pdf_pages_pypdfium(content: bytes) -> list[bytes]:
         return []
 
 
-def _extract_image(content: bytes) -> dict:
+def _image_text(content: bytes) -> tuple[str, str]:
+    """Deterministic IMAGE → ``(text, method)`` (never raises)."""
     from pdf_engine import PDFExtractor
 
     extractor = PDFExtractor()
@@ -274,6 +285,11 @@ def _extract_image(content: bytes) -> dict:
         fallback = _onnx_ocr(content)
         if fallback and len(fallback.strip()) >= 20:
             text, method = fallback, "onnx_ocr"
+    return (text or ""), method
+
+
+def _extract_image(content: bytes) -> dict:
+    text, method = _image_text(content)
     if not text or len(text.strip()) < 20:
         return {
             "status": "no_text",
@@ -482,5 +498,67 @@ def extract_document(content: bytes, filename: str, mime: str) -> dict:
     return {
         "status": "unsupported", "method": ftype.lower(), "page_count": 0,
         "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
+        "detail": f"unsupported file type {ftype}",
+    }
+
+
+def completeness_score(extracted: dict) -> float:
+    """Public 0..1 completeness over the canonical pipeline fields.
+
+    Mirrors the private ``_completeness`` used by the deterministic extractors
+    and the durable job's ``completeness`` property, so every extraction source
+    (deterministic, AI, human) is measured the same way.
+    """
+    return _completeness(extracted or {})
+
+
+def extract_document_text(content: bytes, filename: str, mime: str) -> dict:
+    """Deterministic document → raw text layer (Phase 2, AI reuse).
+
+    Returns ``{"status", "ftype", "text", "method", "page_count"}`` where
+    ``status`` is ``ok`` / ``no_text`` / ``unsupported`` / ``error``. PDFs and
+    images reuse the same deterministic text resolution as the suggestion pass
+    (``_pdf_text`` / ``_image_text``); CSV returns its decoded text. XLSX and
+    unknown types are ``unsupported`` (not suitable for an LLM text pass).
+    Never raises.
+    """
+    ftype = _classify(filename, mime)
+    try:
+        if ftype == "PDF":
+            text, method, page_count = _pdf_text(content)
+            return {
+                "status": "ok" if text and len(text.strip()) >= 20 else "no_text",
+                "ftype": ftype, "text": text[:200_000], "method": method,
+                "page_count": page_count,
+            }
+        if ftype == "IMAGE":
+            text, method = _image_text(content)
+            return {
+                "status": "ok" if text and len(text.strip()) >= 20 else "no_text",
+                "ftype": ftype, "text": text[:200_000], "method": method,
+                "page_count": 1,
+            }
+        if ftype == "SPREADSHEET":
+            ext = filename.rsplit(".", 1)[-1].lower()
+            if ext != "csv":
+                return {
+                    "status": "unsupported", "ftype": ftype, "text": "",
+                    "method": "xlsx", "page_count": 0,
+                    "detail": "xlsx is parsed tabularly, not sent to an LLM",
+                }
+            text = content.decode("utf-8-sig", errors="replace")
+            return {
+                "status": "ok" if text.strip() else "no_text",
+                "ftype": ftype, "text": text[:200_000], "method": "csv",
+                "page_count": 0,
+            }
+    except Exception as exc:  # noqa: BLE001 — text extraction must never raise
+        return {
+            "status": "error", "ftype": ftype, "text": "",
+            "method": ftype.lower(), "page_count": 0, "detail": str(exc)[:500],
+        }
+    return {
+        "status": "unsupported", "ftype": ftype, "text": "",
+        "method": ftype.lower(), "page_count": 0,
         "detail": f"unsupported file type {ftype}",
     }

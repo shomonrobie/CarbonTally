@@ -54,7 +54,7 @@ _SNAPSHOT_COLUMNS = """
     co2e_multiplier, co2e_kg, scope, date, factor_id, factor_source, factor_set,
     import_batch_id, reporting_year, methodology, algorithm_version, content_hash,
     calculated_at, calculated_by, request_id, factor_kind, customer_factor_id,
-    source_item_id, source_file, source_page
+    source_item_id, source_file, source_page, performed_by
 """
 
 
@@ -435,6 +435,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         factor_set: Optional[str] = None,
         import_batch_id: Optional[str] = None,
         calculated_by: Optional[str] = None,
+        performed_by: Optional[str] = None,
         factor_kind: Optional[str] = None,
         customer_factor_id: Optional[str] = None,
     ) -> CalculationSnapshot:
@@ -460,9 +461,9 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 factor_id, factor_source, factor_set, import_batch_id,
                 reporting_year, methodology, algorithm_version, content_hash,
                 calculated_by, request_id, factor_kind, customer_factor_id,
-                source_item_id, source_file, source_page
+                source_item_id, source_file, source_page, performed_by
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                      $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
             RETURNING id
             """,
             snapshot.id,
@@ -490,6 +491,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             snapshot.source_item_id,
             snapshot.source_file,
             snapshot.source_page,
+            performed_by,
         )
         if row is None:
             raise RuntimeError("calculation snapshot insert returned no row")

@@ -1,0 +1,100 @@
+# CarbonTally QA Harness v1 — master configuration.
+#
+# DEFAULT MODE IS READ-ONLY. Mutation tests must explicitly declare mutation
+# and are BLOCKED unless a safe, self-contained mutation scope is available.
+
+harness:
+  name: CarbonTally QA Harness
+  version: 1.1.0
+  mode: read-only          # read-only | mutation (mutation requires explicit declaration)
+  run_id_format: "%Y%m%dT%H%M%S_%shortsha"
+
+# Authenticated probe safety (spec §B / §33). DEFAULT IS READ-ONLY.
+#
+# * allow_empty_body_mutation_probes (default true): POST/PUT probes with an
+#   invalid/empty JSON body. FastAPI resolves role dependencies BEFORE body
+#   validation, so a correct denial returns 403 with no write; a broken gate
+#   surfaces as 422/404 (still no write). These are safe and stay ON.
+# * allow_upload_probes (default false): multipart upload probes. If a gate
+#   is broken the request WOULD create a document row in demo data, so upload
+#   probes are SKIPPED in read-only mode. Enable only inside an explicitly
+#   authorized, isolated mutation scope (and pass --read-only=false).
+api_probe:
+  allow_empty_body_mutation_probes: true
+  allow_upload_probes: false
+
+# Database QA connection (read-only; never stores secrets). DSN precedence
+# (see scripts/run_db.py): SUPABASE_DB_URL -> DATABASE_URL (postgres_dsn_env)
+# -> POSTGRES_PASSWORD structured build -> local `supabase status` discovery.
+database:
+  allow_supabase_status_discovery: true   # local env only; never staging/production
+  resource_discovery: true                # read-only real-id lookups for workflow probes (conversation ids)
+
+# Local default target (overridden by --env or CARBON_TALLY_* env vars).
+target:
+  name: local
+  frontend_url: http://localhost:3000
+  api_url: http://localhost:8050
+  api_prefix: /api/v3
+  supabase_auth_url: http://127.0.0.1:54425
+  supabase_rest_url: http://127.0.0.1:54425/rest/v1
+  postgres_dsn_env: DATABASE_URL
+  postgres_host: 127.0.0.1
+  postgres_port: 54426
+  postgres_db: postgres
+  notes: "Local dev stack (Supabase auth 127.0.0.1:54425, API :8050, Postgres 127.0.0.1:54426, frontend :3000)."
+
+# Tool availability is probed at runtime; these entries document the tool
+# registry. `available: false` means "assume absent until probed".
+tools:
+  yaml:      { available: false, reason: "probed at load" }
+  requests:  { available: false, reason: "probed at load" }
+  playwright: { available: false, reason: "probed at load; needs `pip install playwright` + chromium" }
+  chromium:  { available: false, reason: "probed at load" }
+  axe:       { available: false, reason: "probed at load; axe-core injected via CDP/Playwright" }
+  schemathesis: { available: false, reason: "probed at load; optional pip package" }
+  pgtap:     { available: false, reason: "probed at load" }
+  zap:       { available: false, reason: "probed at load; OWASP ZAP not installed" }
+  openrouter: { available: false, reason: "probed at load; requires OPENROUTER_AGEN_SWARM_V1_API_KEY" }
+
+# Responsive viewport sweep (spec §24).
+viewports:
+  - { width: 1920, height: 1080, label: desktop-xl }
+  - { width: 1440, height: 900,  label: desktop }
+  - { width: 1280, height: 800,  label: desktop-sm }
+  - { width: 1024, height: 768,  label: tablet-landscape }
+  - { width: 768,  height: 1024, label: tablet-portrait }
+  - { width: 430,  height: 932,  label: mobile-lg }
+  - { width: 390,  height: 844,  label: mobile }
+  - { width: 375,  height: 812,  label: mobile-sm }
+
+identity:
+  password_env: CARBON_TALLY_DEMO_PASSWORD      # single shared demo password; never logged
+  manifest: ../tools/seed_investor_demo/demo_manifest.json   # representative subset (no secrets)
+  identity_doc: ../tools/seed_investor_demo/DEMO_IDENTITIES.md
+  domain: demo.carbontally.local
+  # @demo.carbontally.local population. DEMO_IDENTITIES.md documented 1185
+  # (verified 2026-08-28); a read-only live count today shows 1183 (the 2
+  # account drift is noted in the reconciliation report). The generated model
+  # mirrors the LIVE count: 1172 standard scheme + 11 legacy demo fixtures.
+  # Audit (@test) and system/selftest accounts are modelled but NOT demo.
+  total_demo_identities: 1183
+  customer_org_count: 50
+  client_org_count: 911
+  consultant_count: 50
+  pe_entities: [1, 2, 3]
+  internal_roles: [operator, reviewer, qc, staff-admin, system-admin]
+
+ai:
+  enabled: false            # deterministic tests always run; AI is optional analysis
+  api_key_env: OPENROUTER_AGEN_SWARM_V1_API_KEY
+  base_url: https://openrouter.ai/api/v1
+  model: openrouter/auto
+  roles:
+    - ux_analyst
+    - workflow_analyst
+    - security_analyst
+    - api_analyst
+    - final_judge
+  analyze_only_findings: true     # never send every passing test to an LLM
+  max_findings_per_agent: 25

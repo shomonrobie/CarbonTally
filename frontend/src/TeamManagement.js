@@ -1,9 +1,11 @@
 // TeamManagement.jsx - Complete with Backend API
+// WS4 / ARCH-0003 — HTTP migrated to the shared legacy API client
+// (frontend/src/services/apiClient.js) for consistent auth/header handling.
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
 import './css/TeamManagement.css';
 import toast from 'react-hot-toast';
+import { apiRequest } from './services/apiClient';
 
 function TeamManagement({ organization, userRole }) {
   const [members, setMembers] = useState([]);
@@ -13,32 +15,17 @@ function TeamManagement({ organization, userRole }) {
   const [sending, setSending] = useState(false);
   const isAdmin = userRole === 'admin';
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || localStorage.getItem('access_token');
-  };
-
   const fetchMembers = async () => {
     setLoading(true);
-    const token = await getToken();
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/organizations/team/${organization.id}/members`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
+      const response = await apiRequest(
+        `/api/organizations/team/${organization.id}/members`
       );
 
       if (response.ok) {
-        const result = await response.json();
-        setMembers(result.members || []);
-        console.log('✅ Team members loaded:', result.members?.length || 0);
+        setMembers(response.data?.members || []);
+        console.log('✅ Team members loaded:', response.data?.members?.length || 0);
       } else {
         console.error('Failed to fetch members:', response.status);
         toast.error('Failed to load team members');
@@ -68,25 +55,18 @@ function TeamManagement({ organization, userRole }) {
     }
 
     setSending(true);
-    const token = await getToken();
 
     try {
-      const response = await fetch(
-        `${API_URL}/api/organizations/team/${organization.id}/invite`,
+      const response = await apiRequest(
+        `/api/organizations/team/${organization.id}/invite`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
+          body: {
             email: inviteEmail,
             role: inviteRole,
-          }),
+          },
         }
       );
-
-      const result = await response.json();
 
       if (response.ok) {
         toast.success(`✅ ${inviteEmail} invited as ${inviteRole}!`);
@@ -94,7 +74,7 @@ function TeamManagement({ organization, userRole }) {
         setInviteRole('viewer');
         fetchMembers();
       } else {
-        toast.error(result.detail || 'Failed to invite member');
+        toast.error(response.data?.detail || 'Failed to invite member');
       }
     } catch (error) {
       console.error('Error inviting member:', error);
@@ -107,26 +87,17 @@ function TeamManagement({ organization, userRole }) {
   const handleRemoveMember = async (memberId) => {
     if (!window.confirm('Are you sure you want to remove this member?')) return;
 
-    const token = await getToken();
-
     try {
-      const response = await fetch(
-        `${API_URL}/api/organizations/team/${organization.id}/members/${memberId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
+      const response = await apiRequest(
+        `/api/organizations/team/${organization.id}/members/${memberId}`,
+        { method: 'DELETE' }
       );
 
       if (response.ok) {
         toast.success('Member removed successfully');
         fetchMembers();
       } else {
-        const result = await response.json();
-        toast.error(result.detail || 'Failed to remove member');
+        toast.error(response.data?.detail || 'Failed to remove member');
       }
     } catch (error) {
       console.error('Error removing member:', error);
@@ -135,18 +106,12 @@ function TeamManagement({ organization, userRole }) {
   };
 
   const handleUpdateRole = async (memberId, newRole) => {
-    const token = await getToken();
-
     try {
-      const response = await fetch(
-        `${API_URL}/api/organizations/team/${organization.id}/members/${memberId}`,
+      const response = await apiRequest(
+        `/api/organizations/team/${organization.id}/members/${memberId}`,
         {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ role: newRole }),
+          body: { role: newRole },
         }
       );
 
@@ -154,8 +119,7 @@ function TeamManagement({ organization, userRole }) {
         toast.success('Role updated successfully');
         fetchMembers();
       } else {
-        const result = await response.json();
-        toast.error(result.detail || 'Failed to update role');
+        toast.error(response.data?.detail || 'Failed to update role');
       }
     } catch (error) {
       console.error('Error updating role:', error);

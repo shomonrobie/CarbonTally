@@ -1,0 +1,32 @@
+-- WS5 / DB-0002 — Tenant organization_id nullability (2026-08-31).
+--
+-- Approved remediation (Audit finding DB-0002):
+--   Audit flagged nullable organization_id on tenant-scoped tables. A
+--   table-by-table analysis (2026-08-31) found:
+--
+--     * `assets` is STRICTLY tenant-scoped. Every known insertion path supplies
+--       organization_id: the V3 API creates assets via
+--       POST /api/v3/organizations/{org_id}/assets (org derived from the path)
+--       and the investor-demo seed always sets organization_id
+--       (tools/seed_investor_demo/seed_core.py). No system/global asset
+--       records exist. => SET NOT NULL is safe and demonstrably correct.
+--
+--     * The remaining nullable tables are intentionally preserved as-is
+--       because NULL organization_id has legitimate meaning:
+--         - factor_aliases / report_templates: global, organisation-less rows.
+--         - activity_feed / audit_logs / activity_logs / document_activity_log:
+--           system-level events are not always organisation-scoped.
+--         - draft_entries / export_history / issues / processing_logs /
+--           customer_review_log / data_discovery_requests / user_feedback /
+--           user_invitations: legacy or optional-tenant records where forcing
+--           NOT NULL could break legitimate flows.
+--
+--   This migration therefore enforces NOT NULL ONLY on `assets`.
+--
+--   NOTE: the ALTER fails loudly if any NULL organization_id row exists in a
+--   target database (defensive — no data is invented). Run a
+--   `SELECT count(*) FROM assets WHERE organization_id IS NULL;` check before
+--   applying to any database that may contain legacy NULLs.
+
+ALTER TABLE public.assets
+    ALTER COLUMN organization_id SET NOT NULL;
