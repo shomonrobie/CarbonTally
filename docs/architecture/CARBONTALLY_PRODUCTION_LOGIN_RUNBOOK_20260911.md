@@ -63,14 +63,47 @@ described; nothing is invented.
 
 ## 7. Troubleshooting
 
-### 7.1 `/login` (or `/privacy`, or any deep link) returns 404 in production
-* **Cause (diagnosed 2026-09-11):** the SPA catch-all in `vercel.json` pointed at `/frontend/index.html`,
-  which does not exist in the build output (the build copies `frontend/build/*` into `public/`, so the shell
-  is `/index.html`). Root `/` worked; every deep link 404'd.
-* **Fix:** `vercel.json` now rewrites `/(.*)` → `/index.html` and `/static/(.*)` → `/static/$1`.
-* **If it recurs:** confirm the deployed `vercel.json` matches the repository; confirm the Vercel
-  **Output Directory** matches the build (`public/`, produced by the root `build` script); redeploy; re-test
-  `/`, `/login`, `/privacy` and a page refresh on each.
+### 7.1 `/login` (or `/privacy`, `/terms`, `/auth/callback`, or any deep link) returns 404 on refresh
+
+**Symptom:** the page renders when reached by clicking from the home page (client-side navigation), but a
+**browser refresh** — or any direct/cold load — returns Vercel `404: NOT_FOUND`.
+
+* **Diagnosis (corrected 2026-09-11; the earlier "wrong destination path" explanation is superseded):**
+  the deployment does serve the corrected `vercel.json` (verified live: the deployed bundle contains the
+  latest frontend code and `asset-manifest.json` was `last-modified 13:49:53 GMT`, after the fix commit) —
+  but it set **`cleanUrls: true`**. `cleanUrls` removes the `.html` extension from every HTML file's route and
+  308-redirects requests that use the extension (observed live: `/index.html` → 308 `/`,
+  `/admin/index.html` → 308 `/admin`, `/zzz.html` → 308 `/zzz`). The shell therefore exists at `/`,
+  **not** `/index.html`, so **every SPA rewrite whose destination was an `…/index.html` path stopped
+  resolving and fell through to a hard 404** — including the trivially correct
+  `/admin/(.*)` → `/admin/index.html` rule (observed live: `/admin/deep-not-a-real-path` → 404).
+  `/` kept working only because the file-system layer is evaluated **before** the rewrites layer.
+* **Fix (applied):** `vercel.json` sets **`cleanUrls` explicitly to `false`** (an explicit value also
+  overrides any equivalent Vercel **Project Setting**) and keeps the canonical `/(.*)` → `/index.html`
+  catch-all behind the `/static/**` and `/admin/**` shields — the same pattern already used by
+  `frontend/vercel.json` and the pre-V3 backup config.
+  Regression guard: `qa_harness/tests/harness/test_deployment_routing_config.py`.
+* **Verify after the next production deployment** — every path must return **200**, and a **browser refresh**
+  on each must render the page rather than a 404:
+
+  ```bash
+  for p in / /login /privacy /terms /auth/callback /platform /pricing /admin; do
+    printf '%s  %s\n' "$(curl -sS -o /dev/null -w '%{http_code}' "https://carbontally.co.uk$p")" "$p"
+  done
+  ```
+
+  (`/auth/callback` matters most operationally: it is where Google sign-in returns, so while it 404s the whole
+  OAuth flow ends on an error page.)
+
+* **If deep links still 404 after a verified deployment of the corrected config**, the remaining suspects are
+  (none changeable from the repository):
+  1. the Vercel project's **Root Directory** must be the repository root and the **Output Directory** must be
+     the build's `public/` (the linked project `.vercel/project.json` = `carbon-tally`; `/admin` already
+     resolving proves the output root is correct);
+  2. a Vercel **dashboard** Project Route, `cleanUrls` toggle, or deployment-protection rule overriding the
+     file;
+  3. `frontend/vercel.json` — **inert** while the Root Directory is the repository root, but it would become
+     the effective configuration if the Root Directory were switched to `frontend/`.
 
 ### 7.2 Google sign-in fails or loops
 1. Supabase → Authentication → Providers → Google enabled, with valid client ID/secret.

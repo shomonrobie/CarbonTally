@@ -96,3 +96,24 @@ and Phase 8 are **NOT STARTED**; backup/DR remains **not activated**; migration 
 `CT-PHASE6-PUSH-AUDIT-20260911-001`; `CARBONTALLY_PHASE6_CLOSURE_AND_RELEASE_BOUNDARY_20260911.md`;
 `CARBONTALLY_PRODUCTION_RELEASE_MANIFEST_20260911.md`; and live URL observations of
 `https://carbontally.co.uk/` (200), `/login` (404) and `/privacy` (404) taken on 2026-09-11.
+
+## 7. Follow-up fix — deep-link/refresh 404 correction (2026-09-11)
+
+The first routing fix (commit `36cbd3f`, catch-all `/(.*)` → `/index.html`) was deployed but did **not**
+restore deep links: production continued to return Vercel `404: NOT_FOUND` for `/login`, `/privacy`,
+`/terms` and `/auth/callback` on a cold load or refresh (client-side navigation from `/` worked).
+
+**Corrected root cause:** `vercel.json` also carried **`cleanUrls: true`**, which removes the `.html`
+extension from every HTML file's route. The deployed bundle was verified to be current (it contains the
+`36cbd3f` frontend code and `asset-manifest.json` was last modified after that commit), and the cleanUrls
+308 behaviour was observed live (`/index.html` → `/`, `/admin/index.html` → `/admin`, `/zzz.html` → `/zzz`) —
+proving the configuration is applied, yet every rewrite whose destination was an `…/index.html` path
+(including the trivially correct `/admin/(.*)` → `/admin/index.html`) failed and fell through to a 404.
+`/` survived only because the file-system layer is evaluated before the rewrites layer.
+
+**Fix:** `cleanUrls` is now explicitly `false` in `vercel.json` (an explicit value also overrides any
+equivalent Vercel project setting), with the catch-all retained **last** behind the `/static/**` and
+`/admin/**` shields. Guarded by `qa_harness/tests/harness/test_deployment_routing_config.py`.
+
+**Status:** implemented and tested in the repository; **a production deployment is required** for the
+reported URLs to return 200.

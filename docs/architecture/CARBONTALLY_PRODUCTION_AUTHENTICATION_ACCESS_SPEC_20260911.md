@@ -160,3 +160,23 @@ vars are absent). Recommendation: move to environment configuration in a separat
 5. An auth outage never implies data loss and never grants or widens access.
 6. RLS and tenant/consultant/PE isolation are unchanged by this closure.
 7. No authentication method has been added, removed, or weakened.
+
+## 11. Deep-link / refresh routing (corrected 2026-09-11)
+
+**Requirement:** every route in the client route table (`/login`, `/privacy`, `/terms`, `/cookies`,
+`/auth/callback`, `/signup`, `/beta/signup`, `/platform`, `/pricing`, … and the authenticated workspaces) must
+render on a **cold load and on browser refresh**, not only via client-side navigation.
+
+| Aspect | Finding |
+|---|---|
+| Mechanism | Vercel serves the built shell for unmatched paths and React Router renders the route. The file-system layer is evaluated **before** the rewrites layer, so real assets are never shadowed. |
+| Where the shell lives | `public/index.html` — the root `build` script copies `frontend/build/*` into the output root; assets are absolute (`/static/…`), so the shell loads correctly at any depth. |
+| Defect (found 2026-09-11) | `vercel.json` carried **`cleanUrls: true`** while every rewrite destination was an `…/index.html` path. `cleanUrls` removes the `.html` extension from HTML routes (and 308-redirects `.html` requests), so those destinations no longer resolved: **every deep link returned Vercel `404: NOT_FOUND` on refresh**, while `/` continued to work. |
+| Live evidence | `/` 200 · `/static/js/main.*.js` 200 · `/admin` 200 (file-system directory index) · `/login`, `/privacy`, `/terms`, `/admin/deep-path` 404 `NOT_FOUND` · `/index.html` 308 → `/` · `/admin/index.html` 308 → `/admin` · `/zzz.html` 308 → `/zzz` |
+| Fix | `vercel.json`: **`cleanUrls` set explicitly to `false`**; canonical catch-all `/(.*)` → `/index.html`, kept last, behind the `/static/**` and `/admin/**` shields. |
+| Regression guard | `qa_harness/tests/harness/test_deployment_routing_config.py` (7 read-only tests) |
+| Operational impact while broken | Google sign-in could not complete — `/auth/callback`, the OAuth return URL, was also 404, so the flow ended on a Vercel error page. |
+
+**Invariant to preserve:** a rewrite destination ending in `.html` requires `cleanUrls` to be disabled.
+Enabling `cleanUrls` without converting every destination is a **production deep-link outage**.
+
