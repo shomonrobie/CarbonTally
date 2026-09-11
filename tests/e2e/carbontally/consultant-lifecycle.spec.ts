@@ -5,7 +5,15 @@
  * SKIPS when its persona/ids are not configured — never a silent pass.
  */
 import { test, expect } from '@playwright/test';
-import { ids, login, openConsultantItem, personaAvailable, personas } from '../personas';
+import {
+  ids,
+  login,
+  openConsultantItem,
+  personaAvailable,
+  personas,
+  visibleAfterLoad,
+  waitForAccessCheck,
+} from '../personas';
 
 test.describe('P6-2F — consultant lifecycle (ALLOW)', () => {
   test.beforeEach(() => {
@@ -35,8 +43,9 @@ test.describe('P6-2F — consultant lifecycle (ALLOW)', () => {
     // seeded by seed_lifecycle_fixtures.py, so the "Submit to CarbonTally QC"
     // action is genuinely available instead of skipping.
     await openConsultantItem(page, ids.clientA, ids.itemA2);
+    await waitForAccessCheck(page);
     const submit = page.getByRole('button', { name: /submit to carbontally qc/i });
-    test.skip(!(await submit.isVisible().catch(() => false)), 'item is not in a submittable state');
+    test.skip(!(await visibleAfterLoad(submit)), 'item is not in a submittable state');
     await submit.click();
     await expect(page.getByText(/submitted to carbontally qc/i)).toBeVisible();
   });
@@ -44,8 +53,9 @@ test.describe('P6-2F — consultant lifecycle (ALLOW)', () => {
   test('consultant completes the review action on a calculated item', async ({ page }) => {
     await login(page, personas.consultantA);
     await openConsultantItem(page, ids.clientA, ids.itemA);
+    await waitForAccessCheck(page);
     const pass = page.getByRole('button', { name: /pass review/i });
-    test.skip(!(await pass.isVisible().catch(() => false)), 'item is not in a reviewable state');
+    test.skip(!(await visibleAfterLoad(pass)), 'item is not in a reviewable state');
     await pass.click();
     await expect(page.getByText(/review passed/i)).toBeVisible();
   });
@@ -53,9 +63,10 @@ test.describe('P6-2F — consultant lifecycle (ALLOW)', () => {
   test("the consultant's own notification deep link resolves to the item", async ({ page }) => {
     await login(page, personas.consultantA);
     await page.goto('/notifications');
-    const open = page.getByRole('link', { name: /^open$/i }).first();
-    test.skip((await open.count()) === 0, 'no lifecycle notification present');
-    await open.click();
+    await waitForAccessCheck(page);
+    const open = page.getByRole('link', { name: /^open$/i });
+    test.skip(!(await visibleAfterLoad(open)), 'no lifecycle notification present');
+    await open.first().click();
     await expect(page.getByRole('heading', { name: /client item workspace/i })).toBeVisible();
   });
 });

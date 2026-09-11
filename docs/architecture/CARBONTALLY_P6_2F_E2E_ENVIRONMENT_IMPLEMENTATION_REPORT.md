@@ -1501,3 +1501,184 @@ literal-expectation mismatches above.
 
 
 
+
+---
+
+# CT-P6-2F-RESUME-20260911-001 — EXECUTION ADDENDUM (2026-09-11)
+
+**Prompt Ref:** `CT-P6-2F-RESUME-20260911-001` · **Branch:** `main` · **HEAD:** `daad396523ac693352cc2f4ebb7fc58814a9e60b`
+**Role:** Cline — implementation/evidence agent (NOT the independent verifier).
+
+This addendum closes the evidence gaps recorded in §19 (`...-017`) and records one
+**new blocking product defect** found by that evidence, its fix, and the
+reproducibility proof. P6-2C / P6-2D / P6-2E were not reopened; no settled evidence
+was re-executed for its own sake.
+
+## 1. Environment brought up (isolated only)
+
+| Item | Value |
+|---|---|
+| Supabase / Auth (GoTrue) | `http://127.0.0.1:55325` (project `carbontally_e2e`) |
+| Postgres | `127.0.0.1:55326` |
+| Backend | `uvicorn main:app --host 127.0.0.1 --port 8051` (662 routes), env from `.env.e2e` |
+| Frontend | CRA dev server `http://localhost:3000`, `REACT_APP_SUPABASE_URL`/`REACT_APP_API_URL` pointed at the isolated stack |
+| Backend `.env` | **not** sourced; backend vars were exported per-process from `.env.e2e` |
+| Production / demo / investor | **not contacted**; the served dev bundle (`/static/js/bundle.js`) contains **no** production project ref (0 occurrences) and 0 `onrender` references |
+
+## 2. F4 — the three browser skips: ROOT CAUSE, FIX, RESULT
+
+**Root cause (proved, not inferred).** A standalone Playwright probe signed in as the
+real `consultant_a` persona and measured the guard value at both moments:
+
+| Probe | Value at the guard (as the spec evaluated it) | Value after waiting for the app | Reality |
+|---|---|---|---|
+| item `calculated` → `Pass review` | `false` — page body at that instant was `"Checking access…"` | **`true`** | workspace API returns `"calculated"` |
+| item `consultant_reviewed` → `Submit to CarbonTally QC` | `false` | **`true`** | — |
+| `/notifications` → link `Open` | `0` matches | **`2` matches** | two real lifecycle notifications with deep links |
+
+The specs probed for a control with `isVisible()` / `count()` **immediately after
+navigation**. Those APIs do not auto-wait, so the probe evaluated against the SPA's
+`Checking access…` gate and skipped a control that genuinely exists. **The skips were a
+harness synchronisation defect, not a product defect** — the same items returned HTTP
+200 from `GET /api/v3/processing/items/{id}/workspace` with the expected statuses, and
+the same items are what the D11 evidence below drives.
+
+**Fix (harness only, assertions strengthened not weakened).** `tests/e2e/personas.ts`
+gained `waitForAccessCheck(page)` (waits for the access gate to clear) and
+`visibleAfterLoad(locator)` (bounded wait, then a real visibility probe);
+`consultant-lifecycle.spec.ts` uses them before its `test.skip(...)` guards. The DENY
+specs are deliberately untouched — for them the *absence* of the workspace is the
+assertion, so they must **not** wait for content. No mock, no skip removed, no
+assertion relaxed: the three specs now actually perform the review, the submission and
+the notification deep-link and assert their outcomes.
+
+**Result:** `3 skipped / 13 passed` → **`16 passed / 0 failed / 0 skipped`** (0 exit).
+
+## 3. NEW DEFECT `LT-1` (P1) — customer acceptance returned HTTP 500
+
+**Symptom.** `POST /api/v3/organizations/{org}/consultant-engagements/{id}/accept`
+returned **500** `inconsistent types deduced for parameter $2 / DETAIL: text versus
+character varying`. The engagement stayed `pending`: no transition, no audit, no D11
+`accepted` notification. This is the only path from a pending engagement to active
+(P6-1C), so customer acceptance of a consultant engagement was **broken against a real
+database**. The consultant-side lifecycle moves that share the same statement
+(`/api/v3/consultants/**` suspend/end, discovery end, engagement reject) are affected
+identically; `update_task_status` (`consultant_tasks`) had the same defect.
+
+**Root cause.** In `backend/data/consultants.py` the same parameter was assigned to a
+`character varying` status column *and* compared with text literals in `CASE`
+branches, so PostgreSQL deduced two types for `$2` and rejected the whole statement.
+Parameter-type inference happens at parse time, so it failed regardless of data.
+
+**Why it survived.** Unit tests exercise a **fake** repository (`tests/unit/api/fakes.py`)
+— the SQL never executed. The only real-database coverage (the integration suite) is
+currently non-functional for this area (finding `LT-2` below). P6-2F's `accepted`
+evidence had never been executed.
+
+**Fix (smallest correct change, product code).** Pin the parameter to text where it is
+assigned, in the two affected statements:
+`SET status = $2::text` in `transition_client_lifecycle` and in `update_task_status`
+(the `CASE` comparisons then agree). Verified first by a rolled-back SQL probe against
+the isolated database:
+
+| Statement | Before | After |
+|---|---|---|
+| `consultant_clients` transition | `AmbiguousParameterError: inconsistent types deduced for parameter $2` | `OK` for every target (`active`, `suspended`, `ended`, `rejected`, `pending`) |
+| `consultant_tasks` update | same error | `OK` |
+
+Nothing else was touched: no schema, RLS, role, capability, billing, origin, D7, D8, D11
+or D11-C1 change; no new route; no API contract change (the endpoint's behaviour is now
+the behaviour it always documented).
+
+
+
+## 4. D11 lifecycle evidence completed — `accepted`, `qc_outcome`, `rework`
+
+New script `e2e/environment/scripts/verify_lifecycle_events.py` (isolated-only guard;
+refuses any target but `:55325`). Real GoTrue personas, real endpoints, evidence read
+back from the persisted rows; it restores the fixtures it consumes.
+
+| Event | Trigger (real endpoint, real JWT) | HTTP | Entity after | Notification evidence |
+|---|---|---|---|---|
+| `accepted` | org-B **owner** accepts the pending engagement | **200** | `pending` → **`active`** | `consultant.lifecycle.accepted:engagement:9db837d8-…`; exactly one row per active firm member; recipients = server-derived firm membership; the accepting customer is not notified of its own decision; replay → **409** with no duplicate row; consultant attempt → **403** |
+| `qc_outcome` (approved) | consultant submits item A10, then internal QC approves | 200 / **200** | `reviewed` → **`ct_qc_approved`** | `…qc_outcome:item:057bd21b-…:approved`; recipients include the engaged firm; `actor_domain=internal_staff`; replay → **409**; consultant attempt → **403** |
+| `qc_outcome` (rejected) | internal QC rejects item A7 | **200** | `reviewed` → **`ct_qc_rejected`** | `…qc_outcome:item:04e671e9-…:rejected`; same recipient/actor guarantees |
+| `rework` | (same rejection — source `ct_qc_rejected`) | — | — | `…rework:item:04e671e9-…:ct_qc_rejected`; recipients include the engaged firm; rows deep-link to `/consultant/items/<client>/<item>` |
+
+**Result: `LIFECYCLE EVIDENCE: 30/30 checks passed; 0 failed`** (report written to
+`e2e/environment/.lifecycle_evidence_report.json`). Every previously outstanding D11
+event is now evidenced with its deterministic `event_key`, its server-derived firm
+recipients, its replay behaviour and a denied path. D11-C1 (firm-centric recipients)
+is preserved and re-confirmed.
+
+Fixture addition (E2E-only): `seed_lifecycle_fixtures.py` now seeds a deterministic
+**pending** engagement (`engagement:org-b-firm-a`, origin `engagement_request`) for the
+org-B owner to accept. ORG-B/FIRM-A is a pair no other P6-2F assertion depends on.
+
+## 5. API acceptance and browser security acceptance
+
+| Suite | Result |
+|---|---|
+| `run_acceptance.py` (RLS/PostgREST + FastAPI boundary matrix) | **16/16 PASS** |
+| `npx playwright test` (browser ALLOW + DENY + route protection) | **16 passed / 0 failed / 0 skipped** |
+
+Backend unit regression: `pytest tests/unit` → **1,763 passed / 0 failed / 0 errors / 0 skipped** (exit 0).
+Application E2E suite: `pytest tests/e2e` → **39 passed / 0 failed / 0 errors / 0 skipped** (exit 0).
+
+## 6. Reproducibility proof (reset → reseed → evidence → acceptance → browser)
+
+```text
+bash e2e/environment/scripts/reset.sh   # drop + re-migrate the isolated DB
+                                        #   -> APPLIED=27 SKIPPED=26 ALL_APPLIED
+seed_e2e.py                             # 13/13 personas authenticated, 0 errors, SEED OK
+seed_lifecycle_fixtures.py              # items/allow/assign/subs/engage/submit OK
+verify_lifecycle_events.py              # 30/30 PASS   (on the FRESH schema)
+run_acceptance.py                       # 16/16 PASS
+npx playwright test                     # 16 passed / 0 failed / 0 skipped
+```
+
+The chain was executed twice — once against the pre-existing environment and once after a
+**full reset and reseed** — with identical results, so the evidence is reproducible and
+the `LT-1` fix holds on a freshly migrated schema.
+
+## 7. Findings and disposition
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| **LT-1** | **P1** | Consultant/client lifecycle transitions and consultant-task updates returned HTTP 500 on a real database (ambiguous `$2`), so **customer acceptance of a consultant engagement was broken** (the P6-1C path) | **FIXED** in this operation (two SQL parameters); evidenced end-to-end. It would block the first customer, so it blocks the gate — hence fixed rather than deferred |
+| **LT-2** | **P3** | The dedicated integration database `carbontally_test` schema is **stale**: its consultant suite errors on `column "can_extract" does not exist` before reaching the statements, so repository SQL has effectively **no automated real-DB coverage** — exactly why `LT-1` survived | **NOT FIXED** — environment provisioning is outside P6-2F scope. Owner: test-infrastructure/environment work. Mitigation now in place: `verify_lifecycle_events.py` exercises the real endpoints against the current schema on every P6-2F evidence cycle. Does not block first customer |
+| **F4** | — | Three browser skips | **RESOLVED** — harness synchronisation; 16/16 pass |
+
+**No P0/P1 security finding remains.** No cross-tenant authorization defect was found:
+the DENY matrix (cross-firm consultant, org member vs customer decision, consultant →
+internal `/ops`, consultant → admin control plane, unauthenticated API) passes on both
+the API and the browser boundaries, and the new evidence adds DENY checks for
+engagement acceptance and QC decisions (403 each).
+
+## 8. Files changed by this operation
+
+| File | Change |
+|---|---|
+| `backend/data/consultants.py` | `SET status = $2::text` ×2 (+ explanatory comments) — the `LT-1` fix |
+| `tests/e2e/personas.ts` | `waitForAccessCheck` + `visibleAfterLoad` helpers (F4) |
+| `tests/e2e/carbontally/consultant-lifecycle.spec.ts` | use the helpers before the skip guards (F4) |
+| `e2e/environment/scripts/seed_lifecycle_fixtures.py` | deterministic pending-engagement fixture + env export |
+| `e2e/environment/scripts/verify_lifecycle_events.py` | **new** D11 evidence + lifecycle-transition regression script |
+| this addendum | evidence record |
+
+Unchanged: schema, migrations (22 → 53 untouched), RLS, roles/capabilities/permissions,
+billing/entitlement, `processing_origin`, D7, D8, D11/D11-C1 semantics, frontend code and
+the API contract. Production, demo and investor environments were never contacted.
+
+## 9. Git
+
+branch `main` · HEAD `daad396523ac693352cc2f4ebb7fc58814a9e60b` · staged **none** ·
+commit **no** · push **no** · repository reset/clean **no** · unrelated pre-existing
+working-tree changes preserved.
+
+## 10. Verdict (implementation only)
+
+**P6-2F IMPLEMENTED — READY FOR INDEPENDENT VERIFICATION.**
+
+No independent verification is claimed here; that is a separate, fresh-context operation.
+

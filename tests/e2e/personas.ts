@@ -6,7 +6,7 @@
  * that need it SKIP (they never silently pass) — the harness must not claim
  * acceptance for an untested area.
  */
-import { expect, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export interface Persona {
   email: string;
@@ -97,4 +97,28 @@ export async function login(page: Page, persona: Persona): Promise<void> {
 /** Open a consultant item deep link (the IV-N6 route shape). */
 export async function openConsultantItem(page: Page, clientId: string, itemId: string): Promise<void> {
   await page.goto(`/consultant/items/${encodeURIComponent(clientId)}/${encodeURIComponent(itemId)}`);
+}
+
+/**
+ * The SPA renders an access/auth gate ("Checking access…") and then fetches route
+ * data asynchronously. ALLOW specs must wait for that gate to clear before
+ * probing for a control: `locator.isVisible()`/`count()` do NOT auto-wait, so an
+ * unguarded probe evaluates against the loading screen and would skip a
+ * genuinely-present control (P6-2F consultant-lifecycle skip defect).
+ *
+ * DENY specs must NOT use this: for them the absence of the workspace is the
+ * assertion, and they deliberately check it without waiting for content.
+ */
+export async function waitForAccessCheck(page: Page): Promise<void> {
+  await expect(page.getByText(/checking access/i)).toHaveCount(0, { timeout: 20_000 });
+}
+
+/**
+ * Bounded wait for a control that may legitimately be absent for the current
+ * workflow state, preserving skip-on-genuinely-absent semantics without the
+ * race in a bare `isVisible()` probe.
+ */
+export async function visibleAfterLoad(locator: Locator, timeout = 6_000): Promise<boolean> {
+  await locator.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+  return locator.first().isVisible().catch(() => false);
 }

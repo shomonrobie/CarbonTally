@@ -49,6 +49,10 @@ ITEM_A7 = det("item:a7")   # consultant_reviewed  -> fixture drives submit -> no
 ITEM_A8 = det("item:a8")   # ct_qc_approved       -> FRESH, unused charge key (D6 approval)
 ITEM_A9 = det("item:a9")   # calculated           -> browser pass-review (run-reset)
 ITEM_A10 = det("item:a10")  # consultant_reviewed -> browser submit-to-QC (run-reset)
+# D11 `accepted` — a PENDING engagement (origin `engagement_request`) that the
+# ORG-B owner accepts through the real customer endpoint. ORG-B/FIRM-A is a pair
+# no other P6-2F assertion depends on, so this cannot perturb existing evidence.
+ENGAGEMENT_B_PENDING = det("engagement:org-b-firm-a")
 EMAIL = {k: e for k, e, _r, _s in PERSONAS}
 PERSONA_FILE = REPO / "tests" / "e2e" / ".env.personas"
 
@@ -131,6 +135,19 @@ def main() -> int:
                       headers=h, data=json.dumps(subs), timeout=60)
     print(f"subs   : {r.status_code} {r.text[:160]}")
 
+    # 1e. D11 `accepted` — reset the PENDING engagement to `pending` so the
+    #     ORG-B owner can accept it through the real customer endpoint
+    #     (acceptance is the ONLY pending -> active path, P6-1C). Idempotent:
+    #     re-asserting `pending` makes the `accepted` event reproducible after a
+    #     previous run already moved it to active (the event itself is
+    #     uniqueness-guarded by its deterministic event_key).
+    eng = [{"id": ENGAGEMENT_B_PENDING, "consultant_id": FIRM_A, "organization_id": ORG_B,
+            "client_name": "P6F Org B (pending engagement)", "status": "pending",
+            "relationship_origin": "engagement_request", "created_by": uid("consultant_a")}]
+    r = requests.post(f"{url}/rest/v1/consultant_clients?on_conflict=id",
+                      headers=h, data=json.dumps(eng), timeout=60)
+    print(f"engage : {r.status_code} {r.text[:200]}")
+
     # 2. drive ITEM_A7 through the REAL workflow so submitted_to_qc emits a
     #    durable firm-centric notification (no direct notification insert).
     t = requests.post(f"{url}/auth/v1/token?grant_type=password",
@@ -149,13 +166,15 @@ def main() -> int:
     lines = [l for l in PERSONA_FILE.read_text().splitlines()
              if not l.startswith(("E2E_ITEM_A_ID=", "E2E_ITEM_A2_ID=", "E2E_ITEM_A3_ID=",
                                   "E2E_ITEM_A6_ID=", "E2E_ITEM_A7_ID=",
+                                  "E2E_ENGAGEMENT_PENDING_ID=",
                                   "E2E_API_URL="))]
     # §4 — point the mutating browser specs at dedicated run-reset items so a
     # repeated run cannot consume the state they assert on.
     lines += [f"E2E_API_URL={api}", f"E2E_ITEM_A_ID={ITEM_A9}",
               f"E2E_ITEM_A2_ID={ITEM_A10}",
               f"E2E_ITEM_A3_ID={ITEM_A3}", f"E2E_ITEM_A6_ID={ITEM_A6}",
-              f"E2E_ITEM_A7_ID={ITEM_A7}"]
+              f"E2E_ITEM_A7_ID={ITEM_A7}",
+              f"E2E_ENGAGEMENT_PENDING_ID={ENGAGEMENT_B_PENDING}"]
     PERSONA_FILE.write_text("\n".join(lines) + "\n")
     print(f"personas: {PERSONA_FILE}")
     print("LIFECYCLE FIXTURES OK")

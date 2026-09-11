@@ -400,10 +400,17 @@ class ConsultantsRepository(AbstractRepository[dict]):
             "active", "pending", "rejected", "suspended", "ended", "inactive"
         ):
             raise ValueError(f"unknown client lifecycle status {target_status!r}")
+        # ``consultant_clients.status`` is ``character varying`` while the CASE
+        # branches below compare $2 with text literals; without an explicit cast
+        # PostgreSQL deduces two different types for $2 and rejects the whole
+        # statement ("inconsistent types deduced for parameter $2: text versus
+        # character varying"). Discovered by the P6-2F isolated-environment E2E
+        # evidence (the customer acceptance path returned 500); unit tests could
+        # not catch it because they use a fake repository, never this SQL.
         row = await self._fetch_one(
             f"""
             UPDATE public.consultant_clients
-               SET status = $2,
+               SET status = $2::text,
                    suspended_at = CASE WHEN $2 = 'suspended' THEN NOW()
                                        ELSE suspended_at END,
                    ended_at = CASE WHEN $2 = 'ended' THEN NOW()
@@ -554,10 +561,13 @@ class ConsultantsRepository(AbstractRepository[dict]):
         return _row_to_task(row)
 
     async def update_task_status(self, task_id: str, status: str) -> Optional[ConsultantTask]:
+        # Same explicit cast as ``transition_client_lifecycle``: the status
+        # column is ``character varying`` while $2 is compared with a text
+        # literal, so the bare parameter is ambiguous to PostgreSQL.
         row = await self._fetch_one(
             f"""
             UPDATE public.consultant_tasks
-            SET status = $2,
+            SET status = $2::text,
                 completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE completed_at END,
                 updated_at = NOW()
             WHERE id = $1
