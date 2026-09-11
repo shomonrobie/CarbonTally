@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { goToWorkspace } from './v3/api';
+import AuthServiceUnavailable from './AuthServiceUnavailable';
+import { isAuthServiceUnavailable } from './lib/authErrors';
 import './css/Login.css';
 
 function Login() {
@@ -15,6 +17,10 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // Auth-service-unavailable handling: null when the sign-in service is
+  // reachable; otherwise the context ('session' | 'password' | 'oauth') so the
+  // branded notice can explain exactly which step was interrupted.
+  const [authUnavailable, setAuthUnavailable] = useState(null);
 
   // Check for existing session and OAuth callback
   useEffect(() => {
@@ -78,6 +84,9 @@ function Login() {
         }
       } catch (error) {
         console.error('Session check error:', error);
+        // A failure to reach the auth service while restoring a session is an
+        // outage, not a credential problem — show the branded notice.
+        if (isAuthServiceUnavailable(error)) setAuthUnavailable('session');
       }
     };
 
@@ -154,7 +163,16 @@ function Login() {
       }
     } catch (err) {
       console.error("FULL ERROR OBJECT:", err);
-      
+
+      // Distinguish an auth-service outage from a credential rejection. An
+      // outage must never be shown as (or confused with) invalid credentials,
+      // and an authorization failure must never be masked as an outage.
+      if (isAuthServiceUnavailable(err)) {
+        setAuthUnavailable('password');
+        setError('');
+        return;
+      }
+
       let errorMessage = err.message;
       if (err.message === 'Invalid login credentials') {
         errorMessage = '❌ Invalid email or password. Please try again.';
@@ -208,11 +226,31 @@ const handleGoogleSignIn = async () => {
     
   } catch (err) {
     console.error('❌ Google sign-in error:', err);
-    setError(`Failed to sign in: ${err.message || 'Unknown error'}`);
+    if (isAuthServiceUnavailable(err)) {
+      setAuthUnavailable('oauth');
+      setError('');
+    } else {
+      setError(`Failed to sign in: ${err.message || 'Unknown error'}`);
+    }
     setLoading(false);
   }
 };
 
+
+  if (authUnavailable) {
+    return (
+      <div className="login-container">
+        <AuthServiceUnavailable
+          context={authUnavailable}
+          onRetry={() => {
+            setAuthUnavailable(null);
+            setError('');
+            setMessage('');
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="login-container">
@@ -304,6 +342,12 @@ const handleGoogleSignIn = async () => {
         <div className="trust-badge">
           <span>🔒 Secure, UK GDPR Compliant</span>
         </div>
+
+        <p className="login-legal-links" style={{ marginTop: '0.75rem', fontSize: '0.85rem', textAlign: 'center' }}>
+          <a href="/privacy">Privacy Policy</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/terms">Terms of Service</a>
+        </p>
       </div>
     </div>
   );

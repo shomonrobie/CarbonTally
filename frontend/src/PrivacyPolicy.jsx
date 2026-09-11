@@ -13,7 +13,7 @@ export default function PrivacyPolicy() {
     >
       <div className="ct-page">
         <h1>Privacy Policy</h1>
-        <p className="ct-page-meta">CarbonTally Ltd · Applies to the public website and the CarbonTally platform</p>
+        <p className="ct-page-meta">CarbonTally Ltd · Applies to the public website and the CarbonTally platform · Last updated: 11 September 2026</p>
 
         <div className="ct-legal-note">
           This policy reflects CarbonTally&apos;s current pre-launch state. It will be
@@ -37,7 +37,7 @@ export default function PrivacyPolicy() {
         <h2>3. Information you provide to us</h2>
         <ul>
           <li><strong>Contact correspondence.</strong> If you email us (for example, to request launch information), we use your email address and the contents of your message to respond to you.</li>
-          <li><strong>Platform accounts.</strong> Authorised users of the platform provide an email address and password (authentication is provided by Supabase Auth).</li>
+          <li><strong>Platform accounts.</strong> Authorised users of the platform provide an email address, and sign in either with a password or with <strong>Google sign-in</strong> (authentication is provided by Supabase Auth).</li>
           <li><strong>Organisation data.</strong> Authorised users may provide organisation details and upload source documents containing data relating to their business activities.</li>
         </ul>
 
@@ -87,6 +87,54 @@ export default function PrivacyPolicy() {
         <h2>10. Contact</h2>
         <p>
           Privacy enquiries: email <a href="mailto:hello@carbontally.co.uk">hello@carbontally.co.uk</a>.
+        </p>
+
+        <h2>11. Signing in to CarbonTally (authentication)</h2>
+        <p>
+          Access to the CarbonTally platform is restricted to authorised users. Two sign-in
+          methods are supported:
+        </p>
+        <ul>
+          <li>
+            <strong>Email and password.</strong> Your email address and password are used to
+            authenticate you. Passwords are handled by our authentication provider (Supabase
+            Auth); CarbonTally does not store your password in readable form.
+          </li>
+          <li>
+            <strong>Google sign-in (optional).</strong> If you choose Google sign-in, you are
+            taken to Google&rsquo;s own sign-in screen. Google authenticates you and returns a
+            limited set of account details to CarbonTally &mdash; in practice your email address
+            and basic profile information. <strong>CarbonTally never receives your Google
+            password.</strong> Your use of Google sign-in is also subject to Google&rsquo;s own
+            privacy policy and account settings.
+          </li>
+        </ul>
+        <p>
+          Authentication is operated on our behalf by <strong>Supabase</strong> (Supabase Auth),
+          which processes account credentials and session tokens for the purpose of signing
+          users in. CarbonTally&rsquo;s application data and uploaded documents are stored in
+          Supabase infrastructure with access controls and row-level security applied.
+        </p>
+
+        <h2>12. Cookies and session technologies</h2>
+        <p>
+          The site does not use advertising or marketing cookies, and it deploys no third-party
+          advertising trackers. To keep authorised users signed in, the site stores a
+          server-issued session token in your browser (via <code>localStorage</code>), together
+          with the minimum authentication state needed to restore your session after a page
+          refresh. Signing out (or the token expiring) removes that state. Because this storage
+          is required to provide the sign-in functionality you have requested, it is essential
+          to the operation of the platform rather than optional tracking.
+        </p>
+
+        <h2>13. Service availability and sign-in interruptions</h2>
+        <p>
+          From time to time our authentication provider may be temporarily unavailable. When
+          that happens you may be unable to sign in for a short period. This does
+          <strong>not</strong> mean that your account or your organisation&rsquo;s data has been
+          deleted or lost: stored data remains in place and sign-in becomes available again once
+          the service recovers. Where this occurs, CarbonTally shows you a branded notice
+          explaining that sign-in is temporarily unavailable, rather than a raw technical error.
         </p>
       </div>
     </PageShell>

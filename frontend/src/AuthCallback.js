@@ -3,11 +3,14 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { goToWorkspace } from './v3/api';
+import AuthServiceUnavailable from './AuthServiceUnavailable';
+import { isAuthServiceUnavailable } from './lib/authErrors';
 import toast from 'react-hot-toast';
 
 function AuthCallback() {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
+  const [serviceUnavailable, setServiceUnavailable] = useState(null);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -65,6 +68,14 @@ function AuthCallback() {
         }
       } catch (error) {
         console.error('❌ OAuth callback error:', error);
+        // An infrastructure failure during the callback is an outage, not a
+        // rejected sign-in: show the branded notice in place instead of a raw
+        // message, and do not imply the user's account or data is affected.
+        if (isAuthServiceUnavailable(error)) {
+          setServiceUnavailable('callback');
+          setError(null);
+          return;
+        }
         setError(error.message);
         toast.error('Authentication failed');
         setTimeout(() => navigate('/login'), 2000);
@@ -73,6 +84,20 @@ function AuthCallback() {
 
     handleCallback();
   }, [navigate]);
+
+  if (serviceUnavailable) {
+    return (
+      <div className="loading-screen">
+        <AuthServiceUnavailable
+          context={serviceUnavailable}
+          onRetry={() => {
+            setServiceUnavailable(null);
+            navigate('/login');
+          }}
+        />
+      </div>
+    );
+  }
 
   if (error) {
     return (
