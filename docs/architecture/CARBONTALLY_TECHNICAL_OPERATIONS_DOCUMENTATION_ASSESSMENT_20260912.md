@@ -157,5 +157,21 @@ The audit/assurance capability exists for **accountability, traceability, securi
 
 Do **not** begin the full 25-section manual, residual remediation, or Phase 8 as part of this task.
 
+## 11. Update — Newly Verified Evidence (2026-09-12, `CT-OPS-QUICKREF-20260912-007`)
+
+Minimal update; the original findings above are preserved.
+
+| Item | Previous statement | Newly verified |
+|---|---|---|
+| Render hosting config | "no `render.yaml`/`Procfile`/`Dockerfile`; build+start UNKNOWN" | **Still no `render.yaml`/`Procfile`/`Dockerfile`, but a repo-root `runtime.txt` = `python-3.11.9` exists**, and the CORS allow-list references `https://carbontally-api.onrender.com` (`backend/config.py`). The Render **service settings remain UNVERIFIED** (no safe Render access). |
+| Backend start path | "PARTIALLY DOCUMENTED" | **Verified from code**: ASGI `main:app`, Uvicorn, `HOST`/`PORT` env-driven (defaults `0.0.0.0`/`8000`), `RELOAD` defaults to `true`; startup starts the durable worker; shutdown stops it. The **Render-configured** command remains UNVERIFIED. |
+| Health checks | "PARTIALLY DOCUMENTED" | **Verified**: `/`, `/health` (healthy/degraded), `/api/v2/health`, `/api/v3/health/realtime`. |
+| Migrations at startup | not stated | **Verified: not run at startup.** |
+| Backup restore | "restore NOT IMPLEMENTED" | **Re-confirmed**: no `restore` implementation in `backend/backup/*.py`; scheduled backups/restore drill/RTO/RPO not implemented. |
+| `docs/operations` | "does not exist" | **Now created** with the quick reference and Render record (see §6/§7 of the new quick reference). The full 25-section manual is **still not created**. |
+
+New artifacts: `docs/operations/CARBONTALLY_TECHNICAL_OPERATIONS_QUICK_REFERENCE_V1.0.md`, `docs/operations/CARBONTALLY_RENDER_DEPLOYMENT_CONFIGURATION_20260912.md`.
+
 *End of assessment.*
+
 
