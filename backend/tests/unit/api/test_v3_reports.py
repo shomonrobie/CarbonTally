@@ -17,6 +17,7 @@ from api.v3_reports import (
     REPORT_STATUSES,
     SUPPORTED_REPORT_TYPES,
     default_report_name,
+    shape_report_list_row,
     shape_report_out,
     shape_report_status,
     validate_report_status,
@@ -401,6 +402,103 @@ def test_report_version_roundtrip(client, world, user_provider) -> None:
     )
     response = client.get("/api/v3/reports/rep-1")
     assert response.json()["report"]["current_version"]["version_number"] == 1
+
+
+# ---------------------------------------------------------------------------
+# S1-B — current version in the report listing
+# ---------------------------------------------------------------------------
+
+
+def test_shape_report_list_row_exposes_current_version() -> None:
+    row = shape_report_list_row(
+        {
+            "id": "rep-1",
+            "status": "completed",
+            "generated_content": {"page_count": 12},
+            "reporting_year": 2025,
+        },
+        {"version_number": 3, "is_current": True},
+    )
+    assert row["current_version"]["version_number"] == 3
+    # The detail-only field is deliberately not added to the listing contract.
+    assert "reporting_period" not in row
+
+
+def test_shape_report_list_row_never_invents_version_one() -> None:
+    row = shape_report_list_row(
+        {
+            "id": "rep-1",
+            "status": "completed",
+            "generated_content": {"page_count": 12},
+            "reporting_year": 2025,
+        }
+    )
+    assert row["current_version"] == {}
+
+
+def test_list_reports_exposes_real_current_version_not_one(
+    client, world, user_provider
+) -> None:
+    _seed_completed_report(world, report_id="rep-1", org_id="org-a")
+    user_provider.set_user(member_user("org-a", "user-a", "user.a@test"))
+    asyncio.run(world.report_versions.create("rep-1", version_number=1, is_current=True))
+    asyncio.run(world.report_versions.create("rep-1", version_number=2, is_current=True))
+
+    body = client.get(
+        "/api/v3/reports", params={"organization_id": "org-a"}
+    ).json()
+    row = next(r for r in body["reports"] if r["id"] == "rep-1")
+    # The authoritative current version (2) — never the old v1 fallback.
+    assert row["current_version"]["version_number"] == 2
+    assert row["current_version"]["is_current"] is True
+
+    # S1-A: the second current create left exactly one current version.
+    versions = asyncio.run(world.report_versions.list_for_report("rep-1"))
+    assert [v["version_number"] for v in versions if v["is_current"]] == [2]
+
+
+def test_list_reports_without_versions_reports_empty_current_version(
+    client, world, user_provider
+) -> None:
+    _seed_completed_report(world, report_id="rep-1", org_id="org-a")
+    user_provider.set_user(member_user("org-a", "user-a", "user.a@test"))
+
+    body = client.get(
+        "/api/v3/reports", params={"organization_id": "org-a"}
+    ).json()
+    assert body["reports"][0]["current_version"] == {}
+
+
+def test_list_reports_current_version_is_org_scoped(
+    client, world, user_provider
+) -> None:
+    # A foreign org's versions must never leak into this org's listing.
+    _seed_completed_report(world, report_id="rep-a", org_id="org-a")
+    _seed_completed_report(world, report_id="rep-b", org_id="org-b")
+    asyncio.run(world.report_versions.create("rep-b", version_number=9, is_current=True))
+    user_provider.set_user(member_user("org-a", "user-a", "user.a@test"))
+
+    body = client.get(
+        "/api/v3/reports", params={"organization_id": "org-a"}
+    ).json()
+    assert [r["id"] for r in body["reports"]] == ["rep-a"]
+    assert body["reports"][0]["current_version"] == {}
+
+
+def test_list_reports_reads_current_versions_in_one_batch(
+    client, world, user_provider
+) -> None:
+    """S1-B: the listing resolves current versions in ONE batched read (no N+1)."""
+    for report_id in ("rep-1", "rep-2", "rep-3"):
+        _seed_completed_report(world, report_id=report_id, org_id="org-a")
+    user_provider.set_user(member_user("org-a", "user-a", "user.a@test"))
+
+    response = client.get("/api/v3/reports", params={"organization_id": "org-a"})
+    assert response.status_code == 200
+
+    calls = world.report_versions.current_by_reports_calls
+    assert len(calls) == 1, f"expected one batched read, got {len(calls)}"
+    assert sorted(calls[0]) == ["rep-1", "rep-2", "rep-3"]
 
 
 # ---------------------------------------------------------------------------

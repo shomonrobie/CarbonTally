@@ -952,6 +952,8 @@ class MemoryReportVersions:
 
     def __init__(self) -> None:
         self._versions: list[dict[str, Any]] = []
+        #: ``report_ids`` passed to each ``current_by_reports`` call (N+1 probe).
+        self.current_by_reports_calls: list[list[str]] = []
 
     async def next_version_number(self, report_id: str) -> int:
         nums = [v["version_number"] for v in self._versions if v["report_id"] == report_id]
@@ -970,6 +972,13 @@ class MemoryReportVersions:
         change_summary: Optional[str] = None,
         is_current: bool = True,
     ) -> dict[str, Any]:
+        # Mirrors the production ``ReportVersionsRepository.create`` contract
+        # (Phase 8 S1-A): creating a current version demotes the previous
+        # current version(s) for the same report, so at most one stays current.
+        if is_current:
+            for existing in self._versions:
+                if existing["report_id"] == report_id and existing["is_current"]:
+                    existing["is_current"] = False
         version = {
             "id": str(uuid.uuid4()),
             "report_id": report_id,
@@ -994,6 +1003,29 @@ class MemoryReportVersions:
     async def get_current(self, report_id: str) -> Optional[dict[str, Any]]:
         rows = [v for v in self._versions if v["report_id"] == report_id and v["is_current"]]
         return dict(rows[0]) if rows else None
+
+    async def current_by_reports(
+        self, report_ids: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Batch form of ``get_current`` (mirrors the production contract).
+
+        Records each call's ``report_ids`` so tests can assert the report
+        listing performs ONE batched read (no N+1).
+        """
+        self.current_by_reports_calls.append(list(report_ids))
+        if not report_ids:
+            return {}
+        wanted = set(report_ids)
+        rows = [
+            v
+            for v in self._versions
+            if v["report_id"] in wanted and v["is_current"]
+        ]
+        rows.sort(key=lambda v: v["version_number"], reverse=True)
+        current: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            current.setdefault(row["report_id"], dict(row))
+        return current
 
     async def get(self, id: str) -> Optional[dict[str, Any]]:
         return next((dict(v) for v in self._versions if v["id"] == id), None)

@@ -65,25 +65,46 @@ class ReportVersionsRepository(AbstractRepository[dict]):
         change_summary: Optional[str] = None,
         is_current: bool = True,
     ) -> dict:
-        """Insert one version snapshot row and return it."""
-        row = await self._fetch_one(
-            f"""
-            INSERT INTO public.report_versions (
-                report_id, version_number, content, file_url, file_name,
-                created_by, notes, change_summary, is_current
-            ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
-            RETURNING {_VERSION_COLUMNS}
-            """,
-            report_id,
-            version_number,
-            dumps_jsonb(content or {}),
-            file_url,
-            file_name,
-            created_by,
-            notes,
-            change_summary,
-            is_current,
-        )
+        """Insert one version snapshot row and return it.
+
+        ``is_current`` invariant (Phase 8 S1-A): a report has **at most one**
+        current version. Creating a current version therefore demotes any
+        existing current version(s) for the same report inside the **same
+        transaction** as the insert — the established ``conn.transaction()``
+        pattern (cf. ``data.imports.activate_batch``, which enforces the
+        single-active-batch invariant identically). A successful call leaves
+        exactly one current version; a failure rolls back and leaves the
+        previous state untouched.
+
+        Creating a non-current version (``is_current=False``) never touches the
+        existing current version.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                if is_current:
+                    await conn.execute(
+                        "UPDATE public.report_versions SET is_current = FALSE "
+                        "WHERE report_id = $1 AND is_current = TRUE",
+                        report_id,
+                    )
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO public.report_versions (
+                        report_id, version_number, content, file_url, file_name,
+                        created_by, notes, change_summary, is_current
+                    ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
+                    RETURNING {_VERSION_COLUMNS}
+                    """,
+                    report_id,
+                    version_number,
+                    dumps_jsonb(content or {}),
+                    file_url,
+                    file_name,
+                    created_by,
+                    notes,
+                    change_summary,
+                    is_current,
+                )
         if row is None:
             raise RuntimeError("report version insert returned no row")
         return _row_to_version(row)
@@ -112,6 +133,36 @@ class ReportVersionsRepository(AbstractRepository[dict]):
             report_id,
         )
         return _row_to_version(row) if row is not None else None
+
+    async def current_by_reports(self, report_ids: list[str]) -> dict[str, dict]:
+        """Return the current version per report — the batch form of
+        :meth:`get_current` (Phase 8 S1-B).
+
+        One query for every supplied report id, so the report listing can expose
+        ``current_version`` without an N+1 pattern. Reports that have no current
+        version are simply **absent** from the result: no value is invented, and
+        absence is never converted to version 1.
+
+        The authoritative source is ``is_current`` (not ``MAX(version_number)``).
+        ``ORDER BY version_number DESC`` with ``setdefault`` mirrors
+        :meth:`get_current`'s ordering, so a legacy report that already carries
+        duplicated current rows resolves to the same version in both paths.
+        """
+        if not report_ids:
+            return {}
+        rows = await self._fetch_all(
+            f"""
+            SELECT {_VERSION_COLUMNS} FROM public.report_versions
+            WHERE report_id = ANY($1::uuid[]) AND is_current = TRUE
+            ORDER BY version_number DESC
+            """,
+            report_ids,
+        )
+        current: dict[str, dict] = {}
+        for row in rows:
+            version = _row_to_version(row)
+            current.setdefault(version["report_id"], version)
+        return current
 
     async def get(self, id: str) -> Optional[dict]:
         row = await self._fetch_one(

@@ -155,6 +155,22 @@ def shape_report_out(report: dict, current_version: Optional[dict] = None) -> di
     return shaped
 
 
+def shape_report_list_row(
+    report: dict, current_version: Optional[dict] = None
+) -> dict:
+    """Shape one report-listing row, exposing the real current version (S1-B).
+
+    The listing contract is the dashboard row plus ``current_version``; unlike
+    :func:`shape_report_out` it deliberately does **not** add the detail-only
+    ``reporting_period``. ``current_version`` is the persisted current version
+    (authoritative ``report_versions.is_current``) or ``{}`` when the report has
+    none — absence is never presented as version 1.
+    """
+    shaped = shape_report_status(report)
+    shaped["current_version"] = current_version or {}
+    return shaped
+
+
 # ---------------------------------------------------------------------------
 # Surfaces
 # ---------------------------------------------------------------------------
@@ -198,8 +214,17 @@ async def list_reports(
         limit=limit,
         offset=offset,
     )
+    # S1-B: expose the real current version for the listed reports in ONE
+    # batched query (no N+1). Sourced from ``report_versions.is_current`` — not
+    # from row counts and not from MAX(version_number). A report with no current
+    # version yields ``{}`` rather than a fabricated version 1.
+    current_versions = await repos.report_versions.current_by_reports(
+        [r["id"] for r in reports]
+    )
     return {
-        "reports": [shape_report_status(r) for r in reports],
+        "reports": [
+            shape_report_list_row(r, current_versions.get(r["id"])) for r in reports
+        ],
         "count_by_status": await repos.reports.count_by_status(organization_id),
         # D21.7: authoritative presentation brand for this report surface —
         # CarbonTally for Direct Customers / staff; the caller's OWN firm only
@@ -353,10 +378,14 @@ async def download_report(
 ) -> JSONResponse:
     """Secure download of the persisted report content (org-isolated).
 
-    The report artefact is the structured ``generated_content`` JSONB written
-    by the engine (no PDF rendering exists in V3 — documented backend gap). The
-    content is served as a JSON attachment through the authenticated API only;
-    no public storage URL is created.
+    Serves the structured ``generated_content`` JSONB written by the engine as
+    a JSON attachment through the authenticated API only — no public storage URL
+    is created.
+
+    This endpoint is the machine-readable JSON export. Branded PDF rendering is
+    provided separately by ``GET /api/v3/reports/{report_id}/pdf``
+    (``download_report_pdf`` → ``engines.pdf_render.render_branded_pdf``), which
+    renders from this same persisted content plus the server-authorized brand.
     """
     report = await repos.reports.get_full(report_id)
     if report is None:
