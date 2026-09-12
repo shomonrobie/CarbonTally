@@ -11,6 +11,13 @@
 > creates no table, migration, RLS policy, route, service, tool, prompt, provider binding, UI
 > or billing rule. The next step is a separate, bounded **I1** implementation prompt.
 
+> **Revision 2 — terminology correction (2026-09-12).** Prompt
+> `CT-P8-CARBONTALLY-INSIGHT-D2-TERM-CORRECTION-20260912`.
+> **CarbonTally Insight is now the canonical technical/domain terminology as well as the working
+> customer-facing product name.** The D1-stage `ask_*` proposal is **superseded for new
+> implementation** (see §3.2 and §3.8). No other ratified decision changes, and the **I1 boundary
+> is unchanged** (§24). This revision is documentation-only.
+
 ---
 
 ## 1. Purpose
@@ -86,12 +93,52 @@ name **"Ask CarbonTally."**
 
 | Layer | Term | Status |
 |---|---|---|
-| Customer-facing / product | **CarbonTally Insight** | **Provisional product/capability name** |
-| Technical / domain | `ask_conversations`, `ask_messages`, `ask_interactions` (as proposed in D1 §10.1) | **Unchanged technical domain terminology** |
-| Internal shorthand | "Ask" | Permitted internally; **not** customer-facing |
+| Customer-facing / product | **CarbonTally Insight** | Provisional working product name |
+| Technical / domain | **CarbonTally Insight / `carbontally_insight_*`** | Canonical terminology for NEW implementation |
+| Historical discovery terminology | `ask_*` / "Ask CarbonTally" | Superseded; retained only as historical reference |
+
+> **"CarbonTally Insight" is both the working customer-facing product name and the canonical
+> technical/domain terminology for new implementation.**
 
 > **"CarbonTally Insight" is the working customer-facing product name, while `ask_*` remains
 > the technical domain terminology unless a later implementation decision changes it.**
+> *(Superseded by Revision 2 — see §3.8. Retained only to make the supersession explicit.)*
+
+### 3.2.1 Canonical new-implementation identifiers (normative)
+
+For **new** implementation, use the following naming:
+
+```text
+CarbonTally Insight
+carbontally_insight_conversations
+carbontally_insight_messages
+carbontally_insight_interactions
+CarbonTallyInsightConversation
+CarbonTallyInsightMessage
+CarbonTallyInsightInteraction
+```
+
+Use the corresponding `CarbonTallyInsight` naming for new domain/service/module identifiers where
+technically appropriate.
+
+| Artefact class | Canonical name |
+|---|---|
+| Persisted table | `carbontally_insight_conversations` |
+| Persisted table | `carbontally_insight_messages` |
+| Persisted table | `carbontally_insight_interactions` |
+| Domain model / class | `CarbonTallyInsightConversation` |
+| Domain model / class | `CarbonTallyInsightMessage` |
+| Domain model / class | `CarbonTallyInsightInteraction` |
+
+**API route namespace is NOT decided by this task.** No route was invented or implemented, and no
+route namespace is ratified here (see §3.4 and §26).
+
+### 3.2.2 Scope of the canonical naming
+
+* The canonical naming applies to **new implementation created from I1 onward**.
+* It does **not** require renaming anything that already exists in the repository.
+* It does **not** authorise a broad repository-wide rename (§4, §3.4).
+
 
 ### 3.3 Trademark / clearance caveat (mandatory)
 
@@ -105,28 +152,82 @@ The name **"CarbonTally Insight" is provisional and is NOT represented as tradem
 
 ### 3.4 What this naming decision does NOT authorise
 
-* **No** rename of tables, routes, classes, modules, or packages.
-* **No** migration, schema change, or code rename.
-* **No** new namespace introduction.
-* **No** change to the `ask_*` technical naming (see §3.2).
+* **No** rename of existing tables, routes, classes, modules, or packages.
+* **No** migration, schema change, or code rename of anything that already exists.
+* **No** broad repository-wide rename (§4).
+* **No** requirement to change `ask_*` names that already exist — but equally, **I1 must not create
+  new `ask_*` objects merely because D1 proposed them** (§3.8).
+
+### 3.4.1 New implementation MUST use the canonical naming
+
+* New persistence/domain objects created from **I1 onward** **must** use the canonical
+  **CarbonTally Insight / `carbontally_insight_*`** terminology (§3.2.1).
+* **There is no prohibition on introducing the CarbonTally Insight namespace.** Earlier D2 wording
+  that read as a namespace prohibition is **withdrawn** by Revision 2.
+* **D2 itself does not implement the namespace.** This document creates no table, class, route or
+  migration — it records the naming decision only (§26, §24.4).
+* The **starting-point D1 proposal** (`ask_conversations`, `ask_messages`, `ask_interactions`) is
+  superseded for new implementation and is **not** the canonical name.
+
 
 ### 3.5 Naming prohibitions (expressly excluded)
 
 * **"CarbonTally Copilot"** — **must not** be used as the product name.
 * **"Carbon Insights"** — **must not** be used as the primary product name.
 
-### 3.6 Migration/alias note for future authoring
+### 3.6 Historical references and alias note for future authoring
 
-Where earlier documents, prompts, or code comments say "Ask CarbonTally", they refer to the same
-capability that is now product-named **CarbonTally Insight**. This is a **labelling** change
-only. A later controlled documentation pass may introduce the product name in
-customer-facing contexts; **this task performs no such pass** (§26).
+Where earlier documents, prompts, code comments or the D1 discovery document say:
+
+* **"Ask CarbonTally"**;
+* `ask_conversations` / `ask_messages` / `ask_interactions`;
+* "Ask" as an internal shorthand,
+
+they describe the **discovery-stage working name and its proposed technical identifiers**.
+
+> **"Ask CarbonTally" was the discovery-stage working name. The Product Owner subsequently ratified
+> "CarbonTally Insight" as the working customer-facing product name and canonical technical/domain
+> terminology. New implementation must use CarbonTally Insight terminology.**
+
+Historical references **may remain** where they accurately describe the discovery-stage proposal.
+They must **not** be read as the canonical name for new implementation.
+
+**No broad repository-wide rename is performed or required.** The D1 document is **not** rewritten
+to erase its terminology; its historical accuracy is preserved (§4). A later controlled
+documentation pass may introduce the product name in customer-facing contexts; **this task performs
+no such pass** (§26).
 
 ### 3.7 User-experience framing
 
 The product name describes an **intelligence capability**, not a chat surface. Product
 positioning must present Insight as evidence-backed analytical assistance over CarbonTally data
 (§4), never as a general-purpose chatbot (§4.3).
+
+### 3.8 Terminology supersession rule (normative)
+
+> **CarbonTally Insight is both the working customer-facing product name and the canonical
+> technical/domain terminology for new implementation.**
+
+| Position | Term | Applies to |
+|---|---|---|
+| Canonical | **CarbonTally Insight** / `carbontally_insight_*` / `CarbonTallyInsight*` | **New implementation from I1 onward** |
+| Superseded | `ask_*` / "Ask CarbonTally" | Discovery-stage proposal only; historical reference |
+
+**Rationale of the supersession:** the `ask_*` identifiers in D1 were a **discovery-stage
+proposal**, explicitly labelled as such (D1 §10.1 "proposed"). The Product Owner has since ratified
+a single canonical name for both the customer-facing capability and its technical/domain
+terminology, so that product and code language do not diverge.
+
+**Consequences (normative):**
+
+1. I1 and later stages **must** create `carbontally_insight_*` objects, not `ask_*` objects.
+2. Pre-existing `ask_*` occurrences in **documents** remain as historical record and are not
+   renamed (§3.6, §4).
+3. No `ask_*` object exists in the repository today, so this supersession implies **no data
+   migration** and **no rename migration**.
+4. This rule changes **no other** ratified decision: persistence, the separate-domain rule, the
+   three-layer model, the authorization boundary, the initial scope, the deferrals, the open items,
+   and the I1 boundary all remain exactly as ratified (§5–§24, §27).
 
 ---
 
@@ -238,8 +339,18 @@ at answer time, through an authorized, controlled tool call.
 
 ### 5.5 Naming for the persisted domain
 
-The persisted structures are the `ask_*` domain (technical) representing the
-**CarbonTally Insight** capability (product). See §3.2.
+The persisted structures use the canonical **CarbonTally Insight** technical terminology:
+
+```text
+carbontally_insight_conversations
+carbontally_insight_messages
+carbontally_insight_interactions
+```
+
+So the persisted domain is the **CarbonTally Insight bounded domain (`carbontally_insight_*`)**,
+representing the **CarbonTally Insight** capability. The discovery-stage `ask_*` proposal is
+superseded for new implementation (§3.2, §3.8): I1 must create `carbontally_insight_*` objects and
+must **not** create `ask_*` objects merely because D1 proposed them.
 
 ---
 
@@ -261,7 +372,7 @@ The persisted structures are the `ask_*` domain (technical) representing the
 | | Human ↔ Human messaging | CarbonTally Insight |
 |---|---|---|
 | Relational shape | **Human ↔ Human** | **Human → CarbonTally analytical intelligence** |
-| Substrate | `conversations` / `messages` / `conversation_participants` (Supabase Realtime) | **Own bounded domain** (`ask_*`) — does not exist yet |
+| Substrate | `conversations` / `messages` / `conversation_participants` (Supabase Realtime) | **CarbonTally Insight bounded domain** (`carbontally_insight_*`) — does not exist yet |
 | Semantics | sender/receiver, read receipts, delivery, typing, participants, attachments | one human actor + a system actor, tool invocations, authoritative references, answer status |
 | Governance | relationship/membership/capability rules | controlled tools over the authorized API surface |
 | Permissions | existing messaging permission model | its own scope model (§8) |
@@ -1234,7 +1345,8 @@ I1 is bound by:
 * the three-layer concept (§7) — I1 builds **Layer 1 only**;
 * the authorization rule (§8) — every read re-authorised; RLS/scope design explicit; the
   visibility model (§9.2) must be enforceable;
-* the naming decision (§3) — `ask_*` technical naming, CarbonTally Insight product naming;
+* the naming decision (§3) — **CarbonTally Insight / `carbontally_insight_*` terminology for all
+  new persistence/domain objects** (§3.2.1, §3.4.1, §3.8);
 * the separate-domain decision (§6) — **no** reuse of the human messaging tables;
 * the privacy-design requirement (§20.3) — retention/deletion must be introducible later;
 * the non-goals (§26).
@@ -1332,7 +1444,7 @@ This D2 task does **not**:
 
 | # | Decision | Ratified position | Section |
 |---|---|---|---|
-| **R1** | Product naming | **CarbonTally Insight** is the working customer-facing product name (provisional; **not** trademark-cleared); `ask_*` remains technical terminology; no rename/migration | §3 |
+| **R1** | Product naming | **CarbonTally Insight** is the working customer-facing product name **and the canonical technical/domain name for new implementation**. The name remains **provisional and not trademark-cleared**. Earlier `ask_*` terminology is **superseded for new implementation**. **No broad legacy rename is required** | §3, §3.8 |
 | **R2** | Capability definition | Insight is a **first-class evidence-backed intelligence capability**, not a generic chatbot | §4 |
 | **R3** | Persistence | **YES** — conversations are persistently stored; conversation history is **NOT** authoritative carbon data | §5 |
 | **R4** | Separate domain | **YES** — separate from Human ↔ Human messaging; no shared tables/routes/services/data model | §6 |
@@ -1355,6 +1467,7 @@ This D2 task does **not**:
 | **R21** | Staging | **D1 (complete) → D2 (this task) → I1 … I8**; RAG/consultant/auditor/PE/staff/framework outside the foundation | §23 |
 | **R22** | I1 authorisation | **I1 — Persistent CarbonTally Insight Foundation** is the next authorised scope, **only via a separate prompt**; explicit non-expansion list | §24 |
 | **R23** | R-1 acknowledgement | The canonical AI architecture's session-bounded wording is **superseded**, **not rewritten**; reconciliation item recorded | §25 |
+| **R24** | *Revision 2* — canonical technical terminology | **CarbonTally Insight / `carbontally_insight_*` / `CarbonTallyInsight*` is the canonical technical/domain terminology for new implementation**, in addition to being the working customer-facing product name; D1's `ask_*` proposal is **superseded for new implementation**; no broad legacy rename required | §3.2, §3.4.1, §3.8 |
 
 ### 27.2 What remains OPEN (recorded, not resolved)
 
@@ -1405,6 +1518,16 @@ This ratification reopens nothing. Retained unchanged:
 ## 28. Final status
 
 # D2 PO RATIFIED — CARBONTALLY INSIGHT ARCHITECTURE READY FOR I1 IMPLEMENTATION AUTHORISATION
+
+### Revision 2 status
+
+# D2 TERMINOLOGY CORRECTED — CARBONTALLY INSIGHT IS CANONICAL FOR NEW IMPLEMENTATION
+
+**CarbonTally Insight / `carbontally_insight_*` / `CarbonTallyInsight*` is now both the working
+customer-facing product name and the canonical technical/domain terminology for new implementation.**
+D1's `ask_*` proposal is **superseded for new implementation** and retained only as historical
+reference. No broad legacy rename is required or performed. The **I1 boundary is unchanged** (§24).
+**I1 implementation has NOT been performed.**
 
 **Ratified:** the CarbonTally Insight naming decision, the capability definition, persistence, the
 separate-domain decision, the three-layer model, the authorization boundary, the initial
