@@ -971,6 +971,7 @@ class MemoryReportVersions:
         notes: Optional[str] = None,
         change_summary: Optional[str] = None,
         is_current: bool = True,
+        status: str = "DRAFT",
     ) -> dict[str, Any]:
         # Mirrors the production ``ReportVersionsRepository.create`` contract
         # (Phase 8 S1-A): creating a current version demotes the previous
@@ -991,6 +992,7 @@ class MemoryReportVersions:
             "notes": notes,
             "change_summary": change_summary,
             "is_current": is_current,
+            "status": status,
         }
         self._versions.append(version)
         return dict(version)
@@ -1029,6 +1031,44 @@ class MemoryReportVersions:
 
     async def get(self, id: str) -> Optional[dict[str, Any]]:
         return next((dict(v) for v in self._versions if v["id"] == id), None)
+
+    async def get_by_number(
+        self, report_id: str, version_number: int
+    ) -> Optional[dict[str, Any]]:
+        """Mirrors ``ReportVersionsRepository.get_by_number`` (Phase 8 S3)."""
+        row = next(
+            (
+                v
+                for v in self._versions
+                if v["report_id"] == report_id
+                and v["version_number"] == version_number
+            ),
+            None,
+        )
+        return dict(row) if row is not None else None
+
+    async def set_status(
+        self,
+        report_id: str,
+        version_id: str,
+        *,
+        expected_status: str,
+        new_status: str,
+    ) -> Optional[dict[str, Any]]:
+        """Guarded state transition, mirroring the production contract (S3).
+
+        Returns the updated version, or ``None`` when the guard did not match
+        (the caller surfaces ``409``).
+        """
+        for row in self._versions:
+            if (
+                row["id"] == version_id
+                and row["report_id"] == report_id
+                and row["status"] == expected_status
+            ):
+                row["status"] = new_status
+                return dict(row)
+        return None
 
     async def save(self, entity: dict) -> dict:
         return entity

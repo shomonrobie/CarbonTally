@@ -27,11 +27,21 @@ is ``completed`` with persisted content.
 Versioning reuses the existing ``report_versions`` table (V3M2 schema): a
 snapshot row is recorded on every successful generation.
 
+The report **version lifecycle** (Phase 8 S3) is version-scoped on that same
+table: ``status`` moves ``DRAFT`` → ``REVIEWED`` → ``APPROVED`` → ``FINAL``
+under server-side guards, with ``CHANGES_REQUESTED`` / ``REJECTED`` review
+outcomes, append-only audit events on the canonical ``audit_trail``, and
+supersession by a new ``DRAFT`` version after approval/finalisation (an
+approved/final version is never mutated). Approval is the customer
+organisation's own assertion — never independent GHG assurance or verification.
+
 Export reuses the existing org-isolated ``/api/v3/exports/*`` surface (CSV/JSON)
 — no second export implementation.
 """
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -47,9 +57,35 @@ from api.dependencies import (
     require_org_member,
 )
 from auth import AuthUser
+from core.logging import get_logger
+from domain.audit import (
+    ACTOR_ORG_USER,
+    CAT_REPORT,
+    ORIGIN_HUMAN,
+    OUTCOME_SUCCESS,
+    AuditEntry,
+)
 from domain.report import ReportRequest
+from domain.report_lifecycle import (
+    APPROVE,
+    AUDIT_EVENTS,
+    AUTHORITY_ADMIN,
+    DEFAULT_STATUS,
+    FINALIZE,
+    NEW_VERSION,
+    REJECT,
+    REQUEST_CHANGES,
+    SUBMIT,
+    TransitionNotAllowed,
+    allowed_actions,
+    can_create_new_version,
+    required_authority,
+    resolve_transition,
+)
 from engines.pdf_render import render_branded_pdf
 from engines.report_generation import ReportGenerationEngine
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v3/reports", tags=["V3 — Reports"])
 
@@ -473,3 +509,430 @@ async def download_report_pdf(
         content=payload,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 S3 — report VERSION lifecycle (state machine + audit + authorization)
+# ---------------------------------------------------------------------------
+# A report *instance* is ``report_generation_queue.id``; each *version* is a
+# ``report_versions`` row. Lifecycle state is version-scoped and is deliberately
+# separate from the generation status on the queue row. Approval is the
+# customer's own assertion — it is never independent assurance or verification.
+#
+# Ratified boundary implemented here:
+#   DRAFT → REVIEWED → APPROVED → FINAL, with REVIEWED → CHANGES_REQUESTED /
+#   REJECTED review outcomes, and supersession by a NEW draft version after
+#   approval/finalisation (the approved/final version itself is never mutated).
+# ---------------------------------------------------------------------------
+
+#: Organisation roles that may act on a report lifecycle (authoring/reviewing):
+#: schema ``organization_members.role`` values plus the legacy ``user`` label
+#: ``get_current_user`` uses for a non-staff account. Read-only roles (e.g.
+#: ``viewer``) are deliberately absent, so no lifecycle action is possible for
+#: them at either authority level.
+_ORG_MEMBER_ROLES = frozenset({"owner", "admin", "member", "user"})
+#: Organisation roles recognised as the organisation's authority (owner/admin),
+#: mirroring the schema's RLS admin role set.
+_ORG_AUTHORITY_ROLES = frozenset({"owner", "admin"})
+
+
+class LifecycleTransitionIn(BaseModel):
+    """Optional operator note recorded with a lifecycle transition."""
+
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NewReportVersionIn(BaseModel):
+    """Request to supersede one version with a new draft version."""
+
+    from_version_number: int = Field(..., ge=1)
+    reason: Optional[str] = Field(default=None, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _org_role(current_user: AuthUser) -> str:
+    """Return the caller's organisation role, normalised.
+
+    ``get_current_user`` derives ``role`` as ``org_<role>`` (e.g. ``org_owner``)
+    while ``role_name`` carries the bare schema value (``owner``/``admin``).
+    """
+    role = (current_user.role_name or current_user.role or "").lower()
+    if role.startswith("org_"):
+        role = role[len("org_") :]
+    return role
+
+
+
+def _authorize_lifecycle_action(
+    current_user: AuthUser, action: str, organization_id: str
+) -> None:
+    """Enforce the Phase 8 S3 lifecycle authorization boundary, server-side.
+
+    * Organisation **Owner/Admin** are the organisation's authority — they may
+      submit, request changes, reject, approve and finalize.
+    * Any organisation **member** may submit a version for review and create a
+      new version (the acting-org author).
+    * A **Member/Viewer** may not request changes, reject, approve or finalize.
+    * **Consultants**, **Processing Entities** and **CarbonTally internal staff**
+      are never granted report-lifecycle authority in S3 (future, PO-gated
+      decisions). The frontend is never the boundary.
+    """
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=403,
+            detail="Processing Entity staff cannot act on customer reports",
+        )
+    if current_user.is_internal_staff:
+        raise HTTPException(
+            status_code=403,
+            detail="CarbonTally staff cannot perform report lifecycle transitions",
+        )
+    ensure_org_access(current_user, organization_id)
+    role = _org_role(current_user)
+    if required_authority(action) == AUTHORITY_ADMIN:
+        permitted = role in _ORG_AUTHORITY_ROLES
+        detail = f"action {action!r} requires organisation owner/admin access"
+    else:
+        permitted = role in _ORG_MEMBER_ROLES
+        detail = f"action {action!r} requires organisation write access"
+    if not permitted:
+        raise HTTPException(status_code=403, detail=detail)
+
+
+async def _record_lifecycle_event(
+    repos: RepositoryBundle,
+    *,
+    action: str,
+    actor: str,
+    organization_id: str,
+    report_id: str,
+    version: dict,
+    status_from: str,
+    status_to: str,
+    reason: Optional[str] = None,
+    extra: Optional[dict[str, Any]] = None,
+) -> None:
+    """Append one lifecycle event to the canonical append-only ``audit_trail``.
+
+    Reuses the existing audit substrate — no second ledger and no taxonomy
+    change (the ``report`` action prefix already classifies to ``CAT_REPORT``).
+    The event is version-scoped (``record_id`` = version id) and carries the
+    from/to states, so the transition is reconstructable. Only field names and
+    states are stored — never narrative bodies or document content. Best-effort:
+    an audit failure must never break the already-persisted transition.
+    """
+    changed: dict[str, Any] = {
+        "status_from": status_from,
+        "status_to": status_to,
+        "version_number": version["version_number"],
+        "report_id": report_id,
+    }
+    if extra:
+        changed.update(extra)
+    entry = AuditEntry(
+        id=str(uuid.uuid4()),
+        correlation_id=report_id,
+        entity_type="report_versions",
+        entity_id=version["id"],
+        action=AUDIT_EVENTS[action],
+        actor=actor,
+        occurred_at=datetime.now(timezone.utc),
+        changed_fields=changed,
+        reason=reason or "report version lifecycle transition",
+        before={"status": status_from},
+        after={"status": status_to},
+        actor_type=ACTOR_ORG_USER,
+        origin=ORIGIN_HUMAN,
+        outcome=OUTCOME_SUCCESS,
+        organization_id=organization_id,
+        category=CAT_REPORT,
+    )
+    try:
+        await repos.audit.record(entry)
+    except Exception:  # noqa: BLE001 — audit must never break the transition
+        logger.exception(
+            "report lifecycle audit (%s) failed for version %s",
+            AUDIT_EVENTS[action],
+            version["id"],
+        )
+
+
+
+def shape_lifecycle_version(
+    version: dict, *, action: str, status_from: str
+) -> dict:
+    """Deterministic lifecycle response body (version identity + new state)."""
+    return {
+        "version_id": version["id"],
+        "version_number": version["version_number"],
+        "status": version["status"],
+        "status_from": status_from,
+        "action": action,
+        "is_current": version["is_current"],
+        "allowed_actions": list(allowed_actions(version["status"])),
+    }
+
+
+async def _load_report_version(
+    repos: RepositoryBundle,
+    current_user: AuthUser,
+    report_id: str,
+    version_number: int,
+) -> tuple[dict, dict]:
+    """Load an org-scoped report and one specific version (404 when absent)."""
+    report = await repos.reports.get_full(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    ensure_org_access(current_user, report["organization_id"])
+    version = await repos.report_versions.get_by_number(report_id, version_number)
+    if version is None:
+        raise HTTPException(status_code=404, detail="report version not found")
+    return report, version
+
+
+async def _apply_lifecycle_transition(
+    repos: RepositoryBundle,
+    current_user: AuthUser,
+    report_id: str,
+    version_number: int,
+    action: str,
+    note: Optional[str] = None,
+) -> dict:
+    """Apply one version-scoped lifecycle transition (guarded + audited).
+
+    Order is deliberate: scope → authority → state-machine validation → atomic
+    guarded persistence → audit. An invalid transition (``409``) or a lost
+    concurrency race (``409``) never reaches the audit step, so no misleading
+    success event is ever written.
+    """
+    report, version = await _load_report_version(
+        repos, current_user, report_id, version_number
+    )
+    organization_id = report["organization_id"]
+    _authorize_lifecycle_action(current_user, action, organization_id)
+
+    status_from = version["status"]
+    try:
+        status_to = resolve_transition(action, status_from)
+    except TransitionNotAllowed as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    updated = await repos.report_versions.set_status(
+        report_id=report_id,
+        version_id=version["id"],
+        expected_status=status_from,
+        new_status=status_to,
+    )
+    if updated is None:
+        current = await repos.report_versions.get_by_number(
+            report_id, version_number
+        )
+        actual = current["status"] if current else "unknown"
+        raise HTTPException(
+            status_code=409,
+            detail=f"report version state changed concurrently (now {actual})",
+        )
+
+    await _record_lifecycle_event(
+        repos,
+        action=action,
+        actor=current_user.user_id,
+        organization_id=organization_id,
+        report_id=report_id,
+        version=updated,
+        status_from=status_from,
+        status_to=status_to,
+        reason=note,
+    )
+    return {
+        "report_id": report_id,
+        **shape_lifecycle_version(
+            updated, action=action, status_from=status_from
+        ),
+    }
+
+
+
+# --- Lifecycle endpoints (version-scoped; state guard is server-side) --------
+
+
+@router.post("/{report_id}/versions/{version_number}/submit")
+async def submit_report_version(
+    report_id: str,
+    version_number: int,
+    payload: Optional[LifecycleTransitionIn] = None,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T3 — submit a DRAFT version for review (``DRAFT`` → ``REVIEWED``)."""
+    return await _apply_lifecycle_transition(
+        repos,
+        current_user,
+        report_id,
+        version_number,
+        SUBMIT,
+        note=payload.note if payload else None,
+    )
+
+
+@router.post("/{report_id}/versions/{version_number}/request-changes")
+async def request_changes_report_version(
+    report_id: str,
+    version_number: int,
+    payload: Optional[LifecycleTransitionIn] = None,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T7 — request changes on a reviewed version (→ ``CHANGES_REQUESTED``)."""
+    return await _apply_lifecycle_transition(
+        repos,
+        current_user,
+        report_id,
+        version_number,
+        REQUEST_CHANGES,
+        note=payload.note if payload else None,
+    )
+
+
+@router.post("/{report_id}/versions/{version_number}/reject")
+async def reject_report_version(
+    report_id: str,
+    version_number: int,
+    payload: Optional[LifecycleTransitionIn] = None,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T8 — reject a reviewed version (``REVIEWED`` → ``REJECTED``)."""
+    return await _apply_lifecycle_transition(
+        repos,
+        current_user,
+        report_id,
+        version_number,
+        REJECT,
+        note=payload.note if payload else None,
+    )
+
+
+@router.post("/{report_id}/versions/{version_number}/approve")
+async def approve_report_version(
+    report_id: str,
+    version_number: int,
+    payload: Optional[LifecycleTransitionIn] = None,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T11 — approve a reviewed version (``REVIEWED`` → ``APPROVED``).
+
+    The approval is the **customer organisation's own assertion**; it is not
+    independent GHG assurance, verification, certification or audit opinion, and
+    is bound to this exact version (a later version does not inherit it).
+    """
+    return await _apply_lifecycle_transition(
+        repos,
+        current_user,
+        report_id,
+        version_number,
+        APPROVE,
+        note=payload.note if payload else None,
+    )
+
+
+
+@router.post("/{report_id}/versions/{version_number}/finalize")
+async def finalize_report_version(
+    report_id: str,
+    version_number: int,
+    payload: Optional[LifecycleTransitionIn] = None,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T12 — finalize an approved version (``APPROVED`` → ``FINAL``).
+
+    ``FINAL`` is terminal for the version: it can never leave ``FINAL`` and can
+    only be superseded by a *new* version. Finalization freezes the version's
+    lifecycle state; producing/storing/hashing the frozen PDF artefact is a
+    later bounded stage, so S3 records the state transition and its audit event.
+    """
+    return await _apply_lifecycle_transition(
+        repos,
+        current_user,
+        report_id,
+        version_number,
+        FINALIZE,
+        note=payload.note if payload else None,
+    )
+
+
+@router.post("/{report_id}/versions", status_code=201)
+async def create_report_version(
+    report_id: str,
+    payload: NewReportVersionIn,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """T9/T10/T17 — supersede a version with a new ``DRAFT`` version.
+
+    A post-approval/post-final change creates a **new** version rather than
+    mutating the approved/final one (ratified immutability rule). The new version
+    carries the source version's system ``content`` (engine output is immutable)
+    and starts as ``DRAFT`` with its own review/approval cycle. Allowed source
+    states: ``CHANGES_REQUESTED``, ``REJECTED``, ``APPROVED``, ``FINAL``.
+    """
+    report = await repos.reports.get_full(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    organization_id = report["organization_id"]
+    _authorize_lifecycle_action(current_user, NEW_VERSION, organization_id)
+
+    source = await repos.report_versions.get_by_number(
+        report_id, payload.from_version_number
+    )
+    if source is None:
+        raise HTTPException(
+            status_code=404, detail="source report version not found"
+        )
+    if not can_create_new_version(source["status"]):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"a new version cannot be created from state {source['status']}"
+            ),
+        )
+
+    version = await repos.report_versions.create(
+        report_id=report_id,
+        version_number=await repos.report_versions.next_version_number(report_id),
+        content=source.get("content") or {},
+        file_url=source.get("file_url") or "",
+        file_name=source.get("file_name"),
+        created_by=current_user.user_id,
+        change_summary=(
+            f"New version from v{source['version_number']} "
+            f"(was {source['status']}) by {current_user.user_id}"
+        ),
+        is_current=True,
+        status=DEFAULT_STATUS,
+    )
+    await _record_lifecycle_event(
+        repos,
+        action=NEW_VERSION,
+        actor=current_user.user_id,
+        organization_id=organization_id,
+        report_id=report_id,
+        version=version,
+        status_from=source["status"],
+        status_to=version["status"],
+        reason=payload.reason,
+        extra={"from_version_number": source["version_number"]},
+    )
+    return {
+        "report_id": report_id,
+        "from_version_number": source["version_number"],
+        **shape_lifecycle_version(
+            version, action=NEW_VERSION, status_from=source["status"]
+        ),
+    }
+

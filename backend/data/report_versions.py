@@ -14,10 +14,11 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
+from domain.report_lifecycle import DEFAULT_STATUS, validate_status
 
 _VERSION_COLUMNS = """
     id, report_id, version_number, content, file_url, file_name,
-    created_by, created_at, notes, change_summary, is_current
+    created_by, created_at, notes, change_summary, is_current, status
 """
 
 
@@ -37,6 +38,9 @@ def _row_to_version(row: Any) -> dict:
         "notes": r.get("notes"),
         "change_summary": r.get("change_summary"),
         "is_current": bool(r.get("is_current", False)),
+        # Phase 8 S3 — ratified version lifecycle state (defaults to DRAFT for
+        # legacy rows written before the state column existed).
+        "status": str(r.get("status") or DEFAULT_STATUS),
     }
 
 
@@ -64,6 +68,7 @@ class ReportVersionsRepository(AbstractRepository[dict]):
         notes: Optional[str] = None,
         change_summary: Optional[str] = None,
         is_current: bool = True,
+        status: str = DEFAULT_STATUS,
     ) -> dict:
         """Insert one version snapshot row and return it.
 
@@ -78,7 +83,13 @@ class ReportVersionsRepository(AbstractRepository[dict]):
 
         Creating a non-current version (``is_current=False``) never touches the
         existing current version.
+
+        ``status`` (Phase 8 S3) is the report-version **lifecycle** state and
+        defaults to ``DRAFT`` — a freshly generated version is a draft until it
+        is put forward for review. It is distinct from the generation status on
+        ``report_generation_queue`` and may not take an unratified value.
         """
+        validate_status(status)
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 if is_current:
@@ -91,8 +102,8 @@ class ReportVersionsRepository(AbstractRepository[dict]):
                     f"""
                     INSERT INTO public.report_versions (
                         report_id, version_number, content, file_url, file_name,
-                        created_by, notes, change_summary, is_current
-                    ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
+                        created_by, notes, change_summary, is_current, status
+                    ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10)
                     RETURNING {_VERSION_COLUMNS}
                     """,
                     report_id,
@@ -104,6 +115,7 @@ class ReportVersionsRepository(AbstractRepository[dict]):
                     notes,
                     change_summary,
                     is_current,
+                    status,
                 )
         if row is None:
             raise RuntimeError("report version insert returned no row")
@@ -163,6 +175,61 @@ class ReportVersionsRepository(AbstractRepository[dict]):
             version = _row_to_version(row)
             current.setdefault(version["report_id"], version)
         return current
+
+    async def get_by_number(
+        self, report_id: str, version_number: int
+    ) -> Optional[dict]:
+        """Return one version of a report by its ``version_number``, or ``None``.
+
+        Phase 8 S3: lifecycle mutations are **version-scoped** — every lifecycle
+        endpoint addresses a specific ``version_number`` of a specific report,
+        never "whichever version happens to be current" (Reporting Lifecycle
+        Spec §23.3 rule 1).
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_VERSION_COLUMNS} FROM public.report_versions
+            WHERE report_id = $1 AND version_number = $2
+            """,
+            report_id,
+            version_number,
+        )
+        return _row_to_version(row) if row is not None else None
+
+    async def set_status(
+        self,
+        report_id: str,
+        version_id: str,
+        *,
+        expected_status: str,
+        new_status: str,
+    ) -> Optional[dict]:
+        """Atomically move one version from ``expected_status`` to ``new_status``.
+
+        Phase 8 S3 state guard (Reporting Lifecycle Spec §26.1): the ``UPDATE``
+        carries the expected current state in its ``WHERE`` clause, so a
+        concurrent transition (or a stale caller) matches **zero** rows and
+        returns ``None`` — the API surfaces a ``409`` rather than clobbering a
+        state it did not observe. Row identity is never rewritten, so an
+        approval stays bound to its exact version.
+
+        Returns the updated version, or ``None`` when the guard did not match.
+        """
+        validate_status(new_status)
+        validate_status(expected_status)
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.report_versions
+            SET status = $3
+            WHERE id = $1 AND report_id = $2 AND status = $4
+            RETURNING {_VERSION_COLUMNS}
+            """,
+            version_id,
+            report_id,
+            new_status,
+            expected_status,
+        )
+        return _row_to_version(row) if row is not None else None
 
     async def get(self, id: str) -> Optional[dict]:
         row = await self._fetch_one(
