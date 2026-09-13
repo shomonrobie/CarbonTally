@@ -4,9 +4,24 @@
 // lets authorised staff admins update them. No policy duration is invented —
 // unset values render as "Not configured". Enforcement is server-side (N3);
 // this surface is configuration only.
+//
+// Analytics & Integrations — Google Analytics 4 (the only provider
+// implemented) is configuration only: an enabled flag and a measurement ID.
+// The ID is configuration, not a secret. GA4 is loaded by the frontend only
+// when this configuration is enabled and valid, the deployment is an analytics
+// environment and the visitor has accepted cookies.
 import React, { useCallback, useEffect, useState } from 'react';
-import { getRetentionSettings, updateRetentionSettings } from '../api';
-import { LoadingState, ErrorState, Alert, Button, TextInput, ConfirmationDialog } from '../components/ui';
+import {
+  getAnalyticsSettings,
+  getRetentionSettings,
+  updateAnalyticsSettings,
+  updateRetentionSettings,
+} from '../api';
+import {
+  isAnalyticsEnvironmentAllowed,
+  isValidGa4MeasurementId,
+} from '../../lib/analytics/ga4';
+import { LoadingState, ErrorState, Alert, Button, TextInput, CheckboxField, ConfirmationDialog } from '../components/ui';
 
 const FIELDS = [
   { key: 'audit_log_retention_days', label: 'Audit log retention (days)' },
@@ -14,6 +29,8 @@ const FIELDS = [
   { key: 'document_retention_days', label: 'Document retention (days)' },
   { key: 'backup_retention_days', label: 'Backup retention (days)' },
 ];
+
+const GA4_ID_HINT = 'Google Analytics 4 measurement ID, e.g. G-XXXXXXXXXX';
 
 export default function SettingsTab({ canManage }) {
   const [settings, setSettings] = useState(null);
@@ -24,6 +41,15 @@ export default function SettingsTab({ canManage }) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+
+  // Analytics & Integrations (GA4) — separate load/save state so an analytics
+  // problem can never block the retention configuration surface.
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsForm, setAnalyticsForm] = useState({ enabled: false, ga4_measurement_id: '' });
+  const [analyticsError, setAnalyticsError] = useState('');
+  const [analyticsNotice, setAnalyticsNotice] = useState('');
+  const [analyticsBusy, setAnalyticsBusy] = useState(false);
+  const [analyticsConfirm, setAnalyticsConfirm] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,6 +65,19 @@ export default function SettingsTab({ canManage }) {
       setError(e.message || 'Failed to load settings');
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const result = await getAnalyticsSettings();
+      const a = result.settings || {};
+      setAnalytics(a);
+      setAnalyticsForm({
+        enabled: a.enabled === true,
+        ga4_measurement_id: a.ga4_measurement_id || '',
+      });
+      setAnalyticsError('');
+    } catch (e) {
+      setAnalyticsError(e.message || 'Unable to load analytics configuration.');
     }
   }, []);
 
@@ -65,13 +104,44 @@ export default function SettingsTab({ canManage }) {
     }
   };
 
+  const measurementId = analyticsForm.ga4_measurement_id.trim();
+  const measurementIdInvalid = analyticsForm.enabled
+    && !isValidGa4MeasurementId(measurementId);
+  const analyticsEnvironmentActive = isAnalyticsEnvironmentAllowed();
+
+  const onSaveAnalytics = async () => {
+    setAnalyticsBusy(true);
+    setAnalyticsError('');
+    try {
+      const result = await updateAnalyticsSettings({
+        enabled: analyticsForm.enabled,
+        ga4_measurement_id: measurementId === '' ? null : measurementId,
+      });
+      const a = result.settings || {};
+      setAnalytics(a);
+      setAnalyticsForm({
+        enabled: a.enabled === true,
+        ga4_measurement_id: a.ga4_measurement_id || '',
+      });
+      setAnalyticsConfirm(false);
+      setAnalyticsNotice('Analytics configuration saved.');
+      setTimeout(() => setAnalyticsNotice(''), 6000);
+    } catch (e) {
+      setAnalyticsConfirm(false);
+      setAnalyticsError(e.message || 'Failed to save analytics configuration');
+    } finally {
+      setAnalyticsBusy(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading settings…" />;
   if (error) return <ErrorState inline message={error} onRetry={() => setRetryCount((n) => n + 1)} />;
 
   if (!canManage) {
     return (
       <Alert tone="info" title="Settings are admin-managed">
-        Platform retention configuration is reserved for staff with staff-admin permissions.
+        Platform retention and Analytics &amp; Integrations configuration are reserved for staff with
+        staff-admin permissions.
       </Alert>
     );
   }
@@ -121,6 +191,75 @@ export default function SettingsTab({ canManage }) {
           busy={busy}
           onClose={() => setConfirm(false)}
           onConfirm={onSave}
+        />
+      )}
+
+      <div className="v3-card">
+        <h2>Analytics &amp; Integrations</h2>
+        <p className="v3-muted">
+          Configuration for analytics providers. Google Analytics 4 is the only provider currently available.
+        </p>
+
+        {analyticsNotice && <Alert tone="success" title="Saved">{analyticsNotice}</Alert>}
+        {analyticsError && <Alert tone="error" title="Not saved">{analyticsError}</Alert>}
+        {!analytics && !analyticsError && <p className="v3-muted">Loading analytics configuration…</p>}
+
+        {analytics && (
+          <>
+            <h3>Google Analytics</h3>
+            <CheckboxField
+              label="Enabled"
+              checked={analyticsForm.enabled}
+              onChange={(e) => setAnalyticsForm({ ...analyticsForm, enabled: e.target.checked })}
+              hint="When enabled and correctly configured, the application loads Google's gtag.js and initialises GA4."
+            />
+            <div className="v3-form-grid">
+              <TextInput
+                label="Measurement ID"
+                value={analyticsForm.ga4_measurement_id}
+                onChange={(e) => setAnalyticsForm({ ...analyticsForm, ga4_measurement_id: e.target.value })}
+                hint={GA4_ID_HINT}
+                error={measurementIdInvalid ? 'Enter a GA4 measurement ID of the form G-XXXXXXXXXX.' : ''}
+              />
+            </div>
+            <Alert tone="info" title="How analytics loads">
+              GA4 loads on the public website and in the application only when it is enabled with a valid
+              measurement ID, this deployment is the production environment and the visitor has accepted cookies.
+              Analytics never affects core application behaviour, and no carbon, evidence or customer data is sent
+              to the provider.
+              {!analyticsEnvironmentActive && (
+                <> This deployment is not a production environment, so analytics will not load here even if it is
+                enabled.</>
+              )}
+            </Alert>
+            <div className="v3-actions">
+              <Button
+                variant="primary"
+                icon="save"
+                disabled={measurementIdInvalid}
+                onClick={() => setAnalyticsConfirm(true)}
+              >
+                Save analytics settings
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {analyticsConfirm && (
+        <ConfirmationDialog
+          open
+          title="Save analytics configuration?"
+          message={
+            analyticsForm.enabled
+              ? 'Google Analytics 4 will be loaded for visitors who have accepted cookies in the production environment.'
+              : 'Google Analytics 4 will not be loaded.'
+          }
+          confirmLabel="Save"
+          tone="approve"
+          busy={analyticsBusy}
+          onClose={() => setAnalyticsConfirm(false)}
+          onConfirm={onSaveAnalytics}
         />
       )}
     </div>

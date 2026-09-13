@@ -1,4 +1,4 @@
-"""Platform settings repository (N3 — configurable retention).
+"""Platform settings repository (N3 retention + Analytics & Integrations).
 
 Retention is a CONFIGURABLE product capability (N3). The RC2
 ``system_settings`` table already carries the retention columns
@@ -8,14 +8,17 @@ and writes those columns and never invents policy values: unset values are
 returned as ``None`` so the UI shows "not configured" rather than a fabricated
 duration.
 
-Enforcement is a server-side concern (N3); this surface is configuration only.
+Analytics & Integrations provider configuration is stored in the same
+``system_settings`` table under its own ``setting_key`` and in the table's
+generic ``setting_value`` JSONB column. No provider-specific table is created,
+and only Google Analytics 4 is implemented.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from data.base import AbstractRepository, dumps_jsonb
+from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
 
 #: Fixed key for the single system_settings row this repository manages.
 _SETTINGS_KEY = "platform_retention"
@@ -25,9 +28,38 @@ _RETENTION_COLUMNS = (
     "backup_retention_days, updated_at, updated_by"
 )
 
+#: Fixed key for the Analytics & Integrations configuration row (GA4 only).
+_ANALYTICS_KEY = "analytics_ga4"
+
+_ANALYTICS_COLUMNS = "setting_value, updated_at, updated_by"
+
+
+def _analytics_from_row(row: Optional[Any]) -> dict:
+    """Map a ``system_settings`` row to the analytics configuration shape.
+
+    A missing row, an unparseable payload or a malformed value fails closed:
+    analytics is reported as disabled with no measurement ID, and the public
+    configuration read never raises on stored data.
+    """
+    try:
+        value = loads_jsonb(row.get("setting_value")) if row is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if not isinstance(value, dict):
+        value = {}
+    measurement_id = value.get("ga4_measurement_id")
+    if not isinstance(measurement_id, str) or not measurement_id.strip():
+        measurement_id = None
+    return {
+        "enabled": bool(value.get("enabled", False)),
+        "ga4_measurement_id": measurement_id,
+        "updated_at": row.get("updated_at") if row is not None else None,
+        "updated_by": row.get("updated_by") if row is not None else None,
+    }
+
 
 class SettingsRepository(AbstractRepository[dict]):
-    """Read/update the platform retention configuration row."""
+    """Read/update the platform settings rows (retention + analytics)."""
 
     async def get_retention(self) -> dict:
         row = await self._fetch_one(
@@ -136,3 +168,64 @@ class SettingsRepository(AbstractRepository[dict]):
 
     async def delete(self, id: str) -> None:
         return None
+
+    # -----------------------------------------------------------------
+    # Analytics & Integrations (GA4 only)
+    # -----------------------------------------------------------------
+
+    async def get_analytics(self) -> dict:
+        """Return the Analytics & Integrations configuration.
+
+        Provider configuration lives in the generic ``setting_value`` JSONB
+        column, so adding a provider needs no schema change. A missing row
+        yields the fail-closed default (disabled, no measurement ID).
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_ANALYTICS_COLUMNS}
+            FROM public.system_settings
+            WHERE setting_key = $1
+            """,
+            _ANALYTICS_KEY,
+        )
+        return _analytics_from_row(row)
+
+    async def update_analytics(
+        self,
+        *,
+        enabled: bool,
+        ga4_measurement_id: Optional[str],
+        updated_by: Optional[str],
+    ) -> dict:
+        """Persist the Analytics & Integrations configuration."""
+        snapshot = {
+            "enabled": bool(enabled),
+            "ga4_measurement_id": ga4_measurement_id,
+        }
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.system_settings (
+                setting_key, setting_type, description, setting_value,
+                updated_by, updated_at, created_at
+            )
+            VALUES (
+                $1, 'analytics_integrations',
+                'Analytics & Integrations provider configuration (Google Analytics 4)',
+                $2::jsonb, $3, NOW(), NOW()
+            )
+            ON CONFLICT (setting_key)
+            DO UPDATE SET
+                setting_type = EXCLUDED.setting_type,
+                description = EXCLUDED.description,
+                setting_value = EXCLUDED.setting_value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+            RETURNING {_ANALYTICS_COLUMNS}
+            """,
+            _ANALYTICS_KEY,
+            dumps_jsonb(snapshot),
+            updated_by,
+        )
+        if row is None:
+            raise RuntimeError("system_settings upsert returned no row")
+        return _analytics_from_row(row)

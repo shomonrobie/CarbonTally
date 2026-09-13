@@ -1642,6 +1642,18 @@ export const updateRetentionSettings = (payload) =>
   v3Fetch('/api/v3/settings/retention', { method: 'PUT', body: JSON.stringify(payload) });
 
 // ---------------------------------------------------------------------------
+// Analytics & Integrations (GA4) — /api/v3/settings/analytics
+// ---------------------------------------------------------------------------
+// Only Google Analytics 4 is implemented. The read is public (the public
+// marketing surface must know whether to load GA4 before a visitor signs in);
+// every write requires CarbonTally internal admin authority.
+
+export const getAnalyticsSettings = () => v3Fetch('/api/v3/settings/analytics');
+
+export const updateAnalyticsSettings = (payload) =>
+  v3Fetch('/api/v3/settings/analytics', { method: 'PUT', body: JSON.stringify(payload) });
+
+// ---------------------------------------------------------------------------
 // Org-scoped search (G-P1-1) — /api/v3/search
 // ---------------------------------------------------------------------------
 
