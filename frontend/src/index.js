@@ -3,12 +3,17 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import './v3/tokens.css'; // D21 — unified ct-* design tokens for every surface
 import App from './App';
+import AnalyticsBootstrap from './components/AnalyticsBootstrap';
 import reportWebVitals from './reportWebVitals';
 import { Toaster } from 'react-hot-toast'; // <-- ADDED THIS
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
+    {/* Analytics & Integrations (GA4) — renders nothing; loads analytics only
+        when an admin has enabled it, this deployment is an analytics
+        environment and the visitor has accepted cookies. */}
+    <AnalyticsBootstrap />
     <App />
     {/* ADDED TOASTER COMPONENT HERE */}
     <Toaster 

@@ -1,23 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  CONSENT_ACCEPTED,
+  CONSENT_DECLINED,
+  readCookieConsent,
+  recordCookieConsent,
+} from './lib/consent';
 
 export default function CookieBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const consent = localStorage.getItem('cookieConsent');
-    if (!consent) {
+    if (!readCookieConsent()) {
       setVisible(true);
     }
   }, []);
 
   const handleAccept = () => {
-    localStorage.setItem('cookieConsent', 'accepted');
+    recordCookieConsent(CONSENT_ACCEPTED);
     setVisible(false);
   };
 
   const handleDecline = () => {
-    localStorage.setItem('cookieConsent', 'declined');
+    recordCookieConsent(CONSENT_DECLINED);
     setVisible(false);
   };
 
