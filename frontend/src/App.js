@@ -12,6 +12,7 @@ import './public/demos/demos.css'; // D21 — shared demo base styles (public de
 import TeamManagement from './TeamManagement';
 import AssetManager from './AssetManager';
 import CookieBanner from './CookieBanner';
+import { capturePageview } from './analytics';
 import PrivacyPolicy from './PrivacyPolicy';
 import DataSecurity from './DataSecurity';
 import PricingPage from './PricingPage';
@@ -1917,6 +1918,16 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/glossary', '/auth/callback', '/auth/magic',
 ];
 
+// BrowserRouter does not reload the page on navigation, so the PostHog SDK
+// sees no new pageload. Capture $pageview by hand whenever the path changes.
+function PostHogPageview() {
+  const location = useLocation();
+  useEffect(() => {
+    capturePageview();
+  }, [location.pathname, location.search]);
+  return null;
+}
+
 function PublicAssistant() {
   const location = useLocation();
   const path = location.pathname;
@@ -1996,6 +2007,7 @@ export default function App() {
     <BrowserRouter>
       <ReferenceDataProvider>
         <RealtimeProviderWrapper user={user}>
+          <PostHogPageview />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { setAnalyticsConsent } from './analytics';
 
 export default function CookieBanner() {
   const [visible, setVisible] = useState(false);
@@ -13,11 +14,13 @@ export default function CookieBanner() {
 
   const handleAccept = () => {
     localStorage.setItem('cookieConsent', 'accepted');
+    setAnalyticsConsent(true);
     setVisible(false);
   };
 
   const handleDecline = () => {
     localStorage.setItem('cookieConsent', 'declined');
+    setAnalyticsConsent(false);
     setVisible(false);
   };
 
