@@ -5,6 +5,9 @@ import './v3/tokens.css'; // D21 — unified ct-* design tokens for every surfac
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { Toaster } from 'react-hot-toast'; // <-- ADDED THIS
+import { initPostHog } from './analytics';
+
+initPostHog();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
