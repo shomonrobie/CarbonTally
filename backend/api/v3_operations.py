@@ -74,6 +74,7 @@ from engines.processing_workflow import (
     has_blocking_findings,
     validate_processing_item,
 )
+from services.operational_intelligence import OperationalIntelligenceService
 from services.storage import signed_item
 
 router = APIRouter(prefix="/api/v3/ops", tags=["V3 — Operations"])
@@ -2791,3 +2792,43 @@ async def ops_work_complete(
         actor_user_id=context.profile.user_id,
         reason=(payload.reason if payload else None),
     )
+
+# ---------------------------------------------------------------------------
+# Phase 8-X X4 — operational intelligence aggregation (failures + SLA)
+#
+# Bounded first release per the PO-approved X4 contract
+# (``CARBONTALLY_PHASE8X_X4_AGGREGATION_CONTRACT_20260914.md``) and its rulings:
+# window-less (X4-D1), explicit `truncated` (X4-D2), no failure-rate (X4-D3),
+# flag-only SLA (X4-D4), and ONE read-only operator aggregation endpoint (X4-D5).
+#
+# Authority: CarbonTally internal staff only — the same chain X1 uses
+# (`require_staff` → `require_internal_staff` → `can_view_all`). Entity/PE staff
+# gain nothing, and the frontend is never the boundary.
+#
+# Read-only: it writes nothing, touches no schema, and neither re-runs nor alters
+# X2 alerting. The response is aggregate counts only — no document contents,
+# filenames, signed URLs, per-organisation breakdown or raw `last_error` text.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/operational-intelligence")
+async def operational_intelligence(
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """X4 — one read-only operator view of what is failing and what is breaching SLA.
+
+    Composes the approved X4 metrics from data CarbonTally already persists
+    (``document_processing_queue`` via the X1 read model, the persisted
+    ``sla_breached`` flag, the existing configured SLA setting, and the worker
+    heartbeat), reusing the X1 predicates so X4 and X1 can never disagree.
+
+    Includes ``truncated`` (true when the existing 2,000-row read bound means the
+    aggregates are a floor, not a total) and ``worker_liveness`` (so failure counts
+    are never read as "live" while the worker is dead). No trends/time windows, by
+    PO ruling.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_view_all")
+    return await OperationalIntelligenceService(repos).summary()
+
