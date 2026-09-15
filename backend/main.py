@@ -282,6 +282,7 @@ async def startup_event():
         print("📊 API runtime metrics enabled (5-minute flush, rolling 60m)")
     except Exception as exc:  # pragma: no cover - never block startup
         print(f"⚠️ API runtime metrics disabled: {exc}")
+
     print("🚀 Starting CarbonTally API...")
     print(f"📋 CORS Allowed Origins: {Config.ALLOWED_ORIGINS}")
     print(f"🔧 CORS Allow Credentials: {Config.CORS_ALLOW_CREDENTIALS}")
@@ -316,7 +317,14 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint. Verifies database connectivity."""
+    """Health check endpoint. Verifies database connectivity.
+
+    Phase 8-X X1 (M2) — the health signal must exercise the **real data path**.
+    The previous implementation probed only PostgREST via the Supabase client, so
+    a failure of the asyncpg service pool (the path every business request uses)
+    was still reported as ``healthy``. Both probes are now reported independently
+    and the overall status degrades if either fails.
+    """
     try:
         supabase = get_supabase_client()
         test = supabase.table("glossary").select("count", count="exact").limit(1).execute()
@@ -324,16 +332,33 @@ async def health_check():
     except Exception as e:
         print(f"⚠️ Health check error: {e}")
         supabase_connected = False
-    
+
+    # M2 — the service-role asyncpg pool is the path used by every V3 request.
+    pool_connected = False
+    try:
+        from api.dependencies import get_pool
+
+        pool = await get_pool()
+        await pool.fetchval("SELECT 1")
+        pool_connected = True
+    except Exception as e:
+        print(f"⚠️ Health check pool error: {e}")
+        pool_connected = False
+
     return {
-        "status": "healthy" if supabase_connected else "degraded",
+        "status": "healthy" if (supabase_connected and pool_connected) else "degraded",
         "service": Config.APP_NAME,
         "version": Config.APP_VERSION,
         "timestamp": datetime.now().isoformat(),
         "supabase_connected": supabase_connected,
+        "pool_connected": pool_connected,
         "components": {
             "database": {
                 "status": "connected" if supabase_connected else "disconnected",
+                "timestamp": datetime.now().isoformat()
+            },
+            "pool": {
+                "status": "connected" if pool_connected else "disconnected",
                 "timestamp": datetime.now().isoformat()
             },
             "api": {

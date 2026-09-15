@@ -20,6 +20,19 @@ _SETTINGS_KEY = "review_sla_defaults"
 class QueueSettingsRepository(AbstractRepository[QueueSettings]):
     """Read/update the single queue-settings row (with sensible defaults)."""
 
+    async def is_configured(self) -> bool:
+        """Whether the SLA/queue settings row actually exists.
+
+        X2 must distinguish *configured* from *not configured*: the settings
+        reader returns documented fallbacks when the row is absent, and an X2 SLA
+        alert must never be raised from a fallback value the PO has not approved.
+        """
+        row = await self._fetch_one(
+            "SELECT 1 AS present FROM public.queue_settings WHERE setting_key = $1",
+            _SETTINGS_KEY,
+        )
+        return row is not None
+
     async def get_settings(self) -> QueueSettings:
         row = await self._fetch_one(
             """

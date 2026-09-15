@@ -28,6 +28,10 @@ from domain.automatic_processing import (
     PIPELINE_VERSION,
     STAGE_TO_STATUS,
 )
+from domain.operational_health import (
+    HEARTBEAT_METRIC_NAME,
+    HEARTBEAT_METRIC_TYPE,
+)
 
 #: Every job column the mapper reads (RC2 + V3M-9 additions).
 _JOB_COLUMNS = (
@@ -634,3 +638,171 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
             org_id,
         )
         return {str(r["stage"] or "enqueued"): int(r["n"]) for r in rows}
+
+    # ------------------------------------------------------------------
+    # Phase 8-X X1 — operational health (queue visibility + worker heartbeat)
+    #
+    # Bounded first release (PO decisions 2026-09-14): worker/queue visibility
+    # and health/worker heartbeat only. Both use EXISTING storage: the queue
+    # columns already persisted on this table, and the existing generic
+    # ``dashboard_metrics`` store (``expires_at`` already exists) for the tick.
+    # NO schema change is introduced (8-X §13 M1: "no schema change required").
+    # ------------------------------------------------------------------
+
+    async def queue_visibility_rows(self, *, limit: int = 2000) -> list[dict]:
+        """Rows backing the M1 worker/queue visibility read model.
+
+        Only columns the queue already persists are read; the classification
+        itself lives in :mod:`domain.operational_health` (pure, unit-tested).
+        """
+        rows = await self._fetch_all(
+            """
+            SELECT id, organization_id, stage, status,
+                   attempt_count, max_attempts, workflow_error_count,
+                   workflow_next_retry_at, last_error,
+                   locked_at, lock_token, created_at, ingested_at
+            FROM public.document_processing_queue
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            int(limit),
+        )
+        return [dict(r) for r in rows]
+
+    async def record_worker_heartbeat(
+        self,
+        *,
+        worker_id: str,
+        stale_after_seconds: int = 300,
+        detail: Optional[dict] = None,
+    ) -> dict:
+        """Record the worker's liveness tick in the existing metric store.
+
+        Exactly **one** current heartbeat row is maintained (the newest row is
+        updated in place; a row is inserted only when none exists). This keeps
+        the store bounded without inventing any retention policy — retention for
+        ``dashboard_metrics`` remains governed by the existing retention
+        configuration, not by X1.
+        """
+        tick_at = datetime.now(timezone.utc)
+        expires_at = tick_at + timedelta(seconds=stale_after_seconds)
+        payload = {
+            "worker_id": worker_id,
+            "tick_at": tick_at.isoformat(),
+            "stale_after_seconds": stale_after_seconds,
+        }
+        if detail:
+            payload.update(detail)
+
+        existing = await self._fetch_one(
+            """
+            SELECT id FROM public.dashboard_metrics
+            WHERE metric_type = $1 AND metric_name = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            HEARTBEAT_METRIC_TYPE,
+            HEARTBEAT_METRIC_NAME,
+        )
+        if existing is not None:
+            row = await self._fetch_one(
+                """
+                UPDATE public.dashboard_metrics
+                SET metric_value = $2::jsonb, expires_at = $3
+                WHERE id = $1
+                RETURNING id, metric_value, expires_at, created_at
+                """,
+                existing["id"],
+                dumps_jsonb(payload),
+                expires_at,
+            )
+        else:
+            row = await self._fetch_one(
+                """
+                INSERT INTO public.dashboard_metrics
+                    (metric_type, metric_name, metric_value, period, expires_at)
+                VALUES ($1, $2, $3::jsonb, $4, $5)
+                RETURNING id, metric_value, expires_at, created_at
+                """,
+                HEARTBEAT_METRIC_TYPE,
+                HEARTBEAT_METRIC_NAME,
+                dumps_jsonb(payload),
+                tick_at.strftime("%Y-%m-%d"),
+                expires_at,
+            )
+        return dict(row) if row is not None else {}
+
+    async def latest_worker_heartbeat(self) -> Optional[dict]:
+        """The most recent heartbeat, or ``None`` when the worker never ticked.
+
+        ``None`` is returned honestly (the API reports ``UNKNOWN`` liveness)
+        rather than being presented as a healthy worker.
+        """
+        row = await self._fetch_one(
+            """
+            SELECT metric_value, created_at, expires_at
+            FROM public.dashboard_metrics
+            WHERE metric_type = $1 AND metric_name = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            HEARTBEAT_METRIC_TYPE,
+            HEARTBEAT_METRIC_NAME,
+        )
+        if row is None:
+            return None
+        value = loads_jsonb(row["metric_value"]) or {}
+        return {
+            "worker_id": value.get("worker_id"),
+            "tick_at": value.get("tick_at"),
+            "stale_after_seconds": value.get("stale_after_seconds"),
+            "recorded_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+        }
+
+    async def count_sla_breached(self) -> int:
+        """Count processing-queue items flagged as SLA-breached (X2 SLA signal).
+
+        Scope for the first X2 release is the ``processing_queue`` breach flag —
+        an existing signal. The SLA *threshold* is never taken from here; it comes
+        from the configured SLA setting, and if that setting is absent the X2 SLA
+        condition reports "not configured" and raises nothing.
+        """
+        value = await self._fetchval_count_sla_breached()
+        return int(value or 0)
+
+    async def _fetchval_count_sla_breached(self) -> Optional[int]:
+        row = await self._fetch_one(
+            "SELECT count(*) AS n FROM public.processing_queue "
+            "WHERE coalesce(sla_breached, false) = true"
+        )
+        return int(row["n"]) if row is not None else 0
+
+    async def prune_operational_metrics_before(
+        self, cutoff: Any, *, dry_run: bool = True
+    ) -> dict:
+        """Retention for operational METRIC telemetry only (X2 / `PX-7`).
+
+        Scope is the existing generic metric store (X1's heartbeat row and any
+        future operational metric). ``document_processing_queue`` — the durable
+        job record — is deliberately **not** touched by any retention rule.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                eligible = await conn.fetchval(
+                    "SELECT count(*) FROM public.dashboard_metrics WHERE created_at < $1",
+                    cutoff,
+                )
+                if not dry_run:
+                    await conn.execute(
+                        "DELETE FROM public.dashboard_metrics WHERE created_at < $1",
+                        cutoff,
+                    )
+        return {
+            "domain": "operational_telemetry_retention_days",
+            "scope": "operational metric rows (dashboard_metrics)",
+            "cutoff": cutoff.isoformat(),
+            "eligible_metrics": int(eligible or 0),
+            "applied": not dry_run,
+        }
+

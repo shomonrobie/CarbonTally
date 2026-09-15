@@ -70,6 +70,10 @@ from domain.partners import (
     WORKFLOW_STAGE_STATUSES,
     can_transition_item_status,
 )
+from domain.operational_health import (
+    classify_worker_liveness,
+    summarise_queue,
+)
 from engines.calculation import CalculationEngine, CalculationRequest
 from engines.processing_workflow import (
     has_blocking_findings,
@@ -2795,6 +2799,70 @@ async def ops_work_complete(
         actor_user_id=context.profile.user_id,
         reason=(payload.reason if payload else None),
     )
+
+# ---------------------------------------------------------------------------
+# Phase 8-X X1 — operational health (worker/queue visibility + worker heartbeat)
+#
+# Bounded first release (PO decisions 2026-09-14): these two endpoints are the
+# entire X1 surface. Runtime/deployment introspection, alerting (X2) and any
+# provider/platform access are explicitly OUT of scope.
+#
+# Authority: CarbonTally internal staff only (8-X §13 M1/M2 authority matrix —
+# "internal staff, global, ``require_internal_staff()``"), consistent with the
+# ops dashboard. The frontend is never the boundary.
+#
+# Read-only: neither endpoint writes. The heartbeat is written by the worker
+# process (not by an API caller), so no client can forge a healthy tick.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/operational-health/queue")
+async def operational_health_queue(
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """M1 — worker/queue operational visibility (backlog, stuck, retry exhaustion).
+
+    Derived entirely from columns ``document_processing_queue`` already persists;
+    no new storage and no schema change. Nothing customer-identifying is returned:
+    the response is aggregate counts plus the oldest waiting age.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_view_all")
+    rows = await repos.processing.queue_visibility_rows()
+    summary = summarise_queue(rows)
+    return {
+        "scope": "internal",
+        "x1_scope": "queue_visibility",
+        **summary,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/operational-health/worker")
+async def operational_health_worker(
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """M2 — worker liveness from its recorded heartbeat / last tick.
+
+    Reports ``UNKNOWN`` when no tick has ever been recorded (never reported as
+    healthy). This endpoint **observes only**: it raises no alert and takes no
+    action — alert recipients and thresholds belong to X2 (``PX-6``) and are
+    not decided here.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_view_all")
+    heartbeat = await repos.processing.latest_worker_heartbeat()
+    liveness = classify_worker_liveness(heartbeat["tick_at"] if heartbeat else None)
+    return {
+        "scope": "internal",
+        "x1_scope": "worker_heartbeat",
+        "heartbeat": heartbeat,
+        **liveness,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 # ---------------------------------------------------------------------------
 # Phase 8-X X4 — operational intelligence aggregation (failures + SLA)

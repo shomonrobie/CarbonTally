@@ -25,7 +25,7 @@ _SETTINGS_KEY = "platform_retention"
 
 _RETENTION_COLUMNS = (
     "audit_log_retention_days, data_retention_days, document_retention_days, "
-    "backup_retention_days, updated_at, updated_by"
+    "backup_retention_days, operational_telemetry_retention_days, updated_at, updated_by"
 )
 
 #: Fixed key for the Analytics & Integrations configuration row (GA4 only).
@@ -76,6 +76,7 @@ class SettingsRepository(AbstractRepository[dict]):
                 "data_retention_days": None,
                 "document_retention_days": None,
                 "backup_retention_days": None,
+                "operational_telemetry_retention_days": None,
                 "updated_at": None,
                 "updated_by": None,
             }
@@ -84,6 +85,9 @@ class SettingsRepository(AbstractRepository[dict]):
             "data_retention_days": row.get("data_retention_days"),
             "document_retention_days": row.get("document_retention_days"),
             "backup_retention_days": row.get("backup_retention_days"),
+            "operational_telemetry_retention_days": row.get(
+                "operational_telemetry_retention_days"
+            ),
             "updated_at": row.get("updated_at"),
             "updated_by": row.get("updated_by"),
         }
@@ -95,6 +99,7 @@ class SettingsRepository(AbstractRepository[dict]):
         data_retention_days: Optional[int],
         document_retention_days: Optional[int],
         backup_retention_days: Optional[int],
+        operational_telemetry_retention_days: Optional[int] = None,
         updated_by: Optional[str],
     ) -> dict:
         current = await self.get_retention()
@@ -114,6 +119,9 @@ class SettingsRepository(AbstractRepository[dict]):
             "backup_retention_days": backup_retention_days
             if backup_retention_days is not None
             else current["backup_retention_days"],
+            "operational_telemetry_retention_days": operational_telemetry_retention_days
+            if operational_telemetry_retention_days is not None
+            else current["operational_telemetry_retention_days"],
         }
         row = await self._fetch_one(
             f"""
@@ -121,13 +129,14 @@ class SettingsRepository(AbstractRepository[dict]):
                 setting_key, setting_type, description, setting_value,
                 audit_log_retention_days, data_retention_days,
                 document_retention_days, backup_retention_days,
+                operational_telemetry_retention_days,
                 updated_by, updated_at, created_at
             )
             VALUES (
                 $1, 'retention',
                 'Configurable platform data-retention policy (N3)',
                 $2::jsonb,
-                $3, $4, $5, $6, $7, NOW(), NOW()
+                $3, $4, $5, $6, $7, $8, NOW(), NOW()
             )
             ON CONFLICT (setting_key)
             DO UPDATE SET
@@ -136,6 +145,7 @@ class SettingsRepository(AbstractRepository[dict]):
                 data_retention_days = EXCLUDED.data_retention_days,
                 document_retention_days = EXCLUDED.document_retention_days,
                 backup_retention_days = EXCLUDED.backup_retention_days,
+                operational_telemetry_retention_days = EXCLUDED.operational_telemetry_retention_days,
                 updated_by = EXCLUDED.updated_by,
                 updated_at = NOW()
             RETURNING {_RETENTION_COLUMNS}
@@ -146,6 +156,9 @@ class SettingsRepository(AbstractRepository[dict]):
             data_retention_days if data_retention_days is not None else current["data_retention_days"],
             document_retention_days if document_retention_days is not None else current["document_retention_days"],
             backup_retention_days if backup_retention_days is not None else current["backup_retention_days"],
+            operational_telemetry_retention_days
+            if operational_telemetry_retention_days is not None
+            else current["operational_telemetry_retention_days"],
             updated_by,
         )
         if row is None:
@@ -155,6 +168,9 @@ class SettingsRepository(AbstractRepository[dict]):
             "data_retention_days": row.get("data_retention_days"),
             "document_retention_days": row.get("document_retention_days"),
             "backup_retention_days": row.get("backup_retention_days"),
+            "operational_telemetry_retention_days": row.get(
+                "operational_telemetry_retention_days"
+            ),
             "updated_at": row.get("updated_at"),
             "updated_by": row.get("updated_by"),
         }

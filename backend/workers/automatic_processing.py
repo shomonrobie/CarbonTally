@@ -17,6 +17,7 @@ Design
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from typing import Optional
 
@@ -29,6 +30,25 @@ from infra.event_bus import get_event_bus
 from infra.search_index import FactorSearchIndex
 
 logger = get_logger(__name__)
+
+
+def _log_alerting_outcome(task: "asyncio.Task") -> None:
+    """Report a background alert-dispatch result (Phase 8-X X2).
+
+    Never raises: alert dispatch is best-effort and must not disturb the worker.
+    """
+    try:
+        outcome = task.result()
+    except Exception:  # noqa: BLE001 — dispatch failures are logged, not fatal
+        logger.exception("operational alert dispatch failed")
+        return
+    if isinstance(outcome, dict) and outcome.get("alerts"):
+        logger.info(
+            "operational alerts raised: %s (recipients=%s, dispatched=%s)",
+            outcome["alerts"],
+            outcome.get("recipients"),
+            len(outcome.get("dispatched") or []),
+        )
 
 
 class AutomaticProcessingWorker:
@@ -48,6 +68,10 @@ class AutomaticProcessingWorker:
         self._stopping = False
         self._repos = None
         self._service = None
+        #: Phase 8-X X1 — stable identity for this worker process's heartbeat.
+        self._worker_id = f"worker::{os.getpid()}::{uuid.uuid4().hex[:8]}"
+        #: Phase 8-X X2 — in-flight alert dispatch (background; never awaited by the loop).
+        self._alert_task: Optional[asyncio.Task] = None
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -96,7 +120,36 @@ class AutomaticProcessingWorker:
 
             self._repos = await get_repositories()
             self._service = await self._build_service(self._repos)
+
+        # Phase 8-X X1 (M2) — record liveness on EVERY tick, including idle
+        # ticks where no job is claimed. An idle worker must still prove it is
+        # alive; a missing tick is what makes liveness UNKNOWN/STALE. A failure
+        # here must never stop processing, so it is logged and swallowed.
+        try:
+            await self._repos.processing.record_worker_heartbeat(
+                worker_id=self._worker_id,
+                stale_after_seconds=self._stale_lock_seconds,
+            )
+        except Exception:  # noqa: BLE001 — observability must not break the loop
+            logger.exception("worker heartbeat write failed")
+
         token = f"worker::{uuid.uuid4().hex}"
+
+        # Phase 8-X X2 — evaluate the approved operational-alert conditions once
+        # per tick, after the heartbeat so the worker's own liveness is current.
+        # Dispatch (which may retry email for ~15 minutes) runs as a BACKGROUND
+        # task so it can never stall this claim loop; a failure is logged and
+        # never stops processing.
+        try:
+            from services.operational_alerting import OperationalAlertingService
+
+            service = OperationalAlertingService(self._repos)
+            self._alert_task = asyncio.create_task(
+                service.evaluate_and_dispatch(actor=self._worker_id)
+            )
+            self._alert_task.add_done_callback(_log_alerting_outcome)
+        except Exception:  # noqa: BLE001 — alerting must never break the pipeline
+            logger.exception("operational alert evaluation failed")
         jobs = await self._repos.processing.claim_next(
             token,
             limit=self._batch_size,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from data.base import AbstractRepository
+from data.base import AbstractRepository, dumps_jsonb
 from domain.operations import Notification
 
 _NOTIF_COLUMNS = (
@@ -205,3 +205,108 @@ class NotificationsRepository(AbstractRepository[Notification]):
 
     async def delete(self, id: str) -> None:
         return None
+
+    # ------------------------------------------------------------------
+    # Phase 8-X X2 — operational alerting support
+    # ------------------------------------------------------------------
+
+    async def internal_ops_user_ids(self) -> list[str]:
+        """Active INTERNAL staff whose role grants ``can_view_all``.
+
+        This is the PO-approved X2 recipient set (`PX-6` decision 3: "all internal
+        staff with the existing view-all-operations permission"). No separate
+        mailbox or address list is created, and processing-entity staff
+        (``entity_id IS NOT NULL``) are excluded by construction.
+        """
+        rows = await self._fetch_all(
+            "SELECT sp.user_id FROM public.staff_profiles sp "
+            "JOIN public.staff_roles sr ON sr.id = sp.role_id "
+            "WHERE sp.entity_id IS NULL AND coalesce(sp.is_active, true) = true "
+            "AND coalesce((sr.permissions ->> 'can_view_all')::boolean, false) = true"
+        )
+        return [str(r["user_id"]) for r in rows]
+
+    async def email_for_user(self, user_id: str) -> Optional[str]:
+        """The user's email address, for the email delivery channel (may be absent)."""
+        row = await self._fetch_one(
+            "SELECT email FROM public.users WHERE id = $1", user_id
+        )
+        email = (row["email"] if row is not None else None) or None
+        return str(email) if email else None
+
+    async def record_delivery(
+        self,
+        notification_id: str,
+        *,
+        channel: str,
+        status: str,
+        error_message: Optional[str] = None,
+        attempts: Optional[int] = None,
+    ) -> None:
+        """Record/refresh one delivery attempt outcome for a notification.
+
+        Failures are recorded honestly (``status='failed'`` + ``error_message``);
+        nothing is silently swallowed.
+        """
+        await self._execute(
+            """
+            INSERT INTO public.notification_delivery (
+                notification_id, channel, status, sent_at, delivered_at,
+                error_message, metadata, created_at, updated_at
+            ) VALUES (
+                $1::uuid, $2::text, $3::text,
+                CASE WHEN $3::text IN ('sent', 'delivered') THEN NOW() END,
+                CASE WHEN $3::text = 'delivered' THEN NOW() END,
+                $4::text, $5::jsonb, NOW(), NOW()
+            )
+            """,
+            notification_id,
+            channel,
+            status,
+            error_message,
+            dumps_jsonb({"attempts": attempts} if attempts is not None else {}),
+        )
+
+    async def prune_operational_alerts_before(
+        self, cutoff: Any, *, dry_run: bool = True
+    ) -> dict:
+        """Retention for operational ALERT telemetry only (X2 / `PX-7`).
+
+        Scope is deliberately narrow: notifications whose
+        ``notification_type`` is an ``ops_alert_%`` operational alert, and their
+        delivery rows. Ordinary product notifications are **never** touched, and
+        neither is any report/evidence table.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                deliveries = await conn.fetchval(
+                    "SELECT count(*) FROM public.notification_delivery d "
+                    "JOIN public.notifications n ON n.id = d.notification_id "
+                    "WHERE n.notification_type LIKE 'ops_alert_%' AND n.created_at < $1",
+                    cutoff,
+                )
+                alerts = await conn.fetchval(
+                    "SELECT count(*) FROM public.notifications "
+                    "WHERE notification_type LIKE 'ops_alert_%' AND created_at < $1",
+                    cutoff,
+                )
+                if not dry_run:
+                    await conn.execute(
+                        "DELETE FROM public.notification_delivery d USING public.notifications n "
+                        "WHERE d.notification_id = n.id "
+                        "AND n.notification_type LIKE 'ops_alert_%' AND n.created_at < $1",
+                        cutoff,
+                    )
+                    await conn.execute(
+                        "DELETE FROM public.notifications "
+                        "WHERE notification_type LIKE 'ops_alert_%' AND created_at < $1",
+                        cutoff,
+                    )
+        return {
+            "domain": "operational_telemetry_retention_days",
+            "scope": "operational alert notifications + deliveries (ops_alert_%)",
+            "cutoff": cutoff.isoformat(),
+            "eligible_notifications": int(alerts or 0),
+            "eligible_deliveries": int(deliveries or 0),
+            "applied": not dry_run,
+        }

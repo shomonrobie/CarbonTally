@@ -26,7 +26,32 @@ from typing import Any, Optional
 
 #: Domains eligible for enforcement. Audit/evidence tables are intentionally
 #: absent (security invariant — see module docstring).
-_ELIGIBLE_DOMAINS = ("document_retention_days",)
+#:
+#: Phase 8-X X2 adds ``operational_telemetry_retention_days`` (PO `PX-7`
+#: decision: telemetry detail 90 days by default, aggregates indefinitely).
+#: Its enforcement is deliberately scoped to the two telemetry stores below and
+#: is PROHIBITED from touching the excluded tables listed in
+#: ``_TELEMETRY_EXCLUDED_TABLES``.
+_ELIGIBLE_DOMAINS = ("document_retention_days", "operational_telemetry_retention_days")
+
+#: Tables that NO retention rule in this module may ever touch (business records,
+#: evidence and audit). `PX-7` explicitly excluded the first two; the remainder are
+#: the existing report/evidence invariant (`B4-D8`).
+_TELEMETRY_EXCLUDED_TABLES = (
+    "document_processing_queue",
+    "processing_logs",
+    "report_versions",
+    "report_version_artifacts",
+    "evidence_line_items",
+    "calculation_snapshots",
+    "emissions_logs",
+    "audit_trail",
+)
+
+
+def telemetry_excluded_tables() -> tuple[str, ...]:
+    """The explicit never-purge list (exposed so verification can assert it)."""
+    return _TELEMETRY_EXCLUDED_TABLES
 
 
 def build_policy(settings: dict[str, Any]) -> dict[str, Optional[int]]:
@@ -71,15 +96,53 @@ async def enforce_retention(repos: Any, *, dry_run: bool = True) -> dict[str, An
 
     days = policy.get("document_retention_days")
     if days is None:
-        return report
+        report["domains"]["document_retention_days"] = {"configured": False}
+    else:
+        cutoff = now - timedelta(days=days)
+        # Soft-delete expired organisation documents (existing convention).
+        if hasattr(repos, "files") and hasattr(repos.files, "expire_documents_older_than"):
+            expired = await repos.files.expire_documents_older_than(cutoff, dry_run=dry_run)
+            report["domains"]["document_retention_days"] = {
+                "cutoff": cutoff.isoformat(),
+                "applied": not dry_run,
+                **expired,
+            }
 
-    cutoff = now - timedelta(days=days)
-    # Soft-delete expired organisation documents (existing convention).
-    if hasattr(repos, "files") and hasattr(repos.files, "expire_documents_older_than"):
-        expired = await repos.files.expire_documents_older_than(cutoff, dry_run=dry_run)
-        report["domains"]["document_retention_days"] = {
-            "cutoff": cutoff.isoformat(),
+    # --- Phase 8-X X2 (`PX-7`) — operational TELEMETRY detail only -----------
+    # The duration is whatever is CONFIGURED (90 by default in the schema); it is
+    # never hard-coded here. Only the two telemetry stores are pruned; the
+    # never-purge list is asserted below so a future edit cannot widen the blast
+    # radius silently, and aggregates are untouched by definition (no aggregate
+    # store is deleted from).
+    telemetry_days = policy.get("operational_telemetry_retention_days")
+    if telemetry_days is None:
+        report["domains"]["operational_telemetry_retention_days"] = {"configured": False}
+    else:
+        telemetry_cutoff = now - timedelta(days=telemetry_days)
+        telemetry: dict[str, Any] = {
+            "cutoff": telemetry_cutoff.isoformat(),
             "applied": not dry_run,
-            **expired,
+            "detail_retention_days": telemetry_days,
+            "aggregates": "indefinite (no aggregate store is pruned)",
+            "excluded_tables": list(telemetry_excluded_tables()),
+            "parts": {},
         }
+        if hasattr(repos, "notifications") and hasattr(
+            repos.notifications, "prune_operational_alerts_before"
+        ):
+            telemetry["parts"]["alerts"] = (
+                await repos.notifications.prune_operational_alerts_before(
+                    telemetry_cutoff, dry_run=dry_run
+                )
+            )
+        if hasattr(repos, "processing") and hasattr(
+            repos.processing, "prune_operational_metrics_before"
+        ):
+            telemetry["parts"]["metrics"] = (
+                await repos.processing.prune_operational_metrics_before(
+                    telemetry_cutoff, dry_run=dry_run
+                )
+            )
+        report["domains"]["operational_telemetry_retention_days"] = telemetry
+
     return report
