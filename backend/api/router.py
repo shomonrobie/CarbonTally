@@ -55,6 +55,7 @@ from api.v3_search import router as v3_search_router
 from api.v3_settings import router as v3_settings_router
 from api.v3_emissions import router as v3_emissions_router
 from api.v3_reports import router as v3_reports_router
+from api.v3_disclosure import router as v3_disclosure_router
 from api.v3_discovery import router as v3_discovery_router
 from api.v3_messaging import router as v3_messaging_router
 from api.v3_vehicles import router as v3_vehicles_router
@@ -211,6 +212,7 @@ router.include_router(v3_search_router)
 router.include_router(v3_settings_router)
 router.include_router(v3_emissions_router)
 router.include_router(v3_reports_router)
+router.include_router(v3_disclosure_router)
 router.include_router(v3_manual_extraction_router)
 router.include_router(v3_qc_router)
 router.include_router(v3_suppliers_router)

@@ -484,6 +484,18 @@ async def _run_line_calculation(
     )
     total = Decimal("0")
     line_results: list[dict] = []
+    # B2 §13.2 — one indexed lookup resolves every ordinal's materialised line id
+    # (a LOOKUP, never an insert; §11.6/§13.2). Best-effort: a missing B2 schema or
+    # an unmaterialised item leaves the link NULL rather than breaking the
+    # calculation (§8.2 — NULL is the honest value).
+    line_ids: dict[int, str] = {}
+    if isinstance(item.extracted_data, dict) and item.extracted_data.get("line_items"):
+        try:
+            line_ids = await repos.evidence_line_items.get_by_ordinals(
+                item.id, list(range(1, len(lines) + 1))
+            )
+        except Exception:  # noqa: BLE001 — resolver is non-essential provenance
+            line_ids = {}
     for idx, line in enumerate(lines):
         if not isinstance(line, dict):
             raise HTTPException(
@@ -559,6 +571,7 @@ async def _run_line_calculation(
             methodology=payload.methodology,
             source_file=item.file_name,
             source_item_id=item.id,  # D33: snapshot → extraction-item link
+            source_line_item_id=line_ids.get(idx + 1),  # B2 §13.1: line-level link
             asset_id=payload.asset_id,
             facility_id=payload.facility_id,
             performed_by=performed_by,

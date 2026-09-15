@@ -41,6 +41,7 @@ from data.customer_factors import CustomerFactorsRepository
 from data.documents import DocumentsRepository
 from data.emission_factors import EmissionFactorsRepository
 from data.emissions_logs import EmissionsLogsRepository
+from data.evidence_line_items import EvidenceLineItemsRepository
 from data.events import EventsRepository
 from data.factor_aliases import FactorAliasesRepository
 from data.imports import ImportsRepository
@@ -323,6 +324,8 @@ class RepositoryBundle:
     billing_idempotency: IdempotencyRepository
     billing_usage: UsageTrackingRepository
     processing: "DocumentProcessingRepository"
+    #: Phase 8 B2 §12.2/§13.2 — evidence line-item addressability.
+    evidence_line_items: "EvidenceLineItemsRepository"
 
 
 async def get_pool():
@@ -376,6 +379,9 @@ async def get_repositories() -> RepositoryBundle:
         billing_idempotency=IdempotencyRepository(pool),
         billing_usage=UsageTrackingRepository(pool),
         processing=DocumentProcessingRepository(pool),
+        # Phase 8 B2 §13.1/§12.2 — evidence line-item addressability (insert-only
+        # materialisation + the ordinal→line read surface the calculation paths use).
+        evidence_line_items=EvidenceLineItemsRepository(pool),
     )
 
 
