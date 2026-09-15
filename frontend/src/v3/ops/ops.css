@@ -1,3 +1,75 @@
+/* Phase 8-X X5 — operational health console tab (read-only) */
+.ops-tab-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ops-tab-head h3 {
+  margin: 0 0 4px;
+}
+.ops-muted {
+  color: var(--v3-text-muted, #5b6b7c);
+  font-size: 0.88rem;
+  margin: 4px 0;
+}
+.ops-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.ops-figure {
+  border: 1px solid var(--v3-border, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--v3-surface, #fff);
+}
+.ops-figure .k {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--v3-text-muted, #5b6b7c);
+}
+.ops-figure .v {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.ops-figure .hint {
+  font-size: 0.75rem;
+  color: var(--v3-text-muted, #5b6b7c);
+}
+.ops-table-wrap {
+  overflow-x: auto;
+}
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ops-table caption {
+  text-align: left;
+  font-size: 0.82rem;
+  color: var(--v3-text-muted, #5b6b7c);
+  padding-bottom: 6px;
+}
+.ops-table th,
+.ops-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--v3-border, rgba(0, 0, 0, 0.08));
+  font-size: 0.88rem;
+}
+@media (max-width: 640px) {
+  .ops-figures {
+    grid-template-columns: 1fr 1fr;
+  }
+  .ops-tab-head .v3-btn {
+    width: 100%;
+  }
+}
+
 /* D23 — extraction panel (document viewer + multi-line extraction form) */
 .extraction-panel {
   margin-top: 16px;

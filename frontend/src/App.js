@@ -2211,6 +2211,15 @@ export default function App() {
                 </RoleRoute>
               </ProtectedRoute>
             } />
+            {/* Phase 8-X X5 (F-X5-1) — X2's operational alerts deep-link to
+                /ops/operational-health (domain/operational_alerts.ALERT_LINK).
+                This route makes that already-shipped link resolve to the existing
+                ops console with the operational-health tab selected. No new shell. */}
+            <Route
+              path="/ops/operational-health"
+              element={<Navigate to="/ops?tab=operational-health" replace />}
+            />
+
             <Route path="/pe" element={
               <ProtectedRoute>
                 <RoleRoute requireStaff>

@@ -22,6 +22,7 @@ import AuditConsoleTab from './AuditConsoleTab';
 import OpsMessagingTab from './OpsMessagingTab';
 import OpsPeMessagingTab from './OpsPeMessagingTab';
 import OpsAssignmentsTab from './OpsAssignmentsTab';
+import OperationalHealthTab from './OperationalHealthTab';
 import './ops.css';
 
 export default function OperationsPage() {
@@ -64,6 +65,15 @@ export default function OperationsPage() {
 
   const TABS = [];
   if (p.can_view_all) TABS.push({ id: 'dashboard', label: 'Dashboard', component: OpsDashboard });
+  // Phase 8-X X5 — operational health (read-only view over the X1/X4 endpoints).
+  // Gated on the same `can_view_all` permission those endpoints enforce server-side.
+  if (p.can_view_all) {
+    TABS.push({
+      id: 'operational-health',
+      label: 'Operational health',
+      component: OperationalHealthTab,
+    });
+  }
   if (p.can_process) TABS.push({ id: 'data-entry', label: 'Data entry', component: OperatorQueue });
   if (p.can_review) TABS.push({ id: 'review', label: 'Review', component: ReviewQueue });
   // WS4 continuation — Operations D38 assignment tab for internal staff with

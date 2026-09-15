@@ -494,6 +494,19 @@ export const getOpsMe = (options = {}) => v3Fetch('/api/v3/ops/me', options);
 
 export const getOpsDashboard = () => v3Fetch('/api/v3/ops/dashboard');
 
+// --- Phase 8-X X5 — operational health console (read-only) -------------------
+// Thin wrappers over the already-authorised, internal-only X1/X4 endpoints. X5
+// adds no metric, no filter and no action: it displays these payloads verbatim.
+export const getOperationalHealthQueue = () =>
+  v3Fetch('/api/v3/ops/operational-health/queue');
+
+export const getOperationalHealthWorker = () =>
+  v3Fetch('/api/v3/ops/operational-health/worker');
+
+export const getOperationalIntelligence = () =>
+  v3Fetch('/api/v3/ops/operational-intelligence');
+
+
 // CL-63 — dedicated authorised organisation search/list contract for staff
 // messaging (paginated + searchable). The ops dashboard summary is never used
 // as a row collection by any UI component.
