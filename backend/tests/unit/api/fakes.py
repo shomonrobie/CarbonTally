@@ -291,6 +291,7 @@ class MemoryFactors:
         provider: Optional[str] = None,
         limit: int = 20,
         unit_substring: bool = False,
+        unit_qualifier_tolerant: bool = False,
     ) -> list[EmissionFactor]:
         """Case-insensitive activity search mirroring the repository surface."""
         needle = str(activity or "").strip().lower()
@@ -301,8 +302,14 @@ class MemoryFactors:
         ]
         if unit:
             u = str(unit).strip().lower()
-            if unit_substring:
+            # P2 EF-E (PO D-B T2) parity with the repository: the strict
+            # qualifier-aware rule wins when both flags are requested.
+            if unit_substring and not unit_qualifier_tolerant:
                 results = [f for f in results if u in str(f.unit or "").lower()]
+            elif unit_qualifier_tolerant:
+                from core.units import unit_matches_with_qualifier
+
+                results = [f for f in results if unit_matches_with_qualifier(unit, f.unit)]
             else:
                 results = [f for f in results if str(f.unit or "").lower() == u]
         return results[:limit]
@@ -2976,6 +2983,19 @@ class _StubRepo:
         return 0
 
 
+class _EvidenceLinesStub(_StubRepo):
+    """B2 evidence line-item stub: an empty ordinal->line resolve (13.2)."""
+
+    async def get_by_ordinals(self, source_item_id: str, ordinals):
+        return {}
+
+    async def list_for_item(self, organization_id: str, source_item_id: str):
+        return []
+
+    async def count_for_item(self, source_item_id: str) -> int:
+        return 0
+
+
 class _SettingsStub:
     """In-memory settings stub for the platform retention surface (N3).
 
@@ -4295,6 +4315,9 @@ class InMemoryWorld:
         # Phase A (CL-56) — durable automatic processing repository (stub for
         # API tests that never touch document-processing jobs directly).
         self.processing = _StubRepo()
+        # Phase 8 B2 12.2/13.2 - evidence line-item addressability (double for
+        # the already-published RepositoryBundle field).
+        self.evidence_line_items = _EvidenceLinesStub()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -4342,6 +4365,7 @@ class InMemoryWorld:
             billing_idempotency=self.billing_idempotency,
             billing_usage=self.billing_usage,
             processing=self.processing,
+            evidence_line_items=self.evidence_line_items,
         )
 
 
