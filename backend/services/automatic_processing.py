@@ -869,8 +869,10 @@ class AutomaticProcessingService:
         if not any(m in result.factor.activity_type for m in marker):
             return result  # already an aggregate/whole-gas factor
         try:
+            # P2 EF-E (PO D-A(b), D-B T2): a qualified aggregate factor must be
+            # discoverable, otherwise a component-only factor is retained.
             candidates = await self._repos.factors.find_by_activity(
-                activity, unit=unit, limit=20
+                activity, unit=unit, limit=20, unit_qualifier_tolerant=True
             )
             aggregate = next(
                 (f for f in candidates if not any(m in f.activity_type for m in marker)),

@@ -1109,8 +1109,13 @@ async def mapping_options(
     extracted = item.extracted_data or {}
     activity = str(extracted.get("activity") or "").strip()
     unit = str(extracted.get("unit") or "").strip() or None
+    # P2 EF-E (PO D-A(b), D-B T2): strict qualifier-aware selection — without it a
+    # qualified factor is invisible and `has_factors` below can report a false
+    # dead-end for a unit that does have eligible factors.
     factors = (
-        await repos.factors.find_by_activity(activity, unit=unit, limit=20)
+        await repos.factors.find_by_activity(
+            activity, unit=unit, limit=20, unit_qualifier_tolerant=True
+        )
         if activity
         else []
     )

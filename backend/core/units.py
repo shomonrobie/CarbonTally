@@ -106,6 +106,89 @@ def units_equivalent(left: Optional[str], right: Optional[str]) -> bool:
     return a == b
 
 
+#: Qualifier syntax used by the factor vocabulary for a qualified unit:
+#: the base unit, a single space, then a parenthetical qualifier
+#: (``"kWh (Gross CV)"``).
+_QUALIFIER_MARKER = " ("
+
+
+def split_qualified_unit(unit: Optional[str]) -> tuple[str, Optional[str]]:
+    """Split a possibly qualified factor unit into ``(base, qualifier)``.
+
+    ``"kWh (Gross CV)"`` → ``("kWh", "Gross CV")``; an unqualified unit →
+    ``(normalised unit, None)``. Only the **trailing parenthetical** form counts as a
+    qualifier, so a real unit such as ``"cubic metres"`` is never mis-split. The base
+    is resolved through :func:`normalize_unit` — the single D23 normaliser; this
+    helper adds a *rule*, never a second unit vocabulary.
+    """
+    s = str(unit or "").strip()
+    if not s:
+        return ("", None)
+    idx = s.find(_QUALIFIER_MARKER)
+    if idx <= 0 or not s.endswith(")"):
+        return (normalize_unit(s) or s, None)
+    base = s[:idx].strip()
+    qualifier = s[idx + len(_QUALIFIER_MARKER) : -1].strip()
+    if not base or not qualifier:
+        return (normalize_unit(s) or s, None)
+    return (normalize_unit(base) or base, qualifier)
+
+
+def unit_matches_with_qualifier(
+    query_unit: Optional[str], candidate_unit: Optional[str]
+) -> bool:
+    """Strict qualifier-aware unit match for **factor selection** (P2 EF-E, D-B **T2**).
+
+    ``True`` when ``candidate_unit`` is the same unit as ``query_unit`` **or** a
+    *qualified variant of it*, compared case-insensitively (D-C) after alias
+    normalisation:
+
+    * ``kWh`` vs ``kWh``            → ``True``  (identical)
+    * ``kWh`` vs ``kWh (Gross CV)`` → ``True``  (qualified variant of the same base)
+    * ``L``   vs ``litres``         → ``True``  (alias equivalence)
+    * ``litres`` vs ``kWh (Gross CV)`` → ``False`` (**negative** — different bases)
+    * ``t``   vs ``tonnes (Net CV)``   → ``True`` (alias + qualifier)
+
+    Deliberately **not** a substring rule: a short or unrelated unit can never match
+    merely because its text appears inside the candidate. Currency units never match
+    physical factors (ISC-9 / CL-32).
+
+    This is the *selection-side* counterpart of :func:`resolve_unit_for_factor`, which
+    already tolerates qualifiers and is deliberately **unchanged** (D-C).
+    """
+    q = str(query_unit or "").strip()
+    c = str(candidate_unit or "").strip()
+    if not q or not c:
+        return False
+    # ISC-9 / CL-32: a spend/currency activity must never select a physical factor.
+    if is_currency_unit(q) != is_currency_unit(c):
+        return False
+    q_base = normalize_unit(q) or q
+    c_base, qualifier = split_qualified_unit(c)
+    if q_base.casefold() != c_base.casefold():
+        return False
+    return True if qualifier is None else bool(qualifier)
+
+
+def qualifier_match_clause(column: str, param_index: int) -> str:
+    """SQL predicate implementing the same T2 rule for factor selection.
+
+    ``<column> = <unit>`` **or** ``<column>`` starts a parenthetical qualifier after the
+    same unit — i.e. ``lower(unit) LIKE lower($n) || ' (%'``. The pattern has **no
+    leading wildcard**, so an unrelated unit can never match by substring coincidence;
+    the qualifier is built from the already-normalised parameter, and exact matches
+    still rank first via the caller's unchanged ``ORDER BY``.
+
+    Kept beside the Python predicate so the *rule* has exactly one definition
+    (D23: never add a second unit vocabulary).
+    """
+    safe_index = int(param_index)
+    return (
+        f"(lower({column}) = lower(${safe_index}) "
+        f"OR lower({column}) LIKE lower(${safe_index}) || ' (%')"
+    )
+
+
 def resolve_unit_for_factor(extracted_unit: Optional[str], factor_unit: Optional[str]) -> str:
     """Normalise a human-typed unit against a factor's canonical unit.
 

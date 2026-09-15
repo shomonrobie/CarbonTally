@@ -120,6 +120,7 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         provider: Optional[str] = None,
         limit: int = 20,
         unit_substring: bool = False,
+        unit_qualifier_tolerant: bool = False,
     ) -> list[EmissionFactor]:
         """Keyword/activity search with optional filters (case-insensitive).
 
@@ -127,12 +128,19 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         exact value so a human operator typing "kWh" also finds "kWh (Gross CV)"
         candidates in the extraction mapping picker.
 
+        ``unit_qualifier_tolerant`` (P2 EF-E, PO D-B **T2**): the **strict**
+        qualifier-aware rule — the exact (normalised) unit, or a *qualified variant
+        of that same unit* (``kWh`` → ``kWh (Gross CV)``). Unlike a blanket
+        substring it can never match an unrelated unit by coincidence, and it is
+        deliberately **narrower** than ``unit_substring``. When both are requested,
+        the strict rule wins.
+
         CL-3/CL-14: the supplied unit is alias-normalised first (``L`` →
         ``litres``, ``m3`` → ``cubic metres`` …) so the search matches the
         canonical factor-unit vocabulary, and results are ordered with exact
         unit matches first so the correct factor surfaces on the first page.
         """
-        from core.units import normalize_unit
+        from core.units import normalize_unit, qualifier_match_clause
 
         clauses = ["ef.activity_type ILIKE '%' || $1 || '%'"]
         params: list[object] = [activity]
@@ -140,8 +148,11 @@ class EmissionFactorsRepository(AbstractRepository[EmissionFactor]):
         if unit is not None:
             unit_norm = normalize_unit(unit) or unit
             params.append(unit_norm)
-            if unit_substring:
+            if unit_substring and not unit_qualifier_tolerant:
                 clauses.append(f"ef.unit ILIKE '%' || ${len(params)} || '%'")
+            elif unit_qualifier_tolerant:
+                # P2 EF-E (D-B T2): exact unit OR a qualified variant of it.
+                clauses.append(qualifier_match_clause("ef.unit", len(params)))
             else:
                 clauses.append(f"ef.unit = ${len(params)}")
             # Relevance: exact (normalised) unit match first, then activity.

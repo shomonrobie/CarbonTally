@@ -546,6 +546,8 @@ async def factor_search(
 ):
     """Factor search with provenance filters (reporting year, country, scope,
     unit, factor source/set, provider)."""
+    # P2 EF-E (PO D-A(b), D-B T2): strict qualifier-aware selection so a filter of
+    # "kWh" also surfaces eligible "kWh (Gross CV)" catalogue factors.
     factors = await repos.factors.find_by_activity(
         query or "",
         unit=unit,
@@ -553,6 +555,7 @@ async def factor_search(
         country=country,
         provider=provider,
         limit=limit,
+        unit_qualifier_tolerant=True,
     )
     factors = filter_factors(
         factors,
