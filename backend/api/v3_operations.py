@@ -44,6 +44,7 @@ from api.dependencies import (
     customer_factor_mapping_options,
     get_audit_context,
     get_calculation_engine,
+    get_pool,
     get_repositories,
 )
 from api.operations_auth import (
@@ -75,6 +76,8 @@ from engines.processing_workflow import (
     validate_processing_item,
 )
 from services.operational_intelligence import OperationalIntelligenceService
+from services.api_metrics import ApiMetricsService
+from data.api_metrics import ApiMetricsRepository
 from services.storage import signed_item
 
 router = APIRouter(prefix="/api/v3/ops", tags=["V3 — Operations"])
@@ -2831,4 +2834,37 @@ async def operational_intelligence(
     require_internal_staff(context)
     ensure_staff_permission(context, "can_view_all")
     return await OperationalIntelligenceService(repos).summary()
+
+
+# ---------------------------------------------------------------------------
+# Phase 8-X X7 — API runtime metrics read model (internal operators only)
+#
+# Authority: PO decisions X7-D1..X7-D7 (prompt CT-P8X-X7-GATE-02). Read-only,
+# aggregated from the single persisted series: request volume, status
+# distribution, p95 latency (rolling 60 minutes), slow-request count (>= the
+# PO's 1,000 ms threshold) and error-request count — attributed to route
+# templates, never to raw URLs, tenants, entities or customers.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api-runtime-metrics")
+async def api_runtime_metrics(
+    context: StaffContext = Depends(require_staff),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """X7 — approved API runtime metrics over the rolling 60-minute window.
+
+    Aggregates only: no raw telemetry records, no per-tenant/entity attribution
+    and no request content of any kind. The series is the merged application
+    view persisted by the instrumented process(es); `series_present` is false
+    until the first flush has been persisted.
+    """
+    require_internal_staff(context)
+    ensure_staff_permission(context, "can_view_all")
+    pool = await get_pool()
+    service = ApiMetricsService(ApiMetricsRepository(pool))
+    payload = await service.read()
+    payload["scope"] = "internal"
+    payload["x7_scope"] = "api_runtime_metrics"
+    return payload
 

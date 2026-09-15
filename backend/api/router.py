@@ -31,6 +31,7 @@ from api.admin_imports import router as imports_router
 from api.admin_providers import router as providers_router
 from api.business import router as business_router
 from api.contracts import ErrorDetail, ErrorResponse, HealthResponse
+from services import api_metrics
 from api.customer_factors import router as customer_factors_router
 from api.issues import router as issues_router
 from api.v3_documents import router as v3_documents_router
@@ -241,6 +242,41 @@ def create_app() -> FastAPI:
         openapi_url="/api/v2/openapi.json",
     )
     app.add_middleware(RequestContextMiddleware)
+    # Phase 8-X X7 — API runtime metrics (PO decisions X7-D1..X7-D7). One
+    # instrumented-request observation per /api/v3/** call; the accumulated
+    # slot map is flushed into the single persisted series row at most every
+    # 5 minutes. Best-effort: it can never break a request.
+    @app.middleware("http")
+    async def api_runtime_metrics(request, call_next):  # type: ignore[no-untyped-def]
+        service = api_metrics.get_service() or getattr(
+            request.app.state, "api_metrics", None
+        )
+        if service is None:
+            return await call_next(request)
+        started = api_metrics.monotonic_ms()
+        try:
+            response = await call_next(request)
+        except Exception:
+            # A failed request is still observed (5xx), then re-raised unchanged.
+            try:
+                await service.observe_request(
+                    request,
+                    status_code=500,
+                    duration_ms=api_metrics.monotonic_ms() - started,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        try:
+            await service.observe_request(
+                request,
+                status_code=int(getattr(response, "status_code", 500)),
+                duration_ms=api_metrics.monotonic_ms() - started,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return response
+
     app.include_router(router)
 
     app.add_exception_handler(CarbonTallyError, carbon_tally_error_handler)

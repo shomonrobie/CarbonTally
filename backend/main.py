@@ -267,6 +267,21 @@ if V3_API_AVAILABLE:
 
 @app.on_event("startup")
 async def startup_event():
+    # Phase 8-X X7 — API runtime metrics service (PO decisions X7-D1..X7-D7).
+    # The single merged series is persisted in the existing operational-metric
+    # store; if the pool is unavailable the feature stays disabled and the API
+    # is unaffected.
+    try:
+        from api.dependencies import get_pool
+        from data.api_metrics import ApiMetricsRepository
+        from services.api_metrics import ApiMetricsService, set_service
+
+        service = ApiMetricsService(ApiMetricsRepository(await get_pool()))
+        set_service(service)
+        app.state.api_metrics = service
+        print("📊 API runtime metrics enabled (5-minute flush, rolling 60m)")
+    except Exception as exc:  # pragma: no cover - never block startup
+        print(f"⚠️ API runtime metrics disabled: {exc}")
     print("🚀 Starting CarbonTally API...")
     print(f"📋 CORS Allowed Origins: {Config.ALLOWED_ORIGINS}")
     print(f"🔧 CORS Allow Credentials: {Config.CORS_ALLOW_CREDENTIALS}")
