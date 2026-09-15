@@ -2100,7 +2100,11 @@ class MemoryManualExtraction:
 
 
     async def save_extracted_data(
-        self, item_id: str, extracted_data: dict, extracted_by: str
+        self,
+        item_id: str,
+        extracted_data: dict,
+        extracted_by: str,
+        extraction_method: Optional[str] = None,
     ) -> Optional[ManualExtractionItem]:
         item = self._items.get(item_id)
         if item is None:

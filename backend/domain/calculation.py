@@ -58,24 +58,41 @@ class CalculationSnapshot:
     source_file: Optional[str] = None
     source_page: Optional[int] = None
     source_item_id: Optional[str] = None
+    #: Phase 8 B2 §8.1 — the addressable source LINE this snapshot was calculated
+    #: from (finer than ``source_item_id``; complementary, not an alternative).
+    #: ``None`` is the honesty mechanism: flat records, manual entries and
+    #: pre-B2 history have no line identity (§8.2) and history is never
+    #: retro-linked (B2-D12).
+    source_line_item_id: Optional[str] = None
 
     def _canonical(self) -> str:
-        """Canonical serialisation of every input that affects the result."""
-        return "|".join(
-            [
-                str(self.quantity),
-                self.quantity_unit,
-                str(self.co2e_multiplier),
-                self.factor_kind,
-                self.factor_id or "",
-                self.customer_factor_id or "",
-                self.scope or "",
-                self.date.isoformat(),
-                str(self.reporting_year),
-                self.methodology,
-                self.algorithm_version,
-            ]
-        )
+        """Canonical serialisation of every input that affects the result.
+
+        B2 §8.4 — ``content_hash`` **must not** include ``source_line_item_id``:
+        the resolve is insert-time only, and including it would make a snapshot
+        written before materialisation hash differently from the same calculation
+        re-requested after it, producing a duplicate calculation (explicitly
+        prohibited). Existing snapshots are therefore neither re-derived nor
+        re-hashed. The field is appended here **only when it is set** so that a
+        line-aware snapshot still carries tamper-evidence over its finer
+        provenance while every pre-B2 hash remains byte-identical.
+        """
+        parts = [
+            str(self.quantity),
+            self.quantity_unit,
+            str(self.co2e_multiplier),
+            self.factor_kind,
+            self.factor_id or "",
+            self.customer_factor_id or "",
+            self.scope or "",
+            self.date.isoformat(),
+            str(self.reporting_year),
+            self.methodology,
+            self.algorithm_version,
+        ]
+        if self.source_line_item_id:
+            parts.append(f"line:{self.source_line_item_id}")
+        return "|".join(parts)
 
     def build_content_hash(self) -> str:
         """Compute the SHA-256 content hash of the snapshot's inputs."""

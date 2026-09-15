@@ -451,7 +451,7 @@ class AutomaticProcessingService:
         if job.source_item_id:
             try:
                 await self._repos.manual_extraction.save_extracted_data(
-                    job.source_item_id, extracted, _SYSTEM_ACTOR
+                    job.source_item_id, extracted, _SYSTEM_ACTOR, method_stamp
                 )
             except Exception:  # noqa: BLE001 — item sync must not break the job
                 logger.exception("item extraction sync failed for job %s", job.id)
@@ -1067,6 +1067,23 @@ class AutomaticProcessingService:
         mapped = job.mapped_data or {}
         extracted = job.extracted_data or {}
         is_tabular = bool(extracted.get("line_items"))
+        # B2 §13.2 — resolve the ordinal's materialised line id (a LOOKUP, never an
+        # insert). Best-effort: B2 must never break a calculation, so an
+        # unresolvable/absent line (or an environment without the B2 schema)
+        # simply leaves the snapshot's line link NULL — the honest value (§8.2).
+        source_line_item_id: Optional[str] = None
+        if is_tabular and job.source_item_id:
+            try:
+                resolved = await self._repos.evidence_line_items.get_by_ordinals(
+                    job.source_item_id, [idx + 1]
+                )
+                source_line_item_id = resolved.get(idx + 1)
+            except Exception:  # noqa: BLE001 — resolver is non-essential provenance
+                logger.exception(
+                    "B2 source-line resolve failed for job %s ordinal %s",
+                    job.id,
+                    idx + 1,
+                )
         if is_tabular:
             mapped_lines = mapped.get("line_items") or []
             mapped_line = (
@@ -1135,6 +1152,7 @@ class AutomaticProcessingService:
             source_file=job.file_name,
             source_page=job.metadata.get("page_count"),
             source_item_id=job.source_item_id,
+            source_line_item_id=source_line_item_id,
             factor=factor,
             customer_factor=customer_factor,
         )

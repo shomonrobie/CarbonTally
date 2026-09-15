@@ -165,6 +165,13 @@ class CalculationRequest:
     source_file: Optional[str] = None
     source_page: Optional[int] = None
     source_item_id: Optional[str] = None
+    #: Phase 8 B2 §13.1 — the addressable source LINE id resolved from
+    #: ``(source_item_id, ordinal)`` by the calculation caller. Optional and
+    #: insert-time only: when no materialised line exists the value is ``None``
+    #: (NULL is the honesty mechanism, §8.2) and it is never part of the
+    #: content-hash inputs or the request-id derivation for existing snapshots
+    #: (§8.4, §13.3).
+    source_line_item_id: Optional[str] = None
     #: Actual human actor (auth.users id — CarbonTally internal staff or
     #: Processing-Entity staff) who requested the calculation. Persisted on the
     #: immutable snapshot as ``calculation_snapshots.performed_by``. ``None``
@@ -498,6 +505,7 @@ class CalculationEngine:
             source_file=request.source_file,
             source_page=request.source_page,
             source_item_id=request.source_item_id,
+            source_line_item_id=request.source_line_item_id,
         )
         return dataclasses.replace(
             snapshot, content_hash=snapshot.build_content_hash()

@@ -1105,7 +1105,7 @@ async def entity_extraction_save(
         if mark_origin is not None:
             await mark_origin(item_id, entity_id)
     updated = await repos.manual_extraction.save_extracted_data(
-        item_id, payload.extracted_data, context.profile.user_id
+        item_id, payload.extracted_data, context.profile.user_id, "manual"
     )
     # WS4 Gate 6 (workstream W4 / gap G6-D) — PE human extraction edits are
     # attributable (item-level audit, machine-origin flag when the previous
@@ -1681,7 +1681,7 @@ async def extract_item(
     _require_transition(item, "extracted")
     await _ensure_internal_item_processing(context, repos, item)
     updated = await repos.manual_extraction.save_extracted_data(
-        item_id, payload.extracted_data, context.profile.user_id
+        item_id, payload.extracted_data, context.profile.user_id, "manual"
     )
     # WS4 Gate 6 (workstream W4 / gap G6-D) — human extraction edits are
     # attributable: item-level audit distinguishing the correction from the

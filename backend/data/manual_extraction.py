@@ -9,12 +9,17 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any, Optional
 
+from core.logging import get_logger
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
+from data.evidence_line_items import EvidenceLineItemsRepository
+from domain.line_items import MATERIALISATION_FORWARD
 from domain.partners import (
     ManualExtractionBatch,
     ManualExtractionItem,
     WORKFLOW_STAGE_STATUSES,
 )
+
+logger = get_logger(__name__)
 
 _BATCH_COLUMNS = (
     "id, organization_id, batch_name, batch_description, entity_id, "
@@ -418,6 +423,7 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         mapped_data: Optional[dict],
         calculated_emissions_kg_co2e: Optional[float],
         extracted_by: Optional[str],
+        extraction_method: Optional[str] = None,
     ) -> Optional[ManualExtractionItem]:
         row = await self._fetch_one(
             f"""
@@ -436,16 +442,63 @@ class ManualExtractionRepository(AbstractRepository[dict]):
             calculated_emissions_kg_co2e,
             extracted_by,
         )
+        # B2 §12.1 — best-effort forward materialisation of the just-persisted
+        # payload (never blocks the extraction save; §11.6 backfill is the net).
+        if row is not None and extracted_data is not None:
+            await self._materialise_evidence_lines(
+                item_id,
+                extracted_data,
+                extraction_method=extraction_method,
+                actor=extracted_by,
+            )
         return _row_to_item(row) if row is not None else None
 
     # -- workflow (pipeline stage transitions) ------------------------------
+    async def _materialise_evidence_lines(
+        self,
+        item_id: str,
+        extracted_data: Optional[dict],
+        *,
+        extraction_method: Optional[str] = None,
+        actor: Optional[str] = None,
+    ) -> None:
+        """B2 §12.1/B2-D6 — the single data-layer forward hook.
+
+        Called **after** the parent extraction UPDATE succeeds, from every
+        pathway that funnels through this repository. It is deliberately
+        best-effort: materialisation must never fail (or roll back) an
+        extraction save. Anything missed here is covered by the idempotent
+        Class-1 backfill (§11.6). It never raises.
+        """
+        if not isinstance(extracted_data, dict):
+            return
+        try:
+            await EvidenceLineItemsRepository(self._pool).materialise_for_item(
+                source_item_id=item_id,
+                extracted_data=extracted_data,
+                materialisation_kind=MATERIALISATION_FORWARD,
+                extraction_method=extraction_method,
+                actor=actor or "00000000-0000-0000-0000-000000000000",
+            )
+        except Exception:  # noqa: BLE001 — evidence addressing never breaks a save
+            logger.exception(
+                "B2 forward evidence-line materialisation failed for item %s", item_id
+            )
+
     async def save_extracted_data(
         self,
         item_id: str,
         extracted_data: dict,
         extracted_by: str,
+        extraction_method: Optional[str] = None,
     ) -> Optional[ManualExtractionItem]:
-        """Persist extraction output (data-entry save) and advance to ``extracted``."""
+        """Persist extraction output (data-entry save) and advance to ``extracted``.
+
+        B2 §12.1: ``extraction_method`` is an **additive keyword with a default**,
+        so no existing caller breaks. The automatic pipeline passes its real
+        method stamp; human sites pass ``"manual"``; when a site cannot supply
+        one, the honest ``unknown`` default is recorded (§11.2, B2-D7).
+        """
         row = await self._fetch_one(
             f"""
             UPDATE public.manual_extraction_items
@@ -458,6 +511,15 @@ class ManualExtractionRepository(AbstractRepository[dict]):
             dumps_jsonb(extracted_data),
             extracted_by,
         )
+        # B2 §12.1 — best-effort forward materialisation of the just-persisted
+        # payload (never blocks the extraction save; §11.6 backfill is the net).
+        if row is not None:
+            await self._materialise_evidence_lines(
+                item_id,
+                extracted_data,
+                extraction_method=extraction_method,
+                actor=extracted_by,
+            )
         return _row_to_item(row) if row is not None else None
 
     async def save_mapped_data(
