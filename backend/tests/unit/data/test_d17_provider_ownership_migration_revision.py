@@ -1,4 +1,4 @@
-"""P8-D17-MIGRATION-REVISION-001 — provider-ownership migration revision (structural).
+"""Provider-ownership migration revision (structural guards).
 
 The D-17 production run stopped on two ownership-sensitive statements against
 Supabase provider-managed tables (`storage.objects` owned by
@@ -6,17 +6,26 @@ Supabase provider-managed tables (`storage.objects` owned by
 migration role (`postgres`) holds the relevant *privileges* but not *ownership*,
 and `ALTER TABLE`, `CREATE/DROP POLICY` and `DROP TRIGGER` all require ownership.
 
-This revision removes the two ownership-sensitive statements:
+Two revisions are pinned here:
 
-* D32 — `ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY` (a semantic no-op:
-  RLS is already enabled), replaced by a read-only precondition assertion;
-* D35 — `DROP TRIGGER IF EXISTS ... ON auth.users`, replaced by the
-  semantically identical `CREATE OR REPLACE TRIGGER`.
+* **D35** (P8-D17-MIGRATION-REVISION-001) — `DROP TRIGGER IF EXISTS ... ON
+  auth.users` replaced by the semantically identical
+  `CREATE OR REPLACE TRIGGER`.
+* **D32** (P8-D17-MIGRATION-REVISION-001 + P8-D17-D32-STORAGE-POLICY-RESOLUTION-001)
+  — the `ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY` no-op became a
+  read-only precondition assertion, and the four `CREATE POLICY ... ON
+  storage.objects` statements were relocated to the supported Supabase
+  storage-policy mechanism (provider-privileged context — the same context this
+  repository's e2e harness already uses, see
+  `e2e/environment/scripts/apply_migrations.sh`). D32 now *validates* the four
+  approved policies (fail-closed, read-only) instead of issuing ownership-sensitive
+  DDL, so the migration runs as the CarbonTally migration role without ownership or
+  any privilege escalation.
 
-These tests pin the intended end state of both migrations and prove that no other
-migration changed. Runtime privilege behaviour is proven separately by the local
-production-topology privilege lab and the disposable replay (see the task report);
-it is not re-proven here.
+These tests pin the intended end state and the scope of both revisions. Runtime
+privilege behaviour is proven separately by the local production-topology lab and
+the full 71-migration disposable replay (see the task report); it is not re-proven
+here.
 """
 from __future__ import annotations
 
@@ -56,6 +65,19 @@ def _executable(sql: str) -> str:
     )
 
 
+def _decommented(sql: str) -> str:
+    """The header block with its ``--`` prefixes removed, so the documented
+    approved definitions can be parsed as SQL."""
+    return re.sub(r"(?m)^\s*--\s?", "", sql.split("BEGIN;")[0])
+
+
+def _strip_literals(sql: str) -> str:
+    """SQL with string literals removed (SQL escapes quotes by doubling them).
+    Needed because RAISE EXCEPTION messages legitimately contain words such as
+    "create" and "grant"."""
+    return re.sub(r"'(?:[^']|'')*'", "''", sql)
+
+
 class TestD32Revision:
     def test_no_longer_issues_the_ownership_sensitive_rls_alter(self) -> None:
         sql = _executable(_read(D32))
@@ -81,14 +103,16 @@ class TestD32Revision:
         sql = _executable(_read(D32))
         assert "UPDATE storage.buckets SET public = FALSE WHERE name = 'documents'" in sql
 
-    def test_preserves_all_four_intended_policies(self) -> None:
-        sql = _executable(_read(D32))
+    def test_header_documents_the_four_approved_policy_definitions(self) -> None:
+        """The approved definitions are the single source of truth for the
+        platform-managed policies and must stay documented in the migration."""
+        sql = _read(D32)
+        header = _decommented(sql)
         found = re.findall(
-            r"CREATE POLICY\s+\"([a-z0-9_]+)\"\s+ON\s+storage\.objects\s+FOR\s+(\w+)", sql)
-        assert dict(found) == POLICIES, f"policy set changed: {dict(found)}"
+            r"CREATE POLICY\s+\"([a-z0-9_]+)\"\s+ON\s+storage\.objects\s+FOR\s+(\w+)", header)
+        assert dict(found) == POLICIES, f"documented policy set changed: {dict(found)}"
         for name in POLICIES:
-            body = sql.split(f'CREATE POLICY "{name}"')[1]
-            body = body.split("CREATE POLICY")[0]
+            body = header.split(f'CREATE POLICY "{name}"')[1].split("CREATE POLICY")[0]
             assert "TO authenticated" in body
             assert "bucket_id = 'documents'" in body
             assert "(storage.foldername(name))[1] = 'uploads'" in body
@@ -96,14 +120,68 @@ class TestD32Revision:
             assert "auth.uid()" in body
             assert "is_active = TRUE" in body
 
-    def test_does_not_weaken_or_replace_the_policies(self) -> None:
-        sql = _executable(_read(D32)).upper()
-        assert "DROP POLICY" not in sql
-        assert "ALTER POLICY" not in sql
-        assert "FORCE ROW LEVEL SECURITY" not in sql
-        assert "GRANT " not in sql
-        assert "REVOKE " not in sql
-        assert "DISABLE ROW LEVEL SECURITY" not in sql
+    def test_issues_no_ownership_sensitive_policy_ddl(self) -> None:
+        """The ownership blocker: no executable policy/ownership DDL may remain."""
+        sql = _strip_literals(_executable(_read(D32)))
+        for forbidden in ("CREATE POLICY", "DROP POLICY", "ALTER POLICY", "OWNER TO",
+                          "GRANT ", "REVOKE ", "TRIGGER", "ENABLE ROW LEVEL SECURITY",
+                          "FORCE ROW LEVEL SECURITY", "DISABLE ROW LEVEL SECURITY"):
+            assert forbidden not in sql.upper(), (
+                f"D32 must not issue ownership-sensitive DDL; found {forbidden}"
+            )
+
+    def test_validates_the_four_approved_policies(self) -> None:
+        """Security: exactly the approved names/commands are required, and the
+        approved role and org-scope predicate are enforced."""
+        sql = _executable(_read(D32))
+        validator = sql.split("DO $d32_policies$")[1].split("$d32_policies$;")[0]
+        for name, cmd in POLICIES.items():
+            assert f"{name}|{cmd}" in validator, f"validator does not require {name}"
+        assert "'authenticated' = ANY (found.roles)" in validator
+        for fragment in ("bucket_id", "documents", "foldername", "uploads",
+                         "organization_members", "auth.uid()", "is_active"):
+            assert fragment in validator, f"validator does not require fragment {fragment}"
+
+    def test_validation_is_read_only_and_fail_closed(self) -> None:
+        sql = _executable(_read(D32))
+        validator = sql.split("DO $d32_policies$")[1].split("$d32_policies$;")[0]
+        read_only_body = _strip_literals(validator).upper()
+        for forbidden in ("ALTER ", "CREATE ", "DROP ", "GRANT ", "REVOKE "):
+            assert forbidden not in read_only_body, (
+                f"the policy validator must be read-only; found {forbidden}"
+            )
+        assert "RAISE EXCEPTION" in validator
+        # missing policy, drift and anonymous broadening must each fail loudly
+        assert "is missing on storage.objects" in validator
+        assert "policy drift" in validator
+        assert "broadening rejected" in validator
+        assert "anon" in validator and "public" in validator
+
+    def test_validation_rejects_anonymous_access(self) -> None:
+        sql = _executable(_read(D32))
+        validator = sql.split("DO $d32_policies$")[1].split("$d32_policies$;")[0]
+        assert "'anon' = ANY (found.roles)" in validator
+        assert "'public' = ANY (found.roles)" in validator
+        # a table-wide sweep so a broadening policy outside the four is also caught
+        assert "p.roles::text[]" in validator
+
+    def test_platform_mechanism_is_documented(self) -> None:
+        """Part A evidence: the supported mechanism and its provider context."""
+        sql = _read(D32)
+        assert "e2e/environment/scripts/apply_migrations.sh" in sql
+        assert "supabase_admin" in sql
+        assert "provider-privileged context" in sql
+        assert "storage-policy mechanism" in sql
+        assert "must NOT be granted ownership" in sql
+
+    def test_preserves_bucket_privacy_and_no_privilege_escalation(self) -> None:
+        sql = _executable(_read(D32))
+        statements = re.findall(r"(?m)^\s*(UPDATE|INSERT|DELETE)\b", sql)
+        assert statements == ["UPDATE"], (
+            f"the only data statement in D32 must be the bucket update; got {statements}"
+        )
+        assert "UPDATE storage.buckets SET public = FALSE WHERE name = 'documents'" in sql
+        assert sql.count("DO $") == 2, "D32 must contain exactly the RLS and policy guards"
 
 
 class TestD35Revision:
