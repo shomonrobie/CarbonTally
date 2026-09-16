@@ -9,7 +9,8 @@ impossible to reach silently.
 
 ## Comparator
 
-`backend/tools/migration_drift.py` (read-only). Run from `backend/`:
+`backend/tools/migration_drift.py` (read-only). Run from `backend/` (so the
+`tools` package is importable):
 
 ```bash
 # repository-side only (naming/order/duplicates; no ledger, no credentials)
@@ -20,6 +21,15 @@ python -m tools.migration_drift --ledger-file ledger.txt
 
 # against a NON-PRODUCTION database (read-only SELECT)
 MIGRATION_DRIFT_DATABASE_URL=postgresql://... python -m tools.migration_drift
+```
+
+CI runs the same commands from the **repository root** with `PYTHONPATH=backend`
+(see `.github/workflows/migration-drift.yml`), which keeps the default
+`--out-dir artifacts/migration_drift` aligned with the evidence-upload step.
+Equivalently, run locally as:
+
+```bash
+PYTHONPATH=backend python -m tools.migration_drift --repo-only
 ```
 
 Detections: pending migrations, unexpected ledger entries, ordering anomalies,

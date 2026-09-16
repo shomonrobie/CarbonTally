@@ -21,6 +21,14 @@ on:
 jobs:
   migration-drift:
     runs-on: ubuntu-latest
+    # IV-02 (P8 remediation) — the comparator lives at
+    # ``backend/tools/migration_drift.py``, so ``python -m tools.migration_drift``
+    # only imports when ``backend/`` is on the module search path. Steps keep the
+    # repository root as their working directory so the default
+    # ``--out-dir artifacts/migration_drift`` still resolves to the path the
+    # evidence-upload step reads.
+    env:
+      PYTHONPATH: backend
     steps:
       - uses: actions/checkout@v4
 
