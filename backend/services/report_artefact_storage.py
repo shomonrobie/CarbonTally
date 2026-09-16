@@ -34,6 +34,8 @@ class ReportArtefactStorage(Protocol):
 
     def exists(self, *, object_key: str) -> bool: ...
 
+    def bucket_exists(self) -> bool: ...
+
 
 class SupabaseReportArtefactStorage:
     """The real adapter — private bucket, no public URL path."""
@@ -68,6 +70,26 @@ class SupabaseReportArtefactStorage:
             return False
         return True
 
+    def bucket_exists(self) -> bool:
+        """D-11 preflight: is the private bucket provisioned in this environment?
+
+        Read-only. The bucket is operationally provisioned (no migration creates
+        it), so this is the application-level check an operator can run before
+        relying on report finalisation. Absence (or any provider error) is
+        reported as ``False`` — fail-safe, never an exception.
+        """
+        try:
+            from infra.supabase import get_service_client
+
+            buckets = get_service_client().storage.list_buckets()
+        except Exception:  # noqa: BLE001 - absence/unreachable is the safe answer
+            return False
+        for bucket in buckets or []:
+            name = bucket.get("name") if isinstance(bucket, dict) else getattr(bucket, "name", None)
+            if name == self._bucket:
+                return True
+        return False
+
 
 class InMemoryReportArtefactStorage:
     """Deterministic test double (used by the unit and runtime suites)."""
@@ -99,6 +121,10 @@ class InMemoryReportArtefactStorage:
 
     def exists(self, *, object_key: str) -> bool:
         return object_key in self.objects
+
+    def bucket_exists(self) -> bool:
+        """The deterministic double always has its bucket provisioned."""
+        return True
 
 
 _storage: Optional[ReportArtefactStorage] = None

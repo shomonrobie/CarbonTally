@@ -1,0 +1,62 @@
+name: Migration drift gate
+
+# WP-8 — release gate. Hard-fails when the repository migration set and the
+# environment migration ledger disagree. The repository-side check always runs
+# (no credentials needed). The ledger comparison runs when a NON-PRODUCTION
+# ledger snapshot or DSN is provided through repository secrets; production is
+# never touched by CI (production migration is a separate, PO-authorised gate).
+
+on:
+  push:
+    branches: [main, master, 'p8-release-*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      override_ticket:
+        description: 'Emergency override ticket id (recorded in the evidence artefact)'
+        required: false
+        default: ''
+
+jobs:
+  migration-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the comparator's only dependency
+        run: pip install 'asyncpg>=0.30.0'
+
+      - name: Repository-side check (always; no ledger)
+        run: |
+          python -m tools.migration_drift --repo-only --out-dir artifacts/migration_drift
+
+      - name: Ledger comparison (staging, when configured)
+        if: ${{ secrets.MIGRATION_DRIFT_DATABASE_URL != '' }}
+        env:
+          MIGRATION_DRIFT_DATABASE_URL: ${{ secrets.MIGRATION_DRIFT_DATABASE_URL }}
+          CARBONTALLY_MIGRATION_DRIFT_OVERRIDE: ${{ github.event.inputs.override_ticket }}
+        run: |
+          python -m tools.migration_drift --out-dir artifacts/migration_drift
+
+      - name: Upload drift evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-drift-evidence
+          path: artifacts/migration_drift
+          retention-days: 90
+
+# Operator notes
+# --------------
+# * Run from the `backend/` directory (the module is `tools.migration_drift`).
+# * A DRIFT result exits 1 and blocks the release; the emergency override
+#   (CARBONTALLY_MIGRATION_DRIFT_OVERRIDE=<ticket>) only downgrades the exit code
+#   and is ALWAYS recorded in the evidence artefact.
+# * The DSN guard refuses production-looking targets unless
+#   CARBONTALLY_MIGRATION_DRIFT_ALLOW=non-production is set, so production can
+#   never be compared accidentally from CI.
