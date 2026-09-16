@@ -1,6 +1,8 @@
 # CarbonTally — Production Authentication & Access Specification (2026-09-11)
 
-**Status:** verified against the repository at publication commit `5a1e45e0203b822b3a488a6004b904ef40abb059`.
+**Status:** verified against the repository. Originally verified at publication commit
+`5a1e45e0203b822b3a488a6004b904ef40abb059`; the deep-link routing section (§11) was corrected at `9e13236149b8132d737258abc0aa7d69a974a85b`, and §12 (Definitive Authentication & Access Matrix) was
+verified against that same current `main` commit.
 **Scope:** how every supported entity authenticates, where it lands, what authorises it, and how failures are
 presented. Evidence is drawn from `frontend/src/App.js`, `frontend/src/Login.js`,
 `frontend/src/AuthCallback.js`, `frontend/src/v3/api.js`, `frontend/src/lib/authErrors.js`,
@@ -179,4 +181,116 @@ render on a **cold load and on browser refresh**, not only via client-side navig
 
 **Invariant to preserve:** a rewrite destination ending in `.html` requires `cleanUrls` to be disabled.
 Enabling `cleanUrls` without converting every destination is a **production deep-link outage**.
+
+## 12. Definitive Authentication & Access Matrix
+
+**Purpose.** The single authoritative statement of *who* may authenticate, *where* they land, and *what*
+actually authorises them — verified against the **current implementation**, not assumed from the proposed
+model. §2's entity list remains valid and is **not** contradicted: no material divergence was found.
+
+**Verified sources:** `frontend/src/App.js` (route table ~2000–2250; `ProtectedRoute` ~187–227),
+`frontend/src/v3/components/RoleRoute.jsx` (D25), `frontend/src/Login.js`, `frontend/src/AuthCallback.js`,
+`frontend/src/v3/api.js` (`getMeContext`, `resolvePostLoginPath`, `goToWorkspace`),
+`frontend/src/lib/authErrors.js`, `backend/api/v3_context.py`, `backend/auth.py`, `supabase/migrations/**`.
+
+### 12.1 Public entry points and OAuth return
+
+| Item | Verified value |
+|---|---|
+| Common public authentication entry point | **`/login`** — email+password and "Continue with Google" (`Login.js`) |
+| Other public auth-adjacent routes | `/signup`, `/beta/signup`, `/beta-login`, `/auth/magic` (`MagicLink.jsx` — route exists; not documented as a supported production method) |
+| OAuth callback route | **`/auth/callback`** (`AuthCallback.js`); redirect target = `REACT_APP_OAUTH_REDIRECT_URL` or `${origin}/auth/callback` |
+| Post-authentication destination | **Server-decided** — `GET /api/v3/me/context` returns `destination`; the frontend only navigates to it |
+| Frontend route guard | `ProtectedRoute` = session presence only (no role logic); `RoleRoute` = UX role guard |
+| Unauthenticated hit on a protected route | `ProtectedRoute` → `<Navigate to="/login" replace />` |
+| Unknown path | Route `*` → `<Navigate to="/" replace />`; legacy `/dashboard/*` → `/home` |
+
+### 12.2 Server-authoritative post-login destination (verified precedence)
+
+Source: `backend/api/v3_context.py` `GET /api/v3/me/context`.
+
+| # | Server condition | `actor_type` | `destination` |
+|---|---|---|---|
+| 1 | `is_staff and not is_entity_staff` | `staff` | **`/ops`** |
+| 2 | `is_staff and is_entity_staff` | `entity_staff` | **`/pe`** |
+| 3 | active consultant firm member (`resolve_consultant_context`) | `consultant` | **`/consultant`** |
+| 4 | `is_org_member and organization_id` | `customer` | **`/home`** |
+| 5 | nothing above resolved (definitively) | `new_user` | **`/onboarding`** |
+| — | no / invalid session | — | HTTP **401** `Authentication required` |
+| — | resolution error (e.g. database unreachable) | — | HTTP **500** — **fail-closed**, never reported as "new user" |
+
+The required mapping therefore holds **exactly as specified**: `/login` is the common public entry point;
+organisation users route to `/home`; consultants to `/consultant`; Processing Entities to `/pe`; CarbonTally
+staff to `/ops`; authenticated-but-unprovisioned users to `/onboarding`; and `/auth/callback` is the OAuth
+return route.
+
+### 12.3 Definitive matrix — dimension × actor
+
+| Dimension | Organisation user | Consultant | Processing Entity | CarbonTally internal staff | Authenticated, unprovisioned |
+|---|---|---|---|---|---|
+| **Actor / role** | Customer member: Owner, Admin, Member, Viewer | Consultant / consultant team member (firm member) | PE Manager, PE Staff/Operator (`entity_staff`) | Operator, Reviewer, QC, Staff Admin, System Admin | No relationship resolved |
+| **Authentication method** | Email+password **or** Google OAuth | same | same | same | same |
+| **Public entry point** | `/login` | `/login` | `/login` | `/login` | `/login` |
+| **OAuth callback** | `/auth/callback` | same | same | same | same |
+| **Post-auth destination** | **`/home`** | **`/consultant`** | **`/pe`** | **`/ops`** | **`/onboarding`** |
+| **Workspace** | `/home`, `/emissions`, `/documents`, `/processing`, `/review`, `/existing-data`, `/messaging`, `/issues`, `/notifications`, `/reports`, `/billing`, `/organization` | `/consultant`, `/consultant/items/:clientId/:itemId` | `/pe`, `/pe/assignments`, `/pe/messages`, `/pe/items/:entityId/:itemId` (`PEShell`) | `/ops`, `/ops/items/:itemId`, `/ops/review/:itemId`, `/ops/qc/:itemId` | `/onboarding` only |
+| **Authorization model** | Organisation membership + org role, re-checked server-side; RLS as the data boundary | Consultant firm membership + **active engagement grant**, re-checked per request; RLS | PE identity + **work assignment**; PE boundary enforced server-side; RLS | `staff_roles.permissions` capability checks; internal data never exposed to tenants | None (no workspace to authorise) |
+| **Capability requirements** | Org roles via `organization_members`; approval rights per ratified PO decision | Additive `can_*` flags (`can_extract`, `can_submit`, … — P6-2-D1); review-stage claiming requires the capability (PO-P6-2C-D2) | `can_process` on the PE role (PE Manager adds `can_review`, `can_view_all`) | `can_process`, `can_review`, `can_manage_staff`, `can_manage_billing`, `can_view_all` — **never** name-string matching alone | — |
+| **Organisation / firm / PE data scope** | Own `organization_id` only | Only client organisations with an active engagement grant; firm provenance recorded (P6-2-D7) | Only assigned items/entities for its own PE | Staff-scoped across tenants (internal operations) | None |
+| **RLS boundary** | Org-scoped policies | Consultant/client-scoped policies | PE-assignment-scoped policies; PE document boundary preserved | Staff-scoped; internal data isolated from tenants | n/a |
+| **Backend / API boundary** | `require_org_member` / `require_org_admin` / `require_permission` + repositories | `require_consultant` + `resolve_consultant_context` + consultant capability flags | `require_entity_member` / PE scope + capability checks | `require_staff` / `require_role` / `require_permission`; **D20: `entity_staff` never passes role-name guards** | 401 / 403 |
+| **Session restoration** | Supabase JS session (browser storage) restored on load; `ProtectedRoute` uses `supabase.auth.getSession()` + `onAuthStateChange`; `/login` and `/auth/callback` re-resolve the destination | same | same | same | same |
+| **Session expiry** | Delegated to Supabase session/JWT semantics — **no application-level expiry logic was found**; the resulting state is handled: no session → `/login`; API 401 → `UNAUTHORIZED` class | same | same | same | same |
+| **Logout** | `supabase.auth.signOut()` — `App.js:1113`, `V3Layout.jsx:91`, `OnboardingPage.jsx:301`; session state cleared, then `/login` | same (`V3Layout`) | `PEShell.jsx:61` | `V3Layout` | `OnboardingPage` |
+| **Unauthorized behaviour** (no/expired session) | `ProtectedRoute` → `/login`; API 401 `Authentication required` (never a workspace) | same | same | same | same |
+| **Forbidden behaviour** (authenticated, not permitted) | `RoleRoute` → `fallback` (default `/`) when the required role is absent; API 403 (`Organization member access required`, `Staff access required`, `Processing Entity member access required`, `Required roles: …`, `Missing required permission: …`) — classified `FORBIDDEN`, **never** shown as an outage | same, with consultant scoping | same, with PE boundary | same, plus `entity_staff` cannot hold admin/role-name authority | n/a |
+| **Unprovisioned-user behaviour** | n/a | n/a | n/a | n/a | Server returns `destination: /onboarding`; `RoleRoute` `isNewUser` → `/onboarding` |
+| **Relevant special cases** | Customer Owner may self-approve a custom factor (ratified PO decision); `/dashboard/*` → `/home` | Never performs CarbonTally QC or Customer Approval; D38/PE conflict rules apply; PE ↔ Consultant handoff deliberately out of scope (PO-PHASE6-D4) | PE work happens in the PE-only shell, **not** the internal ops hub | `system_admin` is a superset of legacy `admin` gates (PO Decision 2) | Reached **only** when every resolution definitively found nothing — never on error |
+
+### 12.4 Boundary statements (verified)
+
+* **`/login` is the common public authentication entry point** — verified: every actor's sign-in goes through
+  the same page and the same two methods. There is **no separate per-actor login URL**.
+* **The URL is NOT the authorization boundary.** Any authenticated session can *address* `/ops`, `/pe`,
+  `/consultant` or `/home`; the URL grants nothing.
+* Enforcement boundaries, in order: (1) the **server-authoritative destination** (`/api/v3/me/context`),
+  (2) **backend authorisation** (`backend/auth.py` dependency guards and capability checks on every sensitive
+  route), (3) **tenant / firm / PE scope** resolved from the authenticated identity, and (4) **RLS** at the
+  database. The frontend guards (`ProtectedRoute`, `RoleRoute`) are navigation/UX only and **never** grant
+  access (D25).
+* A **resolution failure fails closed** — a controlled error/retry state, never a wider area and never
+  `/onboarding` for an existing user.
+
+### 12.5 Per-actor verification notes
+
+1. **Organisation/customer user** — session + `is_org_member` + `organization_id` → `/home`; all customer
+   workspace routes are wrapped in `ProtectedRoute` → `RoleRoute requireOrg`. Org-scoped RLS; cross-tenant
+   reads were independently verified to return zero rows.
+2. **Consultant** — resolved via `resolve_consultant_context` (**active** firm membership) → `/consultant`;
+   routes wrapped `requireConsultant`. Processing actions additionally require the additive `can_*`
+   capabilities; consultants never perform CarbonTally QC or Customer Approval.
+3. **Processing Entity** — `is_staff and is_entity_staff` → `/pe`, rendered by the dedicated **`PEShell`**
+   (not the internal ops hub). Scope comes from work assignment; `entity_staff` is explicitly barred from
+   role-name authority and from internal admin authority (`backend/auth.py`).
+4. **CarbonTally internal staff** — `is_staff and not is_entity_staff` → `/ops`; authorisation is by
+   **capability** (`staff_roles.permissions`), not by role-name string matching; `system_admin` satisfies
+   legacy `admin` gates as a superset (PO Decision 2).
+5. **Authenticated but unprovisioned user** — every resolution fails definitively → `actor_type:
+   new_user`, `destination: /onboarding`; `RoleRoute` also redirects `isNewUser` to `/onboarding`. This state
+   is **never** produced by an error.
+
+### 12.6 Special cases recorded (not defects)
+
+| Case | Detail | Why it is not a defect |
+|---|---|---|
+| Frontend `requireStaff` is **coarse** | `RoleRoute`'s `isStaff` is true for both `staff` and `entity_staff`, so a PE session can *address* `/ops` and an internal staff session can *address* `/pe` | The workspace each actor is **sent** to is server-decided, and the operations inside each shell are authorised server-side; D20 blocks `entity_staff` from role-name-gated server authority. The frontend guard is explicitly UX-only (D25) |
+| `RoleRoute` fallback default | Missing required role → `Navigate` to `fallback` (default `/`) | Deliberate UX behaviour; the authorisation denial itself is enforced server-side |
+| Magic-link route | `/auth/magic` exists (`MagicLink.jsx`) but is **not** documented as a supported production sign-in method | Not part of the supported method set; unchanged by the closure |
+
+### 12.7 Divergence statement
+
+The **actual implementation matches the required matrix** on every dimension above. No material discrepancy
+was found, so no stop-and-report condition was triggered and **no code was changed to make the
+implementation fit this document**. Any future change to these values is a change to the production access
+model and requires separate authorisation and independent verification.
 

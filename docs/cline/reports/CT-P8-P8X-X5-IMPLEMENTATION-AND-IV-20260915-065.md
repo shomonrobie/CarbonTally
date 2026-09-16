@@ -117,3 +117,26 @@ check), no backend runtime test (X5 has no backend change), and **no production 
 **X7** awaits this gate; **X8 cannot begin** until X5 *and* X7 are PO-closed (the authorisation's own
 precondition).
 
+
+
+## 10. PO CLOSURE (2026-09-15, prompt `CT-P8X-X5-GATE-01`) — transcription
+
+> ### X5 — IMPLEMENTED, INDEPENDENTLY VERIFIED, **PO-CLOSED**
+> *"I hereby PO-close X5 — Operations Console Extension."* The reported verification PASS is accepted
+> **for the approved X5 scope**.
+
+Recorded as **findings/limitations — not X5 defects**:
+
+| Item | Status per PO closure |
+|---|---|
+| `F-X5-1` | **Resolved** by adding the `/ops/operational-health` route alias |
+| `F-X5-2` | **Resolved** by providing the operator UI caller for X1/X4 |
+| `F-X5-3` | Information only; no stop condition |
+| Live-browser verification | **Not performed** |
+| Automated accessibility-tool run | **Not performed** |
+| Production verification | **Not performed** |
+| Backend runtime change | **None made** |
+| Production authorisation | **Not implied** |
+
+**X5 is PO-CLOSED and is not reopened.** Commit `137765f` banks it (see
+`CT-P8-P8X-X5-GATE-01-REPORT.md` §C).
