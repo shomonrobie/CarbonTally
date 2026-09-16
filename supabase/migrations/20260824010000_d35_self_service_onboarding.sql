@@ -92,8 +92,16 @@ $$;
 DO $d35$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'auth' AND tablename = 'users') THEN
-        DROP TRIGGER IF EXISTS trg_sync_auth_user_to_public_users ON auth.users;
-        CREATE TRIGGER trg_sync_auth_user_to_public_users
+        -- P8-D17-MIGRATION-REVISION-001 (PO-authorised minimal revision): the
+        -- previous `DROP TRIGGER IF EXISTS trg_sync_auth_user_to_public_users ON
+        -- auth.users` was ownership-sensitive — DROP TRIGGER requires ownership of
+        -- the table, which the migration role does not hold on Supabase's
+        -- provider-managed `auth.users` (it holds only the TRIGGER privilege).
+        -- `CREATE OR REPLACE TRIGGER` is the semantically identical replacement: it
+        -- installs the trigger, and replaces an existing one of the same name, using
+        -- only the TRIGGER privilege. No ownership-sensitive statement replaces the
+        -- DROP.
+        CREATE OR REPLACE TRIGGER trg_sync_auth_user_to_public_users
             AFTER INSERT ON auth.users
             FOR EACH ROW
             EXECUTE FUNCTION public.sync_auth_user_to_public_users();
