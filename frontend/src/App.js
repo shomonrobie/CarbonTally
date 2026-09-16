@@ -31,7 +31,9 @@ import BulkUpload from './BulkUpload';
 import RecentProcessedData from './RecentProcessedData';
 import PDFIngestionPortal from './PDFIngestionPortal';
 import toast from 'react-hot-toast';
-import OnboardingWizard from './OnboardingWizard';
+// P8-FIN-01a — the legacy `OnboardingWizard` overlay has been retired. The
+// canonical onboarding experience is the backend-driven `/onboarding` route
+// (OnboardingPage), which organisation-less users reach through RoleRoute.
 import CompanyNamePrompt from './CompanyNamePrompt';
 import AuthCallback from './AuthCallback';
 import BetaSignup from './BetaSignup';
@@ -528,8 +530,8 @@ function Dashboard({ user }){
   const [docStats, setDocStats] = useState(null);
 
   // Onboarding State
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  // P8-FIN-01a: the showOnboarding/onboardingChecked state was removed with the
+  // retired legacy OnboardingWizard overlay.
   
   // Upload State
   const [file, setFile] = useState(null);
@@ -1222,7 +1224,7 @@ function Dashboard({ user }){
 
   const renderDashboard = () => (
     <div className="view-section">
-      {isNewUser && !showCompanyPrompt && !showOnboarding && (
+      {isNewUser && !showCompanyPrompt && (
         <div style={{
           background: 'linear-gradient(135deg, #10b981, #059669)',
           borderRadius: '12px',
@@ -1263,43 +1265,9 @@ function Dashboard({ user }){
         </div>
       )}
 
-      {showOnboarding && (
-        <div style={{
-          backgroundColor: '#fef3c7',
-          border: '1px solid #f59e0b',
-          borderRadius: '12px',
-          padding: '1rem 1.5rem',
-          marginBottom: '1.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap'
-        }}>
-          <span style={{ fontSize: '1.5rem' }}>🚀</span>
-          <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontWeight: '600', color: '#92400e' }}>
-              Complete your setup to get started!
-            </p>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: '#78350f' }}>
-              Add your first facility and asset to begin tracking emissions.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowOnboarding(true)}
-            style={{
-              padding: '0.5rem 1.25rem',
-              backgroundColor: '#f59e0b',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            Continue Setup →
-          </button>
-        </div>
-      )}
+      {/* P8-FIN-01a: the legacy "Continue Setup" prompt (whose only action opened
+          the retired OnboardingWizard overlay) is removed. Organisation-less users
+          reach the canonical `/onboarding` route through RoleRoute. */}
 
       <div className="dashboard-header">
         <div>
@@ -1889,13 +1857,8 @@ function Dashboard({ user }){
           user: !!currentUser
         })
       )}
-      {showOnboarding && onboardingChecked && (
-        <OnboardingWizard
-          userId={session?.user?.id}
-          onComplete={() => setShowOnboarding(false)}
-          onSkip={() => setShowOnboarding(false)}
-        />
-      )}
+      {/* P8-FIN-01a: the legacy OnboardingWizard overlay is retired — the
+          canonical onboarding flow is the `/onboarding` route (OnboardingPage). */}
     </div>
   );
 }
@@ -1930,7 +1893,6 @@ function PublicAssistant() {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [session, setSession] = useState(null);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -1942,7 +1904,6 @@ export default function App() {
         
         if (initialSession) {
           console.log('👤 Session found for:', initialSession.user.email);
-          setSession(initialSession);
           setUser({
             id: initialSession.user.id,
             email: initialSession.user.email,
@@ -1964,7 +1925,6 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN') {
-          setSession(session);
           setUser({
             id: session.user.id,
             email: session.user.email,
@@ -1974,7 +1934,6 @@ export default function App() {
             refreshToken: session.refresh_token,
           });
         } else if (event === 'SIGNED_OUT') {
-          setSession(null);
           setUser(null);
         }
         setLoading(false);

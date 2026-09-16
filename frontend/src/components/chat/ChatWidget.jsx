@@ -624,6 +624,7 @@ const ChatWidget = ({ organization, user }) => {
                     onSelectConversation={handleSelectConversation}
                     loading={loading}
                     compact={true}
+                    organization={organization}
                   />
                 </>
               )}

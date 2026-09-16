@@ -1,6 +1,7 @@
 // src/components/chat/ChatWindow.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
+import { listMembers } from '../../v3/api';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import toast from 'react-hot-toast';
@@ -16,6 +17,7 @@ function ChatWindow({
   const [participants, setParticipants] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [participantName, setParticipantName] = useState('Chat');
+  const [memberNames, setMemberNames] = useState({});
   const messagesEndRef = useRef(null);
   const chatSubscriptionRef = useRef(null); // ✅ Changed from chatSubscription to chatSubscriptionRef
 
@@ -26,6 +28,41 @@ function ChatWindow({
     };
     getCurrentUser();
   }, []);
+
+  // P8-FIN-01b (D-9) — participant identity is resolved through the authorised,
+  // org-scoped member projection (GET /api/v3/organizations/{org_id}/members).
+  // `users` stays self-scoped: no direct peer read of `users` is performed.
+  useEffect(() => {
+    let active = true;
+
+    const loadMemberNames = async () => {
+      const orgId = organization?.id;
+      if (!orgId) return;
+      try {
+        const data = await listMembers(orgId);
+        if (!active) return;
+        const map = {};
+        (data?.members || []).forEach((member) => {
+          // Field names follow the projection contract of
+          // backend/data/organizations.py::_row_to_member_with_email:
+          // email / first_name / last_name.
+          const name = [member.first_name, member.last_name]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          map[member.user_id] = name || member.email || null;
+        });
+        setMemberNames(map);
+      } catch (error) {
+        // Identity is presentational only — an unavailable projection must never
+        // break the conversation; the generic fallback is preserved.
+        console.warn('Member identity unavailable:', error?.message || error);
+      }
+    };
+
+    loadMemberNames();
+    return () => { active = false; };
+  }, [organization?.id]);
 
   // ✅ Wrap fetchMessages in useCallback
   const fetchMessages = useCallback(async () => {
@@ -151,19 +188,9 @@ function ChatWindow({
     
     if (!otherParticipant) return 'Chat';
     
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('full_name, email')
-        .eq('id', otherParticipant.user_id)
-        .single();
-      
-      if (error) throw error;
-      return data?.full_name || data?.email || 'Chat';
-    } catch (error) {
-      return 'Chat';
-    }
-  }, [currentUser, participants]);
+    // P8-FIN-01b (D-9): authorised org-member projection only; unresolved => generic fallback.
+    return memberNames[otherParticipant.user_id] || 'Chat';
+  }, [currentUser, participants, memberNames]);
 
   // ✅ Add getParticipantName to dependency array
   useEffect(() => {

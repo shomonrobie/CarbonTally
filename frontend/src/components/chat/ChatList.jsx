@@ -2,16 +2,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
 import { useRealtime } from '../../context/RealtimeContext';
+import { listMembers } from '../../v3/api';
 
 function ChatList({ 
   conversations, 
   selectedId, 
   onSelectConversation,
   loading,
-  compact = false 
+  compact = false,
+  organization
 }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [participantNames, setParticipantNames] = useState({});
+  const [memberNames, setMemberNames] = useState({});
   const { onlineStaff } = useRealtime();
 
   useEffect(() => {
@@ -22,31 +25,54 @@ function ChatList({
     getCurrentUser();
   }, []);
 
+  // P8-FIN-01b (D-9) — participant identity is resolved through the authorised,
+  // org-scoped member projection (GET /api/v3/organizations/{org_id}/members).
+  // `users` stays self-scoped: no direct peer read of `users` is performed.
+  useEffect(() => {
+    let active = true;
+
+    const loadMemberNames = async () => {
+      const orgId = organization?.id;
+      if (!orgId) return;
+      try {
+        const data = await listMembers(orgId);
+        if (!active) return;
+        const map = {};
+        (data?.members || []).forEach((member) => {
+          // Field names follow the projection contract of
+          // backend/data/organizations.py::_row_to_member_with_email:
+          // email / first_name / last_name.
+          const name = [member.first_name, member.last_name]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          map[member.user_id] = name || member.email || null;
+        });
+        setMemberNames(map);
+      } catch (error) {
+        // Identity is presentational only — an unavailable projection must never
+        // break the conversation list; the generic fallback is preserved.
+        console.warn('Member identity unavailable:', error?.message || error);
+      }
+    };
+
+    loadMemberNames();
+    return () => { active = false; };
+  }, [organization?.id]);
+
   // ✅ Wrap getParticipantName in useCallback
   const getParticipantName = useCallback(async (conversation) => {
     if (!currentUser) return 'Unknown';
     
-    try {
-      const otherParticipant = conversation.participants?.find(
-        p => p.user_id !== currentUser.id
-      );
-      
-      if (!otherParticipant) return 'Unknown';
-      
-      const { data, error } = await supabase
-        .from('users')
-        .select('email, full_name, raw_user_meta_data')
-        .eq('id', otherParticipant.user_id)
-        .single();
-      
-      if (error) throw error;
-      
-      return data?.full_name || data?.email || 'Unknown';
-    } catch (error) {
-      console.error('Error getting participant name:', error);
-      return 'Unknown';
-    }
-  }, [currentUser]);
+    const otherParticipant = conversation.participants?.find(
+      p => p.user_id !== currentUser.id
+    );
+
+    if (!otherParticipant) return 'Unknown';
+
+    // P8-FIN-01b (D-9): authorised org-member projection only; unresolved => generic fallback.
+    return memberNames[otherParticipant.user_id] || 'Unknown';
+  }, [currentUser, memberNames]);
 
   // ✅ Add getParticipantName to dependency array
   useEffect(() => {
