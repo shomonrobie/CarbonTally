@@ -1164,10 +1164,14 @@ export const removeCustomSender = (senderId) =>
 // D19 — Consultant-client messaging (D27) — /api/v3/messaging/*
 // ---------------------------------------------------------------------------
 
-export const createMessagingConversation = (organizationId, subject) =>
+export const createMessagingConversation = (organizationId, subject, counterparty = null) =>
   v3Fetch('/api/v3/messaging/conversations', {
     method: 'POST',
-    body: JSON.stringify({ organization_id: organizationId, subject }),
+    body: JSON.stringify({
+      organization_id: organizationId,
+      subject,
+      ...(counterparty ? { counterparty } : {}),
+    }),
   });
 
 export const listMessagingConversations = (organizationId) =>

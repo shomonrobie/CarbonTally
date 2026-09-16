@@ -36,8 +36,24 @@ router = APIRouter(prefix="/api/v3/messaging", tags=["V3 — Messaging (D19)"])
 
 
 class ConversationCreate(BaseModel):
+    """Create an organisation conversation thread.
+
+    ``counterparty`` is an OPTIONAL, server-resolved participant request:
+
+    * ``"support"`` — the server adds one AUTHORISED CarbonTally support/admin
+      participant (internal staff whose role grants ``can_manage_staff``). The
+      client never supplies a staff identity, so no staff directory or ``users``
+      peer read is required (FIN-01c stays deferred).
+    * ``None`` (default) — the creator is the only participant, preserving the
+      existing consultant↔client behaviour exactly.
+
+    Any other value is rejected (422). Participant creation is therefore always
+    server-authoritative: no browser-side ``conversation_participants`` INSERT.
+    """
+
     organization_id: str = Field(..., min_length=1)
     subject: str = Field(..., min_length=1, max_length=300)
+    counterparty: Optional[str] = Field(default=None, pattern="^support$")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -91,6 +107,26 @@ async def _authorize_org_actor(
     )
 
 
+async def _resolve_support_participant(repos: RepositoryBundle) -> str:
+    """Resolve the CarbonTally support/admin counterparty server-side.
+
+    Uses the SAME authoritative recipient source as the Phase-5 PE operational
+    messaging surface (internal staff — ``entity_id IS NULL`` — whose role grants
+    ``can_manage_staff``). A client can never name the counterparty, and the
+    result is deterministic (lowest user id) so repeated requests are stable.
+    """
+    candidates = sorted(await repos.notifications.support_staff_user_ids())
+    if not candidates:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No authorised CarbonTally support participant is available "
+                "for this conversation"
+            ),
+        )
+    return candidates[0]
+
+
 @router.post("/conversations", status_code=201)
 async def create_conversation(
     payload: ConversationCreate,
@@ -101,6 +137,13 @@ async def create_conversation(
 
     Both org members and active-grant consultants may create threads; the
     creator is added as the first participant. Entity staff are denied.
+
+    P8-FIN-02 / D-7: participant creation is server-authoritative. When
+    ``counterparty="support"`` the server adds one authorised CarbonTally
+    support/admin participant resolved from the staff table (never from the
+    browser). The conversation is created with the real schema columns only
+    (``organization_id``, ``subject``, ``status``, ``created_by``); the legacy
+    retired group-flag column does not exist and is never written.
     """
     role = await _authorize_org_actor(repos, current_user, payload.organization_id)
     conversation = await repos.messaging.create_conversation(
@@ -113,6 +156,29 @@ async def create_conversation(
         user_id=current_user.user_id,
         metadata={"participant_role": role},
     )
+    counterparty_user_id: Optional[str] = None
+    if payload.counterparty == "support":
+        counterparty_user_id = await _resolve_support_participant(repos)
+        if counterparty_user_id != current_user.user_id:
+            await repos.messaging.add_participant(
+                conversation_id=conversation.id,
+                user_id=counterparty_user_id,
+                metadata={"participant_role": "staff"},
+            )
+        else:
+            counterparty_user_id = None
+    await _audit_entity(
+        repos,
+        conversation_id=conversation.id,
+        action="msg:conversation_created",
+        actor=current_user.user_id,
+        details={
+            "organization_id": conversation.organization_id,
+            "participant_role": role,
+            "counterparty": payload.counterparty,
+            "counterparty_user_id": counterparty_user_id,
+        },
+    )
     return {
         "conversation": {
             "id": conversation.id,
@@ -121,6 +187,7 @@ async def create_conversation(
             "status": conversation.status,
             "created_by": conversation.created_by,
             "created_at": conversation.created_at,
+            "counterparty_user_id": counterparty_user_id,
         }
     }
 
@@ -188,16 +255,33 @@ async def send_message(
     current_user: AuthUser = Depends(get_current_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
-    """Send a message into a conversation (authorized participant)."""
+    """Send a message into a conversation (authorized participant).
+
+    The message row always carries the conversation's ``organization_id`` (the
+    ``messages_tenant_insert`` policy requires it) and the write is
+    server-authoritative; the action is audited with the actor's participant
+    role (P8-FIN-02 / D-7).
+    """
     conversation = await repos.messaging.get(conversation_id)
     if conversation is None or not conversation.organization_id:
         raise HTTPException(status_code=404, detail="conversation not found")
-    await _authorize_org_actor(repos, current_user, conversation.organization_id)
+    role = await _authorize_org_actor(repos, current_user, conversation.organization_id)
     message = await repos.messaging.send_message(
         conversation_id=conversation_id,
         sender_id=current_user.user_id,
         organization_id=conversation.organization_id,
         content=payload.content.strip(),
+    )
+    await _audit_entity(
+        repos,
+        conversation_id=conversation_id,
+        action="msg:message_sent",
+        actor=current_user.user_id,
+        details={
+            "organization_id": conversation.organization_id,
+            "participant_role": role,
+            "message_id": message.id,
+        },
     )
     return {
         "message": {

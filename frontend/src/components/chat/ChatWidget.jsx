@@ -4,6 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { useRealtime, useMessageCount } from '../../context/RealtimeContext';
 import ChatWindow from './ChatWindow';
 import ChatList from './ChatList';
+import { createMessagingConversation } from '../../v3/api';
 import toast from 'react-hot-toast';
 import '../../css/ChatWidget.css';
 
@@ -14,8 +15,7 @@ const ChatWidget = ({ organization, user }) => {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [showStaffList, setShowStaffList] = useState(false);
-  const [staffMembers, setStaffMembers] = useState([]);
+  const [startingSupport, setStartingSupport] = useState(false);
   const widgetRef = useRef(null);
   const channelRef = useRef(null);
   const { isConnected } = useRealtime();
@@ -61,7 +61,8 @@ const ChatWidget = ({ organization, user }) => {
           participants:conversation_participants(
             user_id,
             joined_at,
-            is_active
+            is_active,
+            metadata
           )
         `)
         .in('id', conversationIds)
@@ -192,115 +193,57 @@ const ChatWidget = ({ organization, user }) => {
     };
   }, []);
 
-  const fetchStaffMembers = async () => {
+  // P8-FIN-02 / D-7 — server-authoritative support conversation.
+  // The browser no longer writes `conversations` / `conversation_participants`,
+  // and never writes the retired group-flag column. The N1 API creates the
+  // thread, adds the caller as a participant and resolves the authorised
+  // CarbonTally support counterparty server-side, so no staff directory (and no
+  // `users` peer read) is required.
+  const startSupportConversation = async () => {
+    if (!organization?.id || startingSupport) return;
     try {
-      // Get staff members from the organization
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, email, full_name, avatar_url, raw_user_meta_data')
-        .eq('raw_user_meta_data->>is_staff', 'true');
+      setStartingSupport(true);
 
-      if (error) throw error;
-      setStaffMembers(data || []);
-      setShowStaffList(true);
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      toast.error('Failed to load staff members');
-    }
-  };
-
-  const handleStartConversation = async (staffId) => {
-    try {
-      // Check if conversation already exists
-      let existingConversationId = null;
-      
-      const { data: userConvs, error: userConvError } = await supabase
-        .from('conversation_participants')
-        .select('conversation_id')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
-
-      if (userConvError) throw userConvError;
-
-      if (userConvs && userConvs.length > 0) {
-        const convIds = userConvs.map(c => c.conversation_id);
-        
-        const { data: staffConvs, error: staffConvError } = await supabase
-          .from('conversation_participants')
-          .select('conversation_id')
-          .in('conversation_id', convIds)
-          .eq('user_id', staffId)
-          .eq('is_active', true);
-
-        if (staffConvError) throw staffConvError;
-
-        if (staffConvs && staffConvs.length > 0) {
-          existingConversationId = staffConvs[0].conversation_id;
-        }
-      }
-
-      if (existingConversationId) {
-        setSelectedConversation(existingConversationId);
-        setShowStaffList(false);
+      const existingSupport = conversations.find((conv) =>
+        (conv.participants || []).some(
+          (p) =>
+            p.user_id !== user.id &&
+            p.metadata?.participant_role === 'staff' &&
+            p.is_active !== false
+        )
+      );
+      if (existingSupport) {
+        setSelectedConversation(existingSupport.id);
         setIsOpen(true);
         return;
       }
 
-      // Create new conversation
-      const { data: conversation, error: convError } = await supabase
-        .from('conversations')
-        .insert({
-          organization_id: organization.id,
-          created_by: user.id,
-          is_group: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (convError) throw convError;
-
-      // Add participants
-      const { error: participantError } = await supabase
-        .from('conversation_participants')
-        .insert([
-          { 
-            conversation_id: conversation.id, 
-            user_id: user.id,
-            joined_at: new Date().toISOString(),
-            is_active: true
-          },
-          { 
-            conversation_id: conversation.id, 
-            user_id: staffId,
-            joined_at: new Date().toISOString(),
-            is_active: true
-          }
-        ]);
-
-      if (participantError) throw participantError;
-
+      const result = await createMessagingConversation(
+        organization.id,
+        'Support request',
+        'support'
+      );
+      const created = result?.conversation;
       await fetchConversations();
-      setSelectedConversation(conversation.id);
-      setShowStaffList(false);
+      if (created?.id) {
+        setSelectedConversation(created.id);
+      }
       setIsOpen(true);
-      toast.success('Conversation started!');
-      
+      toast.success('Support conversation started');
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      toast.error('Failed to start conversation');
+      console.error('Error starting support conversation:', error);
+      toast.error('Unable to start a support conversation');
+    } finally {
+      setStartingSupport(false);
     }
   };
 
   const handleSelectConversation = (conversationId) => {
     setSelectedConversation(conversationId);
-    setShowStaffList(false);
   };
 
   const handleBack = () => {
     setSelectedConversation(null);
-    setShowStaffList(false);
   };
 
   const toggleWidget = () => {
@@ -511,85 +454,6 @@ const ChatWidget = ({ organization, user }) => {
                     onBack={handleBack}
                   />
                 </div>
-              ) : showStaffList ? (
-                // Staff Selection
-                <div style={{
-                  flex: 1,
-                  padding: '12px',
-                  overflowY: 'auto'
-                }}>
-                  <button 
-                    onClick={() => setShowStaffList(false)}
-                    style={{
-                      padding: '8px 12px',
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#3b82f6',
-                      cursor: 'pointer',
-                      fontWeight: '500',
-                      fontSize: '13px',
-                      textAlign: 'left'
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <h4 style={{ margin: '8px 0 16px', color: '#0f172a', fontSize: '14px' }}>
-                    Select a staff member
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {staffMembers.map(staff => (
-                      <div 
-                        key={staff.id}
-                        onClick={() => handleStartConversation(staff.id)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          padding: '10px 12px',
-                          background: 'white',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          border: '1px solid #e2e8f0'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f1f5f9';
-                          e.currentTarget.style.borderColor = '#3b82f6';
-                          e.currentTarget.style.transform = 'translateX(4px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'white';
-                          e.currentTarget.style.borderColor = '#e2e8f0';
-                          e.currentTarget.style.transform = 'translateX(0)';
-                        }}
-                      >
-                        <div style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: '#3b82f6',
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: '600',
-                          fontSize: '16px',
-                          flexShrink: 0
-                        }}>
-                          {staff.full_name?.charAt(0) || staff.email?.charAt(0) || 'S'}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '14px' }}>
-                            {staff.full_name || staff.email}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>
-                            Support Staff
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               ) : (
                 // Chat List
                 <>
@@ -599,23 +463,28 @@ const ChatWidget = ({ organization, user }) => {
                     background: 'white'
                   }}>
                     <button 
-                      onClick={fetchStaffMembers}
+                      onClick={startSupportConversation}
+                      disabled={startingSupport}
                       style={{
                         padding: '6px 12px',
-                        background: '#3b82f6',
+                        background: startingSupport ? '#94a3b8' : '#3b82f6',
                         color: 'white',
                         border: 'none',
                         borderRadius: '6px',
-                        cursor: 'pointer',
+                        cursor: startingSupport ? 'wait' : 'pointer',
                         fontSize: '13px',
                         fontWeight: '500',
                         transition: 'all 0.2s',
                         width: '100%'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#2b6cb0'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                      onMouseEnter={(e) => {
+                        if (!startingSupport) e.currentTarget.style.background = '#2b6cb0';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!startingSupport) e.currentTarget.style.background = '#3b82f6';
+                      }}
                     >
-                      ✏️ New Chat
+                      {startingSupport ? 'Starting…' : '💬 Contact support'}
                     </button>
                   </div>
                   <ChatList 

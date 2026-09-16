@@ -1,7 +1,7 @@
 // src/components/chat/ChatWindow.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../supabaseClient';
-import { listMembers } from '../../v3/api';
+import { listMembers, sendMessagingMessage } from '../../v3/api';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import toast from 'react-hot-toast';
@@ -205,52 +205,17 @@ function ChatWindow({
 
   const handleSendMessage = async (content) => {
     if (!content.trim() || !conversationId) return;
-    
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Get all participants to send to everyone
-      const { data: participantsData, error: partError } = await supabase
-        .from('conversation_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId)
-        .eq('is_active', true);
+      // P8-FIN-02 / D-7 — server-authoritative send: the N1 API persists the
+      // message with the conversation's organization scope. The browser no
+      // longer inserts into `messages` (which previously omitted
+      // organization_id and was denied by the messages_tenant_insert policy).
+      await sendMessagingMessage(conversationId, content.trim());
 
-      if (partError) throw partError;
+      // Server truth: reload the thread (the API also touches the conversation).
+      await fetchMessages();
 
-      // Send message to each participant (except sender)
-      const messagesToInsert = participantsData
-        .filter(p => p.user_id !== user.id)
-        .map(p => ({
-          conversation_id: conversationId,
-          sender_id: user.id,
-          receiver_id: p.user_id,
-          content: content.trim(),
-          is_read: false,
-          created_at: new Date().toISOString()
-        }));
-
-      if (messagesToInsert.length === 0) {
-        toast.error('No participants to send message to');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('messages')
-        .insert(messagesToInsert)
-        .select();
-
-      if (error) throw error;
-      
-      // Update conversation timestamp
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
-      
-      // Add messages to local state
-      setMessages(prev => [...prev, ...data]);
-      
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
