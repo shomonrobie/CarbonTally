@@ -15,6 +15,7 @@ from api.dependencies import (
     get_repositories,
 )
 from auth import AuthUser, require_org_member, require_org_admin
+from api.manual_processing_auth import ensure_manual_processing_allowed
 
 router = APIRouter(prefix="/api/v3/manual-extraction", tags=["V3 — Manual Extraction"])
 
@@ -50,6 +51,8 @@ async def create_batch(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     ensure_org_access(current_user, organization_id)
+    # FIN-06 — Manual Processing is OFF by default and CarbonTally-Admin controlled.
+    await ensure_manual_processing_allowed(repos, current_user, organization_id)
     return await repos.manual_extraction.create_batch(
         org_id=organization_id,
         batch_name=payload.batch_name,
@@ -97,6 +100,8 @@ async def create_item(
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
     ensure_org_access(current_user, batch.organization_id)
+    # FIN-06 — adding manual work to a batch is also governed.
+    await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
     return await repos.manual_extraction.create_item(
         batch_id, payload.file_name, payload.file_url, payload.page_count,
         payload.document_type, "pending",

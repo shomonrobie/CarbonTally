@@ -3482,6 +3482,83 @@ class MemoryMessaging:
     async def save(self, entity):
         return entity
 
+class MemoryManualProcessing:
+    """``ManualProcessingRepository`` surface (FIN-06 governance, in-memory).
+
+    ``scope_org_override`` supplies the organisation expansion for consultant
+    scopes (the real repository reads ``consultant_clients``); an organisation
+    scope expands to itself exactly as production does. ``batches`` is the shared
+    manual-extraction double, so queued-work invalidation exercises the real
+    ``cancel_batch`` path.
+    """
+
+    def __init__(self, batches: Any = None) -> None:
+        from domain.manual_processing import ManualProcessingGrant
+
+        self._grant_type = ManualProcessingGrant
+        self._grants: dict[tuple[str, str], Any] = {}
+        self._batches = batches
+        self.scope_org_override: dict[str, list[str]] = {}
+
+    async def get(self, id):  # noqa: A002 - repository contract
+        return next((g for g in self._grants.values() if g.scope_id == id), None)
+
+    async def list_grants(self, *, scope_type=None):
+        rows = list(self._grants.values())
+        if scope_type is not None:
+            rows = [g for g in rows if g.scope_type == scope_type]
+        return sorted(rows, key=lambda g: (g.scope_type, g.scope_id))
+
+    async def grants_for_context(self, context):
+        ids = {
+            value
+            for value in (
+                context.consultant_client_id,
+                context.consultant_firm_id,
+                context.organization_id,
+            )
+            if value
+        }
+        return [g for g in self._grants.values() if g.scope_id in ids]
+
+    async def effective_for_context(self, context):
+        from domain.manual_processing import resolve_effective
+
+        return resolve_effective(await self.grants_for_context(context), context)
+
+    async def set_grant(
+        self, *, scope_type, scope_id, enabled, reason, actor_id
+    ):
+        grant = self._grant_type(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            enabled=bool(enabled),
+            reason=reason,
+            set_by=actor_id,
+        )
+        self._grants[(scope_type, scope_id)] = grant
+        return grant
+
+    async def delete_grant(self, *, scope_type, scope_id):
+        return self._grants.pop((scope_type, scope_id), None) is not None
+
+    async def organizations_in_scope(self, *, scope_type, scope_id):
+        if scope_type == "organization":
+            return [scope_id]
+        return list(self.scope_org_override.get(scope_id, []))
+
+    async def queued_batch_ids_for_organizations(self, organization_ids):
+        if self._batches is None or not organization_ids:
+            return []
+        rows = getattr(self._batches, "_batches", {})
+        wanted = set(organization_ids)
+        return [
+            batch.id
+            for batch in rows.values()
+            if batch.organization_id in wanted and getattr(batch, "status", None) == "open"
+        ]
+
+
 class MemoryWhiteLabel:
     """In-memory ``WhiteLabelRepository`` surface (D27 / D19)."""
 
@@ -4297,6 +4374,9 @@ class InMemoryWorld:
         self.tenant = MemoryTenant()
         self.consultants = MemoryConsultants()
         self.manual_extraction = MemoryManualExtraction()
+        # FIN-06 — governance plane (shares the manual-extraction double so
+        # queued-work invalidation exercises the real cancel_batch path).
+        self.manual_processing = MemoryManualProcessing(self.manual_extraction)
         self.files = MemoryFiles()
         self.review_queue = MemoryReviewQueue()
         self.queue_settings = MemoryQueueSettings()
@@ -4356,6 +4436,7 @@ class InMemoryWorld:
             messaging=self.messaging,
             whitelabel=self.whitelabel,
             manual_extraction=self.manual_extraction,
+            manual_processing=self.manual_processing,
             suppliers=self.suppliers,
             staff=self.staff,
             reporting=self.reporting,

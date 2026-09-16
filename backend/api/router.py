@@ -58,6 +58,7 @@ from api.v3_reports import router as v3_reports_router
 from api.v3_disclosure import router as v3_disclosure_router
 from api.v3_discovery import router as v3_discovery_router
 from api.v3_messaging import router as v3_messaging_router
+from api.manual_processing_admin import router as manual_processing_admin_router
 from api.v3_vehicles import router as v3_vehicles_router
 from api.v3_whitelabel import router as v3_whitelabel_router
 from api.v3_reporting import router as v3_reporting_router
@@ -219,6 +220,8 @@ router.include_router(v3_suppliers_router)
 router.include_router(v3_operations_router)
 router.include_router(v3_discovery_router)
 router.include_router(v3_messaging_router)
+# FIN-06 — CarbonTally Admin Manual Processing governance (admin-gated).
+router.include_router(manual_processing_admin_router)
 router.include_router(v3_vehicles_router)
 router.include_router(v3_whitelabel_router)
 router.include_router(v3_reporting_router)

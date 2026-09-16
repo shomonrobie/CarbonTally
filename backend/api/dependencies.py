@@ -78,6 +78,7 @@ from data.discovery import DiscoveryRepository
 from data.messaging import MessagingRepository
 from data.whitelabel import WhiteLabelRepository
 from data.manual_extraction import ManualExtractionRepository
+from data.manual_processing import ManualProcessingRepository
 from data.document_processing import DocumentProcessingRepository
 from data.staff import StaffRepository
 from data.suppliers import SuppliersRepository
@@ -311,6 +312,8 @@ class RepositoryBundle:
     messaging: MessagingRepository
     whitelabel: WhiteLabelRepository
     manual_extraction: ManualExtractionRepository
+    #: FIN-06 — CarbonTally Admin Manual Processing governance plane.
+    manual_processing: ManualProcessingRepository
     suppliers: SuppliersRepository
     staff: StaffRepository
     reporting: ReportingRepository
@@ -366,6 +369,7 @@ async def get_repositories() -> RepositoryBundle:
         messaging=MessagingRepository(pool),
         whitelabel=WhiteLabelRepository(pool),
         manual_extraction=ManualExtractionRepository(pool),
+        manual_processing=ManualProcessingRepository(pool),
         suppliers=SuppliersRepository(pool),
         staff=StaffRepository(pool),
         reporting=ReportingRepository(pool),
