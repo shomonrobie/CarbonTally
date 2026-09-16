@@ -99,6 +99,8 @@ def _seed_grant(
     org_id: str = "org-a",
     status: str = "active",
 ):
+    # FIN-06 precondition: manual processing is enabled for the client org.
+    world.manual_processing.seed_grant("organization", org_id)
     return world.consultants.seed_client(
         client_id,
         firm_id,

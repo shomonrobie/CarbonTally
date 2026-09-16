@@ -103,6 +103,8 @@ def _seed_consultant_submission(client, world, user_provider):
         "firm-c1", "u-c1", role="manager", is_active=True,
         can_manage_clients=True, can_submit=True,
     )
+    # FIN-06 precondition: manual processing is enabled for the client org.
+    world.manual_processing.seed_grant("organization", "org-a")
     world.consultants.seed_client("cc-1", "firm-c1", "org-a", "Client Org", status="active")
     item = world.manual_extraction.seed_item(
         f"item-{uuid.uuid4().hex[:8]}", "org-a", "consultant.pdf",
@@ -238,6 +240,8 @@ def test_manual_ct_qc_approved_can_proceed_to_review_and_approval(
     client, world, user_provider
 ) -> None:
     item = _manual_item(world, status="ct_qc_approved")
+    # FIN-06 precondition: the member's manual stage claim requires the enable.
+    world.manual_processing.seed_grant("organization", "org-a")
     _seed_commercial(world)
     user_provider.set_user(member_user("org-a", "member-1", "m@test"))
     claim = client.post(f"{PROC}/items/{item.id}/start", json={"stage": "review"})
@@ -261,6 +265,8 @@ def test_automatic_item_claims_and_is_approved_without_ct_qc(
     client, world, user_provider
 ) -> None:
     item = _manual_item(world, status="calculated", item_id="item-auto-1")
+    # FIN-06 precondition: the member's manual stage claim requires the enable.
+    world.manual_processing.seed_grant("organization", "org-a")
     _install_job(world, item, machine_output=True)
     _seed_commercial(world)
     user_provider.set_user(member_user("org-a", "member-1", "m@test"))
@@ -331,6 +337,8 @@ def test_automatic_via_machine_marker_with_job_is_allowed(
     client, world, user_provider
 ) -> None:
     item = _manual_item(world, status="calculated", item_id="item-marker-job")
+    # FIN-06 precondition: the member's manual stage claim requires the enable.
+    world.manual_processing.seed_grant("organization", "org-a")
     import dataclasses
 
     world.manual_extraction._items[item.id] = dataclasses.replace(

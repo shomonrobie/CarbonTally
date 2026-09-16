@@ -10,11 +10,42 @@ denied for that scope (fail closed).
 Manual processing is the human-performed path:
 
 * manual-extraction **batches** and **items** (`/api/v3/manual-extraction/*`);
-* the manual **stage actions** on the processing workflow (`extract`, `map`,
-  `validate`, `calculate`, `consultant-submit`) for work that is not
-  machine-produced (the fail-closed `item_is_automatic` predicate decides).
+* the manual **stage actions** on the processing workflow (`start`, `extract`,
+  `map`, `validate`, `calculate`, `consultant-review`, `consultant-submit`);
+* starting a manual batch (`POST /api/v3/processing/batches/{id}/start`);
+* direct manual data entry (`PUT /api/v3/manual-extraction/items/{id}`).
 
-Automatic processing (the durable worker queue) is **not** governed by FIN-06.
+Automatic processing (the durable worker queue) is **not** governed by FIN-06, and
+none of the governed entry points is on its path (see §1.1 and §5).
+
+## 1.1 Enforcement points (completed by P8-FINALIZATION-REMEDIATION-001)
+
+| Entry point | Manual processing? | Gate |
+|---|---|---|
+| `POST /api/v3/manual-extraction/batches` | yes (work creation) | `ensure_manual_processing_allowed` |
+| `POST /api/v3/manual-extraction/batches/{id}/items` | yes (work creation) | same |
+| `PUT /api/v3/manual-extraction/items/{id}` | yes (data entry) | same (IV-01 fix) |
+| `POST /api/v3/processing/items/{id}/start` | yes (stage claim) | same, via `_get_checked_item` |
+| `POST /api/v3/processing/items/{id}/extract` | yes (data entry) | same, via `_get_checked_item` |
+| `POST /api/v3/processing/items/{id}/map` | yes (mapping) | same, via `_get_checked_item` |
+| `POST /api/v3/processing/items/{id}/validate` | yes (validation) | same, via `_get_checked_item` |
+| `POST /api/v3/processing/items/{id}/calculate` | yes (calculation) | same, via `_get_checked_item` |
+| `POST /api/v3/processing/items/{id}/consultant-review` | yes (consultant work) | same |
+| `POST /api/v3/processing/items/{id}/consultant-submit` | yes (consultant work) | same |
+| `POST /api/v3/processing/batches/{id}/start` | yes (work activation) | same |
+| `POST /api/v3/documents` (upload) | **no — shared ingestion** | not gated: creates the evidence-chain item the automatic job references (`source_item_id`) |
+| `POST /api/v3/processing/documents/{id}/enqueue` | **no — automatic** | not gated: automatic-processing entry point |
+| `POST /api/v3/processing/jobs/{id}/…` (worker pipeline) | **no — automatic** | not gated: the worker writes through the repositories, never through these endpoints |
+| `/api/v3/ops/**` item actions | **no — internal staff only** | platform-operator path (existing `require_internal_staff` + staff permissions) |
+| `/api/v3/pe/**` item actions | **no — Processing Entity work** | existing PE authorization + assignment; FIN-06's scope vocabulary has no PE scope (PO confirmation) |
+| `POST /api/v3/processing/batches/{id}/complete\|cancel` | no — lifecycle/termination | never gated: stopping work must stay possible |
+| `POST /api/v3/processing/items/{id}/customer-review`, report approve/finalise | no — approval advancement | existing CT-QC/DM-5 + Owner/Admin gates |
+
+The gate is applied **after** identity/organisation/consultant authorization, so an
+unauthorized caller still fails on authorization and never learns governance state.
+`test_fin06_manual_processing_enforcement.py` carries a coverage invariant that
+fails if a governed handler loses its gate, plus structural assertions that the
+automatic/ingestion modules never import the gate.
 
 ## 2. Control plane
 

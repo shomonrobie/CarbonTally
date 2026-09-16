@@ -32,6 +32,9 @@ def _seed_consultant(
     engagement_status="active",
     client_id="cc-1",
 ):
+    # FIN-06 precondition: the consultant manual work under test requires the
+    # organisation to have Manual Processing enabled (OFF by default).
+    world.manual_processing.seed_grant("organization", org_id)
     world.consultants.seed_profile(firm_id, user_id, "C1 Advisory", is_active=is_active)
     world.consultants.seed_firm_member(
         firm_id, user_id, role="manager", is_active=is_active, can_manage_clients=True

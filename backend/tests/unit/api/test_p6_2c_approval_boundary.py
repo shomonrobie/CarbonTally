@@ -185,6 +185,8 @@ def seed_consultant(world, *, firm="firm-c1", user="u-c1", client="cc-1",
         firm, user, role="manager", is_active=True,
         can_manage_clients=True, **flags,
     )
+    # FIN-06 precondition: manual processing is enabled for the client org.
+    world.manual_processing.seed_grant("organization", org)
     world.consultants.seed_client(client, firm, org, "Client Org", status="active")
 
 
@@ -498,6 +500,8 @@ def test_consultant_idor_cross_firm_denied(client, world, user_provider):
 def test_org_member_stage_claim_behaviour_unchanged(client, world, user_provider):
     """P6-2-D10 — organisation members are unaffected by the consultant gate."""
     item = seed_item(world, status="calculated", item_id="item-member")
+    # FIN-06 precondition: the member's manual stage claim requires the enable.
+    world.manual_processing.seed_grant("organization", "org-a")
     install_automatic_job(world, item)
     user_provider.set_user(member_user("org-a", "m1", "m@test"))
     resp = claim(client, item.id, "review")
@@ -519,6 +523,9 @@ def test_internal_staff_stage_claim_behaviour_unchanged(client, world, user_prov
 def test_reviewed_cannot_reach_customer_review(client, world, user_provider):
     """Row 11 — the P6-2B-4 protection remains intact."""
     item = seed_item(world, status="reviewed", item_id="item-reviewed")
+    # FIN-06 precondition: so the assertion under test is the 409 state-machine
+    # protection, not the governance boundary.
+    world.manual_processing.seed_grant("organization", "org-a")
     user_provider.set_user(member_user("org-a", "m1", "m@test"))
     resp = claim(client, item.id, "review")
     assert resp.status_code == 409, resp.text

@@ -44,6 +44,8 @@ def _seed_consultant(world, *, user_id="u-c1", firm_id="firm-c1", org_id="org-a"
         can_manage_clients=True,
         can_submit=True,
     )
+    # FIN-06 precondition: manual processing is enabled for the client org.
+    world.manual_processing.seed_grant("organization", org_id)
     world.consultants.seed_client(
         "cc-1", firm_id, org_id, "Client Org", status="active"
     )

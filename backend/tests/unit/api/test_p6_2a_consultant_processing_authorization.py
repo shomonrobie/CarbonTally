@@ -52,6 +52,10 @@ def _seed_consultant(
     client_id="cc-1",
 ):
     """Seed a consultant firm member + client relationship for ``org_id``."""
+    # FIN-06 precondition: manual processing is OFF by default and CT-Admin
+    # controlled, so the consultant manual work these tests exercise needs an
+    # explicit enable for the client organisation.
+    world.manual_processing.seed_grant("organization", org_id)
     world.consultants.seed_profile(firm_id, user_id, "C1 Advisory", is_active=is_active)
     world.consultants.seed_firm_member(
         firm_id,

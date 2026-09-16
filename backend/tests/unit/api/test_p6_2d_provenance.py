@@ -82,6 +82,9 @@ def _seed_consultant(
     caps=None,
 ):
     """Seed one consulting firm (profile + active member) with a client grant."""
+    # FIN-06 precondition: the consultant manual work under test requires the
+    # organisation to have Manual Processing enabled (OFF by default).
+    world.manual_processing.seed_grant("organization", org_id)
     world.consultants.seed_profile(firm_id, user_id, "C1 Advisory", is_active=is_active)
     world.consultants.seed_firm_member(
         firm_id,
@@ -405,6 +408,9 @@ def test_org_member_action_records_no_consultant_firm_provenance(
     client, world, user_provider
 ) -> None:
     _seed_ops_world(world)
+    # FIN-06 precondition: an organisation member performing manual extraction
+    # requires the enable (the assertion under test is about provenance only).
+    world.manual_processing.seed_grant("organization", "org-a")
     _batch, item = _seed_batch_with_item(world)
     user_provider.set_user(member_user("org-a", "user-a", "a@example.test"))
     response = _extract(client, item)
@@ -416,6 +422,10 @@ def test_internal_staff_action_records_no_consultant_firm_provenance(
     client, world, user_provider
 ) -> None:
     _seed_ops_world(world)
+    # FIN-06 precondition: the actor here is not resolved as a platform operator
+    # by the fixture world (no seeded staff profile), so the organisation is
+    # explicitly enabled; the assertion under test is about provenance only.
+    world.manual_processing.seed_grant("organization", "org-a")
     _batch, item = _seed_batch_with_item(world)
     user_provider.set_user(admin_user())
     response = _extract(client, item)

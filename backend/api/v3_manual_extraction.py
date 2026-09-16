@@ -132,8 +132,17 @@ async def update_item(
     if item is None:
         raise HTTPException(status_code=404, detail="item not found")
     batch = await repos.manual_extraction.get_batch(item.batch_id)
-    if batch is not None:
-        ensure_org_access(current_user, batch.organization_id)
+    if batch is None:
+        # Fail closed: without the batch the organisation scope cannot be
+        # established, so neither isolation nor the FIN-06 entitlement can be
+        # evaluated. (Previously such an item was written without any
+        # organisation check at all.)
+        raise HTTPException(status_code=409, detail="item batch not found")
+    ensure_org_access(current_user, batch.organization_id)
+    # FIN-06 (P8 remediation IV-01) — manual extraction data entry is manual
+    # processing: it must carry the CarbonTally-Admin entitlement, not merely
+    # organisation membership.
+    await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
     updated = await repos.manual_extraction.update_item(
         item_id,
         payload.extracted_data,

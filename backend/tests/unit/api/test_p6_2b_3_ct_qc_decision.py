@@ -113,6 +113,8 @@ def _seed_commercial(world, org="org-a", *, key="sub-p62b3") -> None:
 
 def _seed_consultant_submission(client, world, user_provider):
     """Consultant submits a `consultant_reviewed` item -> `reviewed` (P6-2B-2)."""
+    # FIN-06 precondition: manual processing must be enabled for the client org.
+    world.manual_processing.seed_grant("organization", "org-a")
     world.consultants.seed_profile("firm-c1", "u-c1", "C1 Advisory", is_active=True)
     world.consultants.seed_firm_member(
         "firm-c1", "u-c1", role="manager", is_active=True,

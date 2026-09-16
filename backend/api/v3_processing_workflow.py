@@ -43,6 +43,7 @@ from api.dependencies import (
     get_calculation_engine,
     get_repositories,
 )
+from api.manual_processing_auth import ensure_manual_processing_allowed
 from api.v3_operations import _run_line_calculation
 from auth import AuthUser, require_auth, require_org_admin
 from core.units import (
@@ -163,6 +164,7 @@ async def _get_checked_item(
     item_id: str,
     *,
     permission: Optional[str] = None,
+    enforce_manual_processing: bool = False,
 ) -> tuple:
     """Load an item + its batch and enforce organisation isolation.
 
@@ -174,6 +176,19 @@ async def _get_checked_item(
     active engagement → capability → resource scope → D38 conflict) whenever
     the caller acts in the CONSULTANT capacity. Organisation-member and
     internal-staff callers are unaffected (P6-2-D10).
+
+    FIN-06 (P8 remediation IV-01) — ``enforce_manual_processing=True`` marks a
+    MANUAL-PROCESSING ACTION (stage claim, extraction, mapping, validation,
+    calculation). Those actions are additionally governed by the Manual
+    Processing entitlement, so a direct API call cannot bypass the
+    CarbonTally-Admin control. It is applied AFTER the identity/organisation/
+    consultant checks so unauthorized callers still fail on authorization (and
+    never learn governance state), and it is a no-op for CarbonTally internal
+    staff (the platform operator) — see ``api.manual_processing_auth``.
+
+    Read surfaces (workspace, mapping options) and the approval surfaces
+    (customer review) leave the flag at its default and are deliberately NOT
+    governed: reading work is not manual processing.
     """
     item = await repos.manual_extraction.get_item(item_id)
     if item is None:
@@ -185,6 +200,11 @@ async def _get_checked_item(
     if permission is not None:
         await ensure_consultant_processing_authorized(
             current_user, repos, batch=batch, item=item, permission=permission
+        )
+    if enforce_manual_processing:
+        # FIN-06 — manual-processing entitlement for the target organisation.
+        await ensure_manual_processing_allowed(
+            repos, current_user, batch.organization_id
         )
     return item, batch
 
@@ -338,6 +358,9 @@ async def start_batch(
     """Start (and optionally assign) a batch; items become eligible for work."""
     batch = await repos.manual_extraction.get_batch(batch_id)
     await _org_checked_batch(current_user, repos, batch)
+    # FIN-06 (P8 remediation IV-01) — starting a manual batch begins manual
+    # processing work, so the entitlement is enforced here as well.
+    await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
     if batch.status not in ("open", "in_progress"):
         raise HTTPException(
             status_code=409,
@@ -406,6 +429,7 @@ async def start_item(
     item, batch = await _get_checked_item(
         current_user, repos, item_id,
         permission=_STAGE_PERMISSION.get(payload.stage),
+        enforce_manual_processing=True,
     )
     if batch.status in ("completed", "cancelled"):
         raise HTTPException(
@@ -438,7 +462,8 @@ async def extract_item(
 ):
     """Data-entry: save extracted fields and advance the item to ``extracted``."""
     item, batch = await _get_checked_item(
-        current_user, repos, item_id, permission="extract"
+        current_user, repos, item_id, permission="extract",
+        enforce_manual_processing=True,
     )
     _require_transition(item, "extracted")
     await _record_consultant_provenance(repos, item=item, current_user=current_user)
@@ -456,7 +481,8 @@ async def map_item(
 ):
     """Mapping: record mapped fields + factor/tenant references; item → ``mapped``."""
     item, batch = await _get_checked_item(
-        current_user, repos, item_id, permission="map"
+        current_user, repos, item_id, permission="map",
+        enforce_manual_processing=True,
     )
     _require_transition(item, "mapped")
     if payload.emission_factor_used is None and not (payload.mapped_data or {}).get(
@@ -491,7 +517,8 @@ async def validate_item(
     clean run advances the item to ``validated``.
     """
     item, batch = await _get_checked_item(
-        current_user, repos, item_id, permission="validate"
+        current_user, repos, item_id, permission="validate",
+        enforce_manual_processing=True,
     )
     _require_transition(item, "validated")
     findings = validate_processing_item(item)
@@ -613,6 +640,9 @@ async def consultant_review_item(
     await ensure_consultant_review_authorized(
         current_user, repos, batch=batch, item=item
     )
+    # FIN-06 (P8 remediation IV-01) — consultant review is part of the manual
+    # processing workflow, so it is governed like the other manual actions.
+    await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
 
     # Workflow-state eligibility: Consultant Review is entered ONLY from
     # `calculated` (processing complete). A reviewed/advanced item cannot be
@@ -744,6 +774,9 @@ async def consultant_submit_item(
     await ensure_consultant_submission_authorized(
         current_user, repos, batch=batch, item=item
     )
+    # FIN-06 (P8 remediation IV-01) — consultant submission is a manual
+    # processing action and is governed by the same entitlement.
+    await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
 
     # Workflow-state eligibility: submission is ONLY from Consultant Review
     # completion (`consultant_reviewed`). No other state may be submitted, and
@@ -814,7 +847,8 @@ async def calculate_item(
     and only then stamps ``calculated_emissions_kg_co2e`` on the item.
     """
     item, batch = await _get_checked_item(
-        current_user, repos, item_id, permission="calculate"
+        current_user, repos, item_id, permission="calculate",
+        enforce_manual_processing=True,
     )
     _require_transition(item, "calculated")
     if batch.status in ("completed", "cancelled"):

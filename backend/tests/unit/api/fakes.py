@@ -3500,6 +3500,26 @@ class MemoryManualProcessing:
         self._batches = batches
         self.scope_org_override: dict[str, list[str]] = {}
 
+    def seed_grant(
+        self, scope_type: str = "organization", scope_id: str = "org-a", *, enabled: bool = True
+    ) -> Any:
+        """Seed one explicit governance row (test precondition).
+
+        FIN-06 is OFF by default, so every suite that exercises manual
+        processing (organisation or consultant capacity) must express the
+        enablement precondition it relies on. Suites that verify the OFF
+        behaviour itself simply do not call this.
+        """
+        grant = self._grant_type(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            enabled=enabled,
+            reason="test precondition",
+            set_by="u-admin",
+        )
+        self._grants[(scope_type, scope_id)] = grant
+        return grant
+
     async def get(self, id):  # noqa: A002 - repository contract
         return next((g for g in self._grants.values() if g.scope_id == id), None)
 
