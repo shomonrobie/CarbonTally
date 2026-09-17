@@ -241,6 +241,20 @@ async def upload_document(
     )
 
 
+def _record_attr(record: Any, name: str, default: Any = None) -> Any:
+    """Read a field from a document record that may be a domain object OR a mapping.
+
+    ``repos.files.create`` returns the ``OrganizationFile`` domain object in
+    production, while in-memory/test repositories may return a plain mapping. The
+    best-effort metadata bookkeeping added for WS-C must tolerate both shapes
+    (found by the full unit sweep: ``AttributeError: 'dict' object has no attribute
+    'metadata'``).
+    """
+    if isinstance(record, dict):
+        return record.get(name, default)
+    return getattr(record, name, default)
+
+
 async def create_document_and_enqueue(
     *,
     organization_id: str,
@@ -290,6 +304,12 @@ async def create_document_and_enqueue(
         metadata={"data_type": data_type, "file_url": file_url},
     )
 
+    # CT-STEP2-FINAL-STABILIZATION-012 (WS-C) — the automatic-processing enqueue
+    # outcome is recorded on the document so a failed/skipped enqueue can never be
+    # silent again (previously it was only printed to the server log). The
+    # accumulator also prevents later best-effort writes from clobbering each other.
+    record_metadata: dict = dict(_record_attr(record, "metadata") or {})
+    enqueue_state: dict = {}
     # D23 (P0 fix): every uploaded document enters the manual-extraction
     # pipeline so CarbonTally operators/entities see it in the processing
     # queue. A single reusable "Uploads" batch per organisation groups the
@@ -349,10 +369,33 @@ async def create_document_and_enqueue(
                     "document_id": str(record.id),
                 },
             )
-        except Exception as exc:  # pragma: no cover - enqueue is best-effort
+        except Exception as exc:  # noqa: BLE001 - enqueue is best-effort
             print(f"⚠️ automatic-processing enqueue failed: {exc}")
-    except Exception as exc:  # pragma: no cover - enqueue is best-effort
+            enqueue_state = {
+                "automatic_processing": "enqueue_failed",
+                "enqueue_error": str(exc)[:300],
+            }
+        else:
+            enqueue_state = {"automatic_processing": "enqueued"}
+    except Exception as exc:  # noqa: BLE001 - registration/enqueue is best-effort
         print(f"⚠️ extraction enqueue failed: {exc}")
+        enqueue_state = {
+            "automatic_processing": "enqueue_failed",
+            "enqueue_error": f"registration: {exc}"[:300],
+        }
+
+    # CT-STEP2-FINAL-STABILIZATION-012 (WS-C) — persist the enqueue outcome on the
+    # document record (best-effort, no schema change). A document that was stored but
+    # never queued is now visible as `automatic_processing: enqueue_failed` with the
+    # reason, instead of appearing as a silently stalled upload.
+    if enqueue_state:
+        try:
+            record_metadata.update(enqueue_state)
+            document_id = _record_attr(record, "id")
+            if document_id:
+                await repos.files.update_metadata(document_id, record_metadata)
+        except Exception as exc:  # noqa: BLE001 - metadata write is best-effort
+            print(f"⚠️ could not record the enqueue outcome for {filename}: {exc!r}")
 
     # OCR/extraction wiring: best-effort, deterministic, server-side. The
     # extracted text is persisted on the organization_files metadata JSONB (no
@@ -361,7 +404,10 @@ async def create_document_and_enqueue(
     try:
         ocr = _extract_document_text(content, filename, mime_type)
         if ocr["status"] in ("ok", "no_text"):
-            await repos.files.update_metadata(record.id, {**record.metadata, "ocr": ocr})
+            # WS-C — write through the same accumulator so the enqueue outcome
+            # recorded above is never dropped by this later best-effort write.
+            record_metadata["ocr"] = ocr
+            await repos.files.update_metadata(record.id, record_metadata)
     except Exception as exc:  # pragma: no cover - defensive
         print(f"⚠️ OCR persistence failed for {filename}: {exc!r}")
 
