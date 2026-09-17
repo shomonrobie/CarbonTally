@@ -92,7 +92,10 @@ export default function ProcessingPage() {
     const inFlight = items.some(
       (i) => !['approved', 'rejected', 'qc_approved', 'qc_rejected', 'completed', 'failed'].includes(i.status)
     ) || jobs.some(
-      (j) => ['enqueued', 'ingesting', 'extracting', 'mapping', 'validating', 'calculating'].includes(j.stage)
+      // Step 2 / WS-H (F-11) — a `blocked` job is still being worked on (by a
+      // human), so it must keep the view live and visible rather than reading as
+      // "nothing happening".
+      (j) => ['enqueued', 'ingesting', 'extracting', 'mapping', 'validating', 'calculating', 'blocked'].includes(j.stage)
     );
     if (!inFlight) return undefined;
     const timer = setInterval(() => { load(org.id); }, 10000);
@@ -271,6 +274,10 @@ export default function ProcessingPage() {
 
   const pipeline = status?.pipeline || {};
   const totalItems = status?.total_items ?? items.length;
+  // Step 2 / WS-H (F-11) — a blocked job is *waiting for work*, not idle: it must
+  // stay visible to the customer with the reason and a next step, instead of
+  // silently dropping out of the "in flight" view.
+  const blockedJobs = jobs.filter((j) => j.stage === 'blocked');
   return (
     <div className="v3-page">
       <header className="v3-page-header">
@@ -283,6 +290,27 @@ export default function ProcessingPage() {
 
       {error && <div className="v3-error" style={{ marginBottom: 14 }}>{error}</div>}
       {notice && <div className="v3-note" style={{ marginBottom: 14 }}>{notice}</div>}
+
+      {blockedJobs.length > 0 && (
+        <div className="v3-card" data-testid="blocked-jobs-notice">
+          <h2>Waiting for review ({blockedJobs.length})</h2>
+          <p className="v3-muted" style={{ marginTop: 0 }}>
+            Automatic processing stopped on {blockedJobs.length === 1 ? 'a document' : 'these documents'} because it
+            could not resolve every required field. Nothing has been discarded - open the item to complete the missing
+            details and the pipeline will continue.
+          </p>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {blockedJobs.map((j) => (
+              <li key={j.id} style={{ marginBottom: 6 }}>
+                <strong>{j.file_name}</strong>
+                <span className="v3-muted">
+                  {j.manual_review_reason ? ` - ${j.manual_review_reason}` : ' - awaiting manual review.'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="v3-card">
         <h2>Upload a document</h2>
