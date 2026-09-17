@@ -325,23 +325,45 @@
   border-bottom: 1px solid var(--ct-color-border);
 }
 
-.v3-meta-list {
+/* F-07 (CSS-01) — report details metadata.
+   Regression fix (CT-STEP2-FINAL-STABILIZATION-012): the previous rules were
+   UNSCOPED, so they leaked into every other `.v3-meta-list` surface once a reports
+   page had loaded (customer review/issues/emissions/evidence panels), and the grid
+   override left `.v3-meta-item` as a ROW flex while the inherited
+   `.v3-meta-item .k { width: 190px; flex: none }` consumed the grid column — long
+   values (e.g. an organisation name) collapsed to near-zero width and wrapped
+   character-by-character. The report surface intends a label ABOVE its value
+   (small-caps label + value below), so the item is now a column, the label width is
+   intrinsic, and the value keeps an explicit min-width/wrap guarantee. Scoped to
+   `.v3-report-page` so the shared flex layout elsewhere is untouched. */
+.v3-report-page .v3-meta-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px 20px;
 }
 
-.v3-meta-item .k {
+.v3-report-page .v3-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.v3-report-page .v3-meta-item .k {
+  width: auto;
+  flex: none;
   font-size: 12px;
   color: var(--ct-color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.v3-meta-item .v {
-  margin-top: 2px;
+.v3-report-page .v3-meta-item .v {
+  margin-top: 0;
   font-weight: 500;
+  min-width: 0;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .v3-section-card {
