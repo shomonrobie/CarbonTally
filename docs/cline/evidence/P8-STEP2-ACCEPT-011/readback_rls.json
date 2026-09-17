@@ -1,0 +1,92 @@
+[
+ {
+  "step": "supabase auth (password grant)",
+  "status": 200
+ },
+ {
+  "step": "rls organization_members",
+  "status": 200,
+  "detail": "[{\"organization_id\":\"8ae45e55-afa9-42f1-b4f9-f0225f9b98cd\",\"role\":\"owner\",\"is_active\":true}]"
+ },
+ {
+  "step": "rls organizations",
+  "status": 200,
+  "detail": "[{\"id\":\"8ae45e55-afa9-42f1-b4f9-f0225f9b98cd\",\"name\":\"Faria Green Company UK LTD\",\"created_at\":\"2026-09-17T15:24:27.744541+00:00\"}]"
+ },
+ {
+  "step": "table documents",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "table document_processing_jobs",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_processing_queue'\",\"message\":\"Could not find the table 'public.document_processing_jobs' in the schema cache\"}"
+ },
+ {
+  "step": "table processing_jobs",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.processing_logs'\",\"message\":\"Could not find the table 'public.processing_jobs' in the schema cache\"}"
+ },
+ {
+  "step": "table processing_items",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.processing_steps'\",\"message\":\"Could not find the table 'public.processing_items' in the schema cache\"}"
+ },
+ {
+  "step": "table extraction_items",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.manual_extraction_items'\",\"message\":\"Could not find the table 'public.extraction_items' in the schema cache\"}"
+ },
+ {
+  "step": "table document_extractions",
+  "status": 404,
+  "n": null,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.document_extractions' in the schema cache\"}"
+ },
+ {
+  "step": "document mock_uk_fuel_card_messy.csv",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document mock_uk_utility_bill.csv",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document mock_scope3.csv",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document layout_standard_fuel.pdf",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document layout_standard_elec.pdf",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document multi_fuel.pdf",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document scan_light_gas.pdf",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ },
+ {
+  "step": "document diff_edge_fuel.pdf",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents' in the schema cache\"}"
+ }
+]

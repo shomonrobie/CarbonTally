@@ -1,0 +1,873 @@
+[
+ {
+  "id": "b1185a31-f0c9-4838-8370-41a316ef0703",
+  "file_name": "mock_uk_fuel_card_messy.csv",
+  "status": "manual_review",
+  "stage": "blocked",
+  "attempt_count": 1,
+  "last_error": null,
+  "manual_review_reason": "mapping could not auto-resolve: line 2: no confident factor for 'AdBlue' litres (status=no_match, confidence=0.00); line 4: no confident factor for 'AdBlue' litres (status=no_match, confidence=0.00); line 5: no confident factor for 'AdBlue' litres (status=no_match, confidence=0.00); line 10: no confident factor for 'AdBlue' litres (status=no_match, confidence=0.00); line 13: no confident factor for 'nan' litres (status=no_match, confidence=0.00); line 14: no confident factor for 'AdBlue' litres (status=no_match, confidence=0.00)",
+  "created_at": "2026-09-17T15:30:33.823413+00:00",
+  "updated_at": "2026-09-17T15:30:52.345112+00:00",
+  "locked_at": null,
+  "completed_at": null,
+  "ai_extraction_method": "csv",
+  "ai_confidence_score": 1,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": {
+   "date": "01/10/2023",
+   "supplier": "Esso",
+   "line_items": [
+    {
+     "date": "01/10/2023",
+     "unit": "litres",
+     "amount": 85.21,
+     "activity": "Diesel",
+     "quantity": 53.8,
+     "supplier": "Esso",
+     "source_row": 1
+    },
+    {
+     "date": "02/10/2023",
+     "unit": "litres",
+     "amount": 68.27,
+     "activity": "AdBlue",
+     "quantity": 43.12,
+     "supplier": "MOTO Services",
+     "source_row": 2
+    },
+    {
+     "date": "03/10/2023",
+     "unit": "litres",
+     "amount": 32.87,
+     "activity": "Diesel",
+     "quantity": 20.96,
+     "supplier": "MOTO Services",
+     "source_row": 3
+    },
+    {
+     "date": "04/10/2023",
+     "unit": "litres",
+     "amount": 50.94,
+     "activity": "AdBlue",
+     "quantity": 33.85,
+     "supplier": "Shell",
+     "source_row": 4
+    },
+    {
+     "date": "05/10/2023",
+     "unit": "litres",
+     "amount": 53.84,
+     "activity": "AdBlue",
+     "quantity": 34.46,
+     "supplier": "Shell",
+     "source_row": 5
+    },
+    {
+     "date": "06/10/2023",
+     "unit": "litres",
+     "amount": 93.12,
+     "activity": "Diesel",
+     "quantity": 61.0,
+     "supplier": "BP",
+     "source_row": 6
+    },
+    {
+     "date": "07/10/2023",
+     "unit": "litres",
+     "amount": 93.07,
+     "activity": "Diesel",
+     "quantity": 56.6,
+     "supplier": "Shell",
+     "source_row": 7
+    },
+    {
+     "date": "08/10/2023",
+     "unit": "litres",
+     "amount": 113.37,
+     "activity": "Diesel",
+     "quantity": 69.99,
+     "supplier": "Esso",
+     "source_row": 8
+    },
+    {
+     "date": "09/10/2023",
+     "unit": "litres",
+     "amount": 48.47,
+     "activity": "Diesel",
+     "quantity": 30.4,
+     "supplier": "MOTO Services",
+     "source_row": 9
+    },
+    {
+     "date": "10/10/2023",
+     "unit": "litres",
+     "amount": 65.07,
+     "activity": "AdBlue",
+     "quantity": 43.46,
+     "supplier": "Shell",
+     "source_row": 10
+    },
+    {
+     "date": "11/10/2023",
+     "unit": "litres",
+     "amount": 46.43,
+     "activity": "Diesel",
+     "quantity": 30.93,
+     "supplier": "Shell",
+     "source_row": 11
+    },
+    {
+     "date": "12/10/2023",
+     "unit": "litres",
+     "amount": 95.24,
+     "activity": "Diesel",
+     "quantity": 65.32,
+     "supplier": "BP",
+     "source_row": 12
+    },
+    {
+     "date": "2023-10-13",
+     "unit": "litres",
+     "amount": 72.46,
+     "activity": "nan",
+     "quantity": 45.51,
+     "supplier": "BP",
+     "source_row": 13
+    },
+    {
+     "date": "14/10/2023",
+     "unit": "litres",
+     "amount": 47.82,
+     "activity": "AdBlue",
+     "quantity": 32.48,
+     "supplier": "Esso",
+     "source_row": 14
+    },
+    {
+     "date": "15/10/2023",
+     "unit": "litres",
+     "amount": 83.14,
+     "activity": "Diesel",
+     "quantity": 54.06,
+     "supplier": "MOTO Services",
+     "source_row": 15
+    },
+    {
+     "date": "16/10/2023",
+     "unit": "litres",
+     "amount": 32.61,
+     "activity": "Diesel",
+     "quantity": 21.88,
+     "supplier": "BP",
+     "source_row": 16
+    },
+    {
+     "date": "17/10/2023",
+     "unit": "litres",
+     "amount": 114.92,
+     "activity": "nan",
+     "quantity": 70.54,
+     "supplier": "Shell",
+     "source_row": 17
+    },
+    {
+     "date": "18/10/2023",
+     "unit": "litres",
+     "amount": 72.6,
+     "activity": "nan",
+     "quantity": 46.99,
+     "supplier": "MOTO Services",
+     "source_row": 18
+    },
+    {
+     "date": "19/10/2023",
+     "unit": "litres",
+     "amount": 68.3,
+     "activity": "Diesel",
+     "quantity": 43.71,
+     "supplier": "MOTO Services",
+     "source_row": 19
+    },
+    {
+     "date": "20/10/2023",
+     "unit": "litres",
+     "amount": 120.14,
+     "activity": "Diesel",
+     "quantity": 75.6,
+     "supplier": "Shell",
+     "source_row": 20
+    },
+    {
+     "date": "21/10/2023",
+     "unit": "litres",
+     "amount": 94.05,
+     "activity": "AdBlue",
+     "quantity": 63.64,
+     "supplier": "BP",
+     "source_row": 21
+    },
+    {
+     "date": "22/10/2023",
+     "unit": "litres",
+     "amount": 62.19,
+     "activity": "DERV",
+     "quantity": 39.59,
+     "supplier": "Shell",
+     "source_row": 22
+    },
+    {
+     "date": "23/10/2023",
+     "unit": "litres",
+     "amount": 84.49,
+     "activity": "Diesel",
+     "quantity": 54.23,
+     "supplier": "MOTO Services",
+     "source_row": 23
+    },
+    {
+     "date": "24/10/2023",
+     "unit": "litres",
+     "amount": 76.39,
+     "activity": "Diesel",
+     "quantity": 51.25,
+     "supplier": "Unknown Stop",
+     "source_row": 24
+    },
+    {
+     "date": "25/10/2023",
+     "unit": "litres",
+     "amount": 127.27,
+     "activity": "nan",
+     "quantity": 77.67,
+     "supplier": "Unknown Stop",
+     "source_row": 25
+    },
+    {
+     "date": "26/10/2023",
+     "unit": "litres",
+     "amount": 110.94,
+     "activity": "AdBlue",
+     "quantity": 70.67,
+     "supplier": "Esso",
+     "source_row": 26
+    },
+    {
+     "date": "27/10/2023",
+     "unit": "litres",
+     "amount": 103.03,
+     "activity": "Diesel",
+     "quantity": 64.84,
+     "supplier": "Shell",
+     "source_row": 27
+    },
+    {
+     "date": "28/10/2023",
+     "unit": "litres",
+     "amount": 85.17,
+     "activity": "DERV",
+     "quantity": 52.38,
+     "supplier": "Shell",
+     "source_row": 28
+    },
+    {
+     "date": "29/10/2023",
+     "unit": "litres",
+     "amount": 86.95,
+     "activity": "DERV",
+     "quantity": 55.21,
+     "supplier": "Esso",
+     "source_row": 29
+    },
+    {
+     "date": "30/10/2023",
+     "unit": "litres",
+     "amount": 117.59,
+     "activity": "Diesel",
+     "quantity": 77.92,
+     "supplier": "Esso",
+     "source_row": 30
+    },
+    {
+     "date": "31/10/2023",
+     "unit": "litres",
+     "amount": 83.0,
+     "activity": "Diesel",
+     "quantity": 56.42,
+     "supplier": "Esso",
+     "source_row": 31
+    },
+    {
+     "date": "01/11/2023",
+     "unit": "litres",
+     "amount": 56.35,
+     "activity": "Diesel",
+     "quantity": 36.56,
+     "supplier": "MOTO Services",
+     "source_row": 32
+    },
+    {
+     "date": "02/11/2023",
+     "unit": "litres",
+     "amount": 56.43,
+     "activity": "Diesel",
+     "quantity": 37.78,
+     "supplier": "Shell",
+     "source_row": 33
+    },
+    {
+     "date": "03/11/2023",
+     "unit": "litres",
+     "amount": 45.88,
+     "activity": "Diesel",
+     "quantity": 29.92,
+     "supplier": "MOTO Services",
+     "source_row": 34
+    },
+    {
+     "date": "04/11/2023",
+     "unit": "litres",
+     "amount": 34.06,
+     "activity": "nan",
+     "quantity": 20.94,
+     "supplier": "Esso",
+     "source_row": 35
+    },
+    {
+     "date": "05/11/2023",
+     "unit": "litres",
+     "amount": 68.78,
+     "activity": "nan",
+     "quantity": 45.4,
+     "supplier": "Shell",
+     "source_row": 36
+    },
+    {
+     "date": "06/11/2023",
+     "unit": "litres",
+     "amount": 64.42,
+     "activity": "nan",
+     "quantity": 43.69,
+     "supplier": "MOTO Services",
+     "source_row": 37
+    },
+    {
+     "date": "07/11/2023",
+     "unit": "litres",
+     "amount": 57.21,
+     "activity": "Diesel",
+     "quantity": 37.61,
+     "supplier": "MOTO Services",
+     "source_row": 38
+    },
+    {
+     "date": "08/11/2023",
+     "unit": "litres",
+     "amount": 34.0,
+     "activity": "Diesel",
+     "quantity": 20.84,
+     "supplier": "Esso",
+     "source_row": 39
+    },
+    {
+     "date": "09/11/2023",
+     "unit": "litres",
+     "amount": 48.04,
+     "activity": "Diesel",
+     "quantity": 31.93,
+     "supplier": "Shell",
+     "source_row": 40
+    },
+    {
+     "date": "10/11/2023",
+     "unit": "litres",
+     "amount": 99.01,
+     "activity": "DERV",
+     "quantity": 62.68,
+     "supplier": "Esso",
+     "source_row": 41
+    },
+    {
+     "date": "11/11/2023",
+     "unit": "litres",
+     "amount": 97.75,
+     "activity": "Diesel",
+     "quantity": 67.41,
+     "supplier": "Shell",
+     "source_row": 42
+    },
+    {
+     "date": "12/11/2023",
+     "unit": "litres",
+     "amount": 85.7,
+     "activity": "AdBlue",
+     "quantity": 56.36,
+     "supplier": "Unknown Stop",
+     "source_row": 43
+    },
+    {
+     "date": "13/11/2023",
+     "unit": "litres",
+     "amount": 114.2,
+     "activity": "Diesel",
+     "quantity": 75.58,
+     "supplier": "BP",
+     "source_row": 44
+    },
+    {
+     "date": "14/11/2023",
+     "unit": "litres",
+     "amount": 87.58,
+     "activity": "AdBlue",
+     "quantity": 59.06,
+     "supplier": "BP",
+     "source_row": 45
+    },
+    {
+     "date": "15/11/2023",
+     "unit": "litres",
+     "amount": 116.61,
+     "activity": "DERV",
+     "quantity": 74.9,
+     "supplier": "BP",
+     "source_row": 46
+    },
+    {
+     "date": "16/11/2023",
+     "unit": "litres",
+     "amount": 109.83,
+     "activity": "Diesel",
+     "quantity": 71.0,
+     "supplier": "Esso",
+     "source_row": 47
+    },
+    {
+     "date": "17/11/2023",
+     "unit": "litres",
+     "amount": 74.61,
+     "activity": "Diesel",
+     "quantity": 46.97,
+     "supplier": "Unknown Stop",
+     "source_row": 48
+    },
+    {
+     "date": "18/11/2023",
+     "unit": "litres",
+     "amount": 38.68,
+     "activity": "DERV",
+     "quantity": 25.72,
+     "supplier": "Shell",
+     "source_row": 49
+    },
+    {
+     "date": "19/11/2023",
+     "unit": "litres",
+     "amount": 63.33,
+     "activity": "Diesel",
+     "quantity": 42.25,
+     "supplier": "MOTO Services",
+     "source_row": 50
+    }
+   ],
+   "source_headers": [
+    "Transaction Date",
+    "Vehicle Registration",
+    "Fuel Type",
+    "Volume (L)",
+    "Total Cost (\u00a3)",
+    "Merchant",
+    "Driver ID"
+   ]
+  },
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "32c4c095-305f-437e-bd30-8a60811fd84b",
+  "file_name": "mock_uk_utility_bill.csv",
+  "status": "manual_review",
+  "stage": "blocked",
+  "attempt_count": 1,
+  "last_error": null,
+  "manual_review_reason": "mapping could not auto-resolve: line 1: no confident factor for 'Natural gas' kWh (status=no_match, confidence=0.00); line 2: no confident factor for 'nan' kWh (status=no_match, confidence=0.00); line 4: no confident factor for 'nan' kWh (status=no_match, confidence=0.00); line 5: no confident factor for 'nan' kWh (status=no_match, confidence=0.00); line 6: no confident factor for 'Natural gas' kWh (status=no_match, confidence=0.00); line 8: no confident factor for 'Standing Charge' kWh (status=no_match, confidence=0.00)",
+  "created_at": "2026-09-17T15:30:36.157276+00:00",
+  "updated_at": "2026-09-17T15:30:58.528448+00:00",
+  "locked_at": null,
+  "completed_at": null,
+  "ai_extraction_method": "csv",
+  "ai_confidence_score": 1,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": {
+   "date": "01/10/2023",
+   "line_items": [
+    {
+     "date": "01/10/2023",
+     "unit": "kwh",
+     "amount": 1390.44,
+     "activity": "Natural gas",
+     "quantity": 6354.47,
+     "source_row": 1
+    },
+    {
+     "date": "01/11/2023",
+     "unit": "kwh",
+     "amount": 782.24,
+     "activity": "nan",
+     "quantity": 14765.23,
+     "source_row": 2
+    },
+    {
+     "date": "01/12/2023",
+     "unit": "kwh",
+     "amount": 1789.56,
+     "activity": "Electricity",
+     "quantity": 7534.68,
+     "source_row": 3
+    },
+    {
+     "date": "01/01/2024",
+     "unit": "kwh",
+     "amount": 287.68,
+     "activity": "nan",
+     "quantity": 287.68,
+     "source_row": 4
+    },
+    {
+     "date": "01/02/2024",
+     "unit": "kwh",
+     "amount": 2558.4,
+     "activity": "nan",
+     "quantity": 10524.31,
+     "source_row": 5
+    },
+    {
+     "date": "01/03/2024",
+     "unit": "kwh",
+     "amount": 1459.31,
+     "activity": "Natural gas",
+     "quantity": 7306.99,
+     "source_row": 6
+    },
+    {
+     "date": "01/04/2024",
+     "unit": "kwh",
+     "amount": 1306.42,
+     "activity": "Electricity",
+     "quantity": 1185.71,
+     "source_row": 7
+    },
+    {
+     "date": "01/05/2024",
+     "unit": "kwh",
+     "amount": 2794.64,
+     "activity": "Standing Charge",
+     "quantity": 14190.82,
+     "source_row": 8
+    },
+    {
+     "date": "01/06/2024",
+     "unit": "kwh",
+     "amount": 2236.36,
+     "activity": "Electricity",
+     "quantity": 8886.04,
+     "source_row": 9
+    },
+    {
+     "date": "01/07/2024",
+     "unit": "kwh",
+     "amount": 1114.31,
+     "activity": "nan",
+     "quantity": 6395.83,
+     "source_row": 10
+    },
+    {
+     "date": "01/08/2024",
+     "unit": "kwh",
+     "amount": 1797.24,
+     "activity": "Natural gas",
+     "quantity": 1223.53,
+     "source_row": 11
+    },
+    {
+     "date": "01/09/2024",
+     "unit": "kwh",
+     "amount": 1658.34,
+     "activity": "Electricity",
+     "quantity": 4232.51,
+     "source_row": 12
+    },
+    {
+     "date": "2023-11-01",
+     "unit": "kwh",
+     "amount": 2891.28,
+     "activity": "nan",
+     "quantity": 4374.36,
+     "source_row": 13
+    },
+    {
+     "date": "01/11/2024",
+     "unit": "kwh",
+     "amount": 2564.69,
+     "activity": "Natural gas",
+     "quantity": 10565.69,
+     "source_row": 14
+    },
+    {
+     "date": "01/12/2024",
+     "unit": "kwh",
+     "amount": 2292.5,
+     "activity": "Natural gas",
+     "quantity": 9539.95,
+     "source_row": 15
+    },
+    {
+     "date": "01/01/2025",
+     "unit": "kwh",
+     "amount": 1711.14,
+     "activity": "Natural gas",
+     "quantity": 1711.14,
+     "source_row": 16
+    },
+    {
+     "date": "01/02/2025",
+     "unit": "kwh",
+     "amount": 1842.9,
+     "activity": "Natural gas",
+     "quantity": 3427.11,
+     "source_row": 17
+    },
+    {
+     "date": "01/03/2025",
+     "unit": "kwh",
+     "amount": 2902.71,
+     "activity": "nan",
+     "quantity": 6474.85,
+     "source_row": 18
+    },
+    {
+     "date": "01/04/2025",
+     "unit": "kwh",
+     "amount": 1899.7,
+     "activity": "Electricity",
+     "quantity": 3551.31,
+     "source_row": 19
+    },
+    {
+     "date": "01/05/2025",
+     "unit": "kwh",
+     "amount": 972.8,
+     "activity": "Natural gas",
+     "quantity": 11575.06,
+     "source_row": 20
+    }
+   ],
+   "source_headers": [
+    "Billing Period Start",
+    "Meter Type",
+    "Meter ID (MPAN/MPRN)",
+    "Consumption (kWh)",
+    "Cost (\u00a3)",
+    "Site Name"
+   ]
+  },
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "a124e2c9-e2c9-4833-8d10-9b7fac700ce6",
+  "file_name": "mock_scope3.csv",
+  "status": "manual_review",
+  "stage": "blocked",
+  "attempt_count": 1,
+  "last_error": null,
+  "manual_review_reason": "mapping could not auto-resolve: line 1: no confident factor for 'Client meeting in Dhaka' GBP (status=no_match, confidence=0.00); line 2: no confident factor for 'Dublin stay' GBP (status=no_match, confidence=0.00); line 3: no confident factor for 'Edinburgh to London' GBP (status=no_match, confidence=0.00); line 4: no confident factor for 'Waste' GBP (status=no_match, confidence=0.00)",
+  "created_at": "2026-09-17T15:30:36.87881+00:00",
+  "updated_at": "2026-09-17T15:30:55.984516+00:00",
+  "locked_at": null,
+  "completed_at": null,
+  "ai_extraction_method": "csv",
+  "ai_confidence_score": 1,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": {
+   "date": "01/05/2025",
+   "line_items": [
+    {
+     "date": "01/05/2025",
+     "unit": "GBP",
+     "amount": 450.0,
+     "activity": "Client meeting in Dhaka",
+     "quantity": 1200.0,
+     "source_row": 1
+    },
+    {
+     "date": "05/05/2025",
+     "unit": "GBP",
+     "amount": 350.0,
+     "activity": "Dublin stay",
+     "quantity": 3.0,
+     "source_row": 2
+    },
+    {
+     "date": "10/05/2025",
+     "unit": "GBP",
+     "amount": 85.0,
+     "activity": "Edinburgh to London",
+     "quantity": 330.0,
+     "source_row": 3
+    },
+    {
+     "date": "15/05/2025",
+     "unit": "GBP",
+     "amount": 120.0,
+     "activity": "Waste",
+     "quantity": 350.0,
+     "source_row": 4
+    }
+   ],
+   "source_headers": [
+    "   Date",
+    "Category",
+    "Description",
+    "Quantity",
+    "Cost (\u00a3)"
+   ]
+  },
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "2dcd7334-569a-4163-8c36-55c4753b3fda",
+  "file_name": "layout_standard_fuel.pdf",
+  "status": "manual_review",
+  "stage": "blocked",
+  "attempt_count": 0,
+  "last_error": null,
+  "manual_review_reason": "extraction completeness 0.33 below 0.50 threshold \u2014 unresolved: quantity, unit",
+  "created_at": "2026-09-17T15:30:37.868971+00:00",
+  "updated_at": "2026-09-17T15:30:55.122604+00:00",
+  "locked_at": null,
+  "completed_at": null,
+  "ai_extraction_method": null,
+  "ai_confidence_score": null,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": null,
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "fc4985ec-1dcc-41bd-a0e9-a90bf1657643",
+  "file_name": "layout_standard_elec.pdf",
+  "status": "processing",
+  "stage": "extracting",
+  "attempt_count": 0,
+  "last_error": null,
+  "manual_review_reason": null,
+  "created_at": "2026-09-17T15:30:40.333934+00:00",
+  "updated_at": "2026-09-17T16:02:17.330202+00:00",
+  "locked_at": "2026-09-17T16:02:17.280227+00:00",
+  "completed_at": null,
+  "ai_extraction_method": null,
+  "ai_confidence_score": null,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": null,
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "9ef61662-1c0a-497a-b5e9-c179e2134784",
+  "file_name": "multi_fuel.pdf",
+  "status": "processing",
+  "stage": "extracting",
+  "attempt_count": 0,
+  "last_error": null,
+  "manual_review_reason": null,
+  "created_at": "2026-09-17T15:30:41.166556+00:00",
+  "updated_at": "2026-09-17T16:02:17.330202+00:00",
+  "locked_at": "2026-09-17T16:02:17.280227+00:00",
+  "completed_at": null,
+  "ai_extraction_method": null,
+  "ai_confidence_score": null,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": null,
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "c50ad7ac-4132-461b-b434-9be194d726d4",
+  "file_name": "scan_light_gas.pdf",
+  "status": "processing",
+  "stage": "extracting",
+  "attempt_count": 0,
+  "last_error": null,
+  "manual_review_reason": null,
+  "created_at": "2026-09-17T15:30:43.170235+00:00",
+  "updated_at": "2026-09-17T16:02:17.330202+00:00",
+  "locked_at": "2026-09-17T16:02:17.280227+00:00",
+  "completed_at": null,
+  "ai_extraction_method": null,
+  "ai_confidence_score": null,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": null,
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ },
+ {
+  "id": "ee9452c6-5e8e-4189-a9b1-f148979ad24b",
+  "file_name": "diff_edge_fuel.pdf",
+  "status": "pending",
+  "stage": "enqueued",
+  "attempt_count": 0,
+  "last_error": null,
+  "manual_review_reason": null,
+  "created_at": "2026-09-17T15:30:49.444347+00:00",
+  "updated_at": "2026-09-17T15:30:49.444347+00:00",
+  "locked_at": null,
+  "completed_at": null,
+  "ai_extraction_method": null,
+  "ai_confidence_score": null,
+  "ai_extracted_at": null,
+  "ai_processing_time_ms": null,
+  "automation_provider": null,
+  "automation_model": null,
+  "automation_model_version": null,
+  "automation_extracted_data": null,
+  "calculated_emissions_kg_co2e": null,
+  "calculated_at": null,
+  "calculation_snapshot_id": null
+ }
+]

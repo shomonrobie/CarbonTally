@@ -1,0 +1,104 @@
+[
+ {
+  "step": "supabase auth",
+  "status": 200
+ },
+ {
+  "step": "org",
+  "organization_id": "8ae45e55-afa9-42f1-b4f9-f0225f9b98cd"
+ },
+ {
+  "step": "table document_processing_queue",
+  "status": 200,
+  "n": 8,
+  "columns": [
+   "ai_confidence_score",
+   "ai_extracted_at",
+   "ai_extraction_method",
+   "ai_extraction_result",
+   "ai_mapped_asset_id",
+   "ai_mapped_document_type_code",
+   "ai_mapped_facility_id",
+   "ai_mapped_supplier_id",
+   "ai_mapping_confidence",
+   "ai_processing_time_ms",
+   "attempt_count",
+   "automation_extracted_data",
+   "automation_model",
+   "automation_model_version",
+   "automation_provider",
+   "batch_id",
+   "batch_sequence",
+   "billing_currency",
+   "calculated_at",
+   "calculated_emissions_kg_co2e",
+   "calculation_snapshot_id",
+   "completed_at",
+   "created_at",
+   "created_by"
+  ]
+ },
+ {
+  "step": "table processing_logs",
+  "status": 200,
+  "n": 0,
+  "detail": "(empty)"
+ },
+ {
+  "step": "table manual_extraction_items",
+  "status": 400,
+  "detail": "{\"code\":\"42703\",\"details\":null,\"hint\":null,\"message\":\"column manual_extraction_items.organization_id does not exist\"}"
+ },
+ {
+  "step": "table files",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.roles'\",\"message\":\"Could not find the table 'public.files' in the schema cache\"}"
+ },
+ {
+  "step": "table organization_files",
+  "status": 200,
+  "n": 8,
+  "columns": [
+   "access_count",
+   "approved_at",
+   "approved_by",
+   "bucket",
+   "created_at",
+   "deleted_at",
+   "file_type",
+   "id",
+   "is_active",
+   "last_accessed",
+   "metadata",
+   "mime_type",
+   "name",
+   "organization_id",
+   "path",
+   "processing_started_at",
+   "rejected_at",
+   "rejection_reason",
+   "review_ready_at",
+   "reviewed_by",
+   "size_bytes",
+   "status",
+   "status_updated_at",
+   "updated_at"
+  ]
+ },
+ {
+  "step": "table customer_documents",
+  "status": 200,
+  "n": 0,
+  "detail": "(empty)"
+ },
+ {
+  "step": "table documents_metadata",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.document_types'\",\"message\":\"Could not find the table 'public.documents_metadata' in the schema cache\"}"
+ },
+ {
+  "step": "table organization_documents",
+  "status": 404,
+  "detail": "{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.organization_files'\",\"message\":\"Could not find the table 'public.organization_documents' in the schema cache\"}"
+ }
+]

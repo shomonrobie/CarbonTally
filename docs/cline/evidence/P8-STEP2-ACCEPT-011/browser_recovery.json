@@ -1,0 +1,34 @@
+[
+ {
+  "path": "/health",
+  "goto_status": 502,
+  "refetch_status": 503,
+  "title": "",
+  "body_head": "<html><head></head><body></body></html>",
+  "kind": "unknown"
+ },
+ {
+  "path": "/api/v2/health",
+  "goto_status": 503,
+  "refetch_status": 503,
+  "title": "",
+  "body_head": "<html><head></head><body></body></html>",
+  "kind": "unknown"
+ },
+ {
+  "path": "/openapi.json",
+  "goto_status": 429,
+  "refetch_status": 429,
+  "title": "Just a moment...",
+  "body_head": "<!DOCTYPE html><html lang=\"en-US\" dir=\"ltr\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content",
+  "kind": "cloudflare-challenge"
+ },
+ {
+  "path": "/",
+  "goto_status": 429,
+  "refetch_status": 429,
+  "title": "Just a moment...",
+  "body_head": "<!DOCTYPE html><html lang=\"en-US\" dir=\"ltr\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content",
+  "kind": "cloudflare-challenge"
+ }
+]
