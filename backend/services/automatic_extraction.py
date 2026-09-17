@@ -35,7 +35,10 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
+from core.logging import get_logger
 from services.extraction_suggestions import suggest as suggest_text
+
+logger = get_logger(__name__)
 
 #: Required pipeline fields used to compute the completeness/confidence score.
 _REQUIRED = ("activity", "quantity", "unit")
@@ -238,7 +241,55 @@ def _extract_pdf(content: bytes) -> dict:
     suggestion = suggest_text(text[:200_000])
     extracted = dict(suggestion.get("suggested_data") or {})
     unresolved = list(suggestion.get("unresolved") or [])
-    return {
+    # ------------------------------------------------------------------
+    # Phase 8 P1 (P1-D1) — extraction fidelity, SHADOW-FIRST.
+    #
+    # In shadow mode (the default) we only MEASURE: the coverage block is
+    # attached to the result and logged; customer-visible output is unchanged.
+    # In enabled mode a multi-line-suspect document emits per-source-line
+    # line_items[] instead of a collapsed single line, and a suspect document
+    # whose lines cannot be separated is marked for the caller to gate (P1-D2).
+    # ------------------------------------------------------------------
+    from services import extraction_fidelity as p1
+
+    mode = p1.shape_mode()
+    coverage = None
+    if mode != p1.MODE_OFF:
+        judgement = p1.classify(text, method=method, page_count=page_count)
+        coverage = judgement.as_coverage()
+        coverage["mode"] = mode
+        coverage["ai_fanout"] = p1.ai_fanout_plan(judgement)
+        logger.info(
+            "P1 coverage (%s): method=%s suspect=%s lines=%s pages=%s basis=%s chars=%s",
+            mode,
+            method,
+            judgement.multi_line_suspect,
+            judgement.candidate_lines,
+            judgement.page_count,
+            judgement.page_basis,
+            judgement.text_chars,
+        )
+        if mode == p1.MODE_ENABLED and judgement.multi_line_suspect:
+            items, shape_coverage = p1.build_line_items(
+                text, method=method, page_count=page_count
+            )
+            coverage = shape_coverage
+            coverage["mode"] = mode
+            if items:
+                extracted = {**extracted, "line_items": items}
+            else:
+                # P1-D2: never silently collapse a suspect document.
+                return {
+                    "status": "multi_line_unresolved",
+                    "method": method,
+                    "page_count": page_count,
+                    "extracted_data": extracted,
+                    "unresolved": unresolved,
+                    "confidence": _completeness(extracted),
+                    "coverage": coverage,
+                    "block_reason": p1.block_reason(judgement),
+                }
+    result = {
         "status": "ok",
         "method": method,
         "page_count": page_count,
@@ -246,6 +297,9 @@ def _extract_pdf(content: bytes) -> dict:
         "unresolved": unresolved,
         "confidence": _completeness(extracted),
     }
+    if coverage is not None:
+        result["coverage"] = coverage
+    return result
 
 
 def _render_pdf_pages_pypdfium(content: bytes) -> list[bytes]:
