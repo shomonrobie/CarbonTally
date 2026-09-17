@@ -59,14 +59,23 @@ def test_admin_extraction_imports_the_factor_helper_from_utils_emissions():
     assert "from utils.emissions import get_emission_factor" in source
 
 
-def test_unavailable_manual_review_queue_fails_truthfully_not_with_import_error():
-    """`queue_for_manual_review` has no implementation anywhere in the release.
+def test_manual_review_queueing_uses_the_v3_adapter_not_an_absent_helper():
+    """Step 2C / POD-2 (PO decision C) — deliberate contract change.
 
-    The legacy auto-repair branch therefore cannot queue review work; it must
-    report that truthfully (503) instead of raising `ImportError` (500).
+    Previously the legacy auto-repair branch could not queue review work at all
+    (`queue_for_manual_review` has no implementation in the release) and answered a
+    truthful 503. It now translates the legacy request into the CURRENT V3
+    manual-review workflow through the shared document pipeline, and reports a
+    truthful 400 when the legacy caller cannot supply a safe request. What must
+    never come back is an `ImportError` (500) or a silent discard.
     """
     source = (_BACKEND / "routes" / "upload.py").read_text(encoding="utf-8")
-    assert "HTTP_503_SERVICE_UNAVAILABLE" in source
-    # The absent helper must not remain a call target anywhere in the file.
+    assert "legacy_queue_for_manual_review(" in source          # the adapter is invoked
+    assert "LegacyManualReviewError" in source                  # truthful 400 path
+    assert "status.HTTP_400_BAD_REQUEST" in source
+    # The absent helper must not remain a call target anywhere in the file, and no
+    # absent `main` import may remain (both previously produced a 500).
     assert "await queue_for_manual_review(" not in source
     assert "from main import" not in source
+    # The retired 503 must not linger as the normal path.
+    assert "HTTP_503_SERVICE_UNAVAILABLE" not in source
