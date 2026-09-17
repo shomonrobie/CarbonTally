@@ -1,0 +1,84 @@
+[
+ {
+  "step": "login",
+  "status": 200
+ },
+ {
+  "step": "rls organization_members",
+  "status": 200,
+  "detail": "[{\"id\":\"61cd9d4d-aed3-4ca7-a2b4-798e89564206\",\"organization_id\":\"8ae45e55-afa9-42f1-b4f9-f0225f9b98cd\",\"user_id\":\"ab7a9f50-8f16-4eb4-a229-40fa3a87c3e4\",\"role\":\"owner\",\"created_at\":\"2026-09-17T15:24:27.744541+00:00\",\"is_active\":true,\"updated_at\":\"2026-09-17T15:24:27.744541+00:00\"}]"
+ },
+ {
+  "step": "rls organizations",
+  "status": 200,
+  "detail": "[{\"id\":\"8ae45e55-afa9-42f1-b4f9-f0225f9b98cd\",\"name\":\"Faria Green Company UK LTD\"}]"
+ },
+ {
+  "step": "org context",
+  "organization_id": "8ae45e55-afa9-42f1-b4f9-f0225f9b98cd",
+  "role": "owner",
+  "name": "Faria Green Company UK LTD"
+ },
+ {
+  "step": "documents before",
+  "status": 200,
+  "count": 0,
+  "detail": null
+ },
+ {
+  "step": "upload mock_uk_fuel_card_messy.csv",
+  "status": 201,
+  "doc_id": "5178640c-39dc-48f5-a1c4-cbb704e2e9ee",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload mock_uk_utility_bill.csv",
+  "status": 201,
+  "doc_id": "a9b07e05-37ca-4a83-aad3-beb5cf7eaeb6",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload mock_scope3.csv",
+  "status": 201,
+  "doc_id": "31b61ab8-b311-4948-8508-420260368454",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload layout_standard_fuel.pdf",
+  "status": 201,
+  "doc_id": "cbfc3072-5699-4749-98c7-661bca064052",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload layout_standard_elec.pdf",
+  "status": 201,
+  "doc_id": "585e4345-5919-41cc-a8ef-319d02f41c71",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload multi_fuel.pdf",
+  "status": 201,
+  "doc_id": "30f761c6-899d-450a-b744-87c389d6f972",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload scan_light_gas.pdf",
+  "status": 201,
+  "doc_id": "91acc68d-baa9-4cd2-9558-251cec01379e",
+  "automatic_processing": null,
+  "detail": null
+ },
+ {
+  "step": "upload diff_edge_fuel.pdf",
+  "status": 201,
+  "doc_id": "3e6dd5d9-0fac-472b-b38b-1b8ecc99fada",
+  "automatic_processing": null,
+  "detail": null
+ }
+]

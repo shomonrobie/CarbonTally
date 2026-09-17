@@ -1,0 +1,44 @@
+{
+ "results": [
+  {
+   "step": "login page loaded",
+   "url": "https://carbontally.co.uk/login",
+   "title": "CarbonTally \u2014 Carbon Data Processing & Emissions Management Platform"
+  },
+  {
+   "step": "post-login destination",
+   "url": "https://carbontally.co.uk/login",
+   "title": "CarbonTally \u2014 Carbon Data Processing & Emissions Management Platform"
+  },
+  {
+   "step": "workspace body markers",
+   "detail": "\ud83c\udf31\nCarbonTally\nCarbonTally sign-in is temporarily unavailable\n\nWe could not reach the CarbonTally sign-in service. This is a temporary problem on our side, not a problem with your account.\n\nThis is a temporary service interruption.\nYour account and your organisation\u2019s data have not been deleted or lost.\nPlease wait a moment and try again.\nTry again\nPrivacy Policy\n\nIf sign-in remains unavailable, please try again shortly. CarbonTally service status and support contact details are published on this site.\n\nWe use cookies to enhance your experience. By continuing to visit this site, you agree to our use of cookies. Learn more in our Cookie Policy.\n\nDecline\nAccept All\nCarbonTally Assistant"
+  },
+  {
+   "step": "in-page probe (same-origin)",
+   "status": 200
+  },
+  {
+   "step": "session discovery",
+   "detail": "{\"has_token\": true, \"user_id\": \"ab7a9f50-8f16-4eb4-a229-40fa3a87c3e4\", \"key\": \"sb-pvwiojoyaqywtydzcpbg-auth-token\"}"
+  }
+ ],
+ "console_errors": [
+  "Access to fetch at 'https://carbontally-api.onrender.com/api/v3/notifications?limit=50' from origin 'https://carbontally.co.uk' has been blocked by CORS policy: Response to preflight request doesn't p",
+  "Failed to load resource: net::ERR_FAILED",
+  "[CarbonTally V3] GET /api/v3/notifications?limit=50 \u2192 network error: TypeError: Failed to fetch\n    at Ys (https://carbontally.co.uk/static/js/main.9febc8f0.js:2:838895)\n    at async https://carbontal",
+  "Error fetching notifications: Error: Network error \u2014 please check your connection and try again.\n    at Ys (https://carbontally.co.uk/static/js/main.9febc8f0.js:2:839351)\n    at async https://carbonta",
+  "Access to fetch at 'https://carbontally-api.onrender.com/api/v3/me/context' from origin 'https://carbontally.co.uk' has been blocked by CORS policy: Response to preflight request doesn't pass access c",
+  "Failed to load resource: net::ERR_FAILED",
+  "[CarbonTally V3] GET /api/v3/me/context \u2192 network error: TypeError: Failed to fetch\n    at Ys (https://carbontally.co.uk/static/js/main.9febc8f0.js:2:838895)\n    at async Js (https://carbontally.co.uk",
+  "Access to fetch at 'https://carbontally-api.onrender.com/api/v3/me/context' from origin 'https://carbontally.co.uk' has been blocked by CORS policy: Response to preflight request doesn't pass access c",
+  "Failed to load resource: net::ERR_FAILED",
+  "[CarbonTally V3] GET /api/v3/me/context \u2192 network error: TypeError: Failed to fetch\n    at Ys (https://carbontally.co.uk/static/js/main.9febc8f0.js:2:838895)\n    at async Js (https://carbontally.co.uk",
+  "FULL ERROR OBJECT: Error: Network error \u2014 please check your connection and try again.\n    at Ys (https://carbontally.co.uk/static/js/main.9febc8f0.js:2:839351)\n    at async Js (https://carbontally.co."
+ ],
+ "failed_requests": [
+  "GET https://carbontally-api.onrender.com/api/v3/notifications?limit=50 net::ERR_FAILED",
+  "GET https://carbontally-api.onrender.com/api/v3/me/context net::ERR_FAILED",
+  "GET https://carbontally-api.onrender.com/api/v3/me/context net::ERR_FAILED"
+ ]
+}

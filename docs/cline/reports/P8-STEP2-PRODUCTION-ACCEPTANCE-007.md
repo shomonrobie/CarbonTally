@@ -4,11 +4,10 @@
 **Type:** FINAL AUTHENTICATED E2E ACCEPTANCE + CONTROLLED SYNTHETIC ENVIRONMENT + CORPUS VALIDATION
 **Expected release:** `13cf6e5e139e14ba8971a983bbf234ccb5db9ce2`
 **Date:** 2026-09-17 (re-attempt; first attempt same day)
-**Verdict:** `STEP 2 ACCEPTANCE BLOCKED` — the authenticated synthetic environment
-**cannot be exercised**: the PO's intended synthetic acceptance Owner/session is **not present in
-this execution environment**, and this task forbids creating it by any unsupported route. All
-non-authenticated acceptance evidence is complete and recorded; see §49 for the attempt log and
-§48 for the closure verdict.
+**Verdict:** `STEP 2 ACCEPTANCE PARTIALLY COMPLETE — PO REVIEW REQUIRED` — the synthetic
+authenticated session **was** successfully exercised (login, organization, Owner role, 8 documents
+uploaded), but the production API became unavailable mid-run (Render 503, §50), so the read-back
+workflows remain UNVERIFIABLE. See §44 (issues), §47 (matrix) and §48 (verdict).
 
 ---
 
@@ -107,56 +106,95 @@ is a ready-to-execute plan.
 **Total selected: 24 documents** (3 CSV + 21 PDF; 0 XLSX available) — inside the 30 cap, ≤5 per
 family. None was uploaded.
 
-## 9. Synthetic organization
+## 9. Synthetic organization (verified live)
 
-**NOT AVAILABLE IN THIS EXECUTION ENVIRONMENT.** The task states the PO separately established a
-legitimate synthetic acceptance Owner/session. An exhaustive search of this environment found
-**no such credential or session**:
+The PO supplied credentials for the synthetic tenant. **Authenticated successfully** — the
+organization, membership and role below were read through the app's own RLS-scoped model
+(PostgREST `organization_members` / `organizations` with the synthetic user's own JWT):
 
-| Check | Result |
+| Item | Value |
 | --- | --- |
-| Env vars naming `supabase` / `synthetic` / `accept` / `demo` / `token` / `session` | **0** |
-| Credential/session files (home, `/tmp`, worktree, `~/.config`: `*synthetic*`, `*accept*cred*`, `*session*`, `*demo*cred*`, `.env*`) | **none for production acceptance**; the only demo-credential artefact is the pre-existing **local-only** `.local-demo-credentials.md` (2026-08-22) — local investor-demo machinery, not usable against production |
-| Files modified in the last 8 hours that could carry a session | none CarbonTally-related (Cline/npm/desktop caches only) |
-| Documents naming the tenant (`Step2-007` / `Demo Acceptance`) | only **my own two reports** and my own Cline session transcripts — a name *I* proposed in ACCEPT-007/008, not a PO-created record |
+| Organization name | **Faria Green Company UK LTD** |
+| Organization ID | `8ae45e55-afa9-42f1-b4f9-f0225f9b98cd` |
+| Membership ID | `61cd9d4d-aed3-4ca7-a2b4-798e89564206` |
+| Role | **owner** (`is_active: true`, created 2026-09-17T15:24:27Z) |
+| User ID | `ab7a9f50-8f16-4eb4-a229-40fa3a87c3e4` |
+| Creation mechanism | PO-provisioned through the supported D35 self-service path documented in `P8-STEP2-SYNTHETIC-PROVISIONING-READINESS-008.md` |
+| Authentication state | **PASS** — Supabase password grant returned HTTP 200, `email_confirmed_at` present |
+| Credential handling | email/password supplied at runtime only via process environment; **never** written to a file, Git, this report, logs or screenshots; used for **no** organization other than the synthetic one; the Babui account was **not** used |
+| Documents before the run | **0** (verified) |
 
-**Correction of the earlier blocker statement.** The previous report attributed the blocker to
-"production exposes no self-service signup". `CT-STEP2-ACCEPT-008` **disproved** that:
-`POST /api/v3/organizations` is **live** (creator becomes OWNER, one transaction), the public
-`/signup` route returns 200 with `auth.signUp` in the deployed bundle, the D35 onboarding flow is
-deployed, and the consultant self-service path (`POST /api/v3/consultants/me`, `/me/customers`) is
-live. The remaining blocker is therefore **purely session availability**: no authorised synthetic
-Owner session (and no mailbox for Supabase-side email confirmation) is present here, and this task
-forbids service-role credentials, impersonation or direct database writes.
+**Correction of the earlier blocker statement.** The previous attempt attributed the blocker to
+"no self-service signup" and then to a missing session. Both are now resolved/superseded:
+the provisioning path exists (`CT-STEP2-ACCEPT-008`), and the session **was** usable — see §15a.
 
-## 10. Synthetic users — **NONE AVAILABLE** (§9). No production user was created by this task.
-## 11. Synthetic Consultant — **NONE AVAILABLE**; no consultant identity exists to authenticate with.
-## 12. Synthetic Clients A/B/C — **NONE AVAILABLE**.
+## 10. Synthetic users
 
-## 13. Synthetic data inventory
+One synthetic user was used: the PO-supplied **Owner** identity above (id `ab7a9f50-…`), which is
+the organisation's only member visible under RLS. **No additional user was created**; no Org
+Member/Admin was invited, because the run was interrupted (see §50).
 
-| Item | Created |
-| --- | --- |
-| Organizations / users / consultant / clients | **0** |
-| Documents uploaded | **0** |
-| Jobs, extraction items, reports, evidence rows | **0** |
+## 11. Synthetic Consultant
 
-No production data was created, modified or deleted; no mutation endpoint was called.
+**NOT AVAILABLE** — no consultant identity was supplied. Consultant acceptance is
+**UNVERIFIABLE** (no synthetic consultant/client session). No consultant was created and no
+direct database manipulation was attempted.
+
+## 12. Synthetic Clients A/B/C — **NOT AVAILABLE** (consequence of §11).
+
+## 13. Synthetic data inventory (created during this run)
+
+| Item | Count | Evidence |
+| --- | --- | --- |
+| Organizations | 0 created (1 pre-existing synthetic org used) | RLS read |
+| Users / invitations | **0** | no invite endpoint called |
+| **Documents uploaded** | **8** (within the 30 cap; 3 CSV + 5 PDF) | 8× HTTP **201** with document IDs (§15a) |
+| Jobs / extraction items / reports | created implicitly by the platform's automatic processing | status not retrievable — API outage (§50) |
+| Production records created | **8 synthetic documents inside the synthetic tenant only** | no other tenant touched |
 
 ## 14. Browser environment
 
-Real browser available and operational (Chrome **152.0.7977.64** headless; Firefox; Selenium 4.47
-without chromedriver; harness Playwright); production URL `https://carbontally.co.uk`. An
-**authenticated** session is unavailable (§9–§12), so authenticated browser acceptance (UI evidence,
-console/network capture) could not be executed. Unauthenticated browser evidence:
-`/` → 200 (~33 KB DOM), `/login` → 200, `/signup` → 200, 0 JS-error lines.
+Real browser run performed: **Playwright + Chromium (headless), viewport 1440×900**, production URL
+`https://carbontally.co.uk`. Evidence captured:
+`/tmp/accept007/01-login.png`, `/tmp/accept007/02-workspace.png`. Unauthenticated checks:
+`/` 200, `/login` 200, `/signup` 200. Authenticated browser acceptance was **cut short** because
+the API became unavailable (§50) — the login page displayed
+*"CarbonTally sign-in is temporarily unavailable… We could not reach the CarbonTally sign-in
+service"* while the Supabase session was in fact established (`localStorage …-auth-token` present
+with the synthetic user's id). Console: 11 errors, 3 failed requests, all traced to
+`carbontally-api.onrender.com` (`/api/v3/me/context`, `/api/v3/notifications`) being unreachable —
+**CORS messages here are a symptom of the API/edge failure, not a frontend/backend contract
+mismatch** (`/api/v3/me/context` **is** present in the live OpenAPI; an initial hypothesis of a
+missing route was tested and **disproved**).
 
-## 15. Organization authentication
+## 15. Organization authentication — **PASS**
 
-**UNVERIFIABLE — no synthetic account is available in this environment.** Login/session/active-org/
-Owner-role/permission verification could not be attempted. The only credentials present anywhere are
-the **local-only** demo identities (documented as non-production); the Babui Google account is
-forbidden; token forging, impersonation and RLS bypass are forbidden.
+Login (Supabase password grant) HTTP 200; session established in the browser; active organization
+resolved as **Faria Green Company UK LTD**; **Owner** role confirmed with `is_active: true`;
+RLS-scoped reads returned only this tenant's membership and organisation. Tenant context was
+correct for every successful call.
+
+## 15a. Authenticated run — verified facts (upload acceptance)
+
+Uploads were executed against the live API inside the synthetic tenant
+(`POST /api/v3/uploads`, multipart, `organization_id` = the synthetic org):
+
+| # | File | Type | HTTP | Document ID |
+| --- | --- | --- | --- | --- |
+| 1 | `mock_uk_fuel_card_messy.csv` | CSV | **201** | `5178640c-39dc-48f5-a1c4-cbb704e2e9ee` |
+| 2 | `mock_uk_utility_bill.csv` | CSV | **201** | `a9b07e05-37ca-4a83-aad3-beb5cf7eaeb6` |
+| 3 | `mock_scope3.csv` | CSV | **201** | `31b61ab8-b311-4948-8508-420260368454` |
+| 4 | `layout_standard_fuel.pdf` | text-layer PDF | **201** | `cbfc3072-5699-4749-98c7-661bca064052` |
+| 5 | `layout_standard_elec.pdf` | text-layer PDF | **201** | `585e4345-5919-41cc-a8ef-319d02f41c71` |
+| 6 | `multi_fuel.pdf` | multi-line PDF | **201** | `30f761c6-899d-450a-b744-87c389d6f972` |
+| 7 | `scan_light_gas.pdf` | scanned (OCR) | **201** | `91acc68d-baa9-4cd2-9558-251cec01379e` |
+| 8 | `diff_edge_fuel.pdf` | difficult/edge | **201** | `3e6dd5d9-0fac-472b-b38b-1b8ecc99fada` |
+
+**8 of the 24 manifest documents uploaded — hard cap respected (8 ≤ 30); no duplicates.**
+Because the API became unavailable immediately afterwards (§50), **processing, extraction,
+OCR-method, factor-matching, calculation, manual-review and report outcomes for these documents
+could not be read back** and are recorded as `UNVERIFIABLE` — *not* as failures, and *not* as
+passes. The `automatic_processing` metadata could not be inspected for the same reason.
 
 ## 16. CSV upload — UNVERIFIABLE (no session; manifest ready: 3 fixtures, 50/20/4 rows).
 ## 17. CSV preview — UNVERIFIABLE. The POD-3 preview is **deployed** (`main.9febc8f0`-era JS +
@@ -255,115 +293,142 @@ HTTP probes only.)
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Backend targeted (Step 2 relevant: CSV/XLSX/OCR/P1/multi-line/enqueue/lifecycle/preview) | `pytest tests/unit -q -k 'csv or xlsx or ocr or p1 or multi_line or enqueue or lifecycle or preview'` | **187 tests, 0 failures, exit 0** (executed in this task at `13cf6e5`) |
-| Backend full unit sweep | during `CT-STEP2-FINAL-STABILIZATION-012`, same SHA | **0 failures** (cited, not re-derived) |
-| Frontend F-07 contract test | `react-scripts test src/v3/__tests__/report-meta-layout.test.jsx --watchAll=false` | **4 passed / 4, exit 0** (executed in this task) |
-| Frontend full suite | during `CT-STEP2-FINAL-STABILIZATION-012`, same SHA | **306 passed** / 31 of 32 suites (1 pre-existing `App.test.js` module-resolution failure) |
-| Tests modified | — | **none** (no test was altered to obtain green results) |
+| Backend targeted (CSV/XLSX/OCR/P1/multi-line/enqueue/lifecycle/preview) | `pytest tests/unit -q -k 'csv or xlsx or ocr or p1 or multi_line or enqueue or lifecycle or preview'` | **187 passed, 0 failed, exit 0** (this task, release `13cf6e5`) |
+| Backend full unit sweep | `CT-STEP2-FINAL-STABILIZATION-012`, same SHA | **0 failures** (cited) |
+| Frontend F-07 contract test | `react-scripts test src/v3/__tests__/report-meta-layout.test.jsx --watchAll=false` | **4/4 passed, exit 0** (this task) |
+| Frontend full suite | `CT-STEP2-FINAL-STABILIZATION-012`, same SHA | **306 passed** / 31 of 32 suites (1 pre-existing `App.test.js` module-resolution failure) |
+| Tests modified | — | **none** |
 
-Invocation note (§49): a first attempt using plain `npx jest` failed to *load* the suite
-(`Cannot use import statement outside a module`) because it bypassed the CRA Jest configuration;
-re-run through `react-scripts test` passed 4/4. This was a harness/invocation artefact, **not** a
-product or test defect, and no file was changed to accommodate it.
+Invocation artefact (§49): a first frontend attempt used plain `npx jest`, which bypasses the CRA
+config and failed to *load* the suite (`Cannot use import statement outside a module`); re-run
+through `react-scripts test` passed 4/4. No file was changed to accommodate it.
 
 ## 44. Defect classification
 
-**No production defect was discovered**, because no authenticated workflow could be executed.
-The blocker is recorded as an **access/environment blocker, not a product defect**:
+**No Step 2 functional defect is asserted** — the read-back workflows could not be observed, so
+there is no evidence of incorrect behaviour. Two issues are recorded:
 
 ```text
-ACCEPTANCE BLOCKER (not a product defect) — SYNTHETIC OWNER SESSION ABSENT
-The task states the PO established a synthetic acceptance Owner/session; no such credential,
-session or note exists in this execution environment (evidence in §9). No supported path was used
-to create one here, because this task requires USING an established session and forbids
-service-role / direct-DB / impersonation routes. No defect ID raised; no code change warranted.
+ISSUE 1 (raises an investigation task, NOT a confirmed code defect)
+PRODUCTION API AVAILABILITY INCIDENT — observed during acceptance
+Symptom : every backend endpoint (/ , /health, /api/v2/health, /openapi.json) returned HTTP 503
+          from Render (empty body) while the frontend remained 200.
+Timeline: healthy at task start (200s, 570 paths) -> 8 uploads all 201 -> within ~15 minutes
+          502/503 first, then sustained 503 at 15:33-15:39Z.
+Evidence: repeated probes with `rndr-id` present and `cf-mitigated` absent (Render answering 503,
+          not Cloudflare); frontend 200 continuously; browser console showed /api/v3/me/context
+          and /api/v3/notifications as net::ERR_FAILED.
+Root cause: NOT ESTABLISHED — no Render log access from this environment. It cannot be attributed
+          to the release without that evidence, nor excluded that the uploads' automatic
+          processing load contributed.
+Impact  : blocks all authenticated production acceptance (and, if sustained, all customer use).
+Proposed: CT-STEP2-ACCEPT-010 — Production API availability incident investigation (PO/infra:
+          retrieve Render logs for the window, confirm cause, then re-run acceptance).
+```
+
+```text
+ISSUE 2 (environment/tooling, NOT a product defect)
+CLOUDFLARE BOT CHALLENGE triggered by the acceptance automation
+Evidence: HTTP 429 `cf-mitigated: challenge` + "Just a moment..." bodies on /api/v2/health and
+          /api/v3/me/context after a burst of ~30 scripted requests.
+Effect  : in-browser API calls surfaced as CORS failures, producing the login page's
+          "sign-in is temporarily unavailable" message even though the session existed.
+Note    : caused by MY automated access pattern; it cleared (`cf-mitigated=0`) while the Render
+          503 persisted — which is how the two were distinguished. The initial hypothesis of a
+          missing `/api/v3/me/context` route was tested and DISPROVED (it is in the live contract).
 ```
 
 ## 45. Remaining gaps
 
-1. **Synthetic Owner session handoff** — the single gate for §15–§30, §33, §37–§39.
-2. Visual F-07 confirmation and responsive checks in an authenticated browser (§31).
-3. XLSX production acceptance — needs an approved fixture (corpus has **0 XLSX**) (§20 N/A).
-4. Image OCR production acceptance — needs one controlled synthetic image (§24).
-5. P1 active multi-line exercise — needs an allowlisted synthetic tenant + PO activation decision.
-6. Worker/queue observability surface (`CT-STEP2-WORKER-OBS-009`) — unchanged.
+1. **Read-back of the 8 uploaded documents** (processing/extraction/OCR/EF/report) — blocked by
+   Issue 1; document IDs are recorded in §15a and ready to re-inspect.
+2. Visual F-07 confirmation on an authenticated report page (blocked by Issue 1).
+3. The remaining 16 of the 24 manifest documents (multi-line held; more scans, difficult, feature,
+   layout families).
+4. Report lifecycle walk-through (draft → review → changes → resubmit → approve → locked).
+5. Organization-isolation negative test — needs a second synthetic tenant/session.
+6. Consultant workflow/parity/isolation — needs a synthetic consultant + clients.
+7. P1 controlled activation — needs an allowlisted QA tenant + PO decision.
+8. Image OCR — needs one controlled synthetic image (corpus has none).
 
 ## 46. Step 3 handoff
 
 | Layer | Status |
 | --- | --- |
-| **Step 2 acceptance environment** | Not created (session absent). Reusable assets: 579-file corpus inventory, content-characterised **24-document manifest** (§8), deployment/F-07 verification, green regression evidence, and the ACCEPT-008 provisioning map (D35 `/signup` → `/onboarding` → `POST /api/v3/organizations`; consultant `me/customers`) |
-| **Step 3 Demo Platform** | To build: deterministic seed, curated org/consultant scenarios, demo accounts, repeatable reset/reseed, demo governance, strict production isolation |
-| **Investor environment** | To build: curated scenarios, representative source-document sets from this corpus, polished deterministic reports, investor-safe presentation |
+| **Step 2 acceptance environment** | **Established and usable** — synthetic org `Faria Green Company UK LTD` (`8ae45e55-…`), verified Owner session, 8 documents live in-tenant, 24-document manifest ready |
+| **Step 3 Demo Platform** | To build: deterministic seed, curated org/consultant scenarios, demo accounts, repeatable reset/reseed, demo governance, strict production isolation. Corpus (579 files) + manifest are directly reusable |
+| **Investor environment** | To build: curated scenarios, representative document sets, polished deterministic reports, investor-safe presentation |
 
 ## 47. Final acceptance matrix
 
 | Capability | Result | Evidence |
 | --- | --- | --- |
-| Organization authentication | **UNVERIFIABLE** | no synthetic session present (§9); `/login` 200, `/signup` 200 |
-| CSV upload | **UNVERIFIABLE** | 3 fixtures inventoried (50/20/4 rows); no session |
-| CSV preview | **UNVERIFIABLE** | preview markers live in deployed bundle; not rendered |
-| CSV extraction | **UNVERIFIABLE** | code+tests prove 1.00 on fixtures; no production run |
-| CSV async processing | **UNVERIFIABLE** | queue/worker code sound; enqueue truthfulness persisted (`22b84da`) |
+| Organization authentication | **PASS** | Supabase login 200, `email_confirmed_at` set; RLS read resolved org `8ae45e55-…`, role **owner**, `is_active` true |
+| CSV upload | **PASS** | 3 fixtures → HTTP 201 with document IDs (§15a) |
+| CSV preview | **UNVERIFIABLE** | not readable — API outage (Issue 1) |
+| CSV extraction | **UNVERIFIABLE** | not readable — API outage |
+| CSV async processing | **UNVERIFIABLE** | queue/worker state not readable — API outage |
 | XLSX | **NOT APPLICABLE** | corpus contains 0 XLSX; no legitimate fixture |
-| Text PDF | **UNVERIFIABLE** | 15 text-layer PDFs characterised; no session |
-| Multi-line PDF | **UNVERIFIABLE** | `multi_fuel.pdf` characterised; P1 in `shadow` |
-| Scanned PDF OCR | **UNVERIFIABLE** | 4 no-text-layer scans characterised; expected `onnx_ocr` |
-| Image OCR | **UNVERIFIABLE** | active in code; no synthetic image in corpus |
-| Difficult PDF | **UNVERIFIABLE** | 3 hostile documents characterised; criteria recorded |
-| Processing → EF | **UNVERIFIABLE** | no job run; factors untouched |
-| Manual review | **UNVERIFIABLE** | criteria recorded (§29) |
-| Report lifecycle | **UNVERIFIABLE** | S6 lifecycle markers confirmed in served bundle |
-| F-07 CSS | **PASS (artefact/deploy)**; visual **UNVERIFIABLE** | live `main.8f1cfa49.css` carries the scoped `.v3-report-page .v3-meta-list` rule; no unscoped override; contract test 4/4 green |
-| Error handling | **UNVERIFIABLE** (source-verified) | `body.detail` / `body.error.message` implemented; structured 401 bodies observed; live trigger needs a session |
-| Organization isolation | **UNVERIFIABLE** | anonymous denials 401 re-verified; two-tenant test needs sessions |
-| Consultant | **UNVERIFIABLE** | no consultant identity |
-| Client A/B/C | **UNVERIFIABLE** | no consultant/clients |
-| Consultant parity | **UNVERIFIABLE** | code-level shared surfaces only |
-| Consultant isolation | **UNVERIFIABLE** | no accounts |
+| Text PDF | **PARTIAL — upload PASS** | 2 text-layer PDFs uploaded 201; extraction not readable |
+| Multi-line PDF | **PARTIAL — upload PASS** | `multi_fuel.pdf` uploaded 201; line candidates not readable; P1 remains `shadow` |
+| Scanned PDF OCR | **PARTIAL — upload PASS** | `scan_light_gas.pdf` (no text layer) uploaded 201; OCR method not readable |
+| Image OCR | **NOT APPLICABLE / UNVERIFIABLE** | no synthetic image in corpus |
+| Difficult PDF | **PARTIAL — upload PASS** | `diff_edge_fuel.pdf` uploaded 201; no-crash/no-fabrication not readable |
+| Processing → EF | **UNVERIFIABLE** | API outage; factors untouched |
+| Manual review | **UNVERIFIABLE** | API outage |
+| Report lifecycle | **UNVERIFIABLE** | API outage; S6 lifecycle markers present in the served bundle |
+| F-07 CSS | **PASS (artefact/deploy)**, visual **UNVERIFIABLE** | live `main.8f1cfa49.css` carries the scoped `.v3-report-page .v3-meta-list` rule with no unscoped override; contract test 4/4; authenticated report page unreachable during the outage |
+| Error handling | **PARTIAL** | during the outage the frontend showed a graceful non-technical message with a retry action (good); structured 401/422 bodies observed earlier; `body.detail` / `body.error.message` implemented |
+| Organization isolation | **UNVERIFIABLE** | single synthetic tenant; no second tenant to test against |
+| Consultant | **UNVERIFIABLE** | no synthetic consultant identity |
+| Client A/B/C | **UNVERIFIABLE** | none created |
+| Consultant parity | **UNVERIFIABLE** | not exercised |
+| Consultant isolation | **UNVERIFIABLE** | not exercised |
 | P1 controlled rollout | **PASS (implementation/gating)** | allowlist + fail-safe `shadow` default + audit + reversible; no activation present |
-| P1 multi-line | **UNVERIFIABLE** | controlled QA activation not available |
-| Audit/provenance | **UNVERIFIABLE** | no live evidence chain visited |
+| P1 multi-line | **UNVERIFIABLE** | controlled activation unavailable |
+| Audit/provenance | **UNVERIFIABLE** | evidence chain not readable during the outage |
 
 ## 48. Final verdict (closure criteria)
 
-### `STEP 2 ACCEPTANCE BLOCKED`
+### `STEP 2 ACCEPTANCE PARTIALLY COMPLETE — PO REVIEW REQUIRED`
 
-Per this task's closure criteria, `BLOCKED` applies "only if the authenticated synthetic environment
-cannot actually be exercised" — exactly the case: the promised synthetic acceptance Owner/session is
-**not present in this execution environment** (§9), no mailbox exists to complete the Supabase-side
-email confirmation, and the task forbids the service-role / impersonation / direct-DB alternatives.
-`STEP 2 COMPLETE — READY FOR STEP 3` cannot be asserted: 22 of 24 matrix rows are `UNVERIFIABLE`.
+The authenticated environment **was** exercised: authentication, tenant context and document
+ingestion are genuinely verified (access is no longer the blocker). Acceptance could not be
+completed because the **production API became unavailable mid-run** (Issue 1: sustained Render
+503), leaving the read-back workflows `UNVERIFIABLE`. Per the closure criteria
+`STEP 2 COMPLETE — READY FOR STEP 3` **cannot** be asserted, and `BLOCKED` no longer applies
+because the synthetic environment is now usable.
 
-Nothing about the **release itself** is implicated: production frontend (promoted, F-07 live),
-backend (200s, 570 paths, no 5xx), regression suites at this SHA, corpus integrity and data safety
-are all verified. The gap is purely an **authenticated session handoff**.
+**Minimum path to closure:** understand/resolve Issue 1 (PO/infra log retrieval —
+`CT-STEP2-ACCEPT-010`), then re-run acceptance for the 8 already-uploaded documents plus the
+remaining manifest set. No Step 2 implementation change is currently indicated.
 
-## 49. Execution attempt log (this run)
+## 49. Execution attempt log (authenticated run)
 
-| Step | Action | Result |
+| # | Action | Result |
 | --- | --- | --- |
-| 1 | Git baseline recorded | `p8-release-reconciled` @ `13cf6e5` == origin; only 2 untracked reports |
-| 2 | Searched environment for the PO's synthetic session (env vars, credential/session files, recent files, notes naming the tenant) | **absent** — see §9 |
-| 3 | Refused all unsupported alternatives (service-role, DB write, impersonation, Babui account) | no action taken |
-| 4 | Production deployment identity | frontend `/` 200, `/login` 200, `/signup` 200; backend `/health` 200, `/` 200, `/api/v2/health` 200; OpenAPI **570 paths** |
-| 5 | Backend targeted regression (`csv/xlsx/ocr/p1/multi_line/enqueue/lifecycle/preview`) | **187 passed, 0 failed, exit 0** |
-| 6 | Frontend F-07 contract test (correct CRA runner) | **4/4 passed, exit 0** (first attempt with plain `npx jest` mis-loaded the suite; invocation artefact only) |
-| 7 | Corpus integrity | **579 files**, unchanged |
-| 8 | Production data safety | **0** orgs/users/docs/jobs/reports created; no mutation endpoint called |
-| 9 | Report banked | this file, committed and pushed (§40/§41/§47 of this task) |
+| 1 | Git/deployment baseline | `p8-release-reconciled` @ `13cf6e5`; frontend `main.8f1cfa49.css` + `main.9febc8f0.js`; `/` `/login` `/signup` 200; backend 200s with **570** paths |
+| 2 | Supabase password-grant login (server-side) | **200**, user id present, email confirmed |
+| 3 | RLS-scoped org read | org `8ae45e55-…` = **Faria Green Company UK LTD**, role **owner**, active |
+| 4 | Documents before | **0** |
+| 5 | 8 uploads (`POST /api/v3/uploads`) | **8 × 201** with IDs (§15a) |
+| 6 | Processing poll | first poll **502**; then 503/429 with Cloudflare `cf-mitigated: challenge` |
+| 7 | Real-browser login (Playwright/Chromium 1440×900) | session established; UI showed "sign-in is temporarily unavailable" because API calls failed (CORS from a failed preflight); screenshots captured |
+| 8 | Edge vs backend discrimination | `cf-mitigated=0` while all endpoints still **503 from Render** → backend outage, not bot protection alone |
+| 9 | Backend targeted regression | **187 passed, 0 failed** |
+| 10 | Frontend F-07 contract test | **4/4 passed** (after correcting the runner) |
+| 11 | Corpus integrity | **579 files**, unchanged |
+| 12 | Credential hygiene | runtime env only; not written to files, Git, report, logs or screenshots; single tenant; Babui untouched |
 
-**Handoff requirement to unblock:** provide an authorised synthetic Owner session for a synthetic
-organisation (created through the supported D35 self-service or consultant path documented in
-`P8-STEP2-SYNTHETIC-PROVISIONING-READINESS-008.md`), e.g. by completing `/signup` in a
-PO-controlled mailbox and supplying that synthetic account's credentials or by running the
-authenticated acceptance interactively with Cline driving the 24-document manifest.
+## 50. Incident record (Issue 1) — timestamps UTC
 
-```text
-Current state:  STEP 2 ACCEPTANCE BLOCKED — WAITING FOR SYNTHETIC AUTHENTICATED SESSION
-Next execution: CT-STEP2-ACCEPT-007 (third attempt) once the session is handed over
-Dataset:        24 content-characterised synthetic documents (manifest §8)
-Corpus:         579 files preserved and unchanged
-Babui account:  NOT USED
-```
+| Time | Observation |
+| --- | --- |
+| ~15:05Z | Backend healthy: `/`, `/health`, `/api/v2/health` 200; OpenAPI 570 paths |
+| ~15:12Z | Authenticated login + RLS read + 8 uploads: all successful (201s) |
+| ~15:2xZ | `/api/v3/documents` poll → **502**; `/api/v3/processing/*` → **503**; reports → **429 (CF challenge)** |
+| ~15:30Z | Browser login: session OK, API calls `net::ERR_FAILED` (CF challenge on the API host) |
+| 15:33–15:39Z | **All** endpoints → **503 from Render** (`rndr-id` present, `cf-mitigated` absent); frontend still 200 |
 
+No customer data was affected by this task; the only artifacts created are the 8 synthetic
+documents inside the synthetic tenant.
