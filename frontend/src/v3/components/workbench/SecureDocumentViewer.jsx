@@ -10,10 +10,11 @@
 //   server-authorized, short-lived, private-bucket signed URL (never an
 //   unrestricted original-document URL), and the content is classified here by
 //   file name before any frame is created.
-// * Non-PDF content (images) stays in a sandboxed frame; non-renderable file
-//   types (CSV/XLSX/other/unknown) are never framed — they receive an explicit
-//   "preview not available / download restricted" placeholder instead of a
-//   blank or download-triggering frame.
+// * Non-PDF content (images) stays in a sandboxed frame. Structured data
+//   (CSV/TSV/XLSX) is NOT framed — it renders through StructuredDataPreview
+//   (Step 2C / POD-3): a bounded, read-only tabular/workbook preview, because a
+//   CSV/Excel upload previously showed "preview not available" while the file
+//   was perfectly readable. Truly unknown types keep the explicit placeholder.
 //
 // NOTE: the security boundary is server-side (signed URLs + RLS). This
 // component never fabricates a security guarantee — it is UX presentation of
@@ -21,6 +22,7 @@
 import React, { useState } from 'react';
 import Icon from '../ui/Icon';
 import { Button } from '../ui';
+import StructuredDataPreview from './StructuredDataPreview';
 
 /**
  * Classify the source file so the viewer only frames content that can render
@@ -52,6 +54,24 @@ export default function SecureDocumentViewer({ src, title, allowDownload = false
         <div className="ct-wb-viewer__empty">
           <Icon name="documents" size={20} /> No source document available for this item.
         </div>
+      </div>
+    );
+  }
+
+  if (kind === 'data') {
+    // Step 2C / POD-3 — CSV/TSV/XLSX get a real structured preview instead of a
+    // "not available" placeholder.
+    return (
+      <div className="ct-wb-viewer">
+        <StructuredDataPreview src={src} title={title} />
+        {!allowDownload && (
+          <div className="ct-wb-viewer__controls">
+            <span className="ct-wb-viewer__no-download">
+              <Icon name="lock" size={12} aria-hidden="true" />
+              View only — download disabled for this role
+            </span>
+          </div>
+        )}
       </div>
     );
   }

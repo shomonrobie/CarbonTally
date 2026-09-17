@@ -145,6 +145,48 @@
   font-size: var(--ct-type-sm);
   background: var(--ct-color-bg);
 }
+/* --- Structured-data preview (Step 2C / POD-3: CSV/TSV/XLSX) -------------- */
+.ct-wb-viewer__data-wrap {
+  flex: 1;
+  min-height: 440px;
+  background: var(--ct-color-bg);
+  display: flex;
+  flex-direction: column;
+}
+.ct-wb-viewer__data-scroll {
+  flex: 1;
+  overflow: auto;
+  max-height: 480px;
+}
+.ct-wb-viewer__data {
+  border-collapse: collapse;
+  font-size: var(--ct-type-sm);
+  width: 100%;
+}
+.ct-wb-viewer__data-caption {
+  caption-side: top;
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--ct-color-text-muted);
+  font-size: var(--ct-type-xs, var(--ct-type-sm));
+}
+.ct-wb-viewer__data th,
+.ct-wb-viewer__data td {
+  border: 1px solid var(--ct-color-border, rgba(0, 0, 0, 0.12));
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ct-wb-viewer__data th {
+  position: sticky;
+  top: 0;
+  background: var(--ct-color-bg-subtle, var(--ct-color-bg));
+  font-weight: 600;
+}
 .ct-wb-viewer__controls {
   display: flex;
   align-items: center;

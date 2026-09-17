@@ -60,8 +60,12 @@ _COLUMN_ALIASES: dict[str, str] = {
     "date": "date",
     "invoice_date": "date",
     "transaction_date": "date",
+    "billing_period_start": "date",
+    "period_start": "date",
+    "reading_date": "date",
     "period": "date",
     "supplier": "supplier",
+    "supplier_name": "supplier",
     "vendor": "supplier",
     "merchant": "supplier",
     "category": "activity",
@@ -69,25 +73,161 @@ _COLUMN_ALIASES: dict[str, str] = {
     "description": "activity",
     "item": "activity",
     "fuel": "activity",
+    "fuel_type": "activity",
+    "meter_type": "activity",
+    "energy_type": "activity",
+    "utility_type": "activity",
     "product": "activity",
+    "reading_type": "activity",
     "quantity": "quantity",
     "qty": "quantity",
     "consumption": "quantity",
     "volume": "quantity",
     "usage": "quantity",
+    "units_used": "quantity",
+    "reading": "quantity",
     "kwh": "quantity",
     "unit": "unit",
     "uom": "unit",
+    "units_of_measure": "unit",
+    "measure": "unit",
     "amount": "amount",
     "cost": "amount",
     "total": "amount",
+    "total_cost": "amount",
+    "line_total": "amount",
+    "spend": "amount",
+    "charge": "amount",
     "gross_amount": "amount",
     "net_amount": "amount",
     "currency": "currency",
     "ccy": "currency",
     "invoice_number": "invoice_number",
     "invoice_no": "invoice_number",
+    "invoice_ref": "invoice_number",
 }
+
+#: Step 2C / POD-3 — segment-aware alias resolution.
+#:
+#: The pre-V3 readers (``utils/emissions``) accepted the header shapes real
+#: supplier exports actually use (``Fuel Type``, ``Volume (L)``,
+#: ``Transaction Date``, ``Total Cost (£)``, ``Meter Type``, ``Site Name`` …).
+#: The V3 tabular reader originally resolved **exact normalised keys only**, so
+#: those columns fell through to unknown fields and the row lost
+#: ``activity``/``quantity``/``unit`` entirely — the file parsed, but the job
+#: was blocked with a misleadingly empty extraction. These tables restore the
+#: intended parity: an exact key wins, then the longest alias **segment**
+#: contained in the key.
+_ALIAS_SEGMENTS: tuple[tuple[str, str], ...] = (
+    ("invoice_number", "invoice_number"),
+    ("invoice_ref", "invoice_number"),
+    ("transaction_date", "date"),
+    ("billing_period_start", "date"),
+    ("period_start", "date"),
+    ("reading_date", "date"),
+    ("invoice_date", "date"),
+    ("date", "date"),
+    ("period", "date"),
+    ("supplier_name", "supplier"),
+    ("supplier", "supplier"),
+    ("vendor", "supplier"),
+    ("merchant", "supplier"),
+    ("meter_type", "activity"),
+    ("fuel_type", "activity"),
+    ("energy_type", "activity"),
+    ("utility_type", "activity"),
+    ("reading_type", "activity"),
+    ("description", "activity"),
+    ("category", "activity"),
+    ("activity", "activity"),
+    ("product", "activity"),
+    ("fuel", "activity"),
+    ("item", "activity"),
+    ("consumption", "quantity"),
+    ("volume", "quantity"),
+    ("usage", "quantity"),
+    ("quantity", "quantity"),
+    ("qty", "quantity"),
+    ("reading", "quantity"),
+    ("units_used", "quantity"),
+    ("kwh", "quantity"),
+    ("units_of_measure", "unit"),
+    ("uom", "unit"),
+    ("unit", "unit"),
+    ("measure", "unit"),
+    ("total_cost", "amount"),
+    ("line_total", "amount"),
+    ("gross_amount", "amount"),
+    ("net_amount", "amount"),
+    ("amount", "amount"),
+    ("cost", "amount"),
+    ("total", "amount"),
+    ("spend", "amount"),
+    ("charge", "amount"),
+    ("currency", "currency"),
+    ("ccy", "currency"),
+)
+
+#: Columns that must **not** be coerced by segment matching. A unit *price* is
+#: not a line amount, and a site/asset identifier is not an activity: mapping
+#: them would silently mis-state the row. They are preserved verbatim as their
+#: own fields instead.
+_ALIAS_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        "unit_price",
+        "price",
+        "price_per_unit",
+        "unit_rate",
+        "site_name",
+        "site",
+        "location",
+        "vehicle_registration",
+        "registration",
+        "driver_id",
+        "mpan",
+        "mprn",
+        "meter_id",
+        "meter_number",
+        "account_number",
+    }
+)
+
+#: Unit tokens recognised **as whole key segments** (so ``volume_l`` → litres,
+#: while ``total`` is never mistaken for a litre column because "l" is not its
+#: own segment). Maps the segment to the canonical unit spelling.
+_UNIT_SEGMENTS: dict[str, str] = {
+    "kwh": "kWh",
+    "mwh": "MWh",
+    "m3": "m3",
+    "m³": "m3",
+    "therm": "therms",
+    "therms": "therms",
+    "l": "litres",
+    "lt": "litres",
+    "ltr": "litres",
+    "litre": "litres",
+    "litres": "litres",
+    "liter": "litres",
+    "liters": "litres",
+    "gal": "gallons",
+    "gallon": "gallons",
+    "gallons": "gallons",
+    "kg": "kg",
+    "t": "tonnes",
+    "ton": "tonnes",
+    "tonne": "tonnes",
+    "tonnes": "tonnes",
+    "miles": "miles",
+    "mile": "miles",
+    "km": "km",
+}
+
+#: Segments that indicate the column carries a physical quantity (used to decide
+#: whether a unit segment belongs to the quantity column).
+_QUANTITY_SEGMENTS = frozenset(
+    {"quantity", "qty", "consumption", "volume", "usage", "reading", "units_used"}
+)
+
 
 #: Units the tabular parser accepts when a unit column is missing but the value
 #: looks like a physical quantity (fraction of the factor-unit vocabulary).
@@ -424,6 +564,18 @@ def _normalise_columns(header: list[str]) -> list[tuple[Optional[str], Optional[
     ``unit_hint`` is a unit token embedded in a quantity header such as
     ``Quantity (litres)`` / ``Consumption (kWh)``; the row parser applies it to
     every row when no explicit unit cell is present.
+
+    Step 2C / POD-3 — resolution order per column:
+
+    1. the exact normalised key in ``_COLUMN_ALIASES``;
+    2. an explicit ``_ALIAS_EXCLUSIONS`` key → preserved as its own field and
+       **never** coerced (a unit price is not an amount; a site is not an
+       activity);
+    3. a whole-segment unit token (``_UNIT_SEGMENTS``) combined with a physical
+       quantity segment → ``quantity`` carrying the unit hint;
+    4. the **longest** ``_ALIAS_SEGMENTS`` alias contained as a whole key segment;
+    5. a whole-segment unit token alone → ``unit``;
+    6. otherwise the normalised key itself (preserved verbatim).
     """
     out: list[tuple[Optional[str], Optional[str]]] = []
     for cell in header:
@@ -435,19 +587,31 @@ def _normalise_columns(header: list[str]) -> list[tuple[Optional[str], Optional[
         if key in _COLUMN_ALIASES:
             out.append((_COLUMN_ALIASES[key], None))
             continue
-        unit_tokens = [
-            t
-            for t in ("kwh", "litres", "litre", "m³", "m3", "tonnes", "tonne", "kg", "miles", "mile")
-            if t in key
-        ]
-        if unit_tokens and any(
-            q in key for q in ("quantity", "qty", "consumption", "usage", "volume")
-        ):
-            out.append(("quantity", unit_tokens[0]))
-        elif unit_tokens:
-            out.append(("unit", None))
-        else:
+        if key in _ALIAS_EXCLUSIONS:
             out.append((key, None))
+            continue
+        segments = [seg for seg in key.split("_") if seg]
+        unit_hint = next(
+            (_UNIT_SEGMENTS[seg] for seg in segments if seg in _UNIT_SEGMENTS), None
+        )
+        if unit_hint and any(seg in _QUANTITY_SEGMENTS for seg in segments):
+            out.append(("quantity", unit_hint))
+            continue
+        matches = [
+            (alias, target)
+            for alias, target in _ALIAS_SEGMENTS
+            if alias in segments
+        ]
+        if matches:
+            # Longest alias wins: `fuel_consumption` is a quantity column, not
+            # an activity column, even though both segments are aliases.
+            target = max(matches, key=lambda item: len(item[0]))[1]
+            out.append((target, None))
+            continue
+        if unit_hint:
+            out.append(("unit", unit_hint))
+            continue
+        out.append((key, None))
     return out
 
 
@@ -455,14 +619,19 @@ def _rows_to_line_items(
     rows: list[list[Any]],
     header: list[tuple[Optional[str], Optional[str]]],
 ) -> tuple[list[dict], list[str]]:
-    """Convert data rows + normalised header into ``line_items`` records."""
+    """Convert data rows + normalised header into ``line_items`` records.
+
+    Step 2C / POD-3 — every record carries ``source_row`` (1-based data-row index)
+    so a parsed line can always be traced back to its position in the original
+    file, and the row order of ``line_items`` matches the file's row order.
+    """
     line_items: list[dict] = []
     unresolved: set[str] = set()
     unit_hint = next((u for _, u in header if u), None)
-    for raw in rows:
+    for row_index, raw in enumerate(rows, start=1):
         if not raw or all(_clean(c) is None for c in raw):
             continue
-        record: dict[str, Any] = {}
+        record: dict[str, Any] = {"source_row": row_index}
         for idx, (field, _hint) in enumerate(header):
             if field is None or idx >= len(raw):
                 continue
@@ -500,7 +669,13 @@ def _rows_to_line_items(
         for field in ("activity", "quantity", "unit"):
             if not str(record.get(field) or "").strip():
                 unresolved.add(field)
-        if record:
+        # POD-3 — a record with no canonical field is a phantom line (e.g. a
+        # workbook cover sheet). It must not count as extracted activity, or a
+        # cover sheet would look like a successful extraction and stop the sheet
+        # scan from reaching the real data sheet.
+        if record and any(
+            field in record for field in ("activity", "quantity", "unit", "amount")
+        ):
             line_items.append(record)
     return line_items, sorted(unresolved)
 
@@ -518,6 +693,9 @@ def _extract_csv(content: bytes) -> dict:
     header = _normalise_columns(rows[0])
     line_items, unresolved = _rows_to_line_items(rows[1:], header)
     extracted: dict[str, Any] = {"line_items": line_items}
+    # POD-3 — preserve the source header row verbatim (provenance: a mapped
+    # field can always be traced back to the column it came from).
+    extracted["source_headers"] = [str(c) for c in rows[0]]
     if line_items and line_items[0].get("supplier"):
         extracted["supplier"] = line_items[0]["supplier"]
     if line_items and line_items[0].get("date"):
@@ -534,34 +712,31 @@ def _extract_csv(content: bytes) -> dict:
     }
 
 
-def _extract_xlsx(content: bytes) -> dict:
-    import openpyxl
+#: Step 2C / POD-3 — a workbook is scanned sheet-by-sheet (bounded), so a file
+#: whose *first* sheet is a cover/summary page still yields its activity data.
+#: Bounded to the first ``_XLSX_SHEET_SCAN_LIMIT`` sheets: no unbounded work, and
+#: the scan order is the workbook's own declaration order (deterministic).
+_XLSX_SHEET_SCAN_LIMIT = 5
 
-    try:
-        workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "status": "error", "method": "xlsx", "page_count": 0,
-            "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
-            "detail": f"workbook parse failed: {exc}",
-        }
-    sheet = workbook.active
-    if sheet is None:
-        return {
-            "status": "no_text", "method": "xlsx", "page_count": 0,
-            "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
-        }
+
+def _xlsx_sheet_result(sheet, sheet_title: str, sheet_names: list[str]) -> dict:
+    """Parse one worksheet into the canonical extraction result shape."""
     rows = [list(row) for row in sheet.iter_rows(values_only=True)]
     rows = [r for r in rows if any(_clean(c) for c in r)]
-    workbook.close()
     if not rows:
         return {
             "status": "no_text", "method": "xlsx", "page_count": 0,
             "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
+            "detail": f"sheet {sheet_title!r} contains no rows",
         }
-    header = _normalise_columns([str(c) if c is not None else "" for c in rows[0]])
+    header_cells = [str(c) if c is not None else "" for c in rows[0]]
+    header = _normalise_columns(header_cells)
     line_items, unresolved = _rows_to_line_items(rows[1:], header)
     extracted: dict[str, Any] = {"line_items": line_items}
+    # POD-3 — preserve the source header row + sheet provenance verbatim.
+    extracted["source_headers"] = header_cells
+    extracted["source_sheet"] = sheet_title
+    extracted["sheet_names"] = sheet_names
     if line_items and line_items[0].get("supplier"):
         extracted["supplier"] = line_items[0]["supplier"]
     if line_items and line_items[0].get("date"):
@@ -573,6 +748,48 @@ def _extract_xlsx(content: bytes) -> dict:
         "extracted_data": extracted,
         "unresolved": unresolved,
         "confidence": _completeness(extracted),
+    }
+
+
+def _extract_xlsx(content: bytes) -> dict:
+    import openpyxl
+
+    try:
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(content), read_only=True, data_only=True
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "error", "method": "xlsx", "page_count": 0,
+            "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
+            "detail": f"workbook parse failed: {exc}",
+        }
+    sheet_names = list(workbook.sheetnames)
+    if not sheet_names:
+        workbook.close()
+        return {
+            "status": "no_text", "method": "xlsx", "page_count": 0,
+            "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
+            "detail": "workbook has no worksheets",
+        }
+    # POD-3: the active sheet is tried first, then the remaining sheets in
+    # workbook order. A cover/summary first sheet must not hide the data sheet
+    # (this is one of the reasons "Excel files were not being extracted").
+    ordered = [workbook.active.title] + [
+        name for name in sheet_names if name != workbook.active.title
+    ]
+    best: Optional[dict] = None
+    for name in ordered[:_XLSX_SHEET_SCAN_LIMIT]:
+        result = _xlsx_sheet_result(workbook[name], name, sheet_names)
+        if result["status"] == "ok":
+            workbook.close()
+            return result
+        if best is None:
+            best = result
+    workbook.close()
+    return best or {
+        "status": "no_text", "method": "xlsx", "page_count": 0,
+        "extracted_data": {}, "unresolved": list(_REQUIRED), "confidence": 0.0,
     }
 
 
