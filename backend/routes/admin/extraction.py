@@ -100,7 +100,10 @@ async def calculate_emissions_with_defra(
         reporting_year = override_year if override_year else detected_year
         
         # Get emission factor
-        from main import get_emission_factor
+        # Step 2 / WS-C — `get_emission_factor` lives in `utils.emissions`; it was
+        # never defined in `main` (guaranteed ImportError/HTTP 500 before).
+        from utils.emissions import get_emission_factor
+
         factor_data = get_emission_factor(supabase_client, activity_type, reporting_year)
         
         multiplier = factor_data['multiplier']

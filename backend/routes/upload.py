@@ -150,8 +150,10 @@ async def upload_csv(
         df = pd.read_csv(io.BytesIO(file_bytes))
         df.columns = df.columns.str.strip()
         
-        # Import processing functions from main
-        from main import process_fuel_data, process_utility_data, process_scope3_data
+        # Step 2 / WS-C — the CSV processing helpers live in `utils.emissions`
+        # (they were never defined in `main`); the module-level import at the top
+        # of this file already provides them, so this in-function import was both
+        # redundant and a guaranteed `ImportError` at request time (HTTP 500).
         
         if data_type == 'utility':
             clean_data, flagged_rows = process_utility_data(df, supabase)
@@ -227,21 +229,20 @@ async def upload_pdf(
         
         # Check if extraction failed and auto-repair is enabled
         if (extraction_result.get("status") == "error" or has_low_confidence(extraction_result)) and enable_auto_repair:
-            # Import queue function from main
-            from main import queue_for_manual_review, extract_issues_from_result
-            
-            # Extract issues and summary BEFORE queueing
+            # Step 2 / WS-C — `extract_issues_from_result` comes from
+            # `utils.emissions` (module-level import above); it was never defined
+            # in `main`. `queue_for_manual_review` has NO implementation anywhere
+            # in the release tree, so the auto-repair branch cannot queue review
+            # work: it now fails truthfully and briefly (503) instead of raising a
+            # raw ImportError (500). Retiring or reinstating this legacy
+            # auto-repair path is a PO decision (Step 2 report §17).
             issues, summary = extract_issues_from_result(extraction_result, data_type)
-            
-            # Queue for manual review with the extracted issues
-            review_id, issues, summary = await queue_for_manual_review(
-                file_bytes=file_bytes,
-                filename=file.filename,
-                content_type=file.content_type,
-                data_type=data_type,
-                organization_id=organization_id or current_user.organization_id,
-                auto_result=extraction_result,
-                supabase_client=supabase
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Automatic manual-review queueing is not available in this "
+                    "build. The document was not queued for manual review."
+                ),
             )
             
             return {
