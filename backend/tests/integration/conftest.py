@@ -43,6 +43,13 @@ TEST_DB_URL = os.getenv(
 #: Database names that are OFF-LIMITS — the suite must never TRUNCATE them.
 FORBIDDEN_MAIN_DB_NAMES = ("postgres", "supabase_db_carbon_ledger")
 
+#: PO operational control **F-046-1** (2026-09-14): this fixture performs
+#: DESTRUCTIVE setup (`TRUNCATE … RESTART IDENTITY CASCADE`), so it must never be
+#: pointed at a persistent environment containing data whose preservation matters.
+#: Any target whose name matches one of these markers is refused outright —
+#: use a DISPOSABLE clone (`ct_*`) or the dedicated test database.
+PROTECTED_PERSISTENT_MARKERS = ("qa", "demo", "investor", "prod", "live")
+
 #: Environment used by infra/supabase.py inside the test process.
 #: ``DATABASE_URL`` is *forced* (not ``setdefault``) so a stale ``DATABASE_URL``
 #: exported in the outer shell can never redirect repository pools at the
@@ -104,6 +111,19 @@ async def pool() -> asyncpg.Pool:
                     f"refusing to run integration suite against the main application "
                     f"database ({db_name!r}). Point INTEGRATION_DATABASE_URL at the "
                     f"dedicated test database (carbontally_test)."
+                )
+            # F-046-1 — this fixture TRUNCATEs its target; refuse persistent environments.
+            _marker = next(
+                (m for m in PROTECTED_PERSISTENT_MARKERS if m in str(db_name).lower()), None
+            )
+            if _marker is not None:
+                raise RuntimeError(
+                    f"refusing to run the integration suite against {db_name!r}: the name "
+                    f"matches the protected persistent marker {_marker!r}, and this fixture "
+                    f"performs DESTRUCTIVE setup (TRUNCATE … RESTART IDENTITY CASCADE). "
+                    f"(PO operational control F-046-1.) Create a DISPOSABLE clone first and "
+                    f"point INTEGRATION_DATABASE_URL at it, or use the dedicated test "
+                    f"database (carbontally_test)."
                 )
             has_schema = await conn.fetchval(
                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
