@@ -14,6 +14,7 @@ import {
 } from '../api';
 import { ErrorState } from '../components/StateViews';
 import EvidenceTrail from '../components/EvidenceTrail';
+import ReportLifecyclePanel from './ReportLifecyclePanel';
 import './reports.css';
 
 const STATUS_LABELS = { pending: 'Queued', generating: 'Generating', completed: 'Ready', failed: 'Failed' };
@@ -225,6 +226,12 @@ export default function ReportDetailPage() {
               <div className="v3-meta-item"><div className="k">Pages</div><div className="v">{report.page_count || '—'}</div></div>
               <div className="v3-meta-item"><div className="k">File size</div><div className="v">{report.final_report_size_bytes ? `${report.final_report_size_bytes} bytes` : '—'}</div></div>
             </div>
+          </div>
+
+          <div className="v3-detail-section">
+            {/* S6 — lifecycle visibility + permitted actions. State and actions
+                both come from the persisted version rows. */}
+            <ReportLifecyclePanel reportId={id} versions={versions} onChanged={load} />
           </div>
 
           <div className="v3-detail-section">

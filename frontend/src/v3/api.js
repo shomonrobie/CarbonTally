@@ -167,6 +167,46 @@ export const getReportVersions = (reportId) =>
 
 export const getReportTypes = () => v3Fetch('/api/v3/reports/types');
 
+// --- S6 — report lifecycle (visibility-first) -------------------------------
+// Thin wrappers over the existing, already-authorised lifecycle endpoints. The
+// server owns the state machine and re-checks authority on every transition;
+// these helpers never decide whether an action is legal.
+export const submitReportVersion = (reportId, versionNumber) =>
+  v3Fetch(`/api/v3/reports/${reportId}/versions/${versionNumber}/submit`, {
+    method: 'POST',
+  });
+
+export const approveReportVersion = (reportId, versionNumber) =>
+  v3Fetch(`/api/v3/reports/${reportId}/versions/${versionNumber}/approve`, {
+    method: 'POST',
+  });
+
+export const requestChangesReportVersion = (reportId, versionNumber) =>
+  v3Fetch(
+    `/api/v3/reports/${reportId}/versions/${versionNumber}/request-changes`,
+    { method: 'POST' }
+  );
+
+export const rejectReportVersion = (reportId, versionNumber) =>
+  v3Fetch(`/api/v3/reports/${reportId}/versions/${versionNumber}/reject`, {
+    method: 'POST',
+  });
+
+export const finalizeReportVersion = (reportId, versionNumber) =>
+  v3Fetch(`/api/v3/reports/${reportId}/versions/${versionNumber}/finalize`, {
+    method: 'POST',
+  });
+
+// The lifecycle action → endpoint map used by the UI. Only actions present in a
+// version's server-provided `allowed_actions` are ever offered.
+export const REPORT_LIFECYCLE_ACTION_CALLS = {
+  submit_review: submitReportVersion,
+  approve: approveReportVersion,
+  request_changes: requestChangesReportVersion,
+  reject: rejectReportVersion,
+  finalize: finalizeReportVersion,
+};
+
 export const generateReport = (payload) =>
   v3Fetch('/api/v3/reports', {
     method: 'POST',

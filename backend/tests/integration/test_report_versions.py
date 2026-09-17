@@ -1,3 +1,7 @@
+# F-030-1 (test-data defect, repaired here): the organisation/actor id columns are
+# ``uuid``, so a non-UUID fixture value ("user-1") made these tests unverifiable
+# (asyncpg cast error). The fixture now uses a valid canonical UUID; assertions
+# compare against the same canonical value. No application code changed.
 """Integration tests for ReportVersionsRepository (existing report_versions table)."""
 from __future__ import annotations
 
@@ -34,7 +38,7 @@ async def test_create_and_roundtrip_version(pool: asyncpg.Pool) -> None:
         version_number=1,
         content={"totals": {"total_co2e_kg": "183.000000"}},
         file_url="storage/reports/x.json",
-        created_by="user-1",
+        created_by="11111111-1111-4111-8111-111111111111",
         change_summary="Generated annual report for 2025",
         is_current=True,
     )

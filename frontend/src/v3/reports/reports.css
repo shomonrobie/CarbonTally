@@ -1,3 +1,68 @@
+/* S6 — report lifecycle panel (visibility-first) ---------------------------- */
+.v3-lifecycle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--v3-space-3, 12px);
+  flex-wrap: wrap;
+}
+.v3-lifecycle-help,
+.v3-lifecycle-locked,
+.v3-lifecycle-noactions {
+  margin: 8px 0 0;
+  color: var(--v3-text-muted, #5b6b7c);
+  font-size: 0.9rem;
+}
+.v3-lifecycle-locked {
+  font-weight: 600;
+  color: var(--v3-text, #1c2b39);
+}
+.v3-lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.v3-lifecycle-subhead {
+  margin: 20px 0 8px;
+  font-size: 1rem;
+}
+.v3-lifecycle-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--v3-text, #1c2b39);
+}
+.v3-lifecycle-state.small {
+  font-size: 0.72rem;
+  padding: 1px 8px;
+}
+.v3-lifecycle-state.draft { background: rgba(90, 110, 130, 0.14); }
+.v3-lifecycle-state.reviewed { background: rgba(196, 140, 20, 0.18); }
+.v3-lifecycle-state.changes_requested { background: rgba(196, 90, 20, 0.18); }
+.v3-lifecycle-state.rejected { background: rgba(178, 45, 45, 0.18); }
+.v3-lifecycle-state.approved { background: rgba(30, 122, 66, 0.18); }
+.v3-lifecycle-state.final { background: rgba(20, 92, 52, 0.26); }
+.v3-lifecycle-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.v3-lifecycle-table th,
+.v3-lifecycle-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--v3-border, rgba(0, 0, 0, 0.08));
+  font-size: 0.88rem;
+}
+@media (max-width: 640px) {
+  .v3-lifecycle-actions .v3-btn { width: 100%; }
+}
+
 /* frontend/src/v3/reports/reports.css — CarbonTally V3 Reporting UI */
 
 .v3-report-page {

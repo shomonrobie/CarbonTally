@@ -395,14 +395,27 @@ async def list_report_versions(
     current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
-    """Version history for a report (existing ``report_versions`` table)."""
+    """Version history for a report (existing ``report_versions`` table).
+
+    S6 — each version row carries ``allowed_actions`` for its **persisted**
+    status. The UI renders lifecycle controls from this server-authoritative
+    set rather than deriving them, so the displayed state can never conflict
+    with the lifecycle state machine. This is additive and read-only.
+    """
     report = await repos.reports.get_full(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="report not found")
     ensure_org_access(current_user, report["organization_id"])
+    versions = await repos.report_versions.list_for_report(report_id)
     return {
         "report_id": report_id,
-        "versions": await repos.report_versions.list_for_report(report_id),
+        "versions": [
+            {
+                **version,
+                "allowed_actions": list(allowed_actions(version.get("status"))),
+            }
+            for version in versions
+        ],
     }
 
 

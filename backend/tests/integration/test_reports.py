@@ -1,3 +1,7 @@
+# F-030-1 (test-data defect, repaired here): the organisation/actor id columns are
+# ``uuid``, so a non-UUID fixture value ("user-1") made these tests unverifiable
+# (asyncpg cast error). The fixture now uses a valid canonical UUID; assertions
+# compare against the same canonical value. No application code changed.
 """Integration tests for ReportsRepository."""
 from __future__ import annotations
 
@@ -91,11 +95,11 @@ async def test_mark_generating(pool: asyncpg.Pool) -> None:
     report = await repo.create_generation_request(
         org_id=await make_org(pool), report_type="annual", year=2025, template_id=None
     )
-    row = await repo.mark_generating(report.id, user_id="user-1")
+    row = await repo.mark_generating(report.id, user_id="11111111-1111-4111-8111-111111111111")
     assert row is not None
     assert row["status"] == "generating"
     assert row["started_at"] is not None
-    assert row["updated_by"] == "user-1"
+    assert row["updated_by"] == "11111111-1111-4111-8111-111111111111"
 
 
 async def test_mark_failed_persists_error(pool: asyncpg.Pool) -> None:
@@ -103,7 +107,7 @@ async def test_mark_failed_persists_error(pool: asyncpg.Pool) -> None:
     report = await repo.create_generation_request(
         org_id=await make_org(pool), report_type="annual", year=2025, template_id=None
     )
-    row = await repo.mark_failed(report.id, error_log="validation failed", user_id="user-1")
+    row = await repo.mark_failed(report.id, error_log="validation failed", user_id="11111111-1111-4111-8111-111111111111")
     assert row is not None
     assert row["status"] == "failed"
     assert row["error_log"] == "validation failed"
@@ -119,12 +123,12 @@ async def test_create_request_records_created_by_and_name(pool: asyncpg.Pool) ->
         report_type="annual",
         year=2025,
         template_id=None,
-        created_by="user-1",
+        created_by="11111111-1111-4111-8111-111111111111",
         report_name="Annual emissions report 2025",
     )
     full = await repo.get_full(report.id)
     assert full is not None
-    assert full["created_by"] == "user-1"
+    assert full["created_by"] == "11111111-1111-4111-8111-111111111111"
     assert full["report_name"] == "Annual emissions report 2025"
     assert full["status"] == "pending"
 

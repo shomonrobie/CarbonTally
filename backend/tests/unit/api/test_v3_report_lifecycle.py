@@ -518,3 +518,115 @@ def test_version_listing_exposes_status(client, world, user_provider) -> None:
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# S6 (visibility-first) — the UI needs the server's own action set
+# ---------------------------------------------------------------------------
+
+
+def test_version_listing_exposes_server_authoritative_allowed_actions(
+    client, world, user_provider
+) -> None:
+    """S6 — each version row carries the action set for its persisted state.
+
+    The customer UI must render controls from this field rather than deriving
+    the state machine in the browser, so the displayed state can never
+    contradict the persisted lifecycle state.
+    """
+    _seed_report(world)
+    _seed_version(world, version_number=1, status=DRAFT, is_current=False)
+    _seed_version(world, version_number=2, status=REVIEWED, is_current=True)
+    user_provider.set_user(member_user("org-a", "member-a", "member.a@test"))
+
+    body = client.get("/api/v3/reports/rep-1/versions").json()
+    rows = {row["version_number"]: row for row in body["versions"]}
+
+    assert rows[1]["allowed_actions"] == list(allowed_actions(DRAFT))
+    assert rows[2]["allowed_actions"] == list(allowed_actions(REVIEWED))
+    # DRAFT may only be submitted; REVIEWED may not be submitted again.
+    assert "submit_review" in rows[1]["allowed_actions"]
+    assert "submit_review" not in rows[2]["allowed_actions"]
+    assert rows[1]["is_current"] is False and rows[2]["is_current"] is True
+
+
+def test_version_listing_allowed_actions_unlock_only_with_persisted_state(
+    client, world, user_provider
+) -> None:
+    """S6 — the offered actions change *only* when the persisted state changes."""
+    _seed_report(world)
+    _seed_version(world)
+    user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
+
+    before = client.get("/api/v3/reports/rep-1/versions").json()["versions"][0]
+    assert before["allowed_actions"] == [SUBMIT]
+
+    client.post(_url("rep-1", 1, "submit"))
+
+    after = client.get("/api/v3/reports/rep-1/versions").json()["versions"][0]
+    assert after["status"] == REVIEWED
+    assert set(after["allowed_actions"]) == {APPROVE, REQUEST_CHANGES, REJECT}
+    assert after["id"] == before["id"]
+
+
+def test_final_version_offers_only_supersession_and_stays_immutable(
+    client, world, user_provider
+) -> None:
+    """S6 — a FINAL report cannot be transitioned; only supersession is offered.
+
+    ``new_version`` is the *existing* server-authoritative action for a final
+    version (it creates a revised draft; it never mutates this one). It is not
+    rendered as a lifecycle control in the S6 first release.
+    """
+    _seed_report(world)
+    _seed_version(world, status=FINAL)
+    user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
+
+    row = client.get("/api/v3/reports/rep-1/versions").json()["versions"][0]
+    assert row["status"] == FINAL
+    assert row["allowed_actions"] == [NEW_VERSION]
+    assert is_immutable(row["status"]) is True
+
+    # The lock is not merely a hidden button: the transition is refused.
+    assert client.post(_url("rep-1", 1, "submit")).status_code == 409
+    assert client.post(_url("rep-1", 1, "finalize")).status_code == 409
+
+
+def test_version_listing_is_org_scoped(client, world, user_provider) -> None:
+    """S6 — lifecycle visibility never crosses a tenant boundary."""
+    _seed_report(world, report_id="rep-b", org_id="org-b")
+    _seed_version(world, report_id="rep-b")
+    user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
+
+    assert client.get("/api/v3/reports/rep-b/versions").status_code == 403
+
+
+def test_version_listing_requires_authentication(client, world, user_provider) -> None:
+    """S6 — lifecycle visibility is not available to anonymous callers."""
+    _seed_report(world)
+    _seed_version(world)
+    user_provider.set_unauthenticated()
+
+    assert client.get("/api/v3/reports/rep-1/versions").status_code == 401
+
+
+def test_lifecycle_surfaces_carry_no_comment_capability(
+    client, world, user_provider
+) -> None:
+    """S6 first release — no review-comment system was introduced.
+
+    Guards the PO's explicit scope decision: neither the version listing nor a
+    transition response exposes a comment/thread artefact.
+    """
+    _seed_report(world)
+    _seed_version(world)
+    user_provider.set_user(org_owner_user("org-a", "owner-a", "owner.a@test"))
+
+    row = client.get("/api/v3/reports/rep-1/versions").json()["versions"][0]
+    transition = client.post(_url("rep-1", 1, "submit")).json()
+
+    for payload in (row, transition):
+        for key in payload:
+            assert "comment" not in key.lower()
+            assert "thread" not in key.lower()
+
