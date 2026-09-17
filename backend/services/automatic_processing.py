@@ -151,14 +151,79 @@ def _missing_required(extracted: dict) -> list[str]:
     ]
 
 
-def _merge_extraction_candidates(deterministic: dict, ai: dict) -> dict:
-    """Merge an AI candidate under deterministic authority (Phase 2).
+#: P1 §7.3 — the AI candidate payload is retained as evidence in the job
+#: metadata only while it stays small; a larger candidate is summarised so the
+#: metadata document cannot grow without bound.
+_AI_CANDIDATE_METADATA_MAX_BYTES = 8192
 
-    Fields the deterministic extractor already resolved are preserved verbatim;
-    AI fills only what deterministic left unresolved. When deterministic
-    produced no table but AI did, the AI table is the only candidate. The merge
-    never overwrites source evidence — it composes two candidate passes before
-    the deterministic gate.
+_ADJUDICATION_FIELDS = (
+    "activity", "quantity", "unit", "date",
+    "supplier", "amount", "currency", "invoice_number",
+)
+
+
+def _line_count(candidate: dict) -> int:
+    """Number of well-formed line records in a candidate (0 when tabular-absent)."""
+    lines = (candidate or {}).get("line_items") or []
+    return len([line for line in lines if isinstance(line, dict)])
+
+
+def _ai_candidate_evidence(ai: dict) -> dict:
+    """Bounded evidence record for a rejected/retained AI candidate (P1 §7.3).
+
+    The contract requires that **both** candidates remain persisted and that a
+    disagreement is visible. The deterministic candidate is preserved verbatim by
+    ``automation_extracted_data``; the AI candidate is retained here while it
+    stays small, and otherwise summarised (never silently dropped).
+    """
+    payload = ai or {}
+    evidence: dict = {
+        "line_items": _line_count(payload),
+        "fields_present": sorted(
+            field for field in _ADJUDICATION_FIELDS
+            if str(payload.get(field) or "").strip()
+        ),
+    }
+    try:
+        encoded = json.dumps(payload, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        evidence["retained"] = False
+        evidence["retention_note"] = "payload not serialisable"
+        return evidence
+    if len(encoded) <= _AI_CANDIDATE_METADATA_MAX_BYTES:
+        evidence["retained"] = True
+        evidence["payload"] = payload
+    else:
+        evidence["retained"] = False
+        evidence["retention_note"] = (
+            f"candidate exceeded {_AI_CANDIDATE_METADATA_MAX_BYTES} bytes"
+        )
+    return evidence
+
+
+def _merge_extraction_candidates(deterministic: dict, ai: dict) -> dict:
+    """Document-level adjudication of two extraction candidates (P1 §7.3).
+
+    **The positional merge was removed deliberately.** The previous
+    implementation paired ``deterministic["line_items"][idx]`` with
+    ``ai["line_items"][idx]`` and copied AI fields into deterministic lines
+    whenever the alignment happened to line up. The P1 remediation contract
+    classifies that as a data-fabrication defect (M8 / FM-5): index alignment
+    asserts a correspondence between two independently produced candidates that
+    neither candidate states.
+
+    The ratified rule is **document-level adjudication**: one candidate is
+    accepted whole and the other is retained as evidence (see
+    :func:`_ai_candidate_evidence`); fields are **never** blended positionally and
+    divergence is recorded rather than hidden. Deterministic authority is
+    preserved exactly as before:
+
+    * a deterministic table is accepted whole — the AI table is never merged
+      into it line by line;
+    * with no deterministic table, the AI candidate is the only candidate and is
+      accepted whole (unchanged behaviour);
+    * for single-record documents the existing scalar gap-fill is preserved
+      (deterministic values still win every non-empty field).
     """
     out = dict(deterministic or {})
     if not ai:
@@ -166,38 +231,44 @@ def _merge_extraction_candidates(deterministic: dict, ai: dict) -> dict:
     det_lines = out.get("line_items") or []
     ai_lines = ai.get("line_items") or []
     if det_lines:
-        merged_lines: list[dict] = []
-        for idx, line in enumerate(det_lines):
-            if not isinstance(line, dict):
-                continue
-            merged = dict(line)
-            other = (
-                ai_lines[idx]
-                if idx < len(ai_lines) and isinstance(ai_lines[idx], dict)
-                else {}
-            )
-            for field in (
-                "activity", "quantity", "unit", "date",
-                "supplier", "amount", "currency", "invoice_number",
-            ):
-                if not str(merged.get(field) or "").strip() and str(
-                    other.get(field) or ""
-                ).strip():
-                    merged[field] = other[field]
-            merged_lines.append(merged)
-        out["line_items"] = merged_lines
+        # Accepted whole. No positional blending, no AI field substitution.
         return out
-    if ai.get("line_items"):
+    if ai_lines:
+        # No deterministic table exists: the AI candidate is the only candidate.
         return dict(ai)
-    for field in (
-        "activity", "quantity", "unit", "date",
-        "supplier", "amount", "currency", "invoice_number",
-    ):
+    for field in _ADJUDICATION_FIELDS:
         if not str(out.get(field) or "").strip() and str(
             ai.get(field) or ""
         ).strip():
             out[field] = ai[field]
     return out
+
+
+def _adjudication_record(deterministic: dict, ai: dict, merged: dict) -> dict:
+    """The visible P1 §7.3 adjudication outcome (disagreement is never hidden).
+
+    ``divergent`` is true only when **both** candidates exist and their payloads
+    differ (including differing line counts or values inside line records) — with
+    no deterministic candidate there is nothing for AI to disagree with.
+    """
+    det_lines = _line_count(deterministic)
+    ai_lines = _line_count(ai)
+    if det_lines:
+        accepted = "deterministic"
+    elif ai_lines:
+        accepted = "ai"
+    else:
+        accepted = "deterministic" if deterministic else "none"
+    divergent = bool(deterministic) and bool(ai) and deterministic != ai
+    return {
+        "rule": "p1_document_level_adjudication",
+        "positional_blending": False,
+        "deterministic_line_items": det_lines,
+        "ai_line_items": ai_lines,
+        "accepted_candidate": accepted,
+        "divergent": divergent,
+        "accepted_line_items": _line_count(merged),
+    }
 
 
 class AutomaticProcessingService:
@@ -379,15 +450,38 @@ class AutomaticProcessingService:
         result = extract_document(content, job.file_name, job.metadata.get("mime") or "")
         extracted = result.get("extracted_data") or {}
         method = result.get("method") or "unknown"
+        # P1 (§19 implementation boundary) — the classifier's coverage facts and
+        # the authorised per-page AI plan travel with the job's evidence. The plan
+        # is consumed here as the authorisation + cap record for AI work.
+        coverage = (
+            result.get("coverage") if isinstance(result.get("coverage"), dict) else None
+        )
+        fanout = coverage.get("ai_fanout") if coverage else None
         if result.get("status") not in ("ok",):
+            # P1-D2 — prefer the bounded, truthful block reason the extractor
+            # supplies (e.g. `multi_line_unresolved`); fall back to the generic
+            # detail so an unresolved state is never reported as "no usable data".
+            detail = (
+                result.get("block_reason")
+                or result.get("detail")
+                or "no usable data"
+            )
+            partial = await self._persist_partial_extraction(
+                job,
+                extracted,
+                method_stamp=method,
+                confidence=float(result.get("confidence") or 0.0),
+                missing=_missing_required(extracted),
+                coverage=coverage,
+                fanout=fanout,
+                status=str(result.get("status")),
+            )
             await self._repos.processing.mark_blocked(
                 job.id,
-                reason=(
-                    f"extraction {result.get('status')}: "
-                    f"{result.get('detail') or 'no usable data'}"
-                ),
+                reason=f"extraction {result.get('status')}: {detail}",
                 lock_token=lock_token,
-                last_error=result.get("detail"),
+                last_error=str(result.get("detail") or detail)[:1000],
+                metadata={"partial_extraction": partial} if partial else None,
             )
             return "blocked"
         confidence = float(result.get("confidence") or 0.0)
@@ -419,6 +513,18 @@ class AutomaticProcessingService:
                 ):
                     # Durable failure: the job is blocked for human review with
                     # the AI failure reason — never silently successful.
+                    # WS-A (D1) — a failed AI pass must not discard what the
+                    # deterministic pass genuinely extracted.
+                    partial = await self._persist_partial_extraction(
+                        job,
+                        extracted,
+                        method_stamp=method_stamp,
+                        confidence=confidence,
+                        missing=_missing_required(extracted),
+                        coverage=coverage,
+                        fanout=fanout,
+                        ai_meta=ai_meta,
+                    )
                     await self._repos.processing.mark_blocked(
                         job.id,
                         reason=(
@@ -428,6 +534,7 @@ class AutomaticProcessingService:
                         ),
                         lock_token=lock_token,
                         last_error=str(ai_meta.get("detail"))[:1000],
+                        metadata={"partial_extraction": partial} if partial else None,
                     )
                     return "blocked"
                 logger.warning(
@@ -437,6 +544,20 @@ class AutomaticProcessingService:
                 )
         if confidence < AUTO_EXTRACT_CONFIDENCE_MIN:
             missing = _missing_required(extracted)
+            # WS-A (D1) — persist the genuinely extracted data BEFORE routing the
+            # job to the manual-review gate. The gate decision itself is
+            # unchanged; what changes is that the partial result is no longer
+            # discarded, so the workspace and the human reviewer can see it.
+            partial = await self._persist_partial_extraction(
+                job,
+                extracted,
+                method_stamp=method_stamp,
+                confidence=confidence,
+                missing=missing,
+                coverage=coverage,
+                fanout=fanout,
+                ai_meta=ai_meta,
+            )
             await self._repos.processing.mark_blocked(
                 job.id,
                 reason=(
@@ -445,6 +566,7 @@ class AutomaticProcessingService:
                     f"{', '.join(missing) or 'no usable data'}"
                 ),
                 lock_token=lock_token,
+                metadata={"partial_extraction": partial} if partial else None,
             )
             return "blocked"
         # Sync the manual-extraction item so the existing workspace stays live.
@@ -469,6 +591,14 @@ class AutomaticProcessingService:
                 "unresolved": ai_meta.get("unresolved") or [],
                 "detail": ai_meta.get("detail"),
             }
+        # Step 2 / P1 §19 — the job's evidence metadata carries the AI candidate's
+        # adjudication outcome plus the classifier's coverage facts and the
+        # authorised per-page AI plan (never hidden, never blended silently).
+        job_metadata: dict = {}
+        if ai_meta is not None:
+            job_metadata["ai_extraction"] = ai_meta
+        if coverage:
+            job_metadata["p1_coverage"] = coverage
         # WS4 Gate 5 (task T3) — write-once automated-execution attribution.
         # Only a CONTRIBUTING AI pass (status ok) records provider/model/version;
         # deterministic-only outputs and failed-AI attempts leave the block NULL
@@ -491,7 +621,7 @@ class AutomaticProcessingService:
             page_count=result.get("page_count") or 0,
             ai_confidence_score=confidence,
             ai_extraction_method=method_stamp,
-            metadata={"ai_extraction": ai_meta} if ai_meta is not None else None,
+            metadata=job_metadata or None,
             ai_extraction_result=ai_extraction_result,
             ai_extracted_at=ai_extracted_at,
             ai_processing_time_ms=ai_processing_time_ms,
@@ -517,6 +647,74 @@ class AutomaticProcessingService:
             confidence=confidence,
         )
         return "mapping"
+
+    async def _persist_partial_extraction(
+        self,
+        job: AutomaticProcessingJob,
+        extracted: dict,
+        *,
+        method_stamp: str,
+        confidence: float,
+        missing: list[str],
+        coverage: Optional[dict] = None,
+        fanout: Optional[dict] = None,
+        ai_meta: Optional[dict] = None,
+        status: str = "partial",
+    ) -> Optional[dict]:
+        """WS-A (D1) — persist what was genuinely extracted *before* blocking.
+
+        The completeness gate's **decision is unchanged**: the job is still routed
+        to the manual-review gate. What changes is that the extraction result is no
+        longer discarded on the way there:
+
+        * the **manual-extraction item** receives the real payload, so the
+          workspace and a human reviewer can see the extracted values and complete
+          the unresolved ones (nothing is invented);
+        * a bounded, machine-readable **partial-extraction record** is returned for
+          the job metadata: completeness, the method stamp, the unresolved fields
+          and — when present — the P1 coverage facts and the per-page AI plan.
+
+        The queue job's own ``extracted_data`` column is deliberately **not**
+        written here. That column is the pipeline's resume marker (``_extract``
+        short-circuits on it), so writing partial data would let a later resume
+        skip extraction and bypass the completeness gate.
+
+        Returns ``None`` when there is nothing genuine to persist.
+        """
+        if not extracted:
+            return None
+        record: dict = {
+            "status": status,
+            "confidence": round(float(confidence or 0.0), 4),
+            "method": method_stamp,
+            "unresolved": list(missing or []),
+            "fields_present": sorted(
+                field for field in _ADJUDICATION_FIELDS
+                if str(extracted.get(field) or "").strip()
+            ),
+            "line_items": _line_count(extracted),
+        }
+        if coverage:
+            record["coverage"] = coverage
+        if fanout:
+            record["ai_fanout"] = fanout
+        if ai_meta is not None:
+            record["ai_status"] = ai_meta.get("status")
+        if job.source_item_id:
+            try:
+                await self._repos.manual_extraction.save_extracted_data(
+                    job.source_item_id, extracted, _SYSTEM_ACTOR, method_stamp
+                )
+                record["item_persisted"] = True
+            except Exception:  # noqa: BLE001 — evidence must never break the job
+                logger.exception(
+                    "partial extraction item sync failed for job %s", job.id
+                )
+                record["item_persisted"] = False
+        else:
+            record["item_persisted"] = False
+            record["item_persist_note"] = "job has no source item"
+        return record
 
     async def _run_ai_candidate(
         self,
@@ -601,6 +799,7 @@ class AutomaticProcessingService:
             extracted, candidate.get("extracted_data") or {}
         )
         merged_confidence = completeness_score(merged)
+        ai_payload = candidate.get("extracted_data") or {}
         ai_meta = {
             "status": "ok",
             "method": ai_method,
@@ -610,6 +809,11 @@ class AutomaticProcessingService:
             "extracted_at": datetime.now(timezone.utc).isoformat(),
             "processing_time_ms": elapsed_ms,
             "unresolved": candidate.get("unresolved") or [],
+            # P1 §7.3 — the adjudication outcome and the bounded AI-candidate
+            # evidence are persisted with the job metadata so a disagreement
+            # between the two candidates is visible and never hidden.
+            "adjudication": _adjudication_record(extracted, ai_payload, merged),
+            "ai_candidate": _ai_candidate_evidence(ai_payload),
         }
         method_stamp = f"{deterministic_method}+{ai_method}"
         return ai_meta, merged, merged_confidence, method_stamp

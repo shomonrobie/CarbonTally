@@ -454,8 +454,38 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         reason: str,
         lock_token: str,
         last_error: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[AutomaticProcessingJob]:
-        """Route a job to the manual-review gate (``blocked``/``manual_review``)."""
+        """Route a job to the manual-review gate (``blocked``/``manual_review``).
+
+        Step 2 / WS-A (D1) — ``metadata`` is an **additive, optional** merge into
+        the job's metadata document, so a blocked job can retain machine-readable
+        evidence of what the pipeline actually achieved (for example the partial
+        extraction and the fields that remain unresolved). Omitting it leaves the
+        existing metadata untouched and keeps every existing caller's SQL path
+        byte-identical.
+        """
+        if metadata is not None:
+            row = await self._fetch_one(
+                f"""
+                UPDATE public.document_processing_queue
+                SET stage = 'blocked', status = 'manual_review',
+                    manual_review_reason = $3,
+                    last_error = {'$4' if last_error is not None else 'NULL'},
+                    metadata = COALESCE(metadata, '{{}}'::jsonb)
+                               || {'$5' if last_error is not None else '$4'}::jsonb,
+                    locked_at = NULL, lock_token = NULL, updated_at = NOW()
+                WHERE id = $1 AND lock_token = $2
+                RETURNING {_JOB_COLUMNS}
+                """,
+                *(
+                    [job_id, lock_token, reason, last_error, dumps_jsonb(metadata)]
+                    if last_error is not None
+                    else [job_id, lock_token, reason, dumps_jsonb(metadata)]
+                ),
+            )
+            return _row_to_job(row) if row is not None else None
+
         row = await self._fetch_one(
             f"""
             UPDATE public.document_processing_queue

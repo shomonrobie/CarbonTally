@@ -85,7 +85,17 @@ def test_merge_ai_fills_gaps_only() -> None:
     assert merged["supplier"] == "Shell"
 
 
-def test_merge_line_items_indexed() -> None:
+def test_merge_line_items_are_adjudicated_never_blended() -> None:
+    """STEP 2 / WS-B B2 — the positional line merge was removed deliberately.
+
+    This test previously asserted index-paired blending (AI filling gaps in
+    deterministic line *2*). The P1 remediation contract classifies that
+    behaviour as a fabrication defect (M8 / FM-5): index alignment asserts a
+    correspondence between two independently produced candidates that neither
+    candidate states. The ratified rule is document-level adjudication — the
+    deterministic candidate is accepted whole and no AI value is copied into any
+    line. The blending assertions were removed **deliberately** (not silently).
+    """
     deterministic = {
         "line_items": [
             {"activity": "Diesel", "quantity": 1250.0, "unit": "litres"},
@@ -99,9 +109,7 @@ def test_merge_line_items_indexed() -> None:
         ]
     }
     merged = _merge_extraction_candidates(deterministic, ai)
-    lines = merged["line_items"]
-    # Line 1 deterministic values win; line 2 AI fills the missing fields.
-    assert lines[0]["quantity"] == 1250.0
-    assert lines[0]["unit"] == "litres"
-    assert lines[1]["quantity"] == 300
-    assert lines[1]["unit"] == "litres"
+    # Accepted whole: the deterministic line set is returned untouched.
+    assert merged == deterministic
+    assert merged["line_items"][1] == {"activity": "Petrol"}
+    assert "quantity" not in merged["line_items"][1]
