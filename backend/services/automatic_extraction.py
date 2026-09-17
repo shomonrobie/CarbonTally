@@ -226,34 +226,36 @@ def _pdf_text(content: bytes) -> tuple[str, str, int]:
     return (text or ""), method, int(page_count or 0)
 
 
-def _extract_pdf(content: bytes) -> dict:
-    text, method, page_count = _pdf_text(content)
-    if not text or len(text.strip()) < 20:
-        return {
-            "status": "no_text",
-            "method": method,
-            "page_count": page_count,
-            "extracted_data": {},
-            "unresolved": list(_REQUIRED) + ["supplier", "date"],
-            "confidence": 0.0,
-            "detail": "no usable text extracted (blank page, or image too low quality)",
-        }
-    suggestion = suggest_text(text[:200_000])
-    extracted = dict(suggestion.get("suggested_data") or {})
-    unresolved = list(suggestion.get("unresolved") or [])
-    # ------------------------------------------------------------------
-    # Phase 8 P1 (P1-D1) — extraction fidelity, SHADOW-FIRST.
-    #
-    # In shadow mode (the default) we only MEASURE: the coverage block is
-    # attached to the result and logged; customer-visible output is unchanged.
-    # In enabled mode a multi-line-suspect document emits per-source-line
-    # line_items[] instead of a collapsed single line, and a suspect document
-    # whose lines cannot be separated is marked for the caller to gate (P1-D2).
-    # ------------------------------------------------------------------
+def _apply_p1_fidelity(
+    text: str,
+    *,
+    method: str,
+    page_count: int,
+    extracted: dict,
+    unresolved: list,
+) -> dict:
+    """Phase 8 P1 (P1-D1) — the shared extraction-fidelity shape/coverage hook.
+
+    SHADOW-FIRST: in ``shadow`` (the default) this only **measures** — the
+    coverage block is attached to the result and logged, and customer-visible
+    output is unchanged. In ``enabled`` mode a multi-line-suspect document emits
+    per-source-line ``line_items[]``; a suspect document whose lines cannot be
+    separated is reported as ``multi_line_unresolved`` with the bounded ``P1-D2``
+    reason for the caller to gate.
+
+    Step 2 / WS-B B3 — this hook is applied to **both** the PDF path and the
+    IMAGE path. ``P1-D1`` covers multi-line *PDF/IMAGE* documents; before this
+    change only ``_extract_pdf`` was wired, so a scanned multi-line IMAGE (or a
+    single-page image invoice) was still silently collapsed.
+
+    Returns ``{"extracted": …, "coverage": …|None, "block": …|None}``.
+    """
     from services import extraction_fidelity as p1
 
     mode = p1.shape_mode()
-    coverage = None
+    coverage: Optional[dict] = None
+    out_extracted = extracted
+    block: Optional[dict] = None
     if mode != p1.MODE_OFF:
         judgement = p1.classify(text, method=method, page_count=page_count)
         coverage = judgement.as_coverage()
@@ -276,10 +278,10 @@ def _extract_pdf(content: bytes) -> dict:
             coverage = shape_coverage
             coverage["mode"] = mode
             if items:
-                extracted = {**extracted, "line_items": items}
+                out_extracted = {**extracted, "line_items": items}
             else:
                 # P1-D2: never silently collapse a suspect document.
-                return {
+                block = {
                     "status": "multi_line_unresolved",
                     "method": method,
                     "page_count": page_count,
@@ -289,6 +291,39 @@ def _extract_pdf(content: bytes) -> dict:
                     "coverage": coverage,
                     "block_reason": p1.block_reason(judgement),
                 }
+    return {"extracted": out_extracted, "coverage": coverage, "block": block}
+
+
+def _extract_pdf(content: bytes) -> dict:
+    text, method, page_count = _pdf_text(content)
+    if not text or len(text.strip()) < 20:
+        return {
+            "status": "no_text",
+            "method": method,
+            "page_count": page_count,
+            "extracted_data": {},
+            "unresolved": list(_REQUIRED) + ["supplier", "date"],
+            "confidence": 0.0,
+            "detail": "no usable text extracted (blank page, or image too low quality)",
+        }
+    suggestion = suggest_text(text[:200_000])
+    extracted = dict(suggestion.get("suggested_data") or {})
+    unresolved = list(suggestion.get("unresolved") or [])
+    # ------------------------------------------------------------------
+    # Phase 8 P1 (P1-D1) — extraction fidelity, SHADOW-FIRST (shared hook).
+    # Step 2 / WS-B B3 — the same hook now also covers the IMAGE path.
+    # ------------------------------------------------------------------
+    p1_outcome = _apply_p1_fidelity(
+        text,
+        method=method,
+        page_count=page_count,
+        extracted=extracted,
+        unresolved=unresolved,
+    )
+    if p1_outcome["block"] is not None:
+        return p1_outcome["block"]
+    extracted = p1_outcome["extracted"]
+    coverage = p1_outcome["coverage"]
     result = {
         "status": "ok",
         "method": method,
@@ -357,7 +392,20 @@ def _extract_image(content: bytes) -> dict:
     suggestion = suggest_text(text[:200_000])
     extracted = dict(suggestion.get("suggested_data") or {})
     unresolved = list(suggestion.get("unresolved") or [])
-    return {
+    # Step 2 / WS-B B3 — the P1 fidelity hook applies to the IMAGE path too
+    # (P1-D1 covers multi-line PDF *and* IMAGE documents).
+    p1_outcome = _apply_p1_fidelity(
+        text,
+        method=method,
+        page_count=1,
+        extracted=extracted,
+        unresolved=unresolved,
+    )
+    if p1_outcome["block"] is not None:
+        return p1_outcome["block"]
+    extracted = p1_outcome["extracted"]
+    coverage = p1_outcome["coverage"]
+    result = {
         "status": "ok",
         "method": method,
         "page_count": 1,
@@ -365,6 +413,9 @@ def _extract_image(content: bytes) -> dict:
         "unresolved": unresolved,
         "confidence": _completeness(extracted),
     }
+    if coverage is not None:
+        result["coverage"] = coverage
+    return result
 
 
 def _normalise_columns(header: list[str]) -> list[tuple[Optional[str], Optional[str]]]:
