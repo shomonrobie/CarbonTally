@@ -29,6 +29,7 @@ Gates
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -155,6 +156,21 @@ def _missing_required(extracted: dict) -> list[str]:
 #: metadata only while it stays small; a larger candidate is summarised so the
 #: metadata document cannot grow without bound.
 _AI_CANDIDATE_METADATA_MAX_BYTES = 8192
+
+# ---------------------------------------------------------------------------
+# Step 2C / POD-1 (PO decision A — bounded automatic AI fan-out).
+#
+# The P1 fan-out *plan* (`extraction_fidelity.ai_fanout_plan`) said when per-page
+# AI was permitted, but nothing consumed it: exactly one AI call was ever made,
+# so a clipped multi-line document could not be structured. These are the hard
+# limits of the (now implemented) bounded fan-out — the plan decides WHETHER to
+# fan out, these values decide HOW FAR it may go. There is no recursion and no
+# unbounded loop: the total call count for a document is capped here.
+# ---------------------------------------------------------------------------
+AI_FANOUT_MAX_CALLS = 8          # hard cap on AI calls per document
+AI_FANOUT_MAX_RETRIES = 1        # at most one retry per page/section
+AI_FANOUT_TIMEOUT_S = 60.0       # per-call timeout (seconds)
+AI_FANOUT_PAGE_CLIP_CHARS = 8_000  # bounded input per fanned-out call
 
 _ADJUDICATION_FIELDS = (
     "activity", "quantity", "unit", "date",
@@ -724,6 +740,144 @@ class AutomaticProcessingService:
             record["item_persist_note"] = "job has no source item"
         return record
 
+    async def _bounded_ai_candidates(
+        self,
+        text: str,
+        *,
+        filename: str,
+        method: str,
+    ) -> tuple[list[dict], dict]:
+        """Step 2C / POD-1 — consume the P1 fan-out plan under hard limits.
+
+        The plan (`extraction_fidelity.ai_fanout_plan`) permits per-page AI only
+        when a document is multi-line-suspect **and** its text layer was clipped.
+        When it does, one bounded AI call is made per page (plan-capped), and:
+
+        * the total call count for the document is capped at
+          ``AI_FANOUT_MAX_CALLS`` — the loop can never exceed it, and there is no
+          recursion;
+        * each page is retried at most ``AI_FANOUT_MAX_RETRIES`` times;
+        * every call runs under ``AI_FANOUT_TIMEOUT_S``;
+        * each page slice is clipped to ``AI_FANOUT_PAGE_CLIP_CHARS``;
+        * a failed page is recorded and does not abort the remaining pages
+          (failure fallback), and no value is ever fabricated for it.
+
+        Returns ``(candidates, fanout)`` — each candidate carries its
+        ``page_index`` so AI evidence stays separate from the deterministic
+        evidence, and ``fanout`` is the auditable call/limit record that is
+        persisted with the job. When the plan does not permit fan-out, exactly one
+        call is made over the full text layer (the previous behaviour).
+        """
+        from time import monotonic
+
+        from services import extraction_fidelity as p1
+
+        if not text.strip():
+            return [], {
+                "per_page_ai": False,
+                "calls_made": 0,
+                "detail": "empty text layer",
+            }
+
+        pages, basis, resolution = p1.split_pages(text, method=method)
+        judgement = p1.classify(text, method=method, page_count=max(1, len(pages)))
+        plan = p1.ai_fanout_plan(judgement)
+
+        chunks: list[tuple[int, str]] = []
+        if plan.get("per_page_ai") and len(pages) > 1:
+            for index, page in enumerate(pages[: max(1, int(plan.get("pages") or 1))], start=1):
+                chunks.append((index, page[:AI_FANOUT_PAGE_CLIP_CHARS]))
+        else:
+            chunks.append((0, text))
+
+        candidates: list[dict] = []
+        per_page: list[dict] = []
+        calls_made = 0
+        first_failure: Optional[dict] = None
+        for page_index, chunk in chunks:
+            if calls_made >= AI_FANOUT_MAX_CALLS:
+                per_page.append(
+                    {
+                        "page_index": page_index,
+                        "status": "skipped",
+                        "detail": "bounded fan-out call cap reached",
+                    }
+                )
+                continue
+            for attempt in range(1, AI_FANOUT_MAX_RETRIES + 2):
+                if calls_made >= AI_FANOUT_MAX_CALLS:
+                    break
+                calls_made += 1
+                started = monotonic()
+                infrastructure_failure = False
+                try:
+                    candidate = await asyncio.wait_for(
+                        self._ai_extraction_engine.extract_candidate(
+                            chunk, filename=filename, method=method
+                        ),
+                        timeout=AI_FANOUT_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    infrastructure_failure = True
+                    candidate = {
+                        "status": "timeout",
+                        "method": "ai",
+                        "detail": f"AI call exceeded {AI_FANOUT_TIMEOUT_S:g}s",
+                    }
+                except Exception as exc:  # noqa: BLE001 — a page failure is a durable event
+                    infrastructure_failure = True
+                    candidate = {
+                        "status": "error",
+                        "method": "ai",
+                        "detail": f"{type(exc).__name__}: {exc}"[:300],
+                    }
+                elapsed = int((monotonic() - started) * 1000)
+                entry = {
+                    "page_index": page_index,
+                    "attempt": attempt,
+                    "status": candidate.get("status"),
+                    "method": candidate.get("method") or "ai",
+                    "model": candidate.get("model"),
+                    "confidence": round(float(candidate.get("confidence") or 0.0), 4),
+                    "processing_time_ms": elapsed,
+                }
+                if candidate.get("status") == "ok":
+                    candidates.append({**candidate, "page_index": page_index})
+                    per_page.append(entry)
+                    break
+                per_page.append({**entry, "detail": candidate.get("detail")})
+                if first_failure is None:
+                    # Preserve the real provider/engine detail so the durable block
+                    # reason is truthful ("LLM API returned HTTP 500"), not generic.
+                    first_failure = {
+                        "detail": candidate.get("detail"),
+                        "method": candidate.get("method") or "ai",
+                        "model": candidate.get("model"),
+                        "page_index": page_index,
+                    }
+                # Cost boundary: only an *infrastructure* failure (no answer at
+                # all — timeout or exception) is retried once. An engine-reported
+                # error is a real provider answer and is NOT retried.
+                if attempt > AI_FANOUT_MAX_RETRIES or not infrastructure_failure:
+                    break
+
+        fanout = {
+            "per_page_ai": bool(plan.get("per_page_ai")),
+            "plan": plan,
+            "page_basis": basis,
+            "page_resolution": resolution,
+            "pages_available": len(pages),
+            "pages_attempted": len(chunks),
+            "calls_made": calls_made,
+            "max_calls": AI_FANOUT_MAX_CALLS,
+            "max_retries": AI_FANOUT_MAX_RETRIES,
+            "timeout_s": AI_FANOUT_TIMEOUT_S,
+            "page_clip_chars": AI_FANOUT_PAGE_CLIP_CHARS,
+            "first_failure": first_failure,
+            "per_page": per_page,
+        }
+        return candidates, fanout
+
     async def _run_ai_candidate(
         self,
         job: AutomaticProcessingJob,
@@ -769,7 +923,7 @@ class AutomaticProcessingService:
                     deterministic_method,
                 )
             started = monotonic()
-            candidate = await self._ai_extraction_engine.extract_candidate(
+            candidates, fanout = await self._bounded_ai_candidates(
                 text_layer.get("text") or "",
                 filename=job.file_name,
                 method=text_layer.get("method") or deterministic_method,
@@ -788,40 +942,64 @@ class AutomaticProcessingService:
                 confidence,
                 deterministic_method,
             )
-        model = candidate.get("model") or _attempted_model()
-        ai_method = candidate.get("method") or "ai"
-        if candidate.get("status") != "ok":
+        ok_candidates = [item for item in candidates if item.get("status") == "ok"]
+        if not ok_candidates:
+            failure = fanout.get("first_failure") or {}
             return (
                 {
                     "status": "error",
-                    "method": ai_method,
-                    "model": model,
-                    "detail": candidate.get("detail") or candidate.get("status"),
+                    "method": failure.get("method") or "ai",
+                    "model": failure.get("model") or _attempted_model(),
+                    "detail": failure.get("detail")
+                    or fanout.get("detail")
+                    or "no AI candidate was produced",
                     "processing_time_ms": elapsed_ms,
+                    # POD-1 — the bounded fan-out facts are persisted even when
+                    # every call failed (calls attempted, limits, per-page outcome).
+                    "ai_fanout": fanout,
                 },
                 extracted,
                 confidence,
                 deterministic_method,
             )
-        merged = _merge_extraction_candidates(
-            extracted, candidate.get("extracted_data") or {}
-        )
+        # Step 2C / POD-1 — document-level adjudication (P1 §7.3): the
+        # deterministic extraction is the base, then each page candidate is merged
+        # in page order filling only fields that are still unresolved. There is no
+        # positional `det[idx]`/`ai[idx]` pairing anywhere in this path.
+        merged = extracted
+        for item in ok_candidates:
+            merged = _merge_extraction_candidates(
+                merged, item.get("extracted_data") or {}
+            )
         merged_confidence = completeness_score(merged)
-        ai_payload = candidate.get("extracted_data") or {}
+        primary = ok_candidates[0]
+        model = primary.get("model") or _attempted_model()
+        ai_method = primary.get("method") or "ai"
+        ai_payload = primary.get("extracted_data") or {}
         ai_meta = {
             "status": "ok",
             "method": ai_method,
             "model": model,
-            "confidence": round(float(candidate.get("confidence") or 0.0), 4),
+            "confidence": round(float(primary.get("confidence") or 0.0), 4),
             "merged_confidence": round(merged_confidence, 4),
             "extracted_at": datetime.now(timezone.utc).isoformat(),
             "processing_time_ms": elapsed_ms,
-            "unresolved": candidate.get("unresolved") or [],
+            "unresolved": primary.get("unresolved") or [],
             # P1 §7.3 — the adjudication outcome and the bounded AI-candidate
             # evidence are persisted with the job metadata so a disagreement
             # between the two candidates is visible and never hidden.
             "adjudication": _adjudication_record(extracted, ai_payload, merged),
             "ai_candidate": _ai_candidate_evidence(ai_payload),
+            # POD-1 — the consumed fan-out plan and its bounded outcome.
+            "ai_fanout": fanout,
+            "ai_pages": [
+                {
+                    "page_index": item.get("page_index"),
+                    "model": item.get("model"),
+                    "confidence": round(float(item.get("confidence") or 0.0), 4),
+                }
+                for item in ok_candidates
+            ],
         }
         method_stamp = f"{deterministic_method}+{ai_method}"
         return ai_meta, merged, merged_confidence, method_stamp
