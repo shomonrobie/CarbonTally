@@ -336,7 +336,7 @@ def _pdf_job(**overrides) -> AutomaticProcessingJob:
     return AutomaticProcessingJob(**base)
 
 
-def _low_conf_deterministic(content: bytes, filename: str, mime: str) -> dict:
+def _low_conf_deterministic(content: bytes, filename: str, mime: str, **_kw) -> dict:
     """Deterministic pass that only resolves ``activity`` (completeness 1/3)."""
     return {
         "status": "ok",
@@ -348,7 +348,7 @@ def _low_conf_deterministic(content: bytes, filename: str, mime: str) -> dict:
     }
 
 
-def _full_deterministic(content: bytes, filename: str, mime: str) -> dict:
+def _full_deterministic(content: bytes, filename: str, mime: str, **_kw) -> dict:
     """Deterministic pass that resolves every required field (completeness 1.0)."""
     return {
         "status": "ok",
@@ -407,7 +407,7 @@ async def _run_with_ai(
     )
     service._content_cache[job.id] = b"x" * 200
 
-    def _fake_text(content: bytes, filename: str, mime: str) -> dict:
+    def _fake_text(content: bytes, filename: str, mime: str, **_kw) -> dict:
         return {
             "status": "ok", "ftype": "PDF", "text": text,
             "method": "pdf_text", "page_count": 1,
@@ -584,7 +584,7 @@ class TestPhase2AIDurableExtraction:
         # disagrees) must NOT overwrite deterministic source evidence.
         job = _pdf_job(metadata={"mime": "application/pdf", "prefer_ai": True})
 
-        def _full_deterministic(content: bytes, filename: str, mime: str) -> dict:
+        def _full_deterministic(content: bytes, filename: str, mime: str, **_kw) -> dict:
             return {
                 "status": "ok",
                 "method": "pdf_text",
@@ -871,7 +871,7 @@ class TestGate6W1PreserveAutomatedOutput:
         # path.
         job = _pdf_job(metadata={"mime": "application/pdf", "prefer_ai": True})
 
-        def _deterministic(content: bytes, filename: str, mime: str) -> dict:
+        def _deterministic(content: bytes, filename: str, mime: str, **_kw) -> dict:
             return {
                 "status": "ok", "method": "pdf_text", "page_count": 1,
                 "extracted_data": {

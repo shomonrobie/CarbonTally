@@ -20,6 +20,9 @@ def test_image_path_applies_the_fidelity_hook_when_enabled(monkeypatch):
     )
     monkeypatch.setattr(ax, "_image_text", lambda content: (multi_line, "tesseract_ocr"))
     monkeypatch.setenv("CARBONTALLY_P1_EXTRACTION_SHAPE", "enabled")
+    # Step 2C / POD-4 — 'enabled' is only honoured inside the controlled rollout,
+    # so the sanctioned test opt-in is the explicit wildcard allowlist.
+    monkeypatch.setenv("CARBONTALLY_P1_ORGANIZATION_ALLOWLIST", "*")
 
     result = ax._extract_image(b"image-bytes")
 

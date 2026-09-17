@@ -126,7 +126,7 @@ def _service(monkeypatch: pytest.MonkeyPatch, result: dict):
 
     calls: list[bytes] = []
 
-    def _fake_extract_document(content: bytes, filename: str, mime: str) -> dict:
+    def _fake_extract_document(content: bytes, filename: str, mime: str, **_kw) -> dict:
         calls.append(content)
         return result
 

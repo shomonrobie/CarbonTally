@@ -29,9 +29,26 @@ def test_shape_mode_defaults_to_shadow() -> None:
     assert p1.shape_mode(env={}) == p1.MODE_SHADOW
 
 
-@pytest.mark.parametrize("raw", ["enabled", "shadow", "off", "ENABLED", " shadow "])
+@pytest.mark.parametrize("raw", ["shadow", "off", " shadow "])
 def test_shape_mode_reads_the_env(raw: str) -> None:
     assert p1.shape_mode(env={p1.SHAPE_MODE_ENV: raw}) == raw.strip().lower()
+
+
+@pytest.mark.parametrize("raw", ["enabled", "ENABLED"])
+def test_shape_mode_requires_an_allowlist_before_enabling(raw: str) -> None:
+    # Step 2C / POD-4 — deliberate change: 'enabled' is a *request* that is only
+    # honoured for allowlisted organisations. Without an allowlist the effective
+    # mode stays `shadow`, so a misconfiguration cannot enable P1 for every
+    # tenant. The sanctioned `enabled` behaviour is covered by
+    # test_p1_controlled_rollout.py.
+    assert p1.shape_mode(env={p1.SHAPE_MODE_ENV: raw}) == p1.MODE_SHADOW
+    assert (
+        p1.shape_mode(
+            env={p1.SHAPE_MODE_ENV: raw, p1.ROLLOUT_ALLOWLIST_ENV: "org-a"},
+            organization_id="org-a",
+        )
+        == p1.MODE_ENABLED
+    )
 
 
 @pytest.mark.parametrize("raw", ["", "banana", "1", "yes"])

@@ -31,6 +31,11 @@ from typing import Any, Optional
 #: only; ``enabled`` applies the ratified shape; ``off`` does not even measure.
 #: The default **must** stay ``shadow`` until shadow evidence is recorded (`P1-D1`).
 SHAPE_MODE_ENV = "CARBONTALLY_P1_EXTRACTION_SHAPE"
+#: Step 2C / POD-4 — controlled rollout. Comma-separated organisation ids for
+#: which `enabled` is honoured, or the deliberate global value `*`. An empty or
+#: missing allowlist downgrades `enabled` to `shadow` (fail-safe).
+ROLLOUT_ALLOWLIST_ENV = "CARBONTALLY_P1_ORGANIZATION_ALLOWLIST"
+ROLLOUT_ALLOW_ALL = "*"
 MODE_SHADOW = "shadow"
 MODE_ENABLED = "enabled"
 MODE_OFF = "off"
@@ -98,13 +103,72 @@ class Judgement:
         }
 
 
-def shape_mode(env: Optional[dict[str, str]] = None) -> str:
-    """Resolve the extraction-shape mode. Defaults to ``shadow`` (fail-safe)."""
+def shape_mode(
+    env: Optional[dict[str, str]] = None,
+    organization_id: Optional[str] = None,
+) -> str:
+    """Resolve the **effective** extraction-shape mode for an organisation.
+
+    Step 2C / POD-4 (PO decision C — controlled rollout). The mode is resolved in
+    two independent steps so the default can never accidentally enable P1
+    globally:
+
+    1. the *requested* mode from ``SHAPE_MODE_ENV`` (invalid/absent → ``shadow``);
+    2. an explicit **organisation allowlist** — ``enabled`` is honoured only for a
+       listed organisation. An empty/missing allowlist downgrades ``enabled`` to
+       ``shadow`` (fail-safe), so enabling P1 globally requires the deliberate
+       value ``*`` in ``ROLLOUT_ALLOWLIST_ENV``.
+
+    Resolution is deterministic and reversible: removing the organisation from the
+    allowlist (or unsetting ``enabled``) returns it to the existing safe
+    behaviour on the next extraction. Nothing is cached.
+    """
     source = env if env is not None else os.environ
     raw = str(source.get(SHAPE_MODE_ENV, "") or "").strip().lower()
-    if raw in (MODE_ENABLED, MODE_SHADOW, MODE_OFF):
-        return raw
+    requested = raw if raw in (MODE_ENABLED, MODE_SHADOW, MODE_OFF) else MODE_SHADOW
+    if requested != MODE_ENABLED:
+        return requested
+    allowlist = _rollout_allowlist(source)
+    if not allowlist:
+        # Fail-safe: 'enabled' with no allowlist is treated as shadow.
+        return MODE_SHADOW
+    if ROLLOUT_ALLOW_ALL in allowlist:
+        return MODE_ENABLED
+    if organization_id and str(organization_id) in allowlist:
+        return MODE_ENABLED
     return MODE_SHADOW
+
+
+def _rollout_allowlist(env: Optional[dict[str, str]] = None) -> list[str]:
+    """Parse the organisation allowlist (comma-separated organisation ids)."""
+    source = env if env is not None else os.environ
+    raw = str(source.get(ROLLOUT_ALLOWLIST_ENV, "") or "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def rollout_status(
+    env: Optional[dict[str, str]] = None,
+    organization_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Audit/evidence record for the controlled rollout decision.
+
+    Deliberately free of secrets: it reports the requested mode, the effective
+    mode, whether the organisation is inside the rollout, the allowlist size and
+    whether the explicit global opt-in is set. Safe to persist as evidence on an
+    extraction result or emit to logs.
+    """
+    source = env if env is not None else os.environ
+    raw = str(source.get(SHAPE_MODE_ENV, "") or "").strip().lower()
+    allowlist = _rollout_allowlist(source)
+    effective = shape_mode(source, organization_id)
+    return {
+        "requested_mode": raw if raw in (MODE_ENABLED, MODE_SHADOW, MODE_OFF) else MODE_SHADOW,
+        "effective_mode": effective,
+        "organization_id": str(organization_id) if organization_id else None,
+        "in_rollout": effective == MODE_ENABLED,
+        "allowlist_size": len([item for item in allowlist if item != ROLLOUT_ALLOW_ALL]),
+        "allow_all": ROLLOUT_ALLOW_ALL in allowlist,
+    }
 
 
 def split_pages(text: str, *, method: str) -> tuple[list[str], str, str]:

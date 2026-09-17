@@ -373,6 +373,7 @@ def _apply_p1_fidelity(
     page_count: int,
     extracted: dict,
     unresolved: list,
+    organization_id: Optional[str] = None,
 ) -> dict:
     """Phase 8 P1 (P1-D1) — the shared extraction-fidelity shape/coverage hook.
 
@@ -392,7 +393,12 @@ def _apply_p1_fidelity(
     """
     from services import extraction_fidelity as p1
 
-    mode = p1.shape_mode()
+    # Step 2C / POD-4 — the effective mode is tenant-aware: `enabled` is honoured
+    # only for organisations inside the controlled rollout allowlist; everything
+    # else (and the default) stays `shadow`, i.e. unchanged customer-visible
+    # behaviour. `rollout` is attached as audit evidence.
+    mode = p1.shape_mode(organization_id=organization_id)
+    rollout = p1.rollout_status(organization_id=organization_id)
     coverage: Optional[dict] = None
     out_extracted = extracted
     block: Optional[dict] = None
@@ -431,10 +437,18 @@ def _apply_p1_fidelity(
                     "coverage": coverage,
                     "block_reason": p1.block_reason(judgement),
                 }
-    return {"extracted": out_extracted, "coverage": coverage, "block": block}
+    # POD-4 — the rollout decision is attached as audit evidence on every
+    # governed extraction (which mode was requested, which mode was effective for
+    # this organisation, and whether it is inside the controlled rollout).
+    return {
+        "extracted": out_extracted,
+        "coverage": coverage,
+        "block": block,
+        "rollout": rollout,
+    }
 
 
-def _extract_pdf(content: bytes) -> dict:
+def _extract_pdf(content: bytes, *, organization_id: Optional[str] = None) -> dict:
     text, method, page_count = _pdf_text(content)
     if not text or len(text.strip()) < 20:
         return {
@@ -459,6 +473,7 @@ def _extract_pdf(content: bytes) -> dict:
         page_count=page_count,
         extracted=extracted,
         unresolved=unresolved,
+        organization_id=organization_id,
     )
     if p1_outcome["block"] is not None:
         return p1_outcome["block"]
@@ -517,7 +532,7 @@ def _image_text(content: bytes) -> tuple[str, str]:
     return (text or ""), method
 
 
-def _extract_image(content: bytes) -> dict:
+def _extract_image(content: bytes, *, organization_id: Optional[str] = None) -> dict:
     text, method = _image_text(content)
     if not text or len(text.strip()) < 20:
         return {
@@ -540,6 +555,7 @@ def _extract_image(content: bytes) -> dict:
         page_count=1,
         extracted=extracted,
         unresolved=unresolved,
+        organization_id=organization_id,
     )
     if p1_outcome["block"] is not None:
         return p1_outcome["block"]
@@ -793,19 +809,26 @@ def _extract_xlsx(content: bytes) -> dict:
     }
 
 
-def extract_document(content: bytes, filename: str, mime: str) -> dict:
+def extract_document(
+    content: bytes, filename: str, mime: str, *, organization_id: Optional[str] = None
+) -> dict:
     """Extract structured ``extracted_data`` from ``content`` (never raises).
 
     The public entry point for the automatic pipeline. Classification is by
     file extension/mime; unknown types return ``unsupported`` so the worker
     routes the job to the manual-review gate instead of failing the upload.
+
+    ``organization_id`` (Step 2C / POD-4) scopes the governed P1 rollout: it is
+    passed to the fidelity hook so ``enabled`` mode is honoured only for the
+    organisations inside the controlled allowlist. Omitting it is safe — the
+    resolver then keeps the existing ``shadow`` behaviour.
     """
     ftype = _classify(filename, mime)
     try:
         if ftype == "PDF":
-            return _extract_pdf(content)
+            return _extract_pdf(content, organization_id=organization_id)
         if ftype == "IMAGE":
-            return _extract_image(content)
+            return _extract_image(content, organization_id=organization_id)
         if ftype == "SPREADSHEET":
             ext = filename.rsplit(".", 1)[-1].lower()
             if ext == "csv":

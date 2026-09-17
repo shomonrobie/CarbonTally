@@ -447,7 +447,15 @@ class AutomaticProcessingService:
                 lock_token=lock_token,
             )
             return "blocked"
-        result = extract_document(content, job.file_name, job.metadata.get("mime") or "")
+        result = extract_document(
+            content,
+            job.file_name,
+            job.metadata.get("mime") or "",
+            # Step 2C / POD-4 — tenant-scoped controlled P1 rollout: the job's
+            # organisation decides whether 'enabled' is honoured (allowlist) or
+            # the existing 'shadow' behaviour applies.
+            organization_id=job.organization_id,
+        )
         extracted = result.get("extracted_data") or {}
         method = result.get("method") or "unknown"
         # P1 (§19 implementation boundary) — the classifier's coverage facts and
