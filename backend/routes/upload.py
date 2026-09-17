@@ -13,6 +13,11 @@ import traceback
 from auth import AuthUser, get_current_user, require_auth, require_org_member
 
 from database import get_supabase_client
+from api.dependencies import RepositoryBundle, get_repositories
+from api.v3_documents import (
+    LegacyManualReviewError,
+    legacy_queue_for_manual_review,
+)
 from utils.emissions import (
     process_fuel_data,
     process_utility_data,
@@ -188,7 +193,11 @@ async def upload_pdf(
     file: UploadFile = File(...),
     data_type: str = Form('utility'),
     organization_id: str = Form(None),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    # Step 2C / POD-2 — the legacy auto-repair branch now translates into the
+    # current V3 manual-review workflow through the shared document pipeline
+    # (no second queue; see api.v3_documents.legacy_queue_for_manual_review).
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
     Upload and process PDF with system settings validation.
@@ -229,30 +238,47 @@ async def upload_pdf(
         
         # Check if extraction failed and auto-repair is enabled
         if (extraction_result.get("status") == "error" or has_low_confidence(extraction_result)) and enable_auto_repair:
-            # Step 2 / WS-C — `extract_issues_from_result` comes from
-            # `utils.emissions` (module-level import above); it was never defined
-            # in `main`. `queue_for_manual_review` has NO implementation anywhere
-            # in the release tree, so the auto-repair branch cannot queue review
-            # work: it now fails truthfully and briefly (503) instead of raising a
-            # raw ImportError (500). Retiring or reinstating this legacy
-            # auto-repair path is a PO decision (Step 2 report §17).
-            issues, summary = extract_issues_from_result(extraction_result, data_type)
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "Automatic manual-review queueing is not available in this "
-                    "build. The document was not queued for manual review."
-                ),
-            )
-            
+            # Step 2C / POD-2 (PO decision C) — thin compatibility adapter.
+            #
+            # The retired pre-V3 `queue_for_manual_review()` wrote into a
+            # manual-review queue that no longer exists. It is NOT resurrected:
+            # the legacy request is translated into the CURRENT V3 manual-review
+            # workflow by driving the same shared pipeline every V3 upload uses
+            # (storage → organization_files → extraction batch/item → durable
+            # automatic-processing job that blocks at the manual-review gate).
+            # An operator then works the item in the existing processing
+            # workspace, and the customer sees the blocked-job card.
+            #
+            # If the legacy caller cannot supply the information a safe V3 request
+            # needs, the adapter raises and we return a truthful 400 — the request
+            # is never silently discarded and no field is fabricated.
+            try:
+                adapter = await legacy_queue_for_manual_review(
+                    organization_id=organization_id or current_user.organization_id,
+                    filename=file.filename,
+                    content=file_bytes,
+                    content_type=file.content_type,
+                    data_type=data_type,
+                    uploaded_by=current_user.user_id,
+                    repos=repos,
+                    auto_result=extraction_result,
+                )
+            except LegacyManualReviewError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+                ) from exc
+
             return {
                 "status": "manual_review_required",
                 "message": "Our team will manually extract your data within 24 hours.",
-                "review_id": review_id,
+                "review_id": adapter["review_id"],
+                "document_id": adapter["document_id"],
+                "item_id": adapter["item_id"],
                 "estimated_completion": "24-48 hours",
-                "extraction_issues": issues,
-                "extraction_summary": summary,
-                "confidence_score": summary.get("confidence_score", 0.0)
+                "extraction_issues": adapter["issues"],
+                "extraction_summary": adapter["summary"],
+                "confidence_score": adapter["summary"].get("confidence_score", 0.0),
+                "workflow": adapter["workflow"],
             }
         elif extraction_result.get("status") == "error" or has_low_confidence(extraction_result):
             # Auto-repair disabled, return error

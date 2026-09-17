@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
-from typing import Optional
+from typing import Any, Optional
+
+# Step 2C / POD-2 — the legacy compatibility adapter reports the issues it derives
+# from the failed automatic result, using the same helper the pre-V3 path used.
+from utils.emissions import extract_issues_from_result
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -362,6 +366,102 @@ async def create_document_and_enqueue(
         print(f"⚠️ OCR persistence failed for {filename}: {exc!r}")
 
     return record
+
+
+class LegacyManualReviewError(ValueError):
+    """A legacy manual-review request that cannot be safely translated to V3.
+
+    Raised (and surfaced as HTTP 400 by the caller) when the retired legacy
+    caller cannot supply the information a safe V3 request needs. The adapter
+    never fabricates the missing fields and never silently discards the request.
+    """
+
+
+async def legacy_queue_for_manual_review(
+    *,
+    organization_id: Optional[str],
+    filename: Optional[str],
+    content: Optional[bytes],
+    content_type: Optional[str],
+    data_type: str = "fuel",
+    uploaded_by: str,
+    repos: RepositoryBundle,
+    auto_result: Optional[dict] = None,
+    register: Optional[Any] = None,
+) -> dict:
+    """Step 2C / POD-2 (PO decision C) — thin compatibility adapter.
+
+    The pre-V3 ``queue_for_manual_review()`` wrote into a separate manual-review
+    queue that no longer exists. This adapter does **not** recreate that queue and
+    does **not** duplicate the queue implementation: it translates the legacy
+    request into the **current** V3 manual-review workflow by driving the same
+    shared pipeline every V3 upload uses —
+    ``storage → organization_files → extraction batch/item → durable
+    automatic-processing job`` — after which a human works the item in the
+    existing processing workspace and the customer sees the blocked job.
+
+    Compatibility mapping (documented, not invented):
+
+    * legacy ``review_id`` → the created V3 **document** id (``document_id``); the
+      linked manual-extraction **item** id is returned as ``item_id`` when it can
+      be resolved;
+    * legacy ``issues``/``summary`` → produced by ``extract_issues_from_result``
+      from the failed automatic result the caller already has;
+    * the legacy response shape ``{"status": "manual_review_required", ...}`` is
+      preserved by the caller.
+
+    ``register`` is injectable so the translation contract is unit-testable
+    without touching storage; it defaults to the shared V3 registration pipeline.
+
+    Raises :class:`LegacyManualReviewError` when required information is missing.
+    """
+    if not organization_id:
+        raise LegacyManualReviewError(
+            "manual review requires an organisation; the legacy request did not "
+            "supply one"
+        )
+    if not filename:
+        raise LegacyManualReviewError(
+            "manual review requires the source file name; the legacy request did "
+            "not supply one"
+        )
+    if not content:
+        raise LegacyManualReviewError(
+            "manual review requires the document bytes; the legacy request did not "
+            "supply them (nothing was queued)"
+        )
+    mime = (content_type or "").strip() or "application/octet-stream"
+    file_type = _classify(filename, mime)
+    if register is None:
+        register = create_document_and_enqueue
+    record = await register(
+        organization_id=organization_id,
+        filename=filename,
+        content=content,
+        mime_type=mime,
+        file_type=file_type,
+        data_type=data_type,
+        uploaded_by=uploaded_by,
+        repos=repos,
+    )
+    issues, summary = extract_issues_from_result(auto_result or {}, data_type)
+    item_id: Optional[str] = None
+    lookup = getattr(repos.manual_extraction, "get_item_by_file_id", None)
+    if callable(lookup):
+        try:
+            item = await lookup(record.id)
+            item_id = getattr(item, "id", None) if item is not None else None
+        except Exception:  # noqa: BLE001 — item lookup must not fail the adapter
+            print(f"⚠️ legacy manual-review adapter could not resolve the item for {record.id}")
+    return {
+        "review_id": record.id,
+        "document_id": record.id,
+        "item_id": item_id,
+        "file_type": file_type,
+        "issues": issues,
+        "summary": summary,
+        "workflow": "v3_manual_review",
+    }
 
 
 @router.post("/uploads/{file_id}/ocr")
