@@ -5,7 +5,12 @@ audit/evidence tables are excluded from the eligible domain set.
 """
 from __future__ import annotations
 
-from services.retention import _ELIGIBLE_DOMAINS, build_policy, enforce_retention
+from services.retention import (
+    _ELIGIBLE_DOMAINS,
+    build_policy,
+    enforce_retention,
+    telemetry_excluded_tables,
+)
 
 
 def test_build_policy_keeps_configured_days_only() -> None:
@@ -24,8 +29,30 @@ def test_build_policy_never_invents_values() -> None:
 
 def test_audit_and_evidence_domains_are_excluded_from_enforcement() -> None:
     # Security invariant: auditability and the immutable evidence model must not
-    # be weakened by retention. Only documents are eligible today.
-    assert set(_ELIGIBLE_DOMAINS) == {"document_retention_days"}
+    # be weakened by retention.
+    #
+    # Step 2 closure / POD-6 — corrected stale expectation: the eligible set is
+    # documents **plus** the Phase 8-X X2 telemetry domain (PO decision `PX-7`),
+    # which the implementation already carries. The invariant this test exists to
+    # protect is unchanged: no audit/evidence/backup domain is ever eligible, and
+    # the telemetry rule may never purge a business/evidence/audit table.
+    assert set(_ELIGIBLE_DOMAINS) == {
+        "document_retention_days",
+        "operational_telemetry_retention_days",
+    }
+    for excluded_domain in (
+        "audit_log_retention_days",
+        "data_retention_days",
+        "backup_retention_days",
+    ):
+        assert excluded_domain not in _ELIGIBLE_DOMAINS
+    for excluded_table in (
+        "audit_trail",
+        "evidence_line_items",
+        "calculation_snapshots",
+        "report_versions",
+    ):
+        assert excluded_table in telemetry_excluded_tables()
 
 
 async def test_enforce_retention_dry_run_default() -> None:
