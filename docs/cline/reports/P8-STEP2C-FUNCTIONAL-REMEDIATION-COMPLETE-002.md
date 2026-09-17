@@ -3,7 +3,10 @@
 **Task ID:** `CT-STEP2C-FUNCTIONAL-REMEDIATION-002`
 **Branch:** `p8-release-reconciled`
 **Starting tip:** `7666fffaadb7b2969291bc133defc7526bc46c67` (verified at start: local == remote, worktree clean)
-**Ending tip:** `b45721abfbb2c8c8286273cb962ccd6a82cd7787` (remote verified identical)
+**Code tip (last implementation/pushed code commit):** `b45721abfbb2c8c8286273cb962ccd6a82cd7787`
+**Branch tip after this report commit:** `2f6e1d57ecfb435a8bb44dc304c628df6d7b2364`
+(commit 7 of the workstream is this report itself, `2f6e1d5` — documentation only,
+no code change; the remote SHA equals the local SHA at every commit)
 **Commits added:** 6 (`3849f30`, `a496a37`, `9332569`, `948917f`, `e5746ed`, `b45721a`)
 **Date:** 2026-09-17
 **Verdict:** `STEP 2 FUNCTIONAL REMEDIATION PARTIALLY COMPLETE — PO REVIEW REQUIRED`
