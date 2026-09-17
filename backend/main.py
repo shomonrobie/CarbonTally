@@ -41,6 +41,7 @@ from routes import (
     waitlist,
     upload,
     reports,
+    legacy_reports,
     glossary,
     users,
     notifications,
@@ -211,6 +212,9 @@ app.add_middleware(
 app.include_router(waitlist.router)
 app.include_router(upload.router)
 app.include_router(reports.router)
+# Step 2C / POD-5 — thin compatibility aliases for the legacy report paths the
+# live legacy UI still calls (they were 404ing); delegates to `reports`.
+app.include_router(legacy_reports.router)
 app.include_router(glossary.router)
 app.include_router(users.router)
 app.include_router(notifications.router)
