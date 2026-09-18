@@ -250,6 +250,12 @@ class FactorMatchingEngine:
         base_unit, qualifier = split_qualified_unit(request.unit or "")
         if not base_unit or qualifier:
             return None
+        # Natural-gas scope gate (the oracle showed that without it an
+        # unrelated/undetected activity - "Power consumption kWh" - could be
+        # redirected to a CNG basis factor). The calorific-basis policy only
+        # ever applies to a request that actually names a gas.
+        if "gas" not in (request.activity or "").casefold():
+            return None
         # ``FactorSearchIndex.keyword_search`` applies a STRICT unit filter, so a
         # base-unit re-query would return nothing (verified: unit="kWh" -> []).
         # Candidate retrieval is therefore activity-based (``unit=None``) and unit

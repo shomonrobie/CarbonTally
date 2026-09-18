@@ -176,6 +176,15 @@ def test_gross_net_remain_bases_not_conversions() -> None:
     assert resolve_unit_for_factor("litres", "kWh (Net CV)") == "litres"
 
 
+@pytest.mark.asyncio
+async def test_non_gas_request_is_not_redirected_to_a_gas_factor() -> None:
+    """Scope guard: an undetected/unrelated activity never picks a gas basis."""
+    engine = _engine(_gas())
+    result = await engine.match(_request("Power consumption kWh € €", "kWh"))
+    assert result.methodology != "calorific_basis"
+    assert result.factor is None or "Gas" not in (result.factor.activity_type or "")
+
+
 def test_discovery_is_inert_without_competing_qualifiers() -> None:
     """The helper only acts when >1 distinct qualifier of one base unit exists."""
     single = _engine([_factor("kWh (Net CV)", "f-net", "0.20489")])
