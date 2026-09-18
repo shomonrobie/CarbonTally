@@ -413,13 +413,23 @@ def block_reason(judgement: Judgement) -> str:
 
 
 def build_line_items(
-    text: str, *, method: str, page_count: int, ai_used: bool = False
+    text: str,
+    *,
+    method: str,
+    page_count: int,
+    ai_used: bool = False,
+    invoice_number: Optional[str] = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Build the P1 per-source-line ``line_items[]`` shape for a new document.
 
     Records stay compatible with the existing tabular shape (``activity``,
     ``quantity``, ``unit``) and add P1 provenance: ``page``, ``page_basis``,
     ``page_trust``, ``extraction_method``, ``line_number`` and ``source_line``.
+
+    ``033`` D-F: when the existing deterministic extraction has already established the
+    document-level ``invoice_number``, it is carried onto every line item so the existing
+    provenance chain can resolve it per row. No new field is introduced, and the value is
+    the document's own (a shared invoice number is not re-derived per row).
     """
     from services.automatic_extraction import _detect_activity, _detect_unit
 
@@ -456,6 +466,11 @@ def build_line_items(
             record["extraction_method"] = stamp
             record["line_number"] = len(items) + 1
             record["source_line"] = line["raw"]
+            if str(invoice_number or "").strip():
+                # `033` D-F — carry the document's own invoice reference onto the row so the
+                # existing provenance chain (line item → calculation → report) can resolve it.
+                # Whitespace-only values are never recorded (the chain must not resolve to blank).
+                record["invoice_number"] = str(invoice_number).strip()
             items.append(record)
     coverage = classify(text, method=method, page_count=page_count).as_coverage()
     coverage["page_basis"] = page_basis

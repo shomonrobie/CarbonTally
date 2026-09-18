@@ -419,7 +419,12 @@ def _apply_p1_fidelity(
         )
         if mode == p1.MODE_ENABLED and judgement.multi_line_suspect:
             items, shape_coverage = p1.build_line_items(
-                text, method=method, page_count=page_count
+                text,
+                method=method,
+                page_count=page_count,
+                # `033` D-F — the document-level invoice number already established by the
+                # existing extraction travels onto each line item (no new field).
+                invoice_number=extracted.get("invoice_number"),
             )
             coverage = shape_coverage
             coverage["mode"] = mode
