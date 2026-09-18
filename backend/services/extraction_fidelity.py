@@ -442,6 +442,14 @@ def build_line_items(
                 # recognised as a genuine source line — keep it addressable with its
                 # literal source description instead of silently dropping the row.
                 record["description"] = line["description"]
+            elif line.get("description"):
+                # `CL-57` (026): every candidate carries its literal source description, not
+                # only the rows that matched nothing. The downstream mapping stage needs the
+                # source text to *attempt* a match for a row whose canonical activity keyword
+                # did not match (e.g. "Power consumption"), and the row's evidence identity
+                # must survive extraction. This is the source text itself — never a
+                # synthesised activity.
+                record["description"] = line["description"]
             record["page"] = page_index
             record["page_basis"] = page_basis
             record["page_trust"] = "lower" if page_basis == "marker" else "standard"

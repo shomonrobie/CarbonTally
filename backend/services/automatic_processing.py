@@ -109,6 +109,55 @@ def _parse_date(value: Any) -> Optional[_Date]:
     return None
 
 
+def _line_identity(line: dict[str, Any], idx: int) -> dict[str, Any]:
+    """The candidate's own provenance, carried into the mapping record.
+
+    A mapping entry is never re-associated with a different source row by list position
+    alone: the source ordinal travels with the entry, together with the candidate's own
+    ``line_number``/``source_line`` when the extractor established them. Absent fields
+    stay absent — nothing is invented (`CL-57`, 026).
+    """
+    identity: dict[str, Any] = {"source_ordinal": idx + 1}
+    if line.get("line_number") not in (None, ""):
+        identity["line_number"] = line.get("line_number")
+    if line.get("source_line"):
+        identity["source_line"] = line.get("source_line")
+    return identity
+
+
+def _mapping_input_text(line: dict[str, Any]) -> str:
+    """The text the existing matching engine is asked to match for one source row.
+
+    A canonical activity is used when the extractor resolved one. Otherwise the row's
+    literal source description is passed through, so a genuine row whose keyword did not
+    resolve can still *reach* the existing matcher. Nothing is synthesised here: if the
+    engine cannot match, the row stays unresolved (`CL-57`, 026).
+    """
+    return (
+        str(line.get("activity") or "").strip()
+        or str(line.get("description") or "").strip()
+    )
+
+
+def _unresolved_mapping_entry(
+    line: dict[str, Any],
+    idx: int,
+    reason: str,
+    *,
+    activity: Optional[str] = None,
+    unit: Optional[str] = None,
+) -> dict[str, Any]:
+    """An explicit unresolved entry: source identity preserved, **no** fabricated factor."""
+    entry: dict[str, Any] = _line_identity(line, idx)
+    entry["status"] = "unmapped"
+    entry["reason"] = reason
+    if activity:
+        entry["activity"] = activity
+    if unit:
+        entry["unit"] = unit
+    return entry
+
+
 def _methodology_for(factor_kind: str, unit: Optional[str]) -> str:
     """Map a matched factor to a valid :class:`CalculationMethodology`.
 
@@ -1144,7 +1193,12 @@ class AutomaticProcessingService:
         if parsed_date is not None:
             reporting_year = parsed_date.year
         for idx, line in enumerate(targets):
-            activity = str(line.get("activity") or "").strip()
+            identity = _line_identity(line, idx)
+            # `CL-57` (026) — the row's own evidence identity travels with the mapping entry,
+            # and the mapping input is the resolved activity or, failing that, the row's
+            # literal source description (so a genuine row *reaches* the existing matcher
+            # instead of being dropped). No activity is invented here.
+            activity = _mapping_input_text(line)
             unit = str(line.get("unit") or "").strip() or None
             if unit is not None:
                 from core.units import normalize_unit
@@ -1154,6 +1208,9 @@ class AutomaticProcessingService:
                     unit = normalized
             if not activity:
                 reasons.append(f"line {idx + 1}: activity missing")
+                mapped_lines.append(
+                    _unresolved_mapping_entry(line, idx, "activity missing")
+                )
                 continue
             request_id = str(
                 uuid.uuid5(uuid.NAMESPACE_DNS, f"{job.id}::map::{idx}")
@@ -1174,12 +1231,27 @@ class AutomaticProcessingService:
                 )
             except Exception as exc:  # noqa: BLE001
                 reasons.append(f"line {idx + 1}: matching failed ({exc})")
+                mapped_lines.append(
+                    _unresolved_mapping_entry(
+                        line, idx, f"matching failed ({exc})", activity=activity, unit=unit
+                    )
+                )
                 continue
             if result.status != "matched" or result.confidence < AUTO_MAPPING_CONFIDENCE_MIN:
                 reasons.append(
                     f"line {idx + 1}: no confident factor for "
                     f"{activity!r} {unit or ''} (status={result.status}, "
                     f"confidence={result.confidence:.2f})"
+                )
+                mapped_lines.append(
+                    _unresolved_mapping_entry(
+                        line,
+                        idx,
+                        f"no confident factor (status={result.status}, "
+                        f"confidence={result.confidence:.2f})",
+                        activity=activity,
+                        unit=unit,
+                    )
                 )
                 continue
             factor_id = (
@@ -1189,9 +1261,16 @@ class AutomaticProcessingService:
             )
             if factor_id is None:
                 reasons.append(f"line {idx + 1}: matched factor has no id")
+                mapped_lines.append(
+                    _unresolved_mapping_entry(
+                        line, idx, "matched factor has no id", activity=activity, unit=unit
+                    )
+                )
                 continue
             mapped_lines.append(
                 {
+                    **identity,
+                    "status": "mapped",
                     "factor_id": factor_id,
                     "factor_kind": result.factor_kind,
                     "mapping_confidence": round(result.confidence, 4),
@@ -1578,9 +1657,11 @@ class AutomaticProcessingService:
             quantity_unit,
             (factor.unit if factor is not None else customer_factor.unit),
         )
-        activity = str(line.get("activity") or "").strip() or str(
-            header.get("activity") or ""
-        )
+        # `CL-57` (026) — a multi-row source row whose canonical activity keyword did not
+        # resolve still carries its literal source description, so the calculation record's
+        # human-readable activity is that source text (never a synthesised activity), falling
+        # back to the document header only when the row itself carries no text at all.
+        activity = _mapping_input_text(line) or str(header.get("activity") or "").strip()
         activity_type = mapped_line.get("activity") or activity
         scope = (
             mapped_line.get("scope")
