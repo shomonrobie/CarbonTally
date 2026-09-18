@@ -216,11 +216,88 @@ unit_matches_with_qualifier  NOT MODIFIED — the discovery design above does no
   factor-SELECTION time remains an open question for a separate look, as noted in the previous section.
 ```
 
-## Verdict for this window (discovery completion attempt)
-**PARTIAL** — no discovery code was changed in this window. The D-A policy core (46a5534) remains
-implemented, tested and pushed; the wiring above is specified to the interface level but not applied,
-so row 1 of the five-row oracle still cannot reach the Gross/Net candidates. Tree clean, production
-untouched, P1 SHADOW, PO gate open.
+## D-A DISCOVERY — IMPLEMENTED (final window)
+
+```text
+BASELINE SHA (verified)   4fd5fcc978d9c89e836a21e569a999e5ae8c784a
+FINAL SHA                 b0ac3fe (HEAD == origin/p8-release-reconciled, tree CLEAN)
+IMPLEMENTATION COMMITS    466eb93  feat(034-D-A): post-stage natural-gas calorific-basis discovery
+                                    in FactorMatchingEngine
+                          b0ac3fe  fix(034-D-A): gate basis discovery to gas requests
+                                    (oracle: 'Power consumption kWh' was redirected to CNG)
+FILES CHANGED             backend/engines/factor_matching.py                        (+ helper + call)
+                          backend/tests/unit/engines/test_d_a_natural_gas_discovery.py  (9 tests, NEW)
+CODE SHAPE (approved)     FactorMatchingEngine.match(): after the configured stages complete without a
+                          definitive result, _discover_calorific_basis(request) re-queries the EXISTING
+                          index, then select_basis_factor(...) decides; a policy-selected candidate
+                          returns MatchResult(status="matched", confidence=1.0,
+                          methodology="calorific_basis"). No new stage, no config change, no new search
+                          API, no new unit-compatibility helper, no service-layer recovery path.
+GATES (all structural)     1) request unit must be UNQUALIFIED (qualified → discovery inert)
+                           2) base unit must be present           3) request activity must name a gas
+                           4) retrieved candidates must share the request's base unit
+                           5) select_basis_factor fires only when >1 distinct qualifier of one base unit
+                          ⇒ no change to unit_matches_with_qualifier; resolve_unit_for_factor Gross/Net
+                            protection from 46a5534 intact and asserted.
+```
+
+### Real row-1 oracle (local authoritative DB, 7049 factors, real engine — read-only)
+```text
+ROW 1  'Gas usage 5,362.2000 kWh €0.0670 €359.2700'
+  quantity / unit      : 5362.2  'kwh' → normalised 'kWh'          (activity detected: Natural gas)
+  match status         : matched | confidence 1.000
+  stages executed      : exact_match · natural_key · alias_match · keyword_search · fuzzy_match
+                         · calorific_basis            ← D-A discovery performed the resolution
+  FACTOR ID            : 2aa65183-eb28-4640-a529-15f18360dc5a
+  FACTOR NAME          : Fuels > Gaseous fuels > Natural gas (kg CO2e of CH4 per unit) [kWh (Net CV)]
+  FACTOR VALUE / UNIT  : 0.00031  |  'kWh (Net CV)'
+  BASIS                : Net CV  (unqualified kWh → Net default; no Gross/Net conversion)
+  SCOPE / YEAR         : Scope 1 | 2025
+  SOURCE / FACTOR SET  : DEFRA-DESNZ | DEFRA-2025   (factor-set context preserved)
+  027 unit resolution  : 'kWh' + 'kWh (Net CV)' → 'kWh (Net CV)'
+  arithmetic (oracle)  : 5362.2 × 0.00031 = 1.662282 kg CO2e   [no calculation persisted]
+  OBSERVATION (flagged, NOT a D-A policy change): the winning Net-CV proposal is the CH4 per-unit
+  component factor; preference for the 'aggregate (kg CO2e)' row inside one qualifier group is a
+  separate ranking question, outside the D-A brief and untouched here.
+ROW 5 (regression control) 'Power consumption 24,620.5000 kWh …'  activity (none)
+  BEFORE THE GATE: matched to CNG [kWh (Net CV)] via calorific_basis  ← false positive found by the oracle
+  AFTER  THE GATE: no_match | confidence 0.000 | no factor returned — discovery now requires a gas request
+ROWS 2–4: unchanged single-path matches (Diesel 'litres' Scope 1 · Waste 'tonnes' Scope 1 ·
+  Water 'cubic metres' Scope 3), all matched, confidence 1.000, none via calorific_basis.
+```
+
+### Test evidence (all green, run in this window)
+```text
+tests/unit/engines/test_d_a_natural_gas_discovery.py                          9 passed
+  unqualified kWh → Net CV (1.0, calorific_basis) · Gross CV & GCV prose → Gross · Net CV & NCV prose →
+  Net · enumeration order irrelevant both ways · qualified request not re-discovered · electricity /
+  diesel / water untouched · undetected non-gas activity not redirected to gas · Gross/Net not
+  conversions (027) · discovery inert without competing qualifiers
+tests/unit/test_d_a_natural_gas_basis.py (46a5534 policy core)               26 passed
+tests/unit/engines (all)                                                     100%
+tests/unit/test_units*.py (027 family-compat + qualifier + units)            100%
+tests/unit/services (023 · 026 · 029/031 · D-F invoice_number)               no failures
+new failures: none · pre-existing failures: none · infrastructure failures: none
+NOTE: the full tests/unit run was started but did not finish inside this window, so no full-suite
+total is claimed; only the suites listed above were observed green.
+```
+
+### Compliance
+```text
+unit_matches_with_qualifier required modification: NO — not modified (no D-A test proved it causes an
+  incorrect D-A result; the containment is structural, and the base-unit gate was added in the ENGINE).
+Production impact: NONE — no production access/upload/job/queue/EF change/deployment; row-5 CNG
+  behaviour was found and fixed against the LOCAL authoritative dataset only. P1 remains SHADOW.
+Cleanup: none required (read-only oracle; no disposable records created). Unrelated tests: unmodified.
+```
+
+## FINAL VERDICT
+
+**IMPLEMENTED — D-A COMPLETE — READY FOR INDEPENDENT VERIFICATION**
+
+(The one observation above — component-vs-aggregate preference inside the winning Net-CV qualifier
+group — is recorded for PO attention and is deliberately outside the D-A scope. NOT PO CLOSED.)
+
 
 
 
