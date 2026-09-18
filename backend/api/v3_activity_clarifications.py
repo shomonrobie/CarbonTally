@@ -169,15 +169,38 @@ async def _candidates(
     return list(matching_engine.clarification_candidates(request))
 
 
-def _validate_semantic_choice(clarification: str, options: tuple) -> None:
-    """Accept only a choice the engine itself offered (no invented semantics)."""
+def _validate_semantic_choice(
+    clarification: str,
+    options: tuple,
+    activity: str = "",
+    candidates: Sequence[Any] = (),
+    *,
+    unit: Optional[str] = None,
+    scope: Optional[str] = None,
+) -> None:
+    """Accept the engine's own offered options, or semantics it can still resolve.
+
+    Two acceptance paths, both server-derived — the request can never name a factor:
+
+    1. the submission matches one of the semantic options the engine offered for
+       this activity (``semantic_term`` / ``label`` / ``id``);
+    2. otherwise the existing policy is re-run with it, and the submission is
+       accepted only when that produces a genuine selection from the server-side
+       candidate set (e.g. the engine offers the family-level "Fuel combustion"
+       option but also resolves the more specific "Waste oils").
+
+    Anything else — arbitrary text that neither was offered nor resolves through
+    the policy — is refused, so a client cannot steer the selection by inventing
+    semantics. If an offered option leaves the policy unresolved, that is a
+    legitimate "still ambiguous" outcome and is persisted as unresolved.
+    """
     text = (clarification or "").strip().casefold()
     if not text:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="clarification must not be empty",
         )
-    allowed = set()
+    offered = set()
     for option in options:
         for value in (
             getattr(option, "semantic_term", ""),
@@ -185,8 +208,15 @@ def _validate_semantic_choice(clarification: str, options: tuple) -> None:
             getattr(option, "id", ""),
         ):
             if value:
-                allowed.add(str(value).strip().casefold())
-    if text not in allowed:
+                offered.add(str(value).strip().casefold())
+    if text in offered:
+        return
+    from engines.activity_clarification import resolve_clarification
+
+    _record, factor = resolve_clarification(
+        activity, clarification, candidates, unit=unit, scope=scope
+    )
+    if factor is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="clarification must be one of the available semantic options",
@@ -311,7 +341,14 @@ async def submit_clarification(
                 f"(verdict: {assessment.verdict})"
             ),
         )
-    _validate_semantic_choice(payload.clarification, assessment.options)
+    _validate_semantic_choice(
+        payload.clarification,
+        assessment.options,
+        payload.activity,
+        candidates,
+        unit=payload.unit,
+        scope=payload.scope,
+    )
     outcome = await repos.clarifications.apply_clarification(
         payload.activity,
         payload.clarification,
