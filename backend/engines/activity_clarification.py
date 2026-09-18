@@ -30,6 +30,7 @@ from typing import Any, Optional, Sequence
 from engines.factor_selection_policy import (
     activity_of,
     family_of,
+    is_upstream,
     request_tokens,
     select_factor,
     treatment_route,
@@ -244,6 +245,128 @@ def resolve_clarification(
         notes=tuple(decision.groups) if decision.status == "ambiguous" else (),
     )
     return record, factor
+
+
+@dataclass(frozen=True)
+class FamilyConflictAssessment:
+    """The diversion decision for the automated path (F-042-1 / 043).
+
+    Derived ONLY from existing representations: the taxonomy family prefix
+    (``family_of``), the accounting ``scope`` the policy already uses, the shared
+    request tokeniser, and the policy's own upstream/eligibility rules.
+    """
+
+    activity: str
+    verdict: str  # sufficient | policy_ambiguous | clarification_required | no_candidates | not_required
+    reason: str
+    families: tuple = ()  # (family, (scopes…)) for the conflicting families
+    options: tuple = ()
+    policy_status: str = ""
+    selected_factor_id: Optional[str] = None
+
+
+def _concept_families(activity: str, candidates: Sequence[Any]) -> dict:
+    """family → {scopes} for non-upstream candidates sharing a concept token.
+
+    Non-upstream is the policy's own boundary rule (a WTT/upstream factor is not a
+    candidate for a non-upstream request), and the concept-token filter is the same
+    relevance notion the retrieval layer already applies — so this adds no new
+    taxonomy and no new heuristic.
+    """
+    wanted = request_tokens(activity)
+    families: dict = {}
+    for factor in candidates:
+        if is_upstream(factor):
+            continue
+        if wanted and not (wanted & request_tokens(activity_of(factor))):
+            continue
+        families.setdefault(family_of(factor), set()).add(str(getattr(factor, "scope", "") or "").casefold())
+    return families
+
+
+def _family_options(candidates: Sequence[Any], families: dict) -> tuple:
+    """Semantic choices for the conflicting families, including their real routes."""
+    options: list = []
+    seen: set = set()
+    for factor in candidates:
+        family = family_of(factor)
+        if family not in families or is_upstream(factor):
+            continue
+        group = (family, treatment_route(activity_of(factor)) or "", "")
+        if group in seen:
+            continue
+        seen.add(group)
+        options.append(_option(group))
+    return tuple(options)
+
+
+def assess_family_conflict(
+    activity: str,
+    candidates: Sequence[Any],
+    *,
+    unit: Optional[str] = None,
+    scope: Optional[str] = None,
+    preferred_unit: Optional[str] = None,
+) -> FamilyConflictAssessment:
+    """Decide whether the automated path may proceed or must ask for clarification.
+
+    Order of authority (nothing here replaces the policy):
+      1. a deterministic policy winner  → proceed (no diversion);
+      2. the policy's own material ambiguity (D-FS-5) → preserved, not reinterpreted;
+      3. no concept-bearing candidate    → existing no-match behaviour, no options invented;
+      4. one compatible family           → proceed;
+      5. several families that still share an accounting scope → compatible, proceed;
+      6. several families with NO shared accounting scope → material family conflict →
+         clarification is required (this is the F-039-1 case: disposal/treatment vs fuel).
+    """
+    decision = select_factor(
+        candidates, activity=activity, unit=unit, scope=scope, preferred_unit=preferred_unit
+    )
+    if decision.status == "selected" and decision.factor is not None:
+        return FamilyConflictAssessment(
+            activity=activity, verdict="sufficient",
+            reason=decision.reason or "deterministic policy selection",
+            policy_status=decision.status,
+            selected_factor_id=getattr(decision.factor, "id", None),
+        )
+    if decision.status == "ambiguous":
+        # D-FS-5 owns this outcome: the policy already refuses to choose between
+        # materially different eligible groups. The gate must not reinterpret it.
+        return FamilyConflictAssessment(
+            activity=activity, verdict="policy_ambiguous",
+            reason=decision.reason or "policy ambiguity",
+            options=tuple(_option(g) for g in decision.groups),
+            policy_status=decision.status,
+        )
+    families = _concept_families(activity, candidates)
+    if not families:
+        return FamilyConflictAssessment(
+            activity=activity, verdict="no_candidates",
+            reason="no eligible candidate shares the request's activity concept",
+            policy_status=decision.status,
+        )
+    if len(families) == 1:
+        return FamilyConflictAssessment(
+            activity=activity, verdict="not_required",
+            reason="a single compatible semantic family is available",
+            policy_status=decision.status,
+        )
+    shared = set.intersection(*[set(s) for s in families.values()])
+    if shared:
+        return FamilyConflictAssessment(
+            activity=activity, verdict="not_required",
+            reason="families share an accounting scope, so the policy can adjudicate them",
+            policy_status=decision.status,
+        )
+    return FamilyConflictAssessment(
+        activity=activity,
+        verdict="clarification_required",
+        reason=("eligible candidates span materially different semantic families that share no "
+                "accounting scope"),
+        families=tuple(sorted((fam, tuple(sorted(scopes))) for fam, scopes in families.items())),
+        options=_family_options(candidates, families),
+        policy_status=decision.status,
+    )
 
 
 def decline_clarification(
