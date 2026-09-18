@@ -215,6 +215,7 @@ def test_waste_oil_fuel_request_is_not_contaminated_by_treatment_factors() -> No
 
 
 def test_materially_different_candidates_return_ambiguity_not_a_value_pick() -> None:
+    """PO F-038-1 #7/#8: two different diesel PRODUCTS, no evidence to choose → ambiguity."""
     factors = [
         _factor("Fuels > Liquid fuels > Diesel (100% mineral diesel) (kg CO2e)", unit="litres",
                 value="2.66155", factor_id="f-min"),
@@ -222,8 +223,22 @@ def test_materially_different_candidates_return_ambiguity_not_a_value_pick() -> 
                 value="2.57", factor_id="f-blend"),
     ]
     outcome = select_factor(factors, activity="Diesel supply", unit="litres")
+    assert outcome.status == "ambiguous"
+    assert {g[2] for g in outcome.groups} == {"mineral", "biofuel blend"}
+
+
+def test_a_variant_qualified_request_selects_that_variant() -> None:
+    factors = [
+        _factor("Fuels > Liquid fuels > Diesel (100% mineral diesel) (kg CO2e)", unit="litres",
+                value="2.66155", factor_id="f-min"),
+        _factor("Fuels > Liquid fuels > Diesel (average biofuel blend) (kg CO2e)", unit="litres",
+                value="2.57", factor_id="f-blend"),
+    ]
+    outcome = select_factor(
+        factors, activity="Diesel average biofuel blend", unit="litres"
+    )
     assert outcome.status == "selected"
-    assert outcome.factor is not None and outcome.factor.id == "f-min"  # more specific, not bigger
+    assert outcome.factor is not None and outcome.factor.id == "f-blend"
 
 
 def test_final_tie_break_is_stable_identifier_order() -> None:

@@ -49,7 +49,10 @@ from engines.matching_stages import (
     NaturalKeyStage,
     SemanticMatchStage,
 )
-from engines.factor_selection_policy import select_factor as select_factor_policy
+from engines.factor_selection_policy import (
+    request_tokens,
+    select_factor as select_factor_policy,
+)
 from infra.audit_logger import AuditLogger
 from infra.event_bus import EventBus
 
@@ -235,6 +238,53 @@ class FactorMatchingEngine:
             if score > 0.0
         ]
 
+    _POLICY_SCAN_LIMIT = 10000
+    _POLICY_FAMILY_CAP = 40
+
+    def _policy_candidates(self, request: MatchRequest) -> list[Any]:
+        """Family-diversified candidate retrieval for the selection policy (F-038-1).
+
+        A bare fuel word matches thousands of EQUAL-scoring factors, so a small
+        top-N window is monopolised by whichever taxonomy families happen to sort
+        first and the semantically relevant family is never seen (measured: for
+        'Diesel' no mineral-diesel row was present even at limit 1000, so widening
+        the matching window is not the fix — and is explicitly not authorised).
+
+        Two purely *discovery* measures keep the candidate set relevant and
+        representative; neither decides eligibility or preference:
+
+        * a relevance FILTER using the same tokenisation the policy uses
+          (``request_tokens``), so a row unrelated to the requested concept is not
+          carried into the candidate set at all; and
+        * a per-taxonomy-family budget, so no single family can monopolise the set
+          (the family prefix is the dataset's own semantic marker).
+
+        The scan is bounded by the dataset size. Selection, eligibility and
+        ranking remain exclusively in ``factor_selection_policy.select_factor``.
+        """
+        results = self._index.keyword_search(
+            request.activity,
+            unit=None,
+            country=request.country,
+            provider=request.preferred_provider,
+            limit=self._POLICY_SCAN_LIMIT,
+        )
+        wanted = request_tokens(request.activity)
+        per_family: dict[str, int] = {}
+        candidates: list[Any] = []
+        for factor, score in results:
+            if score <= 0.0:
+                continue
+            activity_text = str(getattr(factor, "activity_type", ""))
+            if wanted and not (wanted & request_tokens(activity_text)):
+                continue
+            family = activity_text.split(" > ")[0].strip().casefold()
+            if per_family.get(family, 0) >= self._POLICY_FAMILY_CAP:
+                continue
+            per_family[family] = per_family.get(family, 0) + 1
+            candidates.append(factor)
+        return candidates
+
     async def _apply_selection_policy(
         self, request: MatchRequest, outcome: MatchResult
     ) -> MatchResult:
@@ -250,14 +300,7 @@ class FactorMatchingEngine:
         current = getattr(outcome, "factor", None)
         if outcome.status != "matched" or current is None:
             return outcome
-        results = self._index.keyword_search(
-            request.activity,
-            unit=None,
-            country=request.country,
-            provider=request.preferred_provider,
-            limit=max(int(self._config.max_suggestions), 25),
-        )
-        candidates = [factor for factor, score in results if score > 0.0]
+        candidates = self._policy_candidates(request)
         current_id = getattr(current, "id", None)
         if not any(getattr(f, "id", None) == current_id for f in candidates):
             candidates.append(current)
@@ -282,7 +325,11 @@ class FactorMatchingEngine:
                 stages_executed=tuple(list(outcome.stages_executed) + ["selection_policy"]),
                 request_id=request.id,
             )
-        if decision.status == "ambiguous" and current_id not in eligible_ids:
+        if decision.status == "ambiguous":
+            # F-038-2: materially different eligible groups (e.g. two treatment
+            # routes) are ambiguous even when the current match is itself eligible
+            # — keeping it would resolve the ambiguity by repository order, which
+            # the PO decision forbids.
             suggestions = await self._suggestions(request)
             return MatchResult(
                 status="ambiguous",

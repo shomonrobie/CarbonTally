@@ -54,6 +54,17 @@ _BIO_MARKERS = (
 )
 _BIO_REQUEST_MARKERS = ("bio", "hvo", "renewable", "development", "off road")
 _NON_FUEL_FAMILIES = ("waste disposal", "material use")
+_PRODUCT_VARIANTS = (
+    ("100% mineral", "mineral"),
+    ("mineral diesel", "mineral"),
+    ("average biofuel", "biofuel blend"),
+    ("avg. biofuel", "biofuel blend"),
+    ("development", "development fuel"),
+    ("biodiesel", "biodiesel"),
+    ("bioethanol", "bioethanol"),
+    ("hvo", "hvo"),
+    ("off road", "off-road"),
+)
 _TOKEN_STOPWORDS = frozenset(
     {
         "the", "and", "per", "unit", "for", "with", "from", "into", "of", "to",
@@ -71,6 +82,15 @@ def _text(value: Any) -> str:
 def _tokens(value: Any) -> frozenset:
     cleaned = "".join(ch if (ch.isalpha() or ch.isspace()) else " " for ch in _text(value))
     return frozenset(t for t in cleaned.split() if len(t) > 2 and t not in _TOKEN_STOPWORDS)
+
+
+def request_tokens(value: Any) -> frozenset:
+    """Public discovery tokeniser (same vocabulary the policy uses).
+
+    Exposed for the candidate-retrieval layer so that discovery and the policy
+    share ONE tokenisation instead of two competing notions of relevance.
+    """
+    return _tokens(value)
 
 
 def activity_of(factor: Any) -> str:
@@ -98,7 +118,34 @@ def scope_of(factor: Any) -> str:
 
 
 def is_bio(factor: Any) -> bool:
-    return any(m in activity_of(factor) for m in _BIO_MARKERS) or family_of(factor) == "bioenergy"
+    """A bio-origin FUEL PRODUCT (not a mineral-diesel blend).
+
+    'Diesel (average biofuel blend)' is a mineral-diesel blend — the UK road-diesel
+    convention — so the bare word 'biofuel' must not classify it as a bio product;
+    only genuinely bio families/products (Bioenergy, biodiesel, HVO, development
+    fuel, off-road biodiesel) do.
+    """
+    name = activity_of(factor)
+    if "average biofuel" in name or "avg. biofuel" in name:
+        return False
+    return any(m in name for m in _BIO_MARKERS) or family_of(factor) == "bioenergy"
+
+
+def variant_of(factor: Any) -> str:
+    """The fuel/product variant stated in the factor name ('' when none is stated)."""
+    name = activity_of(factor)
+    for marker, label in _PRODUCT_VARIANTS:
+        if marker in name:
+            return label
+    return ""
+
+
+def _requested_variant(activity: str) -> str:
+    text = _text(activity)
+    for marker, label in _PRODUCT_VARIANTS:
+        if marker in text:
+            return label
+    return ""
 
 
 @dataclass(frozen=True)
@@ -261,6 +308,21 @@ def select_factor(
         if routed:
             eligible = routed
 
+    # 4 fuel/product VARIANT semantics (F-038-1): never hardcode a product answer.
+    # A request that names a variant selects that variant; a request that names none
+    # prefers variant-free candidates, and if none exists the remaining variants are
+    # different products → ambiguity below, not a silent pick.
+    requested_variant = _requested_variant(activity)
+    if request_class in ("fuel", "waste_fuel", "upstream"):
+        if requested_variant:
+            matching = [f for f in eligible if variant_of(f) == requested_variant]
+            if matching:
+                eligible = matching
+        else:
+            plain = [f for f in eligible if not variant_of(f)]
+            if plain:
+                eligible = plain
+
     def rank(factor: Any) -> tuple:
         """11 specificity, then the already-decided unit, then 12 stable id order."""
         tokens = _tokens(activity_of(factor))
@@ -280,7 +342,7 @@ def select_factor(
     groups = tuple(
         sorted(
             {
-                (family_of(f), _requested_route(activity_of(f)) or "")
+                (family_of(f), _requested_route(activity_of(f)) or "", variant_of(f))
                 for f in eligible
                 if rank(f)[0] == tie_coverage
             }
