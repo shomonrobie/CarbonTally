@@ -204,12 +204,99 @@ def _has_unit(lowered: str) -> bool:
     return any(token.strip() in lowered for token in _UNIT_TOKENS)
 
 
+#: Short/symbolic unit spellings the long token list above cannot express safely
+#: (``L``, ``t``, ``m³``). A bare single letter would also match ordinary prose, so
+#: these are only accepted on a line that already looks like a table row — i.e. it
+#: carries a **second** numeric column (the rate/subtotal column of the table).
+_SHORT_UNIT_TOKENS = (
+    "litres", "litre", "ltr", "gallons", "gallon", "gal", "tonnes", "tonne",
+    "kwh", "mwh", "kg", "m3", "km", "m", "l", "t",
+)
+_SHORT_UNIT_SET = frozenset(_SHORT_UNIT_TOKENS)
+
+#: Superscript/miniature glyph variants a text layer may carry for a unit.
+_UNIT_FOLD = str.maketrans({"³": "3", "²": "2", "¹": "1", "μ": "u", "µ": "u"})
+
+
+def _fold_units(lowered: str) -> str:
+    """Fold superscript unit spellings so ``m³`` matches the ``m3`` token."""
+    return lowered.translate(_UNIT_FOLD)
+
+
+def _matched_unit(lowered: str) -> Optional[str]:
+    """The recognised unit token present in a line, or ``None``.
+
+    Mirrors :func:`_has_unit` but returns the token so it can be recorded as the
+    candidate's unit provenance instead of being thrown away.
+    """
+    for token in _UNIT_TOKENS:
+        literal = token.strip()
+        if literal and literal in lowered:
+            return "GBP" if literal == "£" else literal
+    return None
+
+
+def _quantity_column(line: str, unit_hint: Optional[str]) -> Optional[float]:
+    """The quantity column: the number in the token immediately before the unit column.
+
+    A table row carries its quantity in the column to the left of its unit column, so
+    preferring that token keeps reference codes out of the quantity (``REF-89015`` must
+    not become ``890``) — the `P1-B` structured-table requirement. Returns ``None`` when
+    no unit column could be located, leaving the caller's first-number scan in charge.
+    """
+    if not unit_hint:
+        return None
+    words = line.split()
+    for index, word in enumerate(words):
+        if _fold_units(word.strip(",.;:()[]").lower()) != unit_hint:
+            continue
+        if index == 0:
+            return None
+        match = _NUMBER.search(words[index - 1])
+        if not match:
+            return None
+        try:
+            value = float(match.group(1).replace(",", "").replace(" ", ""))
+        except ValueError:
+            return None
+        return value or None
+    return None
+
+
+def _matched_short_unit(lowered: str) -> Optional[str]:
+    """A short/symbolic unit (``L``, ``t``, ``m3``) occupying a table unit column.
+
+    A bare single letter is only accepted where the table's own structure proves it is
+    a unit column: the token must sit **directly after the quantity** and must be
+    followed by the rate/subtotal column (or be the final column of the row). This
+    keeps mangled text-layer fragments — e.g. the doubled-letter date line
+    ``Period: 20T26-01-01 – 2026-01-31 T T`` — out of the candidate set.
+    """
+    words = [word.strip(",.;:()[]") for word in lowered.split()]
+    for index, token in enumerate(words):
+        if token not in _SHORT_UNIT_SET:
+            continue
+        quantity_column = words[index - 1] if index else ""
+        if not quantity_column[-1:].isdigit():
+            continue
+        following = words[index + 1] if index + 1 < len(words) else ""
+        if following and not any(char.isdigit() for char in following):
+            continue
+        return token
+    return None
+
+
 def find_source_lines(page_text: str) -> list[dict[str, Any]]:
     """Deterministically identify genuine source lines on one page.
 
     Conservative by design — the `P1-D1` enablement gate depends on selectivity. A
-    line needs real description text **and** a quantity with a recognised unit or
-    currency mark, and must not be invoice furniture (totals, VAT, headers, footers).
+    line needs real description text **and** a unit recognised either as a table-row
+    unit column (``Description Qty Unit Rate Subtotal``) or as a short/symbolic unit
+    on a line that already carries a second numeric column. Invoice furniture
+    (totals, VAT, headers, footers) is never a source line.
+
+    The recognised unit is returned as ``unit_hint`` so a candidate keeps its unit
+    provenance (``P1-B``: a unit must not be the reason a genuine row disappears).
     """
     found: list[dict[str, Any]] = []
     for raw in page_text.splitlines():
@@ -222,24 +309,41 @@ def find_source_lines(page_text: str) -> list[dict[str, Any]]:
         if sum(ch.isalpha() for ch in line) < 3:
             continue
         numbers = _NUMBER.findall(line)
-        if not numbers or not _has_unit(lowered):
+        if not numbers:
             continue
-        quantity = None
-        for candidate in numbers:
-            try:
-                value = float(candidate.replace(",", "").replace(" ", ""))
-            except ValueError:
-                continue
-            if value == 0:
-                continue
-            quantity = value
-            break
+        folded = _fold_units(lowered)
+        unit_hint = _matched_unit(folded)
+        if not unit_hint and len(numbers) >= 2:
+            # A second numeric column (rate/subtotal) establishes a genuine table
+            # row, so a bare short/symbolic unit (``L``, ``t``, ``m³``) is admissible
+            # here — the table's own structure, not a keyword, is the evidence.
+            unit_hint = _matched_short_unit(folded)
+        if not unit_hint:
+            continue
+        quantity = _quantity_column(line, unit_hint)
+        if quantity is None:
+            for candidate in numbers:
+                try:
+                    value = float(candidate.replace(",", "").replace(" ", ""))
+                except ValueError:
+                    continue
+                if value == 0:
+                    continue
+                quantity = value
+                break
         if quantity is None:
             continue
         description = " ".join(_NUMBER.sub(" ", line).split())
         if sum(ch.isalpha() for ch in description) < 3:
             continue
-        found.append({"description": description[:200], "quantity": quantity, "raw": line[:300]})
+        found.append(
+            {
+                "description": description[:200],
+                "quantity": quantity,
+                "unit_hint": unit_hint,
+                "raw": line[:300],
+            }
+        )
     return found
 
 
@@ -330,11 +434,14 @@ def build_line_items(
                 record["activity"] = activity
             if line.get("quantity") is not None:
                 record["quantity"] = line["quantity"]
-            unit = _detect_unit(line["raw"])
+            unit = _detect_unit(line["raw"]) or line.get("unit_hint")
             if unit:
                 record["unit"] = unit
             if not record.get("activity") and not record.get("unit"):
-                continue
+                # `P1-B`: no canonical activity/unit matched, but the row was already
+                # recognised as a genuine source line — keep it addressable with its
+                # literal source description instead of silently dropping the row.
+                record["description"] = line["description"]
             record["page"] = page_index
             record["page_basis"] = page_basis
             record["page_trust"] = "lower" if page_basis == "marker" else "standard"
