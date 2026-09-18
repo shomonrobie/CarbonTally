@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import uuid
 from datetime import date as _Date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -170,6 +171,25 @@ _AI_CANDIDATE_METADATA_MAX_BYTES = 8192
 AI_FANOUT_MAX_CALLS = 8          # hard cap on AI calls per document
 AI_FANOUT_MAX_RETRIES = 1        # at most one retry per page/section
 AI_FANOUT_TIMEOUT_S = 60.0       # per-call timeout (seconds)
+
+#: Step 2 / CT-STEP2-WORKER-TIMEOUT-013 (F1/I1) — bounded budget for ONE
+#: automatic extraction attempt. Units: **seconds**.
+#:
+#: The synchronous extraction engine (pypdfium2 render, Tesseract/RapidOCR-onnx
+#: OCR, CSV/XLSX parsing — see ``services.automatic_extraction``) runs in a
+#: worker THREAD (``asyncio.to_thread``) so it can never block the asyncio event
+#: loop; this value bounds how long the worker waits for that thread before the
+#: attempt is failed truthfully. It is the single authoritative location for the
+#: value (no duplicate literals) and may be overridden with the environment
+#: variable ``CT_EXTRACTION_TIMEOUT_S``.
+#:
+#: Relationship to claim recovery (I8): this budget MUST stay below the worker's
+#: stale-lock threshold (``AutomaticProcessingWorker(stale_lock_seconds=300)``),
+#: otherwise a legitimately running extraction could be re-claimed by another
+#: worker as a stale claim. The default is deliberately conservative
+#: (240 s < 300 s) and is NOT tuned to any particular hosting resource.
+EXTRACTION_TIMEOUT_S: float = float(os.environ.get("CT_EXTRACTION_TIMEOUT_S") or 240.0)
+
 AI_FANOUT_PAGE_CLIP_CHARS = 8_000  # bounded input per fanned-out call
 
 _ADJUDICATION_FIELDS = (
@@ -446,6 +466,51 @@ class AutomaticProcessingService:
     # Stage: extracting
     # ------------------------------------------------------------------
 
+    async def _run_bounded_extraction(
+        self, job: AutomaticProcessingJob, content: bytes
+    ) -> dict:
+        """Run the synchronous extraction engine under a hard execution budget.
+
+        Step 2 / CT-STEP2-WORKER-TIMEOUT-013 (F1/F2/I1/I2):
+
+        * the engine is **synchronous and CPU-bound** (pypdfium2 render, OCR,
+          CSV/XLSX parsing), so it must never run on the asyncio event loop — it
+          is dispatched to a worker thread via ``asyncio.to_thread``;
+        * the wait for that thread is bounded by :data:`EXTRACTION_TIMEOUT_S`, so
+          a hung PDF/OCR operation can no longer keep a job executing forever;
+        * on expiry the attempt fails **truthfully** through the existing
+          stage-failure pathway (``_run_stage`` → ``mark_failed`` with
+          ``attempt_count + 1``): nothing is fabricated, no already-persisted
+          partial evidence is overwritten, and the job deterministically leaves
+          the executing/locked state.
+
+        Thread-cancellation note: cancelling the awaitable does **not** terminate
+        arbitrary synchronous work already running in that thread — a timed-out
+        thread may still complete. That is safe here because
+        ``extract_document`` is a **pure** function (it returns a dict and writes
+        nothing to the database or storage; persistence happens only in the
+        awaiting coroutine), so a timed-out job is never "owned forever" by an
+        orphan thread and the orphan's result is discarded, not persisted.
+        """
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(
+                    extract_document,
+                    content,
+                    job.file_name,
+                    job.metadata.get("mime") or "",
+                    # Step 2C / POD-4 — tenant-scoped controlled P1 rollout: the
+                    # job's organisation decides whether 'enabled' is honoured
+                    # (allowlist) or the existing 'shadow' behaviour applies.
+                    organization_id=job.organization_id,
+                ),
+                timeout=EXTRACTION_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"extraction exceeded the {EXTRACTION_TIMEOUT_S:g}s execution budget"
+            ) from None
+
     async def _extract(self, job: AutomaticProcessingJob, lock_token: str) -> str:
         """Extract structured data; low completeness routes to manual review."""
         if job.extracted_data:
@@ -463,15 +528,7 @@ class AutomaticProcessingService:
                 lock_token=lock_token,
             )
             return "blocked"
-        result = extract_document(
-            content,
-            job.file_name,
-            job.metadata.get("mime") or "",
-            # Step 2C / POD-4 — tenant-scoped controlled P1 rollout: the job's
-            # organisation decides whether 'enabled' is honoured (allowlist) or
-            # the existing 'shadow' behaviour applies.
-            organization_id=job.organization_id,
-        )
+        result = await self._run_bounded_extraction(job, content)
         extracted = result.get("extracted_data") or {}
         method = result.get("method") or "unknown"
         # P1 (§19 implementation boundary) — the classifier's coverage facts and

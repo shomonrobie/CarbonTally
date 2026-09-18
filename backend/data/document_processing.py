@@ -225,6 +225,21 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         Uses ``FOR UPDATE SKIP LOCKED`` so concurrent workers never double-claim.
         Jobs whose claim is older than ``stale_after_seconds`` (a crashed
         worker) are recovered into the runnable pool first — resumability.
+
+        Step 2 / CT-STEP2-WORKER-TIMEOUT-013 (F3/I7/I8) — **fair claiming**:
+        the candidate predicate requires ``locked_at IS NULL`` *after* the stale
+        release above. Consequences:
+
+        * a job that is legitimately being executed right now (fresh claim) is
+          never re-selected as new work, so a small group of long/stuck jobs can
+          no longer be re-claimed on every tick;
+        * because the stuck rows drop out of the candidate set, FIFO order
+          (``ORDER BY created_at, id``) reaches the jobs queued behind them — a
+          fourth pending job **is** claimed while three older jobs remain busy;
+        * stale claims (crashed workers) are still recovered, because the release
+          step clears their lock before selection;
+        * ``FOR UPDATE SKIP LOCKED`` and the per-organisation scoping that callers
+          apply are unchanged.
         """
         now = datetime.now(timezone.utc)
         stale_before = now - timedelta(seconds=stale_after_seconds)
@@ -237,9 +252,10 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
             f"""
             WITH claimed AS (
                 SELECT id FROM public.document_processing_queue
-                WHERE stage IN ('enqueued', 'ingesting', 'extracting', 'mapping',
-                                'validating', 'calculating')
-                   OR (stage IS NULL AND status = 'pending')
+                WHERE (stage IN ('enqueued', 'ingesting', 'extracting', 'mapping',
+                                 'validating', 'calculating')
+                       OR (stage IS NULL AND status = 'pending'))
+                  AND locked_at IS NULL
                 ORDER BY created_at, id
                 FOR UPDATE SKIP LOCKED
                 LIMIT {int(limit)}
