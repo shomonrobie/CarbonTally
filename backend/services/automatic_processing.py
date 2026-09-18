@@ -1434,9 +1434,20 @@ class AutomaticProcessingService:
             candidates = await self._repos.factors.find_by_activity(
                 activity, unit=unit, limit=20, unit_qualifier_tolerant=True
             )
-            aggregate = next(
-                (f for f in candidates if not any(m in f.activity_type for m in marker)),
-                None,
+            # 037→038: the aggregate decision is owned by the single deterministic
+            # policy module (PO D-FS-1/D-FS-6) — this hook only applies its verdict
+            # and never fabricates or re-orders candidates itself.
+            from engines.factor_selection_policy import select_factor as _select_factor_policy
+
+            decision = _select_factor_policy(
+                list(candidates) + [result.factor], activity=activity, unit=unit
+            )
+            aggregate = (
+                decision.factor
+                if decision.status == "selected"
+                and getattr(decision.factor, "id", None) is not None
+                and getattr(decision.factor, "id", None) != getattr(result.factor, "id", None)
+                else None
             )
             if aggregate is not None:
                 from dataclasses import replace

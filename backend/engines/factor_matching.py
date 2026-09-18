@@ -49,6 +49,7 @@ from engines.matching_stages import (
     NaturalKeyStage,
     SemanticMatchStage,
 )
+from engines.factor_selection_policy import select_factor as select_factor_policy
 from infra.audit_logger import AuditLogger
 from infra.event_bus import EventBus
 
@@ -135,7 +136,9 @@ class FactorMatchingEngine:
                     stages_executed=tuple(stages_executed),
                     request_id=request.id,
                 )
-                return await self._finalize(request, outcome)
+                return await self._finalize(
+                    request, await self._apply_selection_policy(request, outcome)
+                )
             if stage_result.score >= 1.0:
                 suggestions = await self._suggestions(request)
                 outcome = MatchResult(
@@ -157,7 +160,9 @@ class FactorMatchingEngine:
                 stages_executed=tuple(stages_executed),
                 request_id=request.id,
             )
-            return await self._finalize(request, outcome)
+            return await self._finalize(
+                request, await self._apply_selection_policy(request, outcome)
+            )
         suggestions = await self._suggestions(request)
         outcome = MatchResult.no_match(
             suggestions=suggestions,
@@ -229,6 +234,63 @@ class FactorMatchingEngine:
             for factor, score in results
             if score > 0.0
         ]
+
+    async def _apply_selection_policy(
+        self, request: MatchRequest, outcome: MatchResult
+    ) -> MatchResult:
+        """PO D-FS-1…D-FS-6 — deterministic semantic eligibility and preference.
+
+        Runs at the factor-selection boundary (the engine) over the EXISTING
+        candidate list, so the semantic decision is explicit and deterministic
+        rather than a lexical side-effect. It only ever *corrects* a match whose
+        factor the policy excludes/outranks, or downgrades such a match to
+        ``ambiguous``; it never fabricates a match, and it leaves a match whose
+        factor the policy also considers eligible completely untouched.
+        """
+        current = getattr(outcome, "factor", None)
+        if outcome.status != "matched" or current is None:
+            return outcome
+        results = self._index.keyword_search(
+            request.activity,
+            unit=None,
+            country=request.country,
+            provider=request.preferred_provider,
+            limit=max(int(self._config.max_suggestions), 25),
+        )
+        candidates = [factor for factor, score in results if score > 0.0]
+        current_id = getattr(current, "id", None)
+        if not any(getattr(f, "id", None) == current_id for f in candidates):
+            candidates.append(current)
+        decision = select_factor_policy(
+            candidates,
+            activity=request.activity,
+            unit=request.unit,
+            scope=request.scope,
+            preferred_unit=getattr(current, "unit", None),
+        )
+        eligible_ids = {getattr(f, "id", None) for f in decision.eligible}
+        if decision.status == "selected" and decision.factor is not None:
+            winner = decision.factor
+            if getattr(winner, "id", None) == current_id or current_id in eligible_ids:
+                return outcome
+            return MatchResult(
+                status="matched",
+                factor=winner,
+                confidence=1.0,
+                methodology="selection_policy",
+                provider=getattr(winner, "provider_key", None),
+                stages_executed=tuple(list(outcome.stages_executed) + ["selection_policy"]),
+                request_id=request.id,
+            )
+        if decision.status == "ambiguous" and current_id not in eligible_ids:
+            suggestions = await self._suggestions(request)
+            return MatchResult(
+                status="ambiguous",
+                suggestions=tuple(suggestions),
+                stages_executed=tuple(list(outcome.stages_executed) + ["selection_policy"]),
+                request_id=request.id,
+            )
+        return outcome
 
     def _discover_calorific_basis(self, request: MatchRequest) -> Optional[Any]:
         """D-A post-stage calorific-basis discovery (natural gas).
