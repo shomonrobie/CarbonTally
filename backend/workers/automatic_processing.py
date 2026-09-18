@@ -174,7 +174,45 @@ class AutomaticProcessingWorker:
                     logger.exception("failed to dead-letter job %s", job.id)
 
     async def _process_one(self, job, token: str) -> None:
-        await self._service.process_job(job, token)
+        """Process one claimed job — cancellation must not abandon the claim.
+
+        Step 2 / CT-STEP2-WORKER-CANCEL-017: ``asyncio.CancelledError`` is a
+        ``BaseException``, so the failure pathway inside
+        ``AutomaticProcessingService`` (``except Exception``) can never record an
+        interrupted attempt — the row would keep its claim until the 300 s stale
+        window, with no failure trace (the exact production signature found by
+        `CT-STEP2-WORKER-RUNTIME-DISCREPANCY-016`).
+
+        On cancellation this therefore:
+
+        * releases the claim and records a bounded, truthful interruption reason
+          (existing columns only) so the job is immediately claimable again and
+          the interruption is not invisible — an interruption does **not** consume
+          a processing attempt and is **not** reported as success, failure or
+          manual review;
+        * shields that write so it still completes while the task is being
+          cancelled;
+        * **re-raises** the cancellation, so the worker/task lifecycle still
+          observes it (cancellation is never swallowed, and the interrupted
+          attempt can never continue into persistence).
+        """
+        try:
+            await self._service.process_job(job, token)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(
+                    self._repos.processing.record_interruption_and_release(
+                        job.id,
+                        token,
+                        "attempt interrupted: worker cancelled or shutting down "
+                        "(extraction attempt not consumed)",
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 — cancellation still re-raised
+                logger.warning(
+                    "could not release interrupted claim for job %s: %r", job.id, exc
+                )
+            raise
 
     # -- wiring -------------------------------------------------------------
 

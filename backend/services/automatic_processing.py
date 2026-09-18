@@ -409,6 +409,13 @@ class AutomaticProcessingService:
                 return await self._validate(job, lock_token)
             if stage == "calculating":
                 return await self._calculate(job, lock_token)
+        except asyncio.CancelledError:
+            # CT-STEP2-WORKER-CANCEL-017 — cancellation must never be converted
+            # into a failure, success or manual-review outcome, and must never
+            # continue into persistence. The worker layer records the
+            # interruption and releases the claim; the cancellation itself is
+            # propagated untouched.
+            raise
         except Exception as exc:  # noqa: BLE001 — failures become failed jobs
             logger.exception("automatic processing failed for job %s", job.id)
             await self._repos.processing.mark_failed(

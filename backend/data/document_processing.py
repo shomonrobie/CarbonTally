@@ -296,6 +296,35 @@ class DocumentProcessingRepository(AbstractRepository[AutomaticProcessingJob]):
         except (ValueError, IndexError):
             return 0
 
+    async def record_interruption_and_release(
+        self, job_id: str, lock_token: str, reason: str
+    ) -> bool:
+        """Release an interrupted attempt's claim and record why.
+
+        Step 2 / CT-STEP2-WORKER-CANCEL-017 — cancellation safety. An attempt
+        interrupted by worker shutdown or process cancellation must not leave
+        the row silently abandoned with a held claim. This releases the claim
+        (so the job is immediately claimable again — an interruption does **not**
+        consume a processing attempt) and records a bounded, truthful reason in
+        the existing ``last_error`` column.
+
+        ``stage``/``status`` are intentionally unchanged: the work neither
+        succeeded, failed, nor reached a human gate, so reporting any of those
+        would be untruthful. Only the owning lock token may release the claim,
+        so a stale worker can never clear a newer worker's lock. Uses the
+        existing columns only — **no schema change required**.
+        """
+        status = await self._execute(
+            "UPDATE public.document_processing_queue "
+            "SET locked_at = NULL, lock_token = NULL, last_error = $3, "
+            "updated_at = NOW() "
+            "WHERE id = $1 AND lock_token = $2",
+            job_id,
+            lock_token,
+            str(reason)[:500],
+        )
+        return "UPDATE 1" in status
+
     # -- stage transitions / persisted outputs ------------------------------
 
     async def advance_stage(
