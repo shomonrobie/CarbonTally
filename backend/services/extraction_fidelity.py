@@ -67,7 +67,7 @@ _UNIT_TOKENS = (
 _FURNITURE = (
     "total", "subtotal", "sub-total", "vat", "tax", "amount due", "balance",
     "invoice", "statement", "sort code", "page ", "thank", "terms", "due date",
-    "invoice date", "customer", "supplier", "address", "phone",
+    "invoice date", "customer", "supplier", "address", "phone", "payable",
 )
 
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)")

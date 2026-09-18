@@ -267,6 +267,14 @@ def test_number_without_a_unit_is_not_a_candidate() -> None:
     assert p1.find_source_lines("Electricity 12,500 2,340.00") == []
 
 
+def test_payable_is_furniture_regardless_of_currency() -> None:
+    # The oracle's amounts are in `€`; a `£`-denominated payable line must not become a
+    # candidate either (it otherwise satisfies the currency-token gate).
+    assert p1.find_source_lines("Net Payable: £22,111.23") == []
+    assert p1.find_source_lines("Amount payable £4,120.00") == []
+    assert p1.find_source_lines("Net Payable: €22,111.2300") == []
+
+
 # -- Test 8: OCR/text-layer parity for the shared detector -------------------
 def test_ocr_marker_text_is_counted_per_page_with_marker_basis() -> None:
     judgement = p1.classify(OCR_MARKED, method="ocr", page_count=2)
