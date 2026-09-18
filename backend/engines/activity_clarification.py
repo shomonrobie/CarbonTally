@@ -265,13 +265,19 @@ class FamilyConflictAssessment:
     selected_factor_id: Optional[str] = None
 
 
-def _concept_families(activity: str, candidates: Sequence[Any]) -> dict:
-    """family → {scopes} for non-upstream candidates sharing a concept token.
+_TREATMENT_FAMILIES = ("waste disposal", "material use")
 
-    Non-upstream is the policy's own boundary rule (a WTT/upstream factor is not a
-    candidate for a non-upstream request), and the concept-token filter is the same
-    relevance notion the retrieval layer already applies — so this adds no new
-    taxonomy and no new heuristic.
+
+def _family_classes(activity: str, candidates: Sequence[Any]) -> dict:
+    """family → {"scopes": set, "class": "treatment"|"combustion"} for the concept families.
+
+    The class is derived from EXISTING representations only: the taxonomy family prefix
+    (``family_of``) plus the policy's own treatment/material family vocabulary — the same
+    constant the policy uses to keep waste-treatment and fuel concepts apart (D-FS-4).
+    A family is a *treatment/material* family when its prefix is inside that vocabulary;
+    otherwise, if its candidates are Scope 1/Scope 2 energy rows, it is a *combustion*
+    family. Ordinary Scope-3 siblings (upstream, travel, generation) are neither, so they
+    can never turn an activity into a conflict on their own.
     """
     wanted = request_tokens(activity)
     families: dict = {}
@@ -280,7 +286,16 @@ def _concept_families(activity: str, candidates: Sequence[Any]) -> dict:
             continue
         if wanted and not (wanted & request_tokens(activity_of(factor))):
             continue
-        families.setdefault(family_of(factor), set()).add(str(getattr(factor, "scope", "") or "").casefold())
+        family = family_of(factor)
+        entry = families.setdefault(family, {"scopes": set(), "class": None})
+        entry["scopes"].add(str(getattr(factor, "scope", "") or "").casefold())
+    for family, entry in families.items():
+        if family in _TREATMENT_FAMILIES:
+            entry["class"] = "treatment"
+        elif entry["scopes"] & {"scope 1", "scope 2"}:
+            entry["class"] = "combustion"
+        else:
+            entry["class"] = None
     return families
 
 
@@ -338,7 +353,7 @@ def assess_family_conflict(
             options=tuple(_option(g) for g in decision.groups),
             policy_status=decision.status,
         )
-    families = _concept_families(activity, candidates)
+    families = _family_classes(activity, candidates)
     if not families:
         return FamilyConflictAssessment(
             activity=activity, verdict="no_candidates",
@@ -351,20 +366,30 @@ def assess_family_conflict(
             reason="a single compatible semantic family is available",
             policy_status=decision.status,
         )
-    shared = set.intersection(*[set(s) for s in families.values()])
-    if shared:
+    treatment = [f for f, e in families.items() if e["class"] == "treatment"]
+    combustion = [f for f, e in families.items() if e["class"] == "combustion"]
+    if not (treatment and combustion):
+        # Scope difference alone is NOT a conflict: an ordinary activity whose window
+        # contains Scope-1 combustion families together with Scope-3 upstream/travel/
+        # generation siblings is still unambiguous (the user's activity has one
+        # meaning). A conflict requires the SAME concept to be readable both as
+        # "something is done to the material" (treatment/material use) and as
+        # "the material is burned as a fuel" (combustion).
         return FamilyConflictAssessment(
             activity=activity, verdict="not_required",
-            reason="families share an accounting scope, so the policy can adjudicate them",
+            reason=("candidate families differ only in accounting/representation, not in the "
+                    "meaning of the activity"),
             policy_status=decision.status,
         )
     return FamilyConflictAssessment(
         activity=activity,
         verdict="clarification_required",
-        reason=("eligible candidates span materially different semantic families that share no "
-                "accounting scope"),
-        families=tuple(sorted((fam, tuple(sorted(scopes))) for fam, scopes in families.items())),
-        options=_family_options(candidates, families),
+        reason=("the activity can mean either a treatment/material handling of the substance or a "
+                "combustion of it as fuel, and those families share no accounting meaning"),
+        families=tuple(
+            sorted((fam, tuple(sorted(entry["scopes"]))) for fam, entry in families.items())
+        ),
+        options=_family_options(candidates, {f: families[f]["scopes"] for f in families}),
         policy_status=decision.status,
     )
 
