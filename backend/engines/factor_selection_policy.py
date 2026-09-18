@@ -140,6 +140,15 @@ def variant_of(factor: Any) -> str:
     return ""
 
 
+def treatment_route(value: Any) -> Optional[str]:
+    """Public accessor for the treatment-route vocabulary (single source of truth).
+
+    Read-only: it exposes the same marker set the policy uses, so the activity-
+    clarification layer (041) does not need a second copy of the vocabulary.
+    """
+    return _requested_route(str(value or ""))
+
+
 def _requested_variant(activity: str) -> str:
     text = _text(activity)
     for marker, label in _PRODUCT_VARIANTS:
