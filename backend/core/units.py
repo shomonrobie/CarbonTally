@@ -20,7 +20,7 @@ Design rules:
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 #: Common alias → canonical unit table (lower-cased keys). Keys are matched
 #: after ``strip().lower()``; unknown values pass through unchanged.
@@ -217,13 +217,19 @@ def resolve_unit_for_factor(extracted_unit: Optional[str], factor_unit: Optional
         return unit
     if normalize_unit(unit) == normalize_unit(factor_unit_s):
         return factor_unit_s
-    unit_base, _unit_qualifier = split_qualified_unit(unit)
-    factor_base, _factor_qualifier = split_qualified_unit(factor_unit_s)
+    unit_base, unit_qualifier = split_qualified_unit(unit)
+    factor_base, factor_qualifier = split_qualified_unit(factor_unit_s)
     if unit_base and unit_base == factor_base:
-        # Same base unit, differently qualified (``kWh`` vs ``kWh (Gross CV)``): the
-        # factor's spelling is the canonical one. A different base unit is left
-        # untouched so the engine's UNIT_MISMATCH guard remains authoritative.
-        return factor_unit_s
+        # Same base unit. The factor's spelling may be adopted only when the two are NOT
+        # differently qualified: an unqualified ``kWh`` may take a qualified spelling
+        # (``kWh`` ↔ ``kWh (Gross CV)``), and identical qualifiers agree. But two DIFFERENT
+        # qualifiers (``kWh (Gross CV)`` vs ``kWh (Net CV)``) are methodological bases, not
+        # spellings — adopting one would silently change reported emissions, so the source
+        # unit is returned unchanged and the basis policy (`034` D-A) selects the candidate.
+        if not unit_qualifier or not factor_qualifier:
+            return factor_unit_s
+        if unit_qualifier.lower() == factor_qualifier.lower():
+            return factor_unit_s
     return unit
 
 
@@ -247,6 +253,72 @@ def is_currency_unit(unit: Optional[str]) -> bool:
     if not s:
         return False
     return s in CURRENCY_UNITS or any(currency in s for currency in CURRENCY_UNITS)
+
+
+#: Explicit calorific-basis declarations a source document may carry (`034` D-A).
+#: Gross/Net are METHODOLOGICAL bases, not unit aliases: they select between two different
+#: authoritative factors; they never convert a quantity (027 unit-family semantics stay intact).
+_GROSS_BASIS_TOKENS = ("gross cv", "gcv", "gross calorific value")
+_NET_BASIS_TOKENS = ("net cv", "ncv", "net calorific value")
+
+#: The factor set's documented default basis for an unqualified natural-gas energy quantity
+#: (PO decision `034`: DEFRA and SEAI both resolve unqualified `kWh` to Net CV / NCV).
+DEFAULT_CALORIFIC_BASIS = "net"
+
+
+def source_calorific_basis(evidence: Optional[str]) -> Optional[str]:
+    """The calorific basis a source document **explicitly** states, else ``None``.
+
+    Returns ``"gross"`` for ``Gross CV`` / ``GCV`` / ``Gross calorific value`` and ``"net"`` for
+    ``Net CV`` / ``NCV`` / ``Net calorific value``. Prose that merely contains the words "gross"
+    or "net" (e.g. "gross tonnage") yields ``None``, and a document that declares both bases is
+    treated as ambiguous (``None``) — the caller then applies the factor set's default basis
+    rather than guessing.
+    """
+    text = str(evidence or "").lower()
+    if not text:
+        return None
+    gross = any(token in text for token in _GROSS_BASIS_TOKENS)
+    net = any(token in text for token in _NET_BASIS_TOKENS)
+    if gross and net:
+        return None
+    if gross:
+        return "gross"
+    if net:
+        return "net"
+    return None
+
+
+def select_basis_factor(
+    candidates: Iterable[Any],
+    *,
+    source_basis: Optional[str] = None,
+    default_basis: str = DEFAULT_CALORIFIC_BASIS,
+) -> Optional[Any]:
+    """Deterministically select the qualified-basis candidate for one base unit (`034` D-A).
+
+    Acts **only** when the candidate set genuinely offers more than one distinct qualifier of the
+    same base unit (the Gross/Net case). In every other situation — electricity, water, diesel,
+    waste, or any single-qualifier family — it returns ``None`` so those selections are untouched.
+
+    Selection is by the source's explicit basis when there is one, otherwise the factor set's
+    ``default_basis`` (Net/NCV for the currently supported DEFRA and SEAI sets). Enumeration order
+    can never decide the result: candidates are ordered by factor id before the qualifier map is
+    built and the winning qualifier is chosen, so repeated runs are identical.
+    """
+    ordered = sorted(candidates, key=lambda factor: str(getattr(factor, "id", "")))
+    by_qualifier: dict[str, Any] = {}
+    for factor in ordered:
+        _base, qualifier = split_qualified_unit(getattr(factor, "unit", None))
+        if qualifier:
+            by_qualifier.setdefault(qualifier.lower(), factor)
+    if len(by_qualifier) < 2:
+        return None
+    wanted = "gross" if (source_basis or default_basis) == "gross" else "net"
+    for qualifier in sorted(by_qualifier):
+        if qualifier.startswith(wanted):
+            return by_qualifier[qualifier]
+    return None
 
 
 def mapping_no_factors_reason(
