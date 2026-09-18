@@ -109,6 +109,29 @@ def _parse_date(value: Any) -> Optional[_Date]:
     return None
 
 
+#: Effective factor-set context (031 / PO decision — DEFRA/UK is the default, other sets remain
+#: selectable). The authoritative dataset already carries the identity columns
+#: (``factor_source``/``factor_set``/``country``) and the matching pipeline already accepts
+#: ``MatchRequest.preferred_provider``, so the effective set is *selected context* rather than a
+#: literal in the mapping code. A future factor set is added as data, not code.
+DEFAULT_FACTOR_COUNTRY = "GB"
+DEFAULT_FACTOR_PROVIDER = "DEFRA-DESNZ"
+
+
+def factor_set_context(metadata: Optional[dict[str, Any]] = None) -> tuple[str, Optional[str]]:
+    """Resolve the effective ``(country, provider)`` for one document.
+
+    Precedence: explicit document-level override (``factor_country`` / ``factor_provider`` in the job
+    metadata) → the PO-declared default (GB / DEFRA-DESNZ). No jurisdiction is guessed from the
+    activity text, and nothing is hard-coded to a single factor set: a different set is selected by
+    supplying its country/provider, which the matching pipeline already filters on.
+    """
+    meta = metadata if isinstance(metadata, dict) else {}
+    country = str(meta.get("factor_country") or "").strip() or DEFAULT_FACTOR_COUNTRY
+    provider = str(meta.get("factor_provider") or "").strip() or DEFAULT_FACTOR_PROVIDER
+    return country, provider
+
+
 def _line_identity(line: dict[str, Any], idx: int) -> dict[str, Any]:
     """The candidate's own provenance, carried into the mapping record.
 
@@ -1192,6 +1215,9 @@ class AutomaticProcessingService:
         parsed_date = _parse_date(extracted.get("date"))
         if parsed_date is not None:
             reporting_year = parsed_date.year
+        # 031 — effective factor-set context (document override → PO default). The lookup below is
+        # constrained by it instead of assuming a jurisdiction in the mapping code.
+        factor_country, preferred_provider = factor_set_context(getattr(job, "metadata", None))
         for idx, line in enumerate(targets):
             identity = _line_identity(line, idx)
             # `CL-57` (026) — the row's own evidence identity travels with the mapping entry,
@@ -1219,10 +1245,11 @@ class AutomaticProcessingService:
                 request = MatchRequest(
                     id=request_id,
                     activity=activity,
-                    country="GB",
+                    country=factor_country,
                     reporting_year=reporting_year,
                     unit=unit,
                     organization_id=job.organization_id,
+                    preferred_provider=preferred_provider,
                     max_stages=6,
                 )
                 result = await self._matching_engine.match(request)
