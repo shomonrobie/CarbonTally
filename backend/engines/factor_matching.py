@@ -22,9 +22,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Callable, Optional, Protocol, Sequence
+from typing import Any, Callable, Optional, Protocol, Sequence
 
 from core.logging import get_logger
+from core.units import (
+    select_basis_factor,
+    source_calorific_basis,
+    split_qualified_unit,
+)
 from domain.customer_factor import CustomerFactor
 from domain.matching import (
     FactorSearch,
@@ -140,6 +145,19 @@ class FactorMatchingEngine:
                     request_id=request.id,
                 )
                 return await self._finalize(request, outcome)
+        basis_factor = self._discover_calorific_basis(request)
+        if basis_factor is not None:
+            stages_executed.append("calorific_basis")
+            outcome = MatchResult(
+                status="matched",
+                factor=basis_factor,
+                confidence=1.0,
+                methodology="calorific_basis",
+                provider=getattr(basis_factor, "provider_key", None),
+                stages_executed=tuple(stages_executed),
+                request_id=request.id,
+            )
+            return await self._finalize(request, outcome)
         suggestions = await self._suggestions(request)
         outcome = MatchResult.no_match(
             suggestions=suggestions,
@@ -211,6 +229,50 @@ class FactorMatchingEngine:
             for factor, score in results
             if score > 0.0
         ]
+
+    def _discover_calorific_basis(self, request: MatchRequest) -> Optional[Any]:
+        """D-A post-stage calorific-basis discovery (natural gas).
+
+        The staged pipeline compares ``request.unit`` verbatim, so an
+        unqualified ``kWh`` request can never reach the qualified
+        ``kWh (Gross CV)`` / ``kWh (Net CV)`` factors. This step re-queries the
+        EXISTING index with the request's base unit (``split_qualified_unit``)
+        and lets :func:`core.units.select_basis_factor` decide the basis from
+        the retrieved candidates — a deterministic policy, never enumeration
+        order.
+
+        It is deliberately inert unless the candidates offer more than one
+        distinct qualifier of the same base unit, so electricity, water,
+        diesel, waste and unrelated activities are structurally unaffected; a
+        request that is already qualified has nothing to discover and returns
+        ``None``. Gross/Net remain methodological bases, never conversions.
+        """
+        base_unit, qualifier = split_qualified_unit(request.unit or "")
+        if not base_unit or qualifier:
+            return None
+        # ``FactorSearchIndex.keyword_search`` applies a STRICT unit filter, so a
+        # base-unit re-query would return nothing (verified: unit="kWh" -> []).
+        # Candidate retrieval is therefore activity-based (``unit=None``) and unit
+        # compatibility is enforced by ``select_basis_factor`` itself, which only
+        # accepts candidates sharing the request's base unit.
+        results = self._index.keyword_search(
+            request.activity,
+            unit=None,
+            country=request.country,
+            provider=request.preferred_provider,
+            limit=max(int(self._config.max_suggestions), 25),
+        )
+        candidates = [
+            factor
+            for factor, score in results
+            if score > 0.0
+            and split_qualified_unit(getattr(factor, "unit", "") or "")[0]
+            == base_unit
+        ]
+        return select_basis_factor(
+            candidates,
+            source_basis=source_calorific_basis(request.activity),
+        )
 
     async def _finalize(
         self, request: MatchRequest, outcome: MatchResult
