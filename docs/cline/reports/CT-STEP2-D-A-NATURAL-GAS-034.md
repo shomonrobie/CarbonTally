@@ -104,11 +104,76 @@ known limitations                : (a) D-A unimplemented; (b) the recovery-confi
                                    oracle row has not been re-run since 029
 ```
 
-## Final verdict
-**PARTIAL** — D-A was not implemented in this window. The root cause is verified, the dataset evidence is
-captured, and the change design (discovery + deterministic basis policy) is ready to execute with its
-14-test list. No policy was reinterpreted, no unit semantics changed, no architecture added; the PO gate
-remains open.
+## UPDATE — D-A PARTIAL IMPLEMENTATION DELIVERED (re-authorized window)
+
+```text
+commit 46a5534  feat(034-D-A): deterministic calorific-basis selection + stop Gross/Net being
+               treated as interchangeable spellings      (pushed: c7ee7f4 → 46a5534)
+files   backend/core/units.py  (+ new policy helpers, + qualifier-strictness fix)
+        backend/tests/unit/test_d_a_natural_gas_basis.py  (26 tests)
+```
+
+### What was implemented (the deterministic policy half of D-A)
+```text
+source_calorific_basis(evidence) -> "gross" | "net" | None
+  gross tokens: "Gross CV" · "GCV" · "Gross calorific value"
+  net tokens  : "Net CV" · "NCV" · "Net calorific value"
+  never inferred from unrelated words ("gross tonnage", "net payable" → None); a document
+  declaring BOTH bases is ambiguous → None (caller then uses the default, never a guess).
+
+DEFAULT_CALORIFIC_BASIS = "net"   ← the PO rule for unqualified natural-gas kWh (DEFRA and SEAI)
+
+select_basis_factor(candidates, *, source_basis=None, default_basis="net")
+  acts ONLY when the candidate set offers more than one distinct qualifier of the same base unit
+  (the Gross/Net case) — so electricity, water, diesel and waste selection are provably untouched;
+  otherwise returns None.  Ordering is by factor id before the qualifier map is built, so
+  enumeration order can never decide the result (asserted in tests both directions).
+```
+
+### Root-cause defect found while validating D-A (and fixed)
+```text
+resolve_unit_for_factor("kWh (Gross CV)", "kWh (Net CV)")  previously returned "kWh (Net CV)"
+  — i.e. the same-base qualifier rule adopted the FACTOR's spelling even when the two qualifiers
+  were DIFFERENT methodological bases. A gross-based source row could therefore have been silently
+  calculated on a net-based factor with the unit rewritten, with no basis decision anywhere.
+Fix (generic, backend/core/units.py): the factor's spelling is now adopted only when the two are not
+  differently qualified — unqualified ↔ qualified still tolerates (kWh ↔ kWh (Gross CV)) and equal
+  qualifiers still agree; two different qualifiers leave the SOURCE unit unchanged so the basis
+  policy (or the engine's UNIT_MISMATCH guard) decides. 027 unit-family semantics untouched:
+  Gross/Net remain bases, never conversions.
+```
+
+### Test evidence (all green in this window)
+```text
+tests/unit/test_d_a_natural_gas_basis.py            26 passed  (covers required cases 3,4,5,6,7,8,9,10
+                                                    plus explicit-Gross/GCV/Net/NCV detection, the
+                                                    unrelated-word guard, ambiguity → None,
+                                                    single-qualifier no-op, plain-kWh + alias regression)
+tests/unit/test_units*.py (027 family-compat + qualifier + units)   100% pass
+tests/unit/services (023 detector · 026 provenance · 029/031 · D-F) 0 failures
+tests/unit/engines (calculation · matching)                          100% pass
+no test was modified for green status; no new failures; no infrastructure failures
+```
+
+### Still outstanding for D-A (unchanged scope, next window)
+```text
+· wiring select_basis_factor + source_calorific_basis into the SHARED matching path
+  (engines/matching_stages.py :63/:120/:162/:259/:333) so the qualifier-aware search DISCOVERS the
+  Gross/Net candidates for an unqualified `kWh` request, with the confirmed convention
+  confidence = 1.0 for a policy-selected candidate (PO decision, this window's brief);
+· the real five-row oracle for row 1 ('Gas usage 5,362.2000 kWh' → Natural gas → Net CV factor,
+  confidence 1.0) and the 023/026/027/031 oracle regression re-run;
+· therefore the discovery half of Part 1 is NOT yet delivered: today the policy exists, is
+  deterministic and is test-covered, but the unqualified-kWh request still cannot REACH the
+  qualified candidates.
+```
+
+### Verdict for this window
+**PARTIAL** — the D-A policy core is implemented, tested, committed and pushed, and one genuine
+correctness defect (Gross/Net treated as interchangeable spellings) is fixed generically. The
+discovery wiring in the shared matching stages and the real-DB five-row oracle evidence remain
+outstanding. Production untouched; P1 SHADOW; working tree clean.
+
 
 ## Next PO gate
 Authorise a dedicated D-A window with the Part-1 path chosen (preferred: qualifier-aware key/candidate
