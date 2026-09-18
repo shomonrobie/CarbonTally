@@ -193,13 +193,21 @@ def resolve_unit_for_factor(extracted_unit: Optional[str], factor_unit: Optional
     """Normalise a human-typed unit against a factor's canonical unit.
 
     Returns the factor's canonical unit when the two are legitimate equivalent
-    spellings of the same unit (``L`` ↔ ``litres``), or when the factor unit
-    carries a qualifier the typed unit abbreviates (``kWh`` vs ``kWh (Gross
-    CV)``). Any other value is returned unchanged so the authoritative engine
-    still rejects genuinely incompatible units with ``UNIT_MISMATCH``.
+    spellings of the **same** unit (``L`` ↔ ``litres``), or when the factor unit is a
+    qualified form of the same base unit (``kWh`` vs ``kWh (Gross CV)``). Any other
+    value is returned unchanged so the authoritative engine still rejects genuinely
+    incompatible units with ``UNIT_MISMATCH``.
 
-    ``factor_unit`` may be ``None`` (unit-less factor): the typed unit is
-    returned as-is.
+    ``CL-3`` / ``027`` — equivalence is established by exact canonical normalisation
+    (:func:`normalize_unit`) plus the trailing-qualifier rule
+    (:func:`split_qualified_unit`). A raw substring fallback is deliberately **not**
+    used: it coerced across physical families (``"t" in "litres"`` → ``"litres"``, i.e. a
+    mass unit silently became a volume unit). This helper resolves *spellings*, never
+    *conversions* — two different units of the same family (``litres`` vs
+    ``cubic metres``) are not interchangeable here, because the quantity is not
+    converted and the factor multiplier is per-unit.
+
+    ``factor_unit`` may be ``None`` (unit-less factor): the typed unit is returned as-is.
     """
     unit = str(extracted_unit or "").strip()
     factor_unit_s = str(factor_unit or "").strip()
@@ -209,7 +217,12 @@ def resolve_unit_for_factor(extracted_unit: Optional[str], factor_unit: Optional
         return unit
     if normalize_unit(unit) == normalize_unit(factor_unit_s):
         return factor_unit_s
-    if unit in factor_unit_s or factor_unit_s in unit:
+    unit_base, _unit_qualifier = split_qualified_unit(unit)
+    factor_base, _factor_qualifier = split_qualified_unit(factor_unit_s)
+    if unit_base and unit_base == factor_base:
+        # Same base unit, differently qualified (``kWh`` vs ``kWh (Gross CV)``): the
+        # factor's spelling is the canonical one. A different base unit is left
+        # untouched so the engine's UNIT_MISMATCH guard remains authoritative.
         return factor_unit_s
     return unit
 
