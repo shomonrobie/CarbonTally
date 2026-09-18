@@ -181,6 +181,23 @@ def _unresolved_mapping_entry(
     return entry
 
 
+def _clarification_entry(
+    line, idx, assessment, *, activity=None, unit=None
+):
+    entry = _unresolved_mapping_entry(
+        line, idx, f"clarification required: {assessment.reason}", activity=activity, unit=unit
+    )
+    entry["clarification_required"] = True
+    entry["clarification_verdict"] = assessment.verdict
+    entry["clarification_families"] = [
+        {"family": f, "scopes": list(s)} for f, s in assessment.families
+    ]
+    entry["clarification_options"] = [
+        {"id": o.id, "label": o.label, "term": o.semantic_term} for o in assessment.options
+    ]
+    return entry
+
+
 def _methodology_for(factor_kind: str, unit: Optional[str]) -> str:
     """Map a matched factor to a valid :class:`CalculationMethodology`.
 
@@ -1262,6 +1279,32 @@ class AutomaticProcessingService:
                     _unresolved_mapping_entry(
                         line, idx, f"matching failed ({exc})", activity=activity, unit=unit
                     )
+                )
+                continue
+            # F-039-1 / F-045-1: the family gate runs BEFORE any legacy stage may persist
+            # a matched factor. Free source text is valid evidence, so the gate uses whatever
+            # authoritative evidence this boundary has. Policy ambiguity (D-FS-5) is never
+            # diverted - it stays with the no-confident-factor path below.
+            from engines.activity_clarification import assess_family_conflict
+
+            accessor = getattr(self._matching_engine, "clarification_candidates", None)
+            if accessor is None:
+                accessor = getattr(self._matching_engine, "_policy_candidates", None)
+            gate_candidates = accessor(request) if callable(accessor) else []
+            assessment = assess_family_conflict(
+                activity,
+                gate_candidates,
+                unit=unit,
+                scope=getattr(request, "scope", None),
+                preferred_unit=getattr(getattr(result, "factor", None), "unit", None),
+            )
+            if assessment.verdict == "clarification_required":
+                reasons.append(
+                    f"line {idx + 1}: clarification required for {activity!r} "
+                    f"({assessment.reason})"
+                )
+                mapped_lines.append(
+                    _clarification_entry(line, idx, assessment, activity=activity, unit=unit)
                 )
                 continue
             if result.status != "matched" or result.confidence < AUTO_MAPPING_CONFIDENCE_MIN:
