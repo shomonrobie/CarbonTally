@@ -168,11 +168,60 @@ no test was modified for green status; no new failures; no infrastructure failur
   qualified candidates.
 ```
 
-### Verdict for this window
-**PARTIAL** — the D-A policy core is implemented, tested, committed and pushed, and one genuine
-correctness defect (Gross/Net treated as interchangeable spellings) is fixed generically. The
-discovery wiring in the shared matching stages and the real-DB five-row oracle evidence remain
-outstanding. Production untouched; P1 SHADOW; working tree clean.
+## DISCOVERY WIRING — CONCRETE INTEGRATION FACTS (established, not yet implemented)
+
+Verified in this window so the next window starts with the interface facts rather than re-discovery:
+
+```text
+STAGE CONTRACT           engines/matching_stages.py
+  class MatchingStage:  async def execute(self, request: MatchRequest, index: FactorSearch) -> StageResult
+  StageResult(stage_name, matched, factor, confidence, score, reason, provider, is_definitive)
+  Existing stage unit handling (the defect): KeywordSearchStage.execute calls
+      index.keyword_search(request.activity, unit=request.unit, country=request.country,
+                           provider=request.preferred_provider, limit=1)
+  → the verbatim `request.unit` ("kWh") is passed to the search, so qualified rows
+    ("kWh (Gross CV)" / "kWh (Net CV)") are never returned.  Same pattern at the natural-key key
+    composition (:120) and the other stages (:63, :259, :333).
+
+INDEX API                index.keyword_search(activity, *, unit, country, provider, limit) -> list[(factor, score)]
+  (FactorSearchIndex; a base-unit search — split_qualified_unit(request.unit)[0] — is therefore
+   expressible with the EXISTING API, no new search method and no new unit-compatibility helper.)
+
+PIPELINE REGISTRATION CONSTRAINT  engines/factor_matching.py build_matching_pipeline(...)
+  stages are built from `config.stages` NAMES via a `builders` dict:
+      {"exact_match", "natural_key", "alias_match", "keyword_search", "fuzzy_match", "semantic_match"}
+  and a stage name not in `config.stages` is never instantiated.
+  ⇒ Adding a NEW stage class therefore requires either (a) adding its name to
+    MatchingPipelineConfig.stages (a config-default change that alters the pipeline for every caller), or
+    (b) making the basis discovery a post-stage step inside FactorMatchingEngine.match() where the
+    stage loop already lives.  Option (b) is the narrower change and keeps stage ordering/count intact;
+    it also keeps the containment property (select_basis_factor acts only when >1 distinct qualifier of
+    the same base unit exists).
+
+RECOMMENDED NEXT-WINDOW SHAPE (unchanged policy, no helper change required)
+  In FactorMatchingEngine.match(): after the configured stages run without a definitive result, attempt
+  a qualifier-aware basis discovery for the CV family only —
+      base = split_qualified_unit(request.unit)[0]
+      candidates = [f for f, _score in index.keyword_search(request.activity, unit=base,
+                    country=request.country, provider=request.preferred_provider, limit=20)]
+      chosen = select_basis_factor(candidates, source_basis=source_calorific_basis(request.activity))
+  and, when a candidate is chosen, return MatchResult(status="matched", factor=chosen,
+  confidence=1.0) — the PO-confirmed convention for a deterministic policy selection.
+  NOT DONE: implementing it and validating it in the shared matcher requires an implement → suite →
+  real-oracle cycle that this window no longer had; shipping it unvalidated is what the brief forbids.
+
+unit_matches_with_qualifier  NOT MODIFIED — the discovery design above does not require changing it
+  (the containment comes from select_basis_factor, and the Gross/Net protection added in 46a5534 is in
+  resolve_unit_for_factor, which stays as fixed).  Its tolerance of different qualifiers at
+  factor-SELECTION time remains an open question for a separate look, as noted in the previous section.
+```
+
+## Verdict for this window (discovery completion attempt)
+**PARTIAL** — no discovery code was changed in this window. The D-A policy core (46a5534) remains
+implemented, tested and pushed; the wiring above is specified to the interface level but not applied,
+so row 1 of the five-row oracle still cannot reach the Gross/Net candidates. Tree clean, production
+untouched, P1 SHADOW, PO gate open.
+
 
 
 ## Next PO gate
