@@ -36,6 +36,7 @@ from auth import (
 )
 
 from core.logging import get_logger
+from data.activity_clarifications import ActivityClarificationsRepository
 from data.audit import AuditRepository
 from data.customer_factors import CustomerFactorsRepository
 from data.documents import DocumentsRepository
@@ -314,6 +315,8 @@ class RepositoryBundle:
     manual_extraction: ManualExtractionRepository
     #: FIN-06 — CarbonTally Admin Manual Processing governance plane.
     manual_processing: ManualProcessingRepository
+    #: F-039-1 — activity clarification adjudications (F-048-2 / 052).
+    clarifications: ActivityClarificationsRepository
     suppliers: SuppliersRepository
     staff: StaffRepository
     reporting: ReportingRepository
@@ -373,6 +376,7 @@ async def get_repositories() -> RepositoryBundle:
         suppliers=SuppliersRepository(pool),
         staff=StaffRepository(pool),
         reporting=ReportingRepository(pool),
+        clarifications=ActivityClarificationsRepository(pool),
         billing_plans=BillingPlansRepository(pool),
         billing_config=BillingCommercialConfigRepository(pool),
         billing_ledger=BillingCreditLedgerRepository(pool),

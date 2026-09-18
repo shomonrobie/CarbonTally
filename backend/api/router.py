@@ -64,6 +64,7 @@ from api.v3_whitelabel import router as v3_whitelabel_router
 from api.v3_reporting import router as v3_reporting_router
 from api.v3_context import router as v3_context_router
 from api.v3_health import router as v3_health_router
+from api.v3_activity_clarifications import router as v3_activity_clarifications_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -227,6 +228,8 @@ router.include_router(v3_whitelabel_router)
 router.include_router(v3_reporting_router)
 router.include_router(v3_context_router)
 router.include_router(v3_health_router)
+# F-039-1 — authorised activity clarification (F-048-2 / 052).
+router.include_router(v3_activity_clarifications_router)
 
 
 # ---------------------------------------------------------------------------

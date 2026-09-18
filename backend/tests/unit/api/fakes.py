@@ -4422,6 +4422,10 @@ class InMemoryWorld:
         # Phase 8 B2 12.2/13.2 - evidence line-item addressability (double for
         # the already-published RepositoryBundle field).
         self.evidence_line_items = _EvidenceLinesStub()
+        # F-039-1 (F-048-2/052) — activity-clarification adjudications. Stub for
+        # API tests that never touch clarification directly (the dedicated
+        # clarification API tests inject their own repository).
+        self.clarifications = _StubRepo()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -4457,6 +4461,7 @@ class InMemoryWorld:
             whitelabel=self.whitelabel,
             manual_extraction=self.manual_extraction,
             manual_processing=self.manual_processing,
+            clarifications=self.clarifications,
             suppliers=self.suppliers,
             staff=self.staff,
             reporting=self.reporting,
