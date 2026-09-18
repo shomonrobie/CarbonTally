@@ -109,8 +109,59 @@ P1                   : SHADOW (unchanged) · known pre-existing failures: none o
 policies are recorded, and nothing was guessed, fabricated or shipped unvalidated. **The PO gate is not
 closed.**
 
-## Recommended next PO gate
-Authorise a dedicated implementation window for items 1–7 in order, each committed with its own regression
-tests, with items 1–4 validated against the real five-row oracle before any sink/report work (item 7).
-Item 5 (invoice_number propagation) is independent of every policy and can be taken first or in parallel.
+## RE-ISSUED WINDOW — SLICE RESULTS
+
+### SLICE 1 — D-F invoice-number propagation: **IMPLEMENTED · TESTED · COMMITTED · PUSHED**
+```text
+commit  c4584ff  feat(033-D-F): carry the document invoice_number onto P1 multi-line line items
+files   backend/services/extraction_fidelity.py   build_line_items(*, invoice_number=None) — the
+          document's own invoice reference is carried onto every line item; whitespace-only values are
+          never recorded (so the provenance chain cannot resolve to a blank reference); absent ⇒ field
+          simply not present (backward compatible)
+        backend/services/automatic_extraction.py  call site passes invoice_number=extracted.get("invoice_number")
+          — i.e. the value the EXISTING deterministic extraction already establishes (no new field, no
+          second invoice-reference system, no schema change)
+        backend/tests/unit/services/test_invoice_number_propagation.py  (4 tests, all passing)
+tests   focused: 4/4 pass · tests/unit/services (incl. 023 P1 detector, 026 provenance, extraction,
+        automatic-extraction, text-layer, structured-file parity): 0 failures · 027 unit safety
+        (family-compat + qualifier + units): 100% pass
+result  document-level invoice_number now reaches the multi-line line items, so the existing chain
+        (line item → mapping → calculation → report) can resolve it per row deterministically
+```
+One defect in my own first attempt was caught by the tests and fixed before commit: a whitespace-only
+`invoice_number` was initially recorded verbatim; it is now normalised/ignored (backend evidence above).
+
+### SLICES 2–7 — NOT ATTEMPTED IN THIS WINDOW
+```text
+Slice 2 D-A natural gas basis      · Slice 3 D-B power → electricity · Slice 4 D-C diesel guard ·
+Slice 5 D-D waste guard           — all four change behaviour in the SHARED matching/selection path
+(engines/matching_stages.py:63,120,162,259,333 ; services/automatic_processing.py:1414/1437/1444).
+Each needs an implement → suite → real-oracle validation cycle; shipping any of them without that
+validation would place unvalidated behaviour change into the path that decides reported emissions, which
+the task's stop conditions forbid. Sites and the exact intended change for each remain as recorded in
+"Remaining work" above.
+Mandatory five-row validation (§ after Slices 1–5): NOT RUN — it requires Slices 2–5 first.
+Slice 6 real calculation sink: NOT RUN.  Slice 7 real report + bidirectional provenance: NOT RUN.
+```
+
+### Safety / impact for this re-issued window
+```text
+production mutation        : NONE (no production access/upload/job/queue/DB write/EF change/deployment/
+                             Render/Vercel change); all DB access read-only against the LOCAL database
+P1                         : SHADOW (unchanged)
+cleanup required/verified  : none — no test records created
+tests added / executed     : 4 added (D-F); suites run as listed above; no test rewritten for green status
+new failures               : none   ·  pre-existing failures: none observed  ·  infrastructure failures: none
+```
+
+### Final verdict for this re-issued window
+**PARTIAL** — Slice 1 (D-F) is genuinely implemented, tested, committed and pushed; Slices 2–7 are not
+delivered. Nothing was guessed, no policy was reopened, no architecture added, PO gate left open.
+
+### Next PO gate
+Nothing blocks Slices 2–5 technically (the policies are decided and the sites are verified). They need a
+dedicated window in which each slice is implemented, its suites run, and the five-row oracle re-run before
+the next slice starts — with Slice 6 (real sink) and Slice 7 (real report + bidirectional provenance) only
+after the mapping path is stable.
+
 
