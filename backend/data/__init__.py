@@ -4,6 +4,7 @@ Every repository maps database rows to immutable domain objects, contains
 persistence logic only (no business, matching, calculation or workflow rules),
 uses explicit column lists (never ``SELECT *``) and exposes async methods.
 """
+from .activity_clarifications import ActivityClarificationsRepository
 from .audit import AuditRepository
 from .base import AbstractRepository
 from .customer_factors import CustomerFactorsRepository
@@ -34,6 +35,7 @@ from .suppliers import SuppliersRepository
 
 __all__ = [
     "AbstractRepository",
+    "ActivityClarificationsRepository",
     "AuditRepository",
     "ConsultantsRepository",
     "CustomerFactorsRepository",
