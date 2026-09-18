@@ -283,9 +283,84 @@ GATE 4 — After Gates 1–2, the calculation sink, a persisted snapshot and an 
          locally to complete report → snapshot → source_line_item_id → source row provenance.
 ```
 
+## RE-ISSUED PASS — CORRECTIONS AND ADDITIONS (same task ID, evidence deepened)
+
+This section is added because the second evidence pass materially corrected three earlier statements. It
+supersedes those statements above; no conclusion is drawn and no factor is chosen.
+
+```text
+PROBE-METHODOLOGY ERROR (disclosed)
+  An earlier probe for DEFRA electricity candidates used a case-sensitive
+  `LIKE '%electricity%'` filter, which cannot match the capitalised `Electricity` spellings used by the
+  dataset. That probe returned only electric-vehicle/business-travel rows and was reported as an absence.
+
+CORRECTION 1 — the two electricity factors cited since 028 belong to the SEAI set, not DEFRA
+  IE (SEAI-2025) | Fuels > Electricity > Electricity consumption (kg CO2) [kWh]   id 5d954b93-0e03-4f79-ae92-20c272601395
+     | kWh | 0.197803384 | Scope 2
+  IE (SEAI-2025) | Fuels > Electricity > Gross electricity supply  (kg CO2) [kWh]   id e0965f24-d57c-4d93-9a7f-9ef748613f8e
+     | kWh | 0.178327674 | Scope 2
+  ⇒ For a DEFRA-set document these candidates are NOT in the effective factor set at all, so Row 5's
+    position is: a taxonomy gap (the phrase resolves to nothing) AND, for the DEFRA set, a target-activity
+    question rather than the previously-implied "two candidates exist in the set".
+
+CORRECTION 2 — DEFRA/GB DOES have an electricity activity, under different wording
+  GB (DEFRA-2025) | UK electricity > Electricity generated > Electricity: UK > kWh (kg CO2e) [kWh] | kWh | Scope 2
+     (+ per-component variants: kg CO2e of CO2 / CH4 / N2O per unit, same unit, Scope 2)
+  GB (DEFRA-2025) | UK electricity for EVs > Cars (by market segment) > … (km, Scope 2)
+  ⇒ Each factor set expresses "electricity" with its OWN activity vocabulary and scope-2 classification;
+    therefore the canonical target for the phrase "power consumption" is a PER-FACTOR-SET data/taxonomy
+    question, not a single global mapping. Both sets classify their electricity activity as Scope 2, which
+    is consistent with the existing scope rule (engines/validation.py:96-102), so the scope half of
+    Decision B remains answered by existing rule; the target half remains a product decision.
+
+CORRECTION 3 — DEFRA has a full waste-disposal family; it was missed by the earlier waste probe
+  GB | activity_type LIKE 'Waste disposal %' → 134 rows, Scope 3, tonnes
+  second-level categories: Construction · Electrical items · Metal · Other · Paper · Plastic · Refuse
+  examples inside 'Refuse':
+     Waste disposal > Refuse > Commercial and industrial waste - Landfill (kg CO2e) [tonnes]      Scope 3
+     Waste disposal > Refuse > Commercial and industrial waste - Incineration with Energy Recovery Scope 3
+     Waste disposal > Refuse > Household residual waste - Landfill (kg CO2e) [tonnes]              Scope 3
+     Waste disposal > Refuse > Organic: mixed food and garden waste - Landfill / Composting /
+       Anaerobic digestion / Incineration with Energy Recovery (kg CO2e) [tonnes]                  Scope 3
+     Waste disposal > Construction > Aggregates - Landfill / Open-loop / Closed-loop (kg CO2e)     Scope 3
+     Waste disposal > Electrical items > WEEE - mixed - Incineration / Open-loop (kg CO2e)         Scope 3
+  What the matcher actually selected for 'Waste':
+     Fuels > Liquid fuels > Waste oils (kg CO2e) [tonnes] 3219.37916   Scope 1   ← a FUEL family
+  ⇒ The candidate set for Decision D is therefore materially different from the earlier description:
+    a waste-DISPOSAL class (Scope 3, tonnes, with treatment routes such as Landfill / Incineration with
+    Energy Recovery / Composting / Anaerobic digestion) versus the currently selected waste-OILS fuel class
+    (Scope 1). The aggregate-preference step is mechanically correct (§14) but its candidate pool came from
+    the fuel family, and the two classes differ in both activity meaning and GHG scope.
+
+ADDITION — SEAI (IE) coverage is narrow and contains no waste/landfill activity
+  IE rows: 20 total; waste/landfill search → 0 rows (only the electricity rows above match).
+  Diesel-class factors present in the SEAI set:
+     Fuels > Liquid fuels > Diesel / gasoil (100% petroleum) (kg CO2) [litres]  id 7f353467-0c01-4cda-899b-9426e081aa64
+        | litres | 2.682327 | Scope 1
+     Fuels > Liquid fuels > Road diesel (avg. biofuel content) (kg CO2) [litres] id 160f4c4b-6c80-4573-aadb-ea64915e152b
+        | litres | 2.410411 | Scope 1
+  ⇒ For Decision C the SEAI set offers a road-diesel-class candidate and a 100%-petroleum candidate, whereas
+    the DEFRA set additionally carries biofuel/Development, WTT (Scope 3) and Outside-of-Scopes classes.
+
+STATE CONFIRMATION (unchanged by this pass)
+  HEAD == origin/p8-release-reconciled == 341fd93e8f1c7a52f998ed4370ddf7b18bd7433a ; working tree clean ;
+  only this report file differs from baseline 7a1294c (+297 lines, plus this section) ; no code, test,
+  schema, EF, import or configuration change ; all database access read-only against the local
+  authoritative database ; no external documentation consulted.
+```
+
 ## FINAL VERDICT
 
 **EVIDENCE COMPLETE — READY FOR PO DECISIONS**
+
+Every question A–F is answered from repository and dataset evidence: the rules that exist are identified
+with file references (scope-from-activity-family; unit-qualifier tolerance; aggregate-over-component
+preference; `invoice_number` as an established line-item field; factor-set precedence), the dataset facts
+are enumerated with real factor IDs across both factor sets, the genuine ambiguities are stated as
+ambiguities, and three technical defects are recorded precisely — without choosing, ranking or
+recommending any factor, and with the corrections disclosed above rather than quietly absorbed.
+
+
 
 Every question A–F is answered from repository/dataset evidence: the rules that exist are identified with
 file references, dataset facts are enumerated with real factor IDs, genuine ambiguities are stated as
