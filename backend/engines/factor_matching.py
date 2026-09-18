@@ -241,6 +241,15 @@ class FactorMatchingEngine:
     _POLICY_SCAN_LIMIT = 10000
     _POLICY_FAMILY_CAP = 40
 
+    def clarification_candidates(self, request: MatchRequest) -> list[Any]:
+        """Public accessor for the activity-clarification layer (041/042).
+
+        Discovery only — the same candidate set the selection policy sees, so the
+        clarification layer evaluates eligibility against the real candidates
+        instead of a second retrieval notion.
+        """
+        return self._policy_candidates(request)
+
     def _policy_candidates(self, request: MatchRequest) -> list[Any]:
         """Family-diversified candidate retrieval for the selection policy (F-038-1).
 
