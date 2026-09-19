@@ -413,7 +413,11 @@ F-063-2  FIXED in `a509593`. F1 adjudication consumption raised `NameError: name
 45e8c2b919fb13bb2a8fa8baada1183f398f1b1c   starting SHA (baseline verified)
 a50959303ddc4573eac841bea9dc5a42f9ef6031   Part A (F1 defect fix + service tests A1–A8)
 52c9ef0bb2929bc848f5e2013ddfbb3a798653ef   Part B/C (reads + 20 tests)
-<final>                                    this report
+c5eeadb…                                    this report
+4bd04862…                                   correction of record (Part B/C count)
+FINAL SHA      the branch tip after this report's own commits — HEAD == origin verified at
+               hand-off (this report's text cannot contain the SHA of the commit that
+               introduces it; the exact tip is recorded in the hand-off summary)
 ```
 
 After every commit: `git rev-parse HEAD == git rev-parse origin/p8-release-reconciled` and
