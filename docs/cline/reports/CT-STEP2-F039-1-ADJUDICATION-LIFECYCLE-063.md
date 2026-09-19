@@ -420,6 +420,12 @@ After every commit: `git rev-parse HEAD == git rev-parse origin/p8-release-recon
 `git status --porcelain` empty. No reset, no rebase, no force-push, no unrelated change absorbed,
 no secret, credential, token or signed URL introduced.
 
+**Correction note:** the Part B/C commit message (`52c9ef0`) says "…21 authorization/isolation/
+versioning tests". The verified count is **20** (9 Part B + 11 Part C), as recorded everywhere
+else in this report and reconciled against the baseline in D.1. The message was not amended,
+because amending would require rewriting already-pushed shared history (forbidden); this note is
+the correction of record.
+
 Change footprint of the two code/test commits (no SQL, no migration, no DDL, no UI):
 
 ```text
