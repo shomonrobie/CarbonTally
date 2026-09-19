@@ -289,6 +289,9 @@ def _detect_unit(text: str) -> Optional[str]:
 #: Lazy ONNX OCR engine (pure-pip, no system Tesseract dependency).
 _onnx_ocr_engine = None
 
+#: pypdfium2 render scale for the no-poppler fallback (unchanged: same pixel density).
+_PYPDFIUM_RENDER_SCALE = 2.0
+
 
 def _onnx_ocr(content: bytes) -> Optional[str]:
     """OCR ``content`` with the ONNX engine when Tesseract is unavailable.
@@ -355,13 +358,19 @@ def _pdf_text(content: bytes) -> tuple[str, str, int]:
         if ocr and len(ocr.strip()) >= 20:
             text, method = ocr, "tesseract_ocr"
         else:
-            # Tesseract/poppler unavailable → pypdfium2 render + ONNX OCR.
-            pages = _render_pdf_pages_pypdfium(content)
-            if pages:
-                recognized = [_onnx_ocr(p) for p in pages]
-                joined = "\n".join(t for t in recognized if t)
-                if joined and len(joined.strip()) >= 20:
-                    text, method = joined, "onnx_ocr"
+            # Tesseract/poppler unavailable → pypdfium2 render + ONNX OCR. The renderer is a
+            # generator (F-070-D): pages are rendered and released one at a time, so the
+            # peak cost stays a single page instead of the whole document.
+            recognized = [
+                recognised
+                for recognised in (
+                    _onnx_ocr(page) for page in _render_pdf_pages_pypdfium(content)
+                )
+                if recognised
+            ]
+            joined = "\n".join(recognized)
+            if joined and len(joined.strip()) >= 20:
+                text, method = joined, "onnx_ocr"
     page_count = extractor._get_page_count(content)
     return (text or ""), method, int(page_count or 0)
 
@@ -497,25 +506,44 @@ def _extract_pdf(content: bytes, *, organization_id: Optional[str] = None) -> di
     return result
 
 
-def _render_pdf_pages_pypdfium(content: bytes) -> list[bytes]:
-    """Render PDF pages to PNG bytes via pypdfium2 (no poppler dependency)."""
+def _render_pdf_pages_pypdfium(content: bytes):
+    """Render PDF pages to PNG bytes via pypdfium2, ONE page at a time (generator).
+
+    A generator, not a list: the previous version appended every rendered page to ``out``
+    and returned the whole list, so a scanned document materialised every page bitmap and
+    PNG buffer at once — the same unbounded-page pattern as the pdf2image path (F-070-D).
+    The caller consumes the pages lazily, so the peak cost is a single page.
+
+    Hosts without poppler use this path; a page that cannot be rendered ends the sequence
+    (the fallback must never raise into the pipeline).
+    """
     try:
         import pypdfium2 as pdfium
 
         pdf = pdfium.PdfDocument(content)
-        out: list[bytes] = []
-        for page in pdf:
-            bitmap = page.render(scale=2.0)
-            pil = bitmap.to_pil().convert("RGB")
-            import io
-
-            buf = io.BytesIO()
-            pil.save(buf, format="PNG")
-            out.append(buf.getvalue())
-        pdf.close()
-        return out
     except Exception:  # noqa: BLE001 — render fallback must never raise
-        return []
+        return
+    try:
+        for page in pdf:
+            try:
+                bitmap = page.render(scale=_PYPDFIUM_RENDER_SCALE)
+                pil = bitmap.to_pil().convert("RGB")
+                try:
+                    import io
+
+                    buf = io.BytesIO()
+                    pil.save(buf, format="PNG")
+                    yield buf.getvalue()
+                finally:
+                    pil.close()
+                    del bitmap, pil
+            finally:
+                # release the page as soon as its bytes were produced
+                close = getattr(page, "close", None)
+                if callable(close):
+                    close()
+    finally:
+        pdf.close()
 
 
 def _image_text(content: bytes) -> tuple[str, str]:

@@ -8,7 +8,69 @@ import io
 import re
 import uuid
 from datetime import datetime
+from typing import Optional
 from PIL import Image
+
+from core.logging import get_logger
+
+logger = get_logger(__name__)
+
+#: Render resolution for OCR. Unchanged (the OCR input quality must not regress).
+_OCR_DPI = 300
+
+#: Operational page budget for ONE OCR pass (F-070-D). The production OOM was caused by
+#: rendering a whole scanned document into memory at once; the budget additionally bounds
+#: how much work a pathologically long scan may trigger. It is an operational limit, not a
+#: business rule: it is configurable through ``OCR_MAX_PAGES`` and the default is generous
+#: (an ordinary document is never truncated).
+_DEFAULT_OCR_MAX_PAGES = 100
+
+#: Result of the one-off Tesseract probe (``None`` = not probed yet).
+_TESSERACT_AVAILABLE: Optional[bool] = None
+
+
+def _ocr_max_pages() -> int:
+    """The OCR page budget in force (``OCR_MAX_PAGES``), never below 1."""
+    raw = os.environ.get("OCR_MAX_PAGES")
+    try:
+        value = int(raw) if raw not in (None, "") else _DEFAULT_OCR_MAX_PAGES
+    except (TypeError, ValueError):
+        logger.warning("OCR_MAX_PAGES=%r is not an integer; using %d", raw,
+                       _DEFAULT_OCR_MAX_PAGES)
+        value = _DEFAULT_OCR_MAX_PAGES
+    return max(1, value)
+
+
+def tesseract_available() -> bool:
+    """Whether the Tesseract binary is usable — probed ONCE per process.
+
+    A missing binary is an environment fact, not a per-page condition. Probing once keeps a
+    scanned upload from paying the render cost for every page (and again on every retry)
+    only to discover that OCR cannot run: the F-070-D incident shows the whole document
+    being materialised at 300 DPI before the first page was OCR'd, and all of that
+    allocation was thrown away because Tesseract was absent.
+
+    ``reset_tesseract_probe()`` exists for tests and operational tooling.
+    """
+    global _TESSERACT_AVAILABLE
+    if _TESSERACT_AVAILABLE is None:
+        try:
+            pytesseract.get_tesseract_version()
+            _TESSERACT_AVAILABLE = True
+        except Exception as exc:  # noqa: BLE001 — any probe failure means "not usable"
+            _TESSERACT_AVAILABLE = False
+            logger.warning(
+                "tesseract binary unavailable (%s): OCR disabled for this process "
+                "(install tesseract-ocr or set TESSERACT_CMD)", exc,
+            )
+    return bool(_TESSERACT_AVAILABLE)
+
+
+def reset_tesseract_probe() -> None:
+    """Forget the cached probe result (tests/tools only)."""
+    global _TESSERACT_AVAILABLE
+    _TESSERACT_AVAILABLE = None
+
 
 class PDFExtractor:
     """
@@ -72,25 +134,63 @@ class PDFExtractor:
         return text
     
     def _extract_text_ocr(self, pdf_bytes: bytes) -> str:
-        """Extract text from scanned PDFs using OCR.
+        """Extract text from scanned PDFs using OCR — ONE page at a time, bounded.
 
-        Renders each page with pdf2image (poppler) and runs Tesseract over every
-        rendered page. ``pdf2image`` requires ``convert_from_bytes`` for in-memory
-        input — ``convert_from_path`` only accepts a filesystem path and raised a
-        TypeError here, which silently left scanned-PDF OCR returning nothing.
+        ``pdf2image`` renders every requested page before returning, so asking for the whole
+        document materialises every page at 300 DPI simultaneously (A4 ≈ 2480×3508 RGB ≈
+        26 MB per page). On a scanned document that alone exceeded the API container's
+        memory limit — the F-070-D production OOM, reproduced locally at 573 MiB peak for
+        six pages and 1.9 GiB for twenty-four — and the whole allocation was wasted whenever
+        Tesseract was not installed.
+
+        Each page is now rendered, OCR'd and released individually, so the peak cost is one
+        page regardless of document length; the page budget is explicit (``OCR_MAX_PAGES``);
+        and a missing Tesseract binary is detected once, BEFORE any page is rendered, so a
+        retry cannot repeat the amplification.
+
+        ``pdf2image`` requires ``convert_from_bytes`` for in-memory input —
+        ``convert_from_path`` only accepts a filesystem path and raised a TypeError here,
+        which silently left scanned-PDF OCR returning nothing. Page markers and the raw page
+        text are unchanged, so the parsers see exactly what they saw before.
         """
-        text = ""
-        try:
-            images = convert_from_bytes(pdf_bytes, dpi=300)
-            for page_no, img in enumerate(images, start=1):
-                page_text = pytesseract.image_to_string(img)
-                if page_text:
-                    # Page boundary markers keep multi-page OCR output separable
-                    # while leaving the raw page text intact for the parsers.
-                    text += f"\n[page {page_no}]\n{page_text}\n"
-        except Exception as e:
-            print(f"OCR extraction failed: {e}")
+        if not tesseract_available():
+            logger.warning(
+                "OCR skipped: tesseract binary unavailable; %d-byte PDF not rendered",
+                len(pdf_bytes),
+            )
             return ""
+        max_pages = _ocr_max_pages()
+        total_pages = int(self._get_page_count(pdf_bytes) or 1)
+        if total_pages > max_pages:
+            logger.warning(
+                "OCR page budget reached: %d-page document, OCR covers the first %d "
+                "(OCR_MAX_PAGES)", total_pages, max_pages,
+            )
+        text = ""
+        for page_no in range(1, min(total_pages, max_pages) + 1):
+            try:
+                images = convert_from_bytes(
+                    pdf_bytes, dpi=_OCR_DPI, first_page=page_no, last_page=page_no
+                )
+            except Exception as exc:  # noqa: BLE001 — never raise out of an extraction
+                logger.warning("OCR render failed on page %d: %s", page_no, exc)
+                break
+            if not images:
+                break
+            image = images[0]
+            try:
+                page_text = pytesseract.image_to_string(image)
+            except Exception as exc:  # noqa: BLE001 — a failed page never loses the others
+                logger.warning("OCR failed on page %d: %s", page_no, exc)
+                break
+            finally:
+                # release the single rendered page immediately (bounded peak memory)
+                image.close()
+                del image, images
+            if page_text:
+                # Page boundary markers keep multi-page OCR output separable
+                # while leaving the raw page text intact for the parsers.
+                text += f"\n[page {page_no}]\n{page_text}\n"
         return text
     
     def _get_page_count(self, pdf_bytes: bytes) -> int:
