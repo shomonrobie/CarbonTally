@@ -271,17 +271,24 @@ def test_unknown_client_id_not_found(client, world, user_provider) -> None:
 
 
 def _first_get_route(client, prefix: str):
-    """First GET route under ``prefix`` on the live app (evidence, not guess)."""
-    from fastapi.routing import APIRoute
+    """First GET route under ``prefix``, taken from the app's OWN OpenAPI document.
 
-    for route in client.app.routes:
-        if (
-            isinstance(route, APIRoute)
-            and getattr(route, "path", "").startswith(prefix)
-            and "GET" in (getattr(route, "methods", set()) or set())
-        ):
-            return route.path
-    return None
+    ``app.routes`` holds framework-internal lazy wrappers in the installed FastAPI version
+    (``_IncludedRouter``), so the previous scan of ``app.routes`` found no ``APIRoute`` for
+    these prefixes and the two boundary assertions below failed VACUOUSLY ("expected a GET
+    commercial (staff) route") instead of proving anything. The OpenAPI document is the
+    stable, framework-independent source of the app's routing table.
+    """
+    document = client.app.openapi() or {}
+    candidates = [
+        path
+        for path, operations in (document.get("paths") or {}).items()
+        if path.startswith(prefix) and "get" in operations
+    ]
+    parameterless = [path for path in candidates if "{" not in path]
+    if parameterless:
+        return parameterless[0]
+    return candidates[0] if candidates else None
 
 
 def test_consultant_cannot_reach_operations_surface(client, world, user_provider) -> None:
@@ -369,4 +376,131 @@ def test_org_with_capability_and_member_resolves_both_layers(world) -> None:
     assert memberships[0].firm_id == "firm-1"
     # Capability never self-creates a client grant for the org.
     assert _run(world.consultants.get_client_by_org, "firm-1", "org-a") is None
+
+
+
+# ---------------------------------------------------------------------------
+# Workstream E — the cross-SURFACE boundary (entity routing, API level)
+# ---------------------------------------------------------------------------
+# Required verification: the PE path, the consultant path, the client path and the
+# internal path must not be interchangeable, and unauthorised direct navigation must be
+# refused SERVER-side (the UI is never the security boundary). The guards below are the
+# same ones the routes above them use; each caller here is a REAL AuthUser.
+
+from domain.entity import ProcessingEntity  # noqa: E402
+from domain.staff import StaffProfile, StaffRole  # noqa: E402
+from tests.unit.api.fakes import entity_operator_user, staff_user  # noqa: E402
+
+
+def _seed_entity_world(world) -> None:
+    """One active entity with an operator (PE domain) plus a suspended one."""
+    world.staff.seed_role(
+        StaffRole(id="role-operator", name="operator", permissions={"can_process": True})
+    )
+    _run(world.entities.save,
+         ProcessingEntity(id="entity-1", name="Processing Entity A", status="active"))
+    _run(world.entities.save,
+         ProcessingEntity(id="entity-2", name="Processing Entity B", status="suspended"))
+    world.staff.seed_profile(StaffProfile(
+        id="sp-ent1", user_id="u-ent1", first_name="Ent", last_name="A",
+        email="enta@entity.test", role_id="role-operator", entity_id="entity-1",
+    ))
+    world.staff.seed_profile(StaffProfile(
+        id="sp-internal", user_id="u-internal", first_name="Internal", last_name="Op",
+        email="internal@carbontally.test", role_id="role-operator", entity_id=None,
+    ))
+
+
+def test_internal_staff_are_denied_on_the_pe_surface(client, world, user_provider) -> None:
+    """`api/pe_auth.py`: internal staff (entity_id IS NULL) belong to /ops, not /pe."""
+    _seed_entity_world(world)
+    user_provider.set_user(staff_user("u-internal", email="internal@carbontally.test"))
+    assert client.get("/api/v3/pe/me").status_code == 403
+
+
+def test_pe_staff_can_reach_their_own_pe_surface(client, world, user_provider) -> None:
+    """The PE path itself works end to end for entity staff (not merely denied elsewhere)."""
+    _seed_entity_world(world)
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent1"))
+    response = client.get("/api/v3/pe/me")
+    assert response.status_code == 200, response.text
+    assert response.json()["entity"]["id"] == "entity-1"
+    assert "pe_manager" in response.json()["role"]["key"] or \
+        response.json()["role"]["key"] in ("operator", "reviewer", "qc_specialist")
+
+
+def test_pe_staff_are_denied_on_the_internal_commercial_surface(
+    client, world, user_provider
+) -> None:
+    """The PE domain never grants CarbonTally-internal privileges (PE-ROLE-001)."""
+    _seed_entity_world(world)
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent1"))
+    route = _first_get_route(client, "/api/v3/commercial/")
+    assert route, "expected a GET commercial (staff) route"
+    assert client.get(route).status_code == 403
+
+
+def test_pe_staff_are_denied_on_the_internal_operations_surface(
+    client, world, user_provider
+) -> None:
+    """An internal-only operations queue is refused to entity staff (not merely hidden)."""
+    _seed_entity_world(world)
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent1"))
+    route = _first_get_route(client, "/api/v3/qc/")
+    assert route, "expected a GET qc (internal staff) route"
+    assert client.get(route).status_code == 403
+
+
+def test_a_pe_staff_member_of_a_suspended_entity_is_denied(
+    client, world, user_provider
+) -> None:
+    """Entity status is enforced, not assumed: a suspended entity has no PE workspace."""
+    _seed_entity_world(world)
+    user_provider.set_user(entity_operator_user("entity-2", "u-ent2"))
+    assert client.get("/api/v3/pe/me").status_code == 403
+
+
+def test_a_pe_staff_identity_cannot_name_another_entity(
+    client, world, user_provider
+) -> None:
+    """Entity isolation: the entity is resolved from the identity, never from a parameter."""
+    _seed_entity_world(world)
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent1"))
+    response = client.get("/api/v3/pe/issues", params={"entity_id": "entity-2"})
+    assert response.status_code in (200, 403), response.text
+    if response.status_code == 200:
+        # every returned row must belong to the caller's own entity
+        for issue in response.json().get("issues", []):
+            assert issue.get("entity_id") in (None, "entity-1")
+
+
+def test_a_customer_cannot_reach_the_pe_surface(client, world, user_provider) -> None:
+    _seed_entity_world(world)
+    user_provider.set_user(member_user("org-a", "user-a", "user.a@test"))
+    assert client.get("/api/v3/pe/me").status_code == 403
+
+
+def test_a_consultant_cannot_reach_the_pe_surface(client, world, user_provider) -> None:
+    _seed_entity_world(world)
+    user_provider.set_user(_seed_firm(world, user_id="u-cons-pe"))
+    assert client.get("/api/v3/pe/me").status_code == 403
+
+
+def test_an_unauthenticated_caller_is_refused_on_the_pe_surface(
+    client, world, user_provider
+) -> None:
+    user_provider.set_unauthenticated()
+    assert client.get("/api/v3/pe/me").status_code == 401
+
+
+def test_the_pe_surface_is_not_readable_across_entities(
+    client, world, user_provider
+) -> None:
+    """Cross-entity isolation on the PE work read (entity A must not see entity B)."""
+    _seed_entity_world(world)
+    _run(world.manual_extraction.create_batch, "org-a", "Entity B work", created_by="u-mgr")
+    user_provider.set_user(entity_operator_user("entity-1", "u-ent1"))
+    response = client.get("/api/v3/pe/issues")
+    assert response.status_code == 200
+    assert response.json().get("issues", []) == []      # entity B's work is invisible
 

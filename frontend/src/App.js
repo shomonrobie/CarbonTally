@@ -2136,7 +2136,7 @@ export default function App() {
             } />
             <Route path="/ops" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireInternalStaff>
                   <V3Layout>
                     <OperationsPage />
                   </V3Layout>
@@ -2145,7 +2145,7 @@ export default function App() {
             } />
             <Route path="/ops/items/:itemId" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireInternalStaff>
                   <V3Layout>
                     <OperatorItemPage />
                   </V3Layout>
@@ -2154,7 +2154,7 @@ export default function App() {
             } />
             <Route path="/ops/review/:itemId" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireInternalStaff>
                   <V3Layout>
                     <ReviewItemPage />
                   </V3Layout>
@@ -2163,7 +2163,7 @@ export default function App() {
             } />
             <Route path="/ops/qc/:itemId" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireInternalStaff>
                   <V3Layout>
                     <QcItemPage />
                   </V3Layout>
@@ -2181,7 +2181,7 @@ export default function App() {
 
             <Route path="/pe" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireEntityStaff>
                   <PEShell>
                     <PEDedicatedHome />
                   </PEShell>
@@ -2190,7 +2190,7 @@ export default function App() {
             } />
             <Route path="/pe/assignments" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireEntityStaff>
                   <PEShell>
                     <PeWorkItemsPage />
                   </PEShell>
@@ -2199,7 +2199,7 @@ export default function App() {
             } />
             <Route path="/pe/messages" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireEntityStaff>
                   <PEShell>
                     <PeMessagingPage />
                   </PEShell>
@@ -2208,7 +2208,7 @@ export default function App() {
             } />
             <Route path="/pe/items/:entityId/:itemId" element={
               <ProtectedRoute>
-                <RoleRoute requireStaff>
+                <RoleRoute requireEntityStaff>
                   <PEShell>
                     <PEEntityItemPage />
                   </PEShell>

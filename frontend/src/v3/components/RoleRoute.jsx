@@ -10,6 +10,18 @@
 // shows a controlled error/retry state instead of silently redirecting an
 // existing user (previously a probe failure could bounce users to the public
 // site or organisation onboarding).
+//
+// Workstream E (entity routing) — the server distinguishes the two STAFF domains,
+// and so must the guards:
+//   * `actor_type: 'staff'`        → CarbonTally INTERNAL staff  → `/ops`
+//   * `actor_type: 'entity_staff'` → Processing Entity staff     → `/pe`
+// `api/pe_auth.py` denies internal staff on `/api/v3/pe/*`, and the operations
+// gate denies entity staff on `/ops`-backed endpoints. A single `requireStaff`
+// guard therefore admitted an internal-staff user into the PE shell (and a PE
+// user into `/ops`), where every API call answers 403 — the misroute this module
+// already calls a defect. `requireInternalStaff` / `requireEntityStaff` express
+// the server's own split; `requireStaff` remains for the union where that is
+// genuinely intended.
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { getMeContext } from '../api';
@@ -18,8 +30,11 @@ export function useActorRoles() {
   const [roles, setRoles] = useState({
     org: null,
     isStaff: false,
+    isInternalStaff: false,
+    isEntityStaff: false,
     isConsultant: false,
     isNewUser: false,
+    home: null,
     loaded: false,
     failed: false,
   });
@@ -33,8 +48,14 @@ export function useActorRoles() {
         setRoles({
           org: context.actor_type === 'customer' ? context.organization || true : null,
           isStaff: context.actor_type === 'staff' || context.actor_type === 'entity_staff',
+          // the server's own split (never re-derived from a client-side role string)
+          isInternalStaff: context.actor_type === 'staff',
+          isEntityStaff: context.actor_type === 'entity_staff',
           isConsultant: context.actor_type === 'consultant',
           isNewUser: destination === '/onboarding',
+          // the workspace the server says this actor belongs to (used when a guard
+          // has to redirect: sending an existing user to the public site is a misroute)
+          home: destination && destination !== '/onboarding' ? destination : null,
           loaded: true,
           failed: false,
         });
@@ -52,11 +73,22 @@ export function useActorRoles() {
 /**
  * Role-gated route wrapper.
  * - `requireOrg`:  caller must be an active organisation member (customer)
- * - `requireStaff`: caller must be an active staff profile
+ * - `requireStaff`: caller must be an active staff profile (internal OR entity staff)
+ * - `requireInternalStaff`: caller must be CarbonTally INTERNAL staff (`/ops` domain)
+ * - `requireEntityStaff`: caller must be Processing Entity staff (`/pe` domain)
  * - `requireConsultant`: caller must be an active consultant firm member
- * - `fallback`:    where to redirect when the role is missing
+ * - `fallback`:    explicit redirect target when the role is missing; when omitted the
+ *                  caller is returned to the workspace the server assigns them
  */
-export default function RoleRoute({ requireOrg, requireStaff, requireConsultant, fallback = '/', children }) {
+export default function RoleRoute({
+  requireOrg,
+  requireStaff,
+  requireInternalStaff,
+  requireEntityStaff,
+  requireConsultant,
+  fallback,
+  children,
+}) {
   const roles = useActorRoles();
 
   if (!roles.loaded) {
@@ -91,10 +123,12 @@ export default function RoleRoute({ requireOrg, requireStaff, requireConsultant,
 
   const required = (requireOrg && !roles.org)
     || (requireStaff && !roles.isStaff)
+    || (requireInternalStaff && !roles.isInternalStaff)
+    || (requireEntityStaff && !roles.isEntityStaff)
     || (requireConsultant && !roles.isConsultant);
 
   if (required) {
-    return <Navigate to={fallback} replace />;
+    return <Navigate to={fallback || roles.home || '/'} replace />;
   }
 
   return children;
