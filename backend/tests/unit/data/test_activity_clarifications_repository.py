@@ -31,29 +31,71 @@ ACTOR = "33333333-3333-4333-8333-333333333333"
 
 
 class _FakeConn:
+    """Scripted connection with asyncpg parity for the transaction/lock contract.
+
+    ``transaction()`` is recorded (not simulated) so a test can prove that the
+    version transition ran as ONE transaction on ONE acquired connection, and
+    ``in_transaction`` marks whether each statement was issued inside it.
+    """
+
     def __init__(self, rows: list[Any] | None = None) -> None:
         self.rows = list(rows or [])
         self.queries: list[str] = []
         self.params: list[tuple] = []
+        #: Incremented by the pool on every ``acquire()`` (one acquisition per op).
+        self.acquires = 0
+        self.transactions = 0
+        self.in_transaction = False
+        #: (statement, issued_inside_a_transaction) in order.
+        self.statement_log: list[tuple[str, bool]] = []
 
     def _next(self) -> Any:
         return self.rows.pop(0) if self.rows else None
 
-    async def fetchrow(self, query: str, *args: Any) -> Any:
-        self.queries.append(" ".join(query.split()))
+    def _record(self, query: str, args: tuple) -> str:
+        collapsed = " ".join(query.split())
+        self.queries.append(collapsed)
         self.params.append(args)
+        self.statement_log.append((collapsed, self.in_transaction))
+        return collapsed
+
+    async def fetchrow(self, query: str, *args: Any) -> Any:
+        self._record(query, args)
         return self._next()
 
     async def fetch(self, query: str, *args: Any) -> list[Any]:
-        self.queries.append(" ".join(query.split()))
-        self.params.append(args)
+        self._record(query, args)
         row = self._next()
         return [] if row is None else list(row)
 
     async def execute(self, query: str, *args: Any) -> str:
-        self.queries.append(" ".join(query.split()))
-        self.params.append(args)
+        self._record(query, args)
         return "DELETE 1"
+
+    def transaction(self) -> "_FakeTransaction":
+        return _FakeTransaction(self)
+
+    def statements_in_order(self) -> list[str]:
+        return [q for q, _ in self.statement_log]
+
+    def statement_index(self, prefix: str) -> int:
+        return next(i for i, q in enumerate(self.queries) if q.startswith(prefix))
+
+
+class _FakeTransaction:
+    """Minimal asyncpg-style transaction context manager."""
+
+    def __init__(self, conn: _FakeConn) -> None:
+        self._conn = conn
+
+    async def __aenter__(self) -> "_FakeTransaction":
+        self._conn.transactions += 1
+        self._conn.in_transaction = True
+        return self
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        self._conn.in_transaction = False
+        return False
 
 
 class _Acquire:
@@ -61,6 +103,7 @@ class _Acquire:
         self._conn = conn
 
     async def __aenter__(self) -> _FakeConn:
+        self._conn.acquires += 1
         return self._conn
 
     async def __aexit__(self, *exc: Any) -> bool:
@@ -213,11 +256,19 @@ async def test_effective_lookup_requires_the_full_context_boundary() -> None:
 
 @pytest.mark.asyncio
 async def test_modification_creates_a_new_version_and_retires_the_previous() -> None:
+    """F-039-1 remediation: retire-then-insert, in ONE transaction on ONE connection.
+
+    The shipped partial unique index ``activity_clarifications_current_unique`` is
+    ``(adjudication_id) WHERE is_current`` and cannot be deferred, so the previous
+    version must be retired BEFORE the new current row is written. This test pins the
+    statement order and the single-transaction/single-connection guarantee; the
+    real-schema proof lives in
+    ``tests/integration/test_f039_1_adjudication_lifecycle_runtime.py``.
+    """
     conn, repo = _repo(
         rows=[
-            CURRENT_V1,  # effective lookup → existing version 1
+            CURRENT_V1,  # locking current-version read → existing version 1
             {"id": "row-v2", "version": 2, "supersedes_id": "row-v1"},  # inserted v2
-            "UPDATE 1",  # supersede
         ]
     )
     stored = await repo.apply_versioned(
@@ -226,19 +277,37 @@ async def test_modification_creates_a_new_version_and_retires_the_previous() -> 
         actor_id=ACTOR,
     )
     assert stored["version"] == 2
-    # version 2 insert carries adjudication identity, version and supersedes linkage
-    insert = conn.params[1]
-    assert "adj-1" in insert  # same adjudication_id as version 1
-    assert 2 in insert  # version
-    assert "row-v1" in insert  # supersedes_id
-    # the ONLY statement touching the old version is the is_current flip
-    update_sql = conn.queries[2]
-    assert update_sql.startswith("UPDATE public.activity_clarifications")
+
+    # 1. the current version is resolved WITH the row lock (serialises concurrent writers)
+    assert conn.queries[0].startswith("SELECT")
+    assert "FOR UPDATE" in conn.queries[0]
+    assert conn.params[0] == (ORG, "k1", "k1", "Waste")
+
+    # 2. the retire happens BEFORE the insert (the constraint cannot be deferred)
+    retire_at = conn.statement_index("UPDATE public.activity_clarifications")
+    insert_at = conn.statement_index("INSERT INTO public.activity_clarifications")
+    assert retire_at < insert_at
+    assert conn.params[retire_at] == (ORG, "row-v1")
     # only the currency flag changes — no clarification/outcome/factor column is touched
-    assignments = update_sql.split("SET", 1)[1].split("WHERE")[0]
+    assignments = conn.queries[retire_at].split("SET", 1)[1].split("WHERE")[0]
     assert assignments.strip().startswith("is_current = false")
     assert "selected_factor" not in assignments
     assert "outcome_status" not in assignments
+
+    # 3. version 2 insert carries lineage identity, version and supersedes linkage
+    insert = conn.params[insert_at]
+    assert "adj-1" in insert  # same adjudication_id as version 1
+    assert 2 in insert  # version
+    assert "row-v1" in insert  # supersedes_id
+
+    # 4. the whole transition is ONE transaction on ONE acquired connection: the
+    #    lineage can never be observed with zero current versions, and a failed insert
+    #    rolls the retire back instead of stranding the lineage.
+    assert conn.acquires == 1
+    assert conn.transactions == 1
+    retire_in_tx, insert_in_tx = (conn.statement_log[retire_at][1],
+                                  conn.statement_log[insert_at][1])
+    assert retire_in_tx is True and insert_in_tx is True
 
 
 @pytest.mark.asyncio
@@ -251,6 +320,8 @@ async def test_identical_clarification_is_a_replay_not_a_new_version() -> None:
     )
     assert stored == CURRENT_V1
     assert len(conn.queries) == 1  # no insert, no supersede
+    assert "FOR UPDATE" in conn.queries[0]  # resolved under the same lock
+    assert conn.transactions == 1
 
 
 @pytest.mark.asyncio

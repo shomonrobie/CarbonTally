@@ -23,10 +23,16 @@ import uuid
 import asyncpg
 
 FORBIDDEN = ("qa", "demo", "investor", "prod", "live")
+# F-063-1 repair: the 055 lifecycle migration made ``adjudication_id`` NOT NULL with no
+# default and added ``effective_context_key`` NOT NULL, so a fixture INSERT that omits
+# them fails against the shipped schema. ``gen_random_uuid()`` (the table's own ``id``
+# default) gives each QA row its own single-version lineage; the QA activity key doubles
+# as the bounded context key. No production schema or policy is touched.
 INS = (
     "INSERT INTO public.activity_clarifications "
-    "(activity_key, organization_id, original_activity, clarification, policy_input, outcome_status) "
-    "VALUES ($1,$2,'QA','QA','QA','clarification_required')"
+    "(activity_key, organization_id, original_activity, clarification, policy_input, "
+    " outcome_status, adjudication_id, effective_context_key) "
+    "VALUES ($1,$2,'QA','QA','QA','clarification_required',gen_random_uuid(),$1)"
 )
 RLSISH = ("row-level security", "permission denied")
 
@@ -62,16 +68,27 @@ def _denied(result) -> bool:
 
 async def main() -> int:
     conn = await asyncpg.connect(_target())
-    orgs = await conn.fetch("SELECT id FROM public.organizations ORDER BY id LIMIT 2")
+    # F-063-1 repair: resolve the identity pair from the DATA rather than assuming the
+    # alphabetically-first organisation happens to own an active member. The matrix needs
+    # one organisation with an active member (org A) and a DIFFERENT second organisation
+    # (org B); anything else is still reported as an explicit precondition failure.
     member = await conn.fetchrow(
         "SELECT user_id, organization_id FROM public.organization_members "
-        "WHERE coalesce(is_active,true) AND organization_id=$1 LIMIT 1",
-        orgs[0]["id"],
+        "WHERE coalesce(is_active,true) AND user_id IS NOT NULL "
+        "ORDER BY organization_id, user_id LIMIT 1"
     )
-    if member is None or len(orgs) < 2 or member["organization_id"] == orgs[1]["id"]:
+    second = (
+        await conn.fetchval(
+            "SELECT id FROM public.organizations WHERE id <> $1 ORDER BY id LIMIT 1",
+            member["organization_id"],
+        )
+        if member is not None
+        else None
+    )
+    if member is None or second is None:
         raise SystemExit("need one existing member in one organisation and a second organisation")
 
-    org_a, org_b, actor = member["organization_id"], orgs[1]["id"], member["user_id"]
+    org_a, org_b, actor = member["organization_id"], second, member["user_id"]
     consult, client, firm = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     checks: list[tuple[str, bool]] = []
 
@@ -96,6 +113,12 @@ async def main() -> int:
             " VALUES ($1,$2,'member',true)", org_b, client)
         seed_a = await conn.fetchval(INS + " RETURNING id", "qa:rls:seedA", org_a)
         seed_b = await conn.fetchval(INS + " RETURNING id", "qa:rls:seedB", org_b)
+        # F-063-1 repair (harness quality): the mutation checks below COMMIT inside their
+        # own transaction, so pointing them at the SELECT seed destroyed the very row the
+        # later allow-checks needed to observe — several "allow" results were satisfied by
+        # "no error" on 0 rows. The destructive checks now use their own row, so every
+        # allow-check genuinely sees a row where the policy permits one.
+        seed_mut = await conn.fetchval(INS + " RETURNING id", "qa:rls:seedA_mut", org_a)
 
         async def check(label, role, sub, query, args, expect):
             result = await _attempt(conn, role, sub, query, args)
@@ -108,8 +131,8 @@ async def main() -> int:
 
         await check("member/own SELECT", "authenticated", actor, q_a, (), "allow")
         await check("member/own INSERT", "authenticated", actor, INS, ("qa:rls:mA", org_a), "allow")
-        await check("member/own UPDATE", "authenticated", actor, upd, (seed_a,), "allow")
-        await check("member/own DELETE", "authenticated", actor, dele, (seed_a,), "allow")
+        await check("member/own UPDATE", "authenticated", actor, upd, (seed_mut,), "allow")
+        await check("member/own DELETE", "authenticated", actor, dele, (seed_mut,), "allow")
         await check("member A->B SELECT denied", "authenticated", actor, q_b, (), "deny")
         await check("member A->B INSERT denied", "authenticated", actor, INS, ("qa:rls:xB", org_b), "deny")
         await check("member A->B UPDATE denied", "authenticated", actor, upd, (seed_b,), "deny")
@@ -117,6 +140,11 @@ async def main() -> int:
         row = await conn.fetchrow("SELECT unit FROM public.activity_clarifications WHERE id=$1", seed_b)
         record("org B row unmodified by org A", row is not None and row["unit"] is None, row)
         await check("consultant/authorised client SELECT", "authenticated", consult, q_a, (), "allow")
+        # Row-level proof for the consultant allow-path (an "allow" that sees 0 rows would
+        # otherwise be indistinguishable from a denial).
+        consultant_view = await _attempt(conn, "authenticated", consult, q_a, ())
+        record("consultant SEES the authorised client's row",
+               consultant_view[0] == "ok" and consultant_view[1] == 1, consultant_view)
         await check("consultant INSERT denied (member-only)", "authenticated", consult, INS, ("qa:rls:cA", org_a), "deny")
         await check("consultant UPDATE denied", "authenticated", consult, upd, (seed_a,), "deny")
         await check("consultant DELETE denied", "authenticated", consult, dele, (seed_a,), "deny")

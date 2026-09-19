@@ -28,11 +28,12 @@ Two safety properties are structural rather than advisory:
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.dependencies import (
     RepositoryBundle,
@@ -53,6 +54,41 @@ router = APIRouter(
     prefix="/api/v3/activity-clarifications",
     tags=["V3 — Activity Clarification"],
 )
+
+
+def _validate_identifier(value: Optional[str]) -> Optional[str]:
+    """Reject a malformed identifier at the boundary instead of a database 500.
+
+    ``organization_id``/``item_id``/``adjudication_id`` are uuid columns in the
+    schema, so a non-uuid value used to reach asyncpg and raise ``DataError``, which
+    the endpoints do not (and should not) translate — the caller would see a 500 for
+    what is a plain input error. Returning a Pydantic ``ValueError`` yields the
+    project's normal 422 validation response, and the value is passed through
+    unchanged so downstream comparisons and context keys are unaffected.
+    """
+    if value in (None, ""):
+        return value
+    try:
+        uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValueError("must be a UUID") from exc
+    return str(value)
+
+
+def _uuid_query(value: str, field: str) -> str:
+    """The same boundary check for QUERY parameters (FastAPI returns 422).
+
+    Query parameters cannot carry a Pydantic field validator, so the check is explicit:
+    a malformed identifier is a 422 input error, never a database 500.
+    """
+    try:
+        uuid.UUID(str(value))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field} must be a UUID",
+        ) from exc
+    return str(value)
 
 
 # ===========================================================================
@@ -101,6 +137,8 @@ class ClarificationSubmitIn(BaseModel):
     country: str = "GB"
     reporting_year: Optional[int] = None
 
+    _check_identifiers = field_validator("organization_id", "item_id")(_validate_identifier)
+
 
 class ClarificationDeclineIn(BaseModel):
     """The explicit "I don't know" path."""
@@ -111,6 +149,8 @@ class ClarificationDeclineIn(BaseModel):
     activity: str
     item_id: Optional[str] = None
     activity_key: str = ""
+
+    _check_identifiers = field_validator("organization_id", "item_id")(_validate_identifier)
 
 
 class ClarificationResultOut(BaseModel):
@@ -647,6 +687,8 @@ async def get_effective_adjudication(
     lookup, and a context with no current adjudication is reported as
     ``found: false`` rather than fabricated.
     """
+    organization_id = _uuid_query(organization_id, "organization_id")
+    item_id = _uuid_query(item_id, "item_id")
     await ensure_processing_org_access(current_user, repos, organization_id)
     await _require_item_bound_context(
         repos, organization_id=organization_id, item_id=item_id, activity=activity
@@ -681,6 +723,9 @@ async def get_adjudication_history(
     which is tenant-scoped and deterministically ordered by version; nothing here
     can be turned into an organisation-wide or global history search.
     """
+    organization_id = _uuid_query(organization_id, "organization_id")
+    item_id = _uuid_query(item_id, "item_id")
+    adjudication_id = _uuid_query(adjudication_id, "adjudication_id")
     await ensure_processing_org_access(current_user, repos, organization_id)
     await _require_item_bound_context(
         repos, organization_id=organization_id, item_id=item_id, activity=activity

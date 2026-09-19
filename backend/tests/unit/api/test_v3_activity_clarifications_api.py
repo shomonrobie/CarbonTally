@@ -43,13 +43,20 @@ class _FakeConn:
         self.rows = list(rows or [])
         self.queries: list[str] = []
         self.params: list[tuple] = []
+        #: asyncpg parity for the versioned-write contract (F-039-1 remediation):
+        #: the transition resolves the current row under a lock and runs the retire
+        #: and the insert in ONE transaction on ONE acquired connection.
+        self.acquires = 0
+        self.transactions = 0
+        self.in_transaction = False
 
     async def fetchrow(self, query, *args):
         self.queries.append(" ".join(query.split()))
         self.params.append(args)
         if "AND is_current" in query:
-            # Effective-adjudication lookup: only a scripted CURRENT row is returned,
-            # and a non-current scripted row is left for the INSERT that follows.
+            # Effective/current-row lookup (the write path locks it with FOR UPDATE):
+            # only a scripted CURRENT row is returned, and a non-current scripted row
+            # is left for the INSERT that follows.
             if self.rows and isinstance(self.rows[0], dict) and self.rows[0].get("is_current"):
                 return self.rows.pop(0)
             return None
@@ -66,12 +73,32 @@ class _FakeConn:
         self.params.append(args)
         return "OK"
 
+    def transaction(self):
+        return _FakeTransaction(self)
+
+
+class _FakeTransaction:
+    """Minimal asyncpg-style transaction context manager."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        self._conn.transactions += 1
+        self._conn.in_transaction = True
+        return self
+
+    async def __aexit__(self, *exc):
+        self._conn.in_transaction = False
+        return False
+
 
 class _Acquire:
     def __init__(self, conn):
         self._conn = conn
 
     async def __aenter__(self):
+        self._conn.acquires += 1
         return self._conn
 
     async def __aexit__(self, *exc):
@@ -1103,4 +1130,59 @@ def test_both_reads_are_tenant_scoped_without_a_global_lookup() -> None:
         for query in queries:
             assert "organization_id = $1" in query   # one tenant, always
             assert "WHERE" in query.upper()
+
+
+
+# ---------------------------------------------------------------------------
+# F-039-1 remediation (065) — malformed identifiers are input errors, not 500s
+# ---------------------------------------------------------------------------
+# The schema stores these identifiers in uuid columns, so a non-uuid value used to reach
+# asyncpg and raise DataError, which the endpoints do not translate: the caller saw a 500
+# for a plain input error. The boundary now rejects the shape with the project's normal
+# 422 validation response and no statement is executed.
+
+
+def test_write_endpoints_reject_malformed_identifiers_with_422() -> None:
+    for endpoint in (CLARIFY, DECLINE):
+        body = {"organization_id": "not-a-uuid", "activity": "Waste"}
+        if endpoint == CLARIFY:
+            body["clarification"] = "Landfill"
+        client, conn = _client(user=_member(), candidates=[])
+        response = client.post(endpoint, json=body)
+        assert response.status_code == 422, f"{endpoint}: {response.status_code}"
+        assert conn.params == []  # rejected before any statement
+
+        body = {"organization_id": ORG_A, "activity": "Waste", "item_id": "12345"}
+        if endpoint == CLARIFY:
+            body["clarification"] = "Landfill"
+        client, conn = _client(user=_member(), candidates=[])
+        response = client.post(endpoint, json=body)
+        assert response.status_code == 422, f"{endpoint}: {response.status_code}"
+        assert conn.params == []
+
+
+def test_read_endpoints_reject_malformed_identifiers_with_422() -> None:
+    for path, extra in ((EFFECTIVE, {}), (HISTORY, {"adjudication_id": _ADJ})):
+        client, conn = _client(user=_member(), rows=[_item_row()])
+        response = client.get(path, params={**_params(), **extra, "organization_id": "nope"})
+        assert response.status_code == 422, f"{path}: {response.status_code}"
+        assert conn.params == []
+
+        client, conn = _client(user=_member(), rows=[_item_row()])
+        response = client.get(path, params={**_params(), **extra, "item_id": "nope"})
+        assert response.status_code == 422, f"{path}: {response.status_code}"
+        assert conn.params == []
+
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    response = client.get(HISTORY, params={**_params(), "adjudication_id": "nope"})
+    assert response.status_code == 422
+    assert conn.params == []
+
+
+def test_well_formed_identifiers_are_passed_through_unchanged() -> None:
+    """The boundary check must not alter a valid identifier (context keys stay textual)."""
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 200 and response.json()["found"] is True
+    assert conn.params[1] == (ORG_A, _ITEM, _ITEM, "Waste")
 

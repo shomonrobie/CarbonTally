@@ -116,6 +116,23 @@ _SUPERSEDE_SQL = """
      WHERE organization_id = $1 AND id = $2
 """
 
+#: Same bounded context as ``_EFFECTIVE_SQL``, but the current row is LOCKED for the
+#: remainder of the transaction. ``activity_clarifications_current_unique`` is a
+#: PARTIAL UNIQUE INDEX on ``(adjudication_id) WHERE is_current`` and therefore cannot
+#: be deferred: the previous current row must be retired BEFORE the new current row is
+#: inserted. Resolving the current row under this lock also serialises concurrent
+#: modifications of the same lineage, so the second writer versions the row the first
+#: one committed instead of racing it.
+_CURRENT_FOR_UPDATE_SQL = f"""
+    SELECT {_COLUMNS} FROM public.activity_clarifications
+     WHERE organization_id = $1
+       AND effective_context_key = $2
+       AND activity_key = $3
+       AND original_activity = $4
+       AND is_current
+     FOR UPDATE
+"""
+
 _SELECT_BY_KEY_SQL = f"""
     SELECT {_COLUMNS} FROM public.activity_clarifications
      WHERE organization_id = $1
@@ -149,6 +166,16 @@ def _as_uuid(value: Optional[str]) -> Optional[str]:
     if value in (None, ""):
         return None
     return str(value)
+
+
+class _VersionReplayConflict(Exception):
+    """Raised inside the version transaction when ``ON CONFLICT DO NOTHING`` fires.
+
+    Signals "another writer already stored this exact version". Raising aborts the
+    transaction, which undoes the retire performed a moment earlier, so the lineage
+    cannot be left without a current version; the caller then answers with the row
+    that is actually effective.
+    """
 
 
 def _line_evidence(
@@ -301,6 +328,62 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
         return row, bool(stored) and stored == current
 
     # -- writes --------------------------------------------------------------
+    @staticmethod
+    def _insert_params(
+        record: ClarificationRecord,
+        *,
+        organization_id: str,
+        item_id: Optional[str],
+        batch_key: Optional[str],
+        source_evidence_ref: Optional[str],
+        eligible_groups: Sequence[Any],
+        adjudication_id: Optional[str],
+        version: int,
+        supersedes_id: Optional[str],
+        is_current: bool,
+        effective_context_key: Optional[str],
+        evidence_signature: Optional[str],
+        evidence_context: Optional[dict],
+    ) -> tuple:
+        """The single authoritative parameter tuple for ``_INSERT_SQL``.
+
+        Shared by :meth:`record` and the atomic version transition in
+        :meth:`apply_versioned`, so the two write paths cannot drift in column order.
+        ``adjudication_id`` is always materialised: the 055 schema makes the column
+        NOT NULL with no default, so the repository — not the database — supplies the
+        lineage identity.
+        """
+        return (
+            record.activity_key,
+            _as_uuid(batch_key),
+            _as_uuid(item_id),
+            _as_uuid(organization_id),
+            record.original_activity,
+            source_evidence_ref,
+            record.clarification,
+            record.clarification_type,
+            record.policy_input,
+            record.outcome_status,
+            _as_uuid(record.selected_factor_id),
+            record.selected_factor_name,
+            record.factor_set,
+            record.factor_source,
+            record.reporting_year,
+            record.unit,
+            record.scope,
+            int(record.eligible_group_count or 0),
+            dumps_jsonb(list(eligible_groups)),
+            _as_uuid(record.actor_id),
+            record.actor_scope,
+            _as_uuid(adjudication_id) or str(uuid.uuid4()),
+            int(version),
+            _as_uuid(supersedes_id),
+            bool(is_current),
+            effective_context_key or record.activity_key,
+            evidence_signature,
+            dumps_jsonb(evidence_context or {}),
+        )
+
     async def record(
         self,
         record: ClarificationRecord,
@@ -332,34 +415,21 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
             raise ValueError("organization_id is required (resolve it server-side)")
         row = await self._fetch_one(
             _INSERT_SQL,
-            record.activity_key,
-            _as_uuid(batch_key),
-            _as_uuid(item_id),
-            _as_uuid(organization_id),
-            record.original_activity,
-            source_evidence_ref,
-            record.clarification,
-            record.clarification_type,
-            record.policy_input,
-            record.outcome_status,
-            _as_uuid(record.selected_factor_id),
-            record.selected_factor_name,
-            record.factor_set,
-            record.factor_source,
-            record.reporting_year,
-            record.unit,
-            record.scope,
-            int(record.eligible_group_count or 0),
-            dumps_jsonb(list(eligible_groups)),
-            _as_uuid(record.actor_id),
-            record.actor_scope,
-            _as_uuid(adjudication_id) or str(uuid.uuid4()),
-            int(version),
-            _as_uuid(supersedes_id),
-            bool(is_current),
-            effective_context_key or record.activity_key,
-            evidence_signature,
-            dumps_jsonb(evidence_context or {}),
+            *self._insert_params(
+                record,
+                organization_id=organization_id,
+                item_id=item_id,
+                batch_key=batch_key,
+                source_evidence_ref=source_evidence_ref,
+                eligible_groups=eligible_groups,
+                adjudication_id=adjudication_id,
+                version=version,
+                supersedes_id=supersedes_id,
+                is_current=is_current,
+                effective_context_key=effective_context_key,
+                evidence_signature=evidence_signature,
+                evidence_context=evidence_context,
+            ),
         )
         if row is not None:
             return dict(row)
@@ -577,32 +647,101 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
           previous row, which is retired via ``is_current = false`` only. The previous
           version keeps its clarification, outcome and factor metadata forever
           (D-039-1-D/-H).
+
+        The whole transition runs in ONE transaction on ONE connection:
+
+        1. the current version of the bounded context is resolved **under a row lock**
+           (``SELECT … FOR UPDATE``), so a concurrent modifier of the same lineage waits
+           and then versions the row its peer committed instead of racing the same
+           version number;
+        2. the previous version is retired (``is_current = false``) — this must happen
+           BEFORE the new row is written, because
+           ``activity_clarifications_current_unique`` is a PARTIAL UNIQUE INDEX on
+           ``(adjudication_id) WHERE is_current`` and cannot be deferred;
+        3. the new version is inserted as current.
+
+        Because 2 and 3 share one transaction, the lineage is never observable with zero
+        current versions, and if the insert fails for any reason the retire is rolled
+        back and the previous version stays current (all-or-nothing).
+
+        ``organization_id``/``actor_id`` come from trusted server context; factor
+        metadata is copied from ``record`` alone.
         """
+        if not organization_id:
+            raise ValueError("organization_id is required (resolve it server-side)")
         key = context_key or record.activity_key
-        current = await self.effective(
-            organization_id=organization_id,
-            activity_key=record.activity_key,
-            original_activity=record.original_activity,
-            context_key=key,
-        )
-        if current is not None and (current.get("clarification") or "") == record.clarification:
-            return current  # idempotent replay — nothing new, nothing overwritten
-        version = 1 if current is None else int(current.get("version") or 1) + 1
-        stored = await self.record(
-            record,
-            organization_id=organization_id,
-            item_id=item_id,
-            batch_key=batch_key,
-            source_evidence_ref=source_evidence_ref,
-            eligible_groups=record.notes,
-            adjudication_id=(current or {}).get("adjudication_id"),
-            version=version,
-            supersedes_id=(current or {}).get("id"),
-            is_current=True,
-            effective_context_key=key,
-            evidence_signature=evidence_signature,
-            evidence_context=evidence_context,
-        )
-        if current is not None and stored is not None:
-            await self.supersede(current, organization_id=organization_id)
-        return stored or {}
+        attempted_version: Optional[int] = None
+        try:
+            async with self._pool.acquire() as conn:
+                async with conn.transaction():
+                    current = await conn.fetchrow(
+                        _CURRENT_FOR_UPDATE_SQL,
+                        _as_uuid(organization_id),
+                        key,
+                        record.activity_key,
+                        record.original_activity,
+                    )
+                    current_row = dict(current) if current is not None else None
+                    if current_row is not None and (
+                        current_row.get("clarification") or ""
+                    ) == record.clarification:
+                        return current_row  # idempotent replay — nothing written
+                    if current_row is not None:
+                        # Retire first: the partial unique index forbids two current
+                        # rows for one lineage, even momentarily inside a transaction.
+                        await conn.execute(
+                            _SUPERSEDE_SQL,
+                            _as_uuid(organization_id),
+                            _as_uuid(current_row.get("id")),
+                        )
+                    version = (
+                        1 if current_row is None
+                        else int(current_row.get("version") or 1) + 1
+                    )
+                    attempted_version = version
+                    inserted = await conn.fetchrow(
+                        _INSERT_SQL,
+                        *self._insert_params(
+                            record,
+                            organization_id=organization_id,
+                            item_id=item_id,
+                            batch_key=batch_key,
+                            source_evidence_ref=source_evidence_ref,
+                            eligible_groups=record.notes,
+                            adjudication_id=(current_row or {}).get("adjudication_id"),
+                            version=version,
+                            supersedes_id=(current_row or {}).get("id"),
+                            is_current=True,
+                            effective_context_key=key,
+                            evidence_signature=evidence_signature,
+                            evidence_context=evidence_context,
+                        ),
+                    )
+                    if inserted is None:
+                        # ``ON CONFLICT … DO NOTHING`` fired: this exact
+                        # (activity_key, original_activity, clarification, version) is
+                        # already stored — a concurrent writer got there first. Abort so
+                        # the retire above is undone, then answer with the version that
+                        # is actually effective.
+                        raise _VersionReplayConflict()
+                    return dict(inserted)
+        except _VersionReplayConflict:
+            # Same semantics as ``record()``: the exact version already exists, so answer
+            # with the row stored for that key (tenant-scoped) rather than inventing one.
+            stored = await self.get_adjudication(
+                record.activity_key,
+                record.original_activity,
+                record.clarification,
+                organization_id=organization_id,
+                version=attempted_version or 1,
+            )
+            if stored is not None:
+                return stored
+            # Nothing is stored for that exact key — fall back to whatever is effective
+            # for the bounded context so the caller still sees the authoritative state.
+            return await self.effective(
+                organization_id=organization_id,
+                activity_key=record.activity_key,
+                original_activity=record.original_activity,
+                context_key=key,
+            ) or {}
