@@ -792,3 +792,315 @@ def test_clarification_is_not_adjudicated_when_the_engine_does_not_ask() -> None
     )
     assert response.status_code == 409
     assert conn.params == []  # nothing persisted, nothing guessed
+
+
+# ---------------------------------------------------------------------------
+# F-039-1 (063) B/C — the adjudication reads (current + immutable history)
+# ---------------------------------------------------------------------------
+# Same construction as above: the REAL router, the REAL authorization gate chain
+# (`ensure_processing_org_access` → `ensure_consultant_org_access`) and the REAL
+# clarifications repository over a capturing fake connection. Only transport
+# dependencies and the scripted database are substituted.
+
+_ITEM = "22222222-2222-4222-8222-222222222222"
+_ADJ = "55555555-5555-4555-8555-555555555555"
+EFFECTIVE = "/api/v3/activity-clarifications/effective"
+HISTORY = "/api/v3/activity-clarifications/history"
+
+
+def _item_row(*, organization_id: str = ORG_A, activity: str = "Waste") -> dict:
+    """The persisted extraction item the read context must be resolved from."""
+    return {
+        "item_key": _ITEM,
+        "batch_key": "33333333-3333-4333-8333-333333333333",
+        "source_file_id": "44444444-4444-4444-8444-444444444444",
+        "source_file_name": "waste.csv",
+        "organization_id": organization_id,
+        "extracted_data": {
+            "line_items": [{"activity": activity, "unit": "tonnes", "scope": "Scope 3"}]
+        },
+    }
+
+
+def _read_row(
+    *,
+    version: int = 1,
+    is_current: bool = True,
+    clarification: str = "Landfill",
+    organization_id: str = ORG_A,
+    activity: str = "Waste",
+) -> dict:
+    """One persisted adjudication row, as the reads must project it."""
+    return {
+        "id": f"row-v{version}",
+        "adjudication_id": _ADJ,
+        "organization_id": organization_id,
+        "activity_key": _ITEM,
+        "original_activity": activity,
+        "effective_context_key": _ITEM,
+        "clarification": clarification,
+        "clarification_type": "semantic_activity",
+        "policy_input": f"{activity} {clarification}",
+        "outcome_status": "selected",
+        "selected_factor_id": "lf",
+        "selected_factor_name": "Waste disposal > Construction > Aggregates - Landfill",
+        "factor_set": "DEFRA-2025",
+        "factor_source": "DEFRA-DESNZ",
+        "reporting_year": 2025,
+        "unit": "tonnes",
+        "scope": "Scope 3",
+        "version": version,
+        "is_current": is_current,
+        "supersedes_id": None if version == 1 else "row-v1",
+        "actor_id": USER,
+        "actor_scope": "organization_member",
+        "evidence_signature": "signature-v1",
+        "re_evaluation_required": False,
+        "created_at": "2026-09-18T00:00:00+00:00",
+    }
+
+
+def _params(**over) -> dict:
+    base = {"organization_id": ORG_A, "item_id": _ITEM, "activity": "Waste"}
+    base.update(over)
+    return base
+
+
+def _adjudication_queries(conn) -> list[str]:
+    """Every statement that touched the adjudication table (never a global read)."""
+    return [q for q in conn.queries if "public.activity_clarifications" in q]
+
+
+
+# -- Part B: the current/effective adjudication read -------------------------
+
+
+def test_effective_read_returns_the_current_adjudication_for_its_own_org() -> None:
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["found"] is True
+    assert body["adjudication"]["clarification"] == "Landfill"
+    assert body["adjudication"]["version"] == 1
+    assert body["adjudication"]["is_current"] is True
+    assert body["adjudication"]["selected_factor_id"] == "lf"
+    # the bounded context, not the activity text alone
+    effective = [q for q in conn.queries if "AND is_current" in q]
+    assert len(effective) == 1
+    for clause in ("organization_id = $1", "effective_context_key = $2",
+                   "activity_key = $3", "original_activity = $4"):
+        assert clause in effective[0]
+    assert conn.params[1] == (ORG_A, _ITEM, _ITEM, "Waste")
+
+
+def test_effective_read_is_denied_for_another_organization() -> None:
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    response = client.get(EFFECTIVE, params=_params(organization_id=ORG_B))
+    assert response.status_code == 403
+    assert conn.params == []  # refused before any read
+
+
+def test_effective_read_is_denied_when_the_item_belongs_to_another_org() -> None:
+    """Authorized for ORG_A, but the item resolves to ORG_B → the boundary holds."""
+    client, conn = _client(user=_member(), rows=[_item_row(organization_id=ORG_B)])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 403
+    assert "another organisation" in response.json()["detail"]
+    assert _adjudication_queries(conn) == []  # no adjudication was read
+
+
+def test_effective_read_allows_an_authorized_consultant_client() -> None:
+    client, conn = _client(
+        user=_consultant(), rows=[_item_row(), _read_row()], **_consultant_grants()
+    )
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+    assert conn.params[1][0] == ORG_A
+
+
+def test_effective_read_denies_an_unauthorized_consultant_client() -> None:
+    # active membership + firm profile, but the grant covers only ORG_A
+    client, conn = _client(user=_consultant(), rows=[_item_row(), _read_row()],
+                           **_consultant_grants())
+    assert client.get(EFFECTIVE, params=_params(organization_id=ORG_B)).status_code == 403
+    # an ended grant is no grant at all
+    ended, ended_conn = _client(user=_consultant(), rows=[_item_row(), _read_row()],
+                               **_consultant_grants(grant_status="ended"))
+    assert ended.get(EFFECTIVE, params=_params()).status_code == 403
+    # a consultant with no firm membership at all
+    none, _c = _client(user=_consultant(), rows=[_item_row(), _read_row()])
+    assert none.get(EFFECTIVE, params=_params()).status_code == 403
+    assert conn.params == [] and ended_conn.params == []
+
+
+def test_effective_read_is_denied_when_unauthenticated() -> None:
+    client, conn = _client(rows=[_item_row(), _read_row()])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 401
+    assert conn.params == []
+
+
+def test_effective_read_reports_an_unknown_context_as_not_found() -> None:
+    client, conn = _client(user=_member(), rows=[None])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 404
+    assert "item not found" in response.json()["detail"]
+    assert _adjudication_queries(conn) == []
+
+
+def test_effective_read_reports_no_current_adjudication_as_an_empty_answer() -> None:
+    client, conn = _client(user=_member(), rows=[_item_row()])
+    response = client.get(EFFECTIVE, params=_params())
+    assert response.status_code == 200
+    assert response.json() == {"found": False, "adjudication": None}
+    assert any("AND is_current" in q for q in conn.queries)
+
+
+def test_effective_read_requires_the_item_bounded_context() -> None:
+    """No item → no context: the read cannot be widened to a global lookup."""
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    response = client.get(EFFECTIVE, params={"organization_id": ORG_A, "activity": "Waste"})
+    assert response.status_code == 422
+    assert conn.params == []
+
+
+
+# -- Part C: the immutable history read --------------------------------------
+
+
+def _history_params(**over) -> dict:
+    return _params(adjudication_id=_ADJ, **over)
+
+
+def test_history_read_returns_a_single_version() -> None:
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row(), [_read_row()]])
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["adjudication_id"] == _ADJ
+    assert body["count"] == 1
+    assert body["current_version"] == 1
+    assert [v["version"] for v in body["versions"]] == [1]
+    assert body["versions"][0]["is_current"] is True
+    assert "ORDER BY version ASC" in conn.queries[-1]
+
+
+def test_history_read_returns_every_version_in_deterministic_order() -> None:
+    v1 = _read_row(version=1, is_current=False, clarification="Incineration")
+    v2 = _read_row(version=2, is_current=True, clarification="Landfill")
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row(), [v1, v2]])
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert [v["version"] for v in body["versions"]] == [1, 2]  # oldest → newest
+    # v2 is the current one; v1 stays historical
+    assert body["current_version"] == 2
+    assert body["versions"][0]["is_current"] is False
+    assert body["versions"][1]["is_current"] is True
+    assert body["versions"][1]["clarification"] == "Landfill"
+    # the deterministic order and the tenant scope come from the repository's SQL
+    history_sql = conn.queries[-1]
+    assert "ORDER BY version ASC" in history_sql
+    assert "organization_id = $1" in history_sql
+    assert conn.params[-1] == (ORG_A, _ADJ)
+
+
+def test_history_read_never_mutates_the_stored_versions() -> None:
+    v1 = _read_row(version=1, is_current=False, clarification="Incineration")
+    v2 = _read_row(version=2, is_current=True, clarification="Landfill")
+    snapshot = (dict(v1), dict(v2))
+    client, _conn = _client(user=_member(), rows=[_item_row(), _read_row(), [v1, v2]])
+    body = client.get(HISTORY, params=_history_params()).json()
+    assert (v1, v2) == snapshot  # the read is a projection, not an edit
+    # v1's own fields are echoed exactly as stored
+    assert body["versions"][0]["clarification"] == "Incineration"
+    assert body["versions"][0]["outcome_status"] == "selected"
+    assert body["versions"][0]["selected_factor_id"] == "lf"
+
+
+
+def test_history_read_is_denied_for_another_organization() -> None:
+    client, conn = _client(user=_member(), rows=[_item_row(), _read_row(), [_read_row()]])
+    response = client.get(HISTORY, params=_history_params(organization_id=ORG_B))
+    assert response.status_code == 403
+    assert conn.params == []
+
+
+def test_history_read_allows_an_authorized_consultant_client() -> None:
+    client, conn = _client(
+        user=_consultant(), rows=[_item_row(), _read_row(), [_read_row()]],
+        **_consultant_grants(),
+    )
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert conn.params[-1] == (ORG_A, _ADJ)
+
+
+def test_history_read_denies_an_unauthorized_consultant_client() -> None:
+    client, conn = _client(user=_consultant(), rows=[_item_row(), _read_row(), [_read_row()]])
+    assert client.get(HISTORY, params=_history_params()).status_code == 403
+    ended, ended_conn = _client(
+        user=_consultant(), rows=[_item_row(), _read_row(), [_read_row()]],
+        **_consultant_grants(grant_status="ended"),
+    )
+    assert ended.get(HISTORY, params=_history_params()).status_code == 403
+    # an ended/no grant must not be usable against the other organisation either
+    assert client.get(
+        HISTORY, params=_history_params(organization_id=ORG_B)
+    ).status_code == 403
+    assert conn.params == [] and ended_conn.params == []
+
+
+def test_history_read_is_denied_when_unauthenticated() -> None:
+    client, conn = _client(rows=[_item_row(), _read_row(), [_read_row()]])
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 401
+    assert conn.params == []
+
+
+def test_history_read_refuses_an_adjudication_outside_the_bounded_context() -> None:
+    """A well-formed id from ANOTHER context is refused: never a global history read."""
+    other = _read_row()
+    other["activity_key"] = "other-item"
+    other["effective_context_key"] = "other-item"
+    client, conn = _client(user=_member(), rows=[_item_row(), other, [_read_row()]])
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 404
+    assert "this extraction context" in response.json()["detail"]
+    assert not any("ORDER BY version" in q for q in conn.queries)  # history never read
+
+
+def test_history_read_refuses_an_adjudication_for_a_different_activity() -> None:
+    other = _read_row(activity="Waste disposal")
+    client, conn = _client(user=_member(), rows=[_item_row(), other, [_read_row()]])
+    assert client.get(HISTORY, params=_history_params()).status_code == 404
+    assert not any("ORDER BY version" in q for q in conn.queries)
+
+
+def test_history_read_reports_an_unknown_adjudication_or_item_as_not_found() -> None:
+    unknown, _conn = _client(user=_member(), rows=[_item_row(), None, [_read_row()]])
+    assert unknown.get(HISTORY, params=_history_params()).status_code == 404
+    unknown_item, _conn2 = _client(user=_member(), rows=[None])
+    response = unknown_item.get(HISTORY, params=_history_params())
+    assert response.status_code == 404
+    assert "item not found" in response.json()["detail"]
+
+
+def test_both_reads_are_tenant_scoped_without_a_global_lookup() -> None:
+    effective, effective_conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    assert effective.get(EFFECTIVE, params=_params()).status_code == 200
+    history, history_conn = _client(
+        user=_member(), rows=[_item_row(), _read_row(), [_read_row()]]
+    )
+    assert history.get(HISTORY, params=_history_params()).status_code == 200
+    for conn in (effective_conn, history_conn):
+        queries = _adjudication_queries(conn)
+        assert queries, "the adjudication table must have been read"
+        for query in queries:
+            assert "organization_id = $1" in query   # one tenant, always
+            assert "WHERE" in query.upper()
+

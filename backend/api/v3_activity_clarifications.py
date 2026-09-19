@@ -498,3 +498,227 @@ async def decline_clarification(
         evidence_context=evidence.get("evidence_context"),
     )
     return _result_out({"record": stored, "resolved": False})
+
+
+# ===========================================================================
+# Adjudication reads (F-039-1 A/B/063) — current + immutable history
+# ===========================================================================
+#
+# A read-only projection of what the server ALREADY persisted. Nothing here
+# accepts factor metadata, an actor, a version, a currency flag or an evidence
+# signature: those are server-owned by construction (055/056/058) and are only
+# ever echoed back. Addressing is always ONE bounded extraction context
+# (organisation + persisted item + extracted activity), never an
+# organisation-wide or global search.
+
+
+class AdjudicationVersionOut(BaseModel):
+    """One persisted adjudication version, exactly as the server stored it."""
+
+    id: Optional[str] = None
+    adjudication_id: Optional[str] = None
+    version: Optional[int] = None
+    is_current: bool = False
+    supersedes_id: Optional[str] = None
+    organization_id: Optional[str] = None
+    activity_key: Optional[str] = None
+    original_activity: Optional[str] = None
+    effective_context_key: Optional[str] = None
+    clarification: Optional[str] = None
+    clarification_type: Optional[str] = None
+    policy_input: Optional[str] = None
+    outcome_status: Optional[str] = None
+    selected_factor_id: Optional[str] = None
+    selected_factor_name: Optional[str] = None
+    factor_set: Optional[str] = None
+    factor_source: Optional[str] = None
+    reporting_year: Optional[int] = None
+    unit: Optional[str] = None
+    scope: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_scope: Optional[str] = None
+    evidence_signature: Optional[str] = None
+    re_evaluation_required: bool = False
+    created_at: str = ""
+
+
+class EffectiveAdjudicationOut(BaseModel):
+    """The current adjudication for ONE bounded context — absence is a valid answer."""
+
+    found: bool
+    adjudication: Optional[AdjudicationVersionOut] = None
+
+
+class AdjudicationHistoryOut(BaseModel):
+    """Every version of one adjudication, oldest → newest (immutable history)."""
+
+    adjudication_id: str
+    count: int = 0
+    current_version: Optional[int] = None
+    versions: list[AdjudicationVersionOut] = Field(default_factory=list)
+
+
+def _adjudication_version_out(row: Optional[dict]) -> Optional[AdjudicationVersionOut]:
+    """Project a persisted row onto the read model (server-owned values only)."""
+    if not row:
+        return None
+    return AdjudicationVersionOut(
+        id=str(row["id"]) if row.get("id") else None,
+        adjudication_id=str(row["adjudication_id"]) if row.get("adjudication_id") else None,
+        version=int(row["version"]) if row.get("version") is not None else None,
+        is_current=bool(row.get("is_current")),
+        supersedes_id=str(row["supersedes_id"]) if row.get("supersedes_id") else None,
+        organization_id=str(row["organization_id"]) if row.get("organization_id") else None,
+        activity_key=row.get("activity_key"),
+        original_activity=row.get("original_activity"),
+        effective_context_key=row.get("effective_context_key"),
+        clarification=row.get("clarification"),
+        clarification_type=row.get("clarification_type"),
+        policy_input=row.get("policy_input"),
+        outcome_status=row.get("outcome_status"),
+        selected_factor_id=(
+            str(row["selected_factor_id"]) if row.get("selected_factor_id") else None
+        ),
+        selected_factor_name=row.get("selected_factor_name"),
+        factor_set=row.get("factor_set"),
+        factor_source=row.get("factor_source"),
+        reporting_year=(
+            int(row["reporting_year"]) if row.get("reporting_year") is not None else None
+        ),
+        unit=row.get("unit"),
+        scope=row.get("scope"),
+        actor_id=str(row["actor_id"]) if row.get("actor_id") else None,
+        actor_scope=row.get("actor_scope"),
+        evidence_signature=row.get("evidence_signature"),
+        re_evaluation_required=bool(row.get("re_evaluation_required")),
+        created_at=str(row.get("created_at") or ""),
+    )
+
+
+
+async def _require_item_bound_context(
+    repos: RepositoryBundle,
+    *,
+    organization_id: str,
+    item_id: str,
+    activity: str,
+) -> dict:
+    """Resolve the persisted item that bounds a lifecycle read, server-side.
+
+    Reuses the SAME resolution the write paths use (``_item_evidence`` →
+    ``resolve_evidence``): the tenant comes from the item's parent batch, so a
+    client cannot name a context outside its own organisation. Raises 404 for an
+    unknown item and 403 when the item belongs to another organisation.
+
+    The bounded context is then ``item_id`` (the server's own context key, the
+    same one the automatic-processing consumption uses via ``job.source_item_id``)
+    plus the extracted activity. Those values are only ever used as PREDICATES
+    against rows that were persisted for exactly that context, so a mismatched
+    activity yields "not found" rather than another context's adjudication.
+    """
+    if not item_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="item_id is required: the adjudication context is item-bounded",
+        )
+    return await _item_evidence(
+        repos,
+        organization_id=organization_id,
+        item_id=item_id,
+        activity=activity,
+    )
+
+
+@router.get("/effective", response_model=EffectiveAdjudicationOut)
+async def get_effective_adjudication(
+    organization_id: str = Query(..., description="organisation the extraction item belongs to"),
+    item_id: str = Query(..., description="persisted extraction item bounding the context"),
+    activity: str = Query(..., description="the extracted activity under review"),
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> EffectiveAdjudicationOut:
+    """The CURRENT adjudication for one bounded extraction context, or an empty answer.
+
+    Authorisation is the real ``ensure_processing_org_access`` gate (organisation
+    members for their own organisation; consultants only with an ACTIVE client
+    grant); the item is validated against that organisation; and the lookup is the
+    repository's own bounded read — organisation + context key + activity key +
+    original activity + ``is_current``. There is no organisation-wide or global
+    lookup, and a context with no current adjudication is reported as
+    ``found: false`` rather than fabricated.
+    """
+    await ensure_processing_org_access(current_user, repos, organization_id)
+    await _require_item_bound_context(
+        repos, organization_id=organization_id, item_id=item_id, activity=activity
+    )
+    row = await repos.clarifications.effective(
+        organization_id=organization_id,
+        activity_key=item_id,
+        original_activity=activity,
+        context_key=item_id,
+    )
+    return EffectiveAdjudicationOut(
+        found=row is not None,
+        adjudication=_adjudication_version_out(row),
+    )
+
+
+@router.get("/history", response_model=AdjudicationHistoryOut)
+async def get_adjudication_history(
+    organization_id: str = Query(..., description="organisation the extraction item belongs to"),
+    item_id: str = Query(..., description="persisted extraction item bounding the context"),
+    activity: str = Query(..., description="the extracted activity under review"),
+    adjudication_id: str = Query(..., description="the adjudication whose versions are requested"),
+    current_user: AuthUser = Depends(get_current_user),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> AdjudicationHistoryOut:
+    """Every immutable version of ONE adjudication, oldest → newest.
+
+    The named adjudication is first resolved **inside the authorised tenant and
+    the asserted bounded context**: an id from another organisation, another
+    context, or one that does not exist at all is refused (404) rather than
+    walked. The versions themselves come from the repository's own history read,
+    which is tenant-scoped and deterministically ordered by version; nothing here
+    can be turned into an organisation-wide or global history search.
+    """
+    await ensure_processing_org_access(current_user, repos, organization_id)
+    await _require_item_bound_context(
+        repos, organization_id=organization_id, item_id=item_id, activity=activity
+    )
+    seed = await repos.clarifications.get(adjudication_id, organization_id=organization_id)
+    if seed is None or not _in_bounded_context(seed, item_id=item_id, activity=activity):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="adjudication not found in this extraction context",
+        )
+    lineage_id = seed.get("adjudication_id") or adjudication_id
+    rows = await repos.clarifications.history(lineage_id, organization_id=organization_id)
+    versions = [
+        projected
+        for projected in (_adjudication_version_out(row) for row in rows)
+        if projected is not None
+    ]
+    current = next((v.version for v in versions if v.is_current), None)
+    return AdjudicationHistoryOut(
+        adjudication_id=str(lineage_id),
+        count=len(versions),
+        current_version=current,
+        versions=versions,
+    )
+
+
+def _in_bounded_context(row: dict, *, item_id: str, activity: str) -> bool:
+    """Whether a persisted row belongs to the asserted bounded context.
+
+    ``effective_context_key``/``activity_key`` must both be the persisted item and
+    ``original_activity`` must be the asserted extracted activity — the same three
+    predicates the effective read applies, so a read can never widen the boundary.
+    """
+    key = str(row.get("effective_context_key") or row.get("activity_key") or "")
+    activity_key = str(row.get("activity_key") or "")
+    return (
+        key == item_id
+        and activity_key == item_id
+        and str(row.get("original_activity") or "") == activity
+    )
+
