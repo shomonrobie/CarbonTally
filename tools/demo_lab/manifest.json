@@ -1,0 +1,148 @@
+{
+  "lab": "carbontally_demo_lab",
+  "namespace": "demo-lab-t1",
+  "email_domain": "demo-lab.carbontally.local",
+  "comment": "DEMO-T1 local Demo Lab identity manifest. Contains NO credentials: passwords and tokens are generated locally and stored outside the repository (see lab.py STATE_DIR).",
+  "organizations": [
+    { "key": "org_a", "name": "Demo Lab Organisation A", "kind": "customer" },
+    { "key": "org_b", "name": "Demo Lab Organisation B", "kind": "customer" },
+    { "key": "client_a", "name": "Demo Lab Client A", "kind": "consultant_client" },
+    { "key": "client_b", "name": "Demo Lab Client B", "kind": "consultant_client" }
+  ],
+  "processing_entities": [
+    { "key": "pe_alpha", "name": "Demo Lab Processing Entity Alpha" }
+  ],
+  "consultant_firm": {
+    "key": "firm_demo",
+    "company_name": "Demo Lab Carbon Consultants",
+    "is_active": true
+  },
+  "actors": [
+    {
+      "key": "platform_admin",
+      "local_part": "platform.admin",
+      "entity": "platform",
+      "staff_role": "admin",
+      "purpose": "Administrative control plane (incl. later Manual Processing enablement)",
+      "expect": { "actor_type": "staff", "destination": "/ops", "role": "admin" }
+    },
+    {
+      "key": "internal_operator",
+      "local_part": "operator",
+      "entity": "internal_staff",
+      "staff_role": "operator",
+      "purpose": "CarbonTally internal operations actor (ops workspace)",
+      "expect": { "actor_type": "staff", "destination": "/ops", "role": "operator" }
+    },
+    {
+      "key": "pe_manager",
+      "local_part": "pe.manager",
+      "entity": "processing_entity",
+      "processing_entity": "pe_alpha",
+      "staff_role": "pe_manager",
+      "purpose": "Processing Entity actor (PE shell)",
+      "expect": { "actor_type": "entity_staff", "destination": "/pe", "role": "pe_manager" }
+    },
+    {
+      "key": "org_a_owner",
+      "local_part": "owner.a",
+      "entity": "customer",
+      "organization": "org_a",
+      "org_role": "owner",
+      "purpose": "Organisation A owner (full org surface)",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_a", "role": "org_owner" }
+    },
+    {
+      "key": "org_a_admin",
+      "local_part": "admin.a",
+      "entity": "customer",
+      "organization": "org_a",
+      "org_role": "admin",
+      "purpose": "Organisation A admin",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_a", "role": "org_admin" }
+    },
+    {
+      "key": "org_a_member",
+      "local_part": "member.a",
+      "entity": "customer",
+      "organization": "org_a",
+      "org_role": "member",
+      "purpose": "Organisation A member",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_a", "role": "org_member" }
+    },
+    {
+      "key": "org_a_viewer",
+      "local_part": "viewer.a",
+      "entity": "customer",
+      "organization": "org_a",
+      "org_role": "viewer",
+      "purpose": "Organisation A viewer (read-only expectations)",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_a", "role": "org_viewer" }
+    },
+    {
+      "key": "org_b_owner",
+      "local_part": "owner.b",
+      "entity": "customer",
+      "organization": "org_b",
+      "org_role": "owner",
+      "purpose": "Organisation B owner (tenant-isolation counterexample)",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_b", "role": "org_owner" }
+    },
+    {
+      "key": "org_b_viewer",
+      "local_part": "viewer.b",
+      "entity": "customer",
+      "organization": "org_b",
+      "org_role": "viewer",
+      "purpose": "Organisation B viewer",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "org_b", "role": "org_viewer" }
+    },
+    {
+      "key": "consultant_owner",
+      "local_part": "consultant.owner",
+      "entity": "consultant",
+      "firm_role": "owner",
+      "purpose": "Consultant firm owner (firm identity holder)",
+      "expect": { "actor_type": "consultant", "destination": "/consultant", "role": "owner" },
+      "firm_owner": true
+    },
+    {
+      "key": "consultant_member",
+      "local_part": "consultant.member",
+      "entity": "consultant",
+      "firm_role": "consultant",
+      "purpose": "Consultant firm member with restricted capabilities (least privilege)",
+      "expect": { "actor_type": "consultant", "destination": "/consultant", "role": "consultant" },
+      "capabilities": {
+        "can_manage_clients": false,
+        "can_upload_documents": false,
+        "can_generate_reports": false,
+        "can_manage_team": false,
+        "can_extract": false,
+        "can_map": false,
+        "can_validate": false,
+        "can_calculate": false,
+        "can_confirm_automation": false,
+        "can_submit": false
+      }
+    },
+    {
+      "key": "client_a_owner",
+      "local_part": "owner.clienta",
+      "entity": "customer",
+      "organization": "client_a",
+      "org_role": "owner",
+      "purpose": "Consultant Client A owner (parity: first-class organisation)",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "client_a", "role": "org_owner" }
+    },
+    {
+      "key": "client_b_owner",
+      "local_part": "owner.clientb",
+      "entity": "customer",
+      "organization": "client_b",
+      "org_role": "owner",
+      "purpose": "Consultant Client B owner (parity + isolation counterexample)",
+      "expect": { "actor_type": "customer", "destination": "/home", "organization": "client_b", "role": "org_owner" }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# DEMO-T1 — local Demo Lab guard file.
+#
+# The lab keeps every secret OUTSIDE the repository (see tools/demo_lab/lab.py
+# STATE_DIR = ~/ct_local_env/demo_lab). These patterns are a second line of
+# defence so a stray local artefact can never be committed by accident.
+*.local
+*.local.json
+*.local.env
+credentials*.json
+backend.env
+evidence/
+generated/
+__pycache__/
+*.pyc
