@@ -1205,6 +1205,76 @@ class AutomaticProcessingService:
     # Stage: mapping
     # ------------------------------------------------------------------
 
+    async def _consume_effective_adjudication(
+        self,
+        *,
+        job: "AutomaticProcessingJob",
+        activity: str,
+        unit: Optional[str],
+        candidates,
+        request: MatchRequest,
+    ):
+        """F-039-1 (F1) — consume a COMPATIBLE persisted adjudication for this item.
+
+        Returns a mapping result produced by the EXISTING matching/policy path when a
+        compatible adjudication applies to the bounded context (``job.source_item_id``),
+        or ``None`` to preserve the current clarification-required behaviour.
+
+        The stored ``selected_factor_id`` is NEVER read: only the stored semantic
+        clarification is re-entered into the policy (``resolve_clarification`` →
+        ``select_factor``), and the pipeline must still return a match before the caller's
+        existing confidence check applies. Incompatible evidence (D-F039-1-I), a row with
+        no signature, and a row already flagged for re-evaluation all fall back to the
+        existing unresolved behaviour. Consumption can never break processing.
+        """
+        clarifications = getattr(self._repos, "clarifications", None)
+        context_key = getattr(job, "source_item_id", None)
+        if clarifications is None or not context_key:
+            return None
+        try:
+            evidence = await clarifications.resolve_evidence(context_key, activity)
+            if evidence is None:
+                return None
+            row, compatible = await clarifications.effective_compatible(
+                organization_id=evidence.get("organization_id") or job.organization_id,
+                activity_key=context_key,
+                original_activity=activity,
+                unit=evidence.get("unit"),
+                scope=evidence.get("scope"),
+                context_key=context_key,
+            )
+            if row is None or not compatible or row.get("re_evaluation_required"):
+                return None
+            from engines.activity_clarification import resolve_clarification
+
+            record, policy_factor = resolve_clarification(
+                activity,
+                row.get("clarification") or "",
+                candidates,
+                unit=evidence.get("unit"),
+                scope=evidence.get("scope"),
+                activity_key=context_key,
+            )
+            if policy_factor is None:
+                return None  # the policy is still unresolved — never guess
+            clarified_request = MatchRequest(
+                id=request.id,
+                activity=record.policy_input,
+                country=request.country,
+                reporting_year=request.reporting_year,
+                unit=request.unit,
+                organization_id=request.organization_id,
+                preferred_provider=getattr(request, "preferred_provider", None),
+                max_stages=getattr(request, "max_stages", 6),
+            )
+            mapped = await self._matching_engine.match(clarified_request)
+            return await self._prefer_aggregate_factor(activity, unit, mapped)
+        except Exception:  # noqa: BLE001 — consumption must never break processing
+            logger.exception(
+                "F-039-1: adjudication consumption failed for job %s", getattr(job, "id", "?")
+            )
+            return None
+
     async def _map(self, job: AutomaticProcessingJob, lock_token: str) -> str:
         """Auto-map activity/unit to an emission factor (D-cf-5 precedence)."""
         if job.mapped_data:
@@ -1299,14 +1369,27 @@ class AutomaticProcessingService:
                 preferred_unit=getattr(getattr(result, "factor", None), "unit", None),
             )
             if assessment.verdict == "clarification_required":
-                reasons.append(
-                    f"line {idx + 1}: clarification required for {activity!r} "
-                    f"({assessment.reason})"
+                # F-039-1 (F1): a COMPATIBLE persisted adjudication for this bounded
+                # context is consumed here, before diverting. Its clarification is
+                # re-entered into the existing policy and the pipeline must still return
+                # a match — the stored selected factor id is never used as an override.
+                consumed = await self._consume_effective_adjudication(
+                    job=job,
+                    activity=activity,
+                    unit=unit,
+                    candidates=gate_candidates,
+                    request=request,
                 )
-                mapped_lines.append(
-                    _clarification_entry(line, idx, assessment, activity=activity, unit=unit)
-                )
-                continue
+                if consumed is None:
+                    reasons.append(
+                        f"line {idx + 1}: clarification required for {activity!r} "
+                        f"({assessment.reason})"
+                    )
+                    mapped_lines.append(
+                        _clarification_entry(line, idx, assessment, activity=activity, unit=unit)
+                    )
+                    continue
+                result = consumed
             if result.status != "matched" or result.confidence < AUTO_MAPPING_CONFIDENCE_MIN:
                 reasons.append(
                     f"line {idx + 1}: no confident factor for "
