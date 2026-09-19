@@ -47,6 +47,12 @@ class _FakeConn:
     async def fetchrow(self, query, *args):
         self.queries.append(" ".join(query.split()))
         self.params.append(args)
+        if "AND is_current" in query:
+            # Effective-adjudication lookup: only a scripted CURRENT row is returned,
+            # and a non-current scripted row is left for the INSERT that follows.
+            if self.rows and isinstance(self.rows[0], dict) and self.rows[0].get("is_current"):
+                return self.rows.pop(0)
+            return None
         return self.rows.pop(0) if self.rows else None
 
     async def fetch(self, query, *args):
@@ -90,8 +96,9 @@ class _Engine:
         return list(self._candidates)
 
 
-def _client(*, user=None, candidates=(), rows=(), memberships=(), firm=None, client_grant=None, grant_org=ORG_A):
+def _client(*, user=None, candidates=None, rows=(), memberships=(), firm=None, client_grant=None, grant_org=ORG_A):
     conn = _FakeConn(rows)
+    engine = _Engine(_waste_candidates() if candidates is None else candidates)
     bundle = SimpleNamespace(
         clarifications=ActivityClarificationsRepository(_Pool(conn)),  # type: ignore[arg-type]
         consultants=_Consultants(
@@ -101,7 +108,7 @@ def _client(*, user=None, candidates=(), rows=(), memberships=(), firm=None, cli
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_repositories] = lambda: bundle
-    app.dependency_overrides[get_matching_engine] = lambda: _Engine(candidates)
+    app.dependency_overrides[get_matching_engine] = lambda: engine
     if user is None:
 
         def _unauthenticated():
@@ -392,7 +399,6 @@ def test_waste_plus_landfill_reruns_the_policy_and_stores_server_factor_metadata
             "organization_id": ORG_A,
             "activity": "Waste",
             "clarification": "Landfill",
-            "unit": "tonnes",
             "activity_key": "k1",
         },
     )
@@ -406,7 +412,10 @@ def test_waste_plus_landfill_reruns_the_policy_and_stores_server_factor_metadata
     assert params[8] == "Waste Landfill"  # the policy input it produced
     assert params[9] == "selected"  # the policy's own outcome
     assert params[10] == "lf"  # the factor the POLICY selected
-    assert params[12] == "DEFRA-2025" and params[14] == 2025 and params[15] == "tonnes"
+    assert params[12] == "DEFRA-2025" and params[14] == 2025
+    # [15] is the RECORDED unit — the selected factor's own (the policy INPUT was None,
+    # because F4 forbids taking unit/scope from the request body).
+    assert params[15] == "tonnes"
     body = response.json()
     assert body["outcome_status"] == "selected" and body["resolved"] is True
     assert body["original_activity"] == "Waste" and body["clarification"] == "Landfill"
@@ -432,13 +441,12 @@ def test_waste_plus_waste_oils_selects_the_oils_family() -> None:
             "organization_id": ORG_A,
             "activity": "Waste",
             "clarification": "Waste oils",
-            "unit": "tonnes",
         },
     )
     assert response.status_code == 201, response.text
     params = _insert_params(conn)
     assert params[6] == "Waste oils"
-    assert params[10] == "oils" and params[16] == "Scope 1"
+    assert params[10] == "oils" and params[16] == "Scope 1"  # the factor's own scope
     assert response.json()["selected_factor_id"] == "oils"
 
 
@@ -463,7 +471,6 @@ def test_diesel_variants_resolve_from_the_options_the_engine_offers() -> None:
                 "organization_id": ORG_A,
                 "activity": "Diesel",
                 "clarification": choice,
-                "unit": "litres",
             },
         )
         assert response.status_code == 201, (choice, response.text)
@@ -486,15 +493,15 @@ def test_identical_successful_clarification_retried_returns_the_stored_row() -> 
             "organization_id": ORG_A,
             "activity": "Waste",
             "clarification": "Landfill",
-            "unit": "tonnes",
             "activity_key": "k1",
         },
     )
     assert response.status_code == 201
     assert response.json()["selected_factor_id"] == "lf"
+    # the effective lookup runs first; the replay-guarded INSERT is the second statement
     assert (
         "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
-        in conn.queries[0]
+        in conn.queries[1]
     )
 
 
@@ -521,7 +528,6 @@ def test_conflicting_clarification_is_distinct_and_never_overwrites() -> None:
     payload = {
         "organization_id": ORG_A,
         "activity": "Waste",
-        "unit": "tonnes",
         "activity_key": "k1",
     }
     first = client.post(CLARIFY, json={**payload, "clarification": "Landfill"})
@@ -530,6 +536,92 @@ def test_conflicting_clarification_is_distinct_and_never_overwrites() -> None:
     assert first.json()["selected_factor_id"] == "lf"
     assert second.json()["selected_factor_id"] == "oils"
     assert not any(q.upper().startswith("UPDATE") for q in conn.queries)
+
+
+# ---------------------------------------------------------------------------
+# F3 decline gate + F4 evidence integrity
+# ---------------------------------------------------------------------------
+
+
+def test_decline_is_refused_when_the_activity_is_deterministic() -> None:
+    """F3: a deterministic activity must not manufacture an unresolved_declined row."""
+    client, conn = _client(user=_member(), rows=[_declined_row()])
+    response = client.post(
+        DECLINE, json={"organization_id": ORG_A, "activity": "Waste oils"}
+    )
+    assert response.status_code == 409
+    assert conn.params == []  # no database write on a rejected decline
+
+
+def test_forged_unit_or_scope_in_the_body_is_rejected() -> None:
+    """F4: unit/scope are not client-authoritative, so submitting them is a 422."""
+    client, conn = _client(user=_member(), rows=[_selected_row()])
+    for extra in ({"unit": "litres"}, {"scope": "Scope 1"}):
+        body = {
+            "organization_id": ORG_A,
+            "activity": "Waste",
+            "clarification": "Landfill",
+            **extra,
+        }
+        assert client.post(CLARIFY, json=body).status_code == 422
+    assert conn.params == []
+
+
+def test_authoritative_evidence_is_derived_from_the_persisted_item() -> None:
+    """F2/F4: with a persisted item the server derives provenance and unit/scope."""
+    item = "44444444-4444-4444-8444-444444444444"
+    client, conn = _client(
+        user=_member(),
+        rows=[
+            {
+                "item_key": item,
+                "batch_key": None,
+                "organization_id": ORG_A,
+                "source_file_id": "55555555-5555-4555-8555-555555555555",
+                "extracted_data": {
+                    "line_items": [{"activity": "Waste", "unit": "tonnes", "scope": "Scope 3"}]
+                },
+            },
+            _selected_row(),
+        ],
+    )
+    response = client.post(
+        CLARIFY,
+        json={
+            "organization_id": ORG_A,
+            "activity": "Waste",
+            "clarification": "Landfill",
+            "item_id": item,
+        },
+    )
+    assert response.status_code == 201, response.text
+    params = _insert_params(conn)
+    assert params[2] == item  # item_key derived server-side
+    assert params[5] == "55555555-5555-4555-8555-555555555555"  # source_evidence_ref
+    assert params[15] == "tonnes" and params[16] == "Scope 3"  # authoritative evidence
+    assert params[25] == item  # bounded context key = the persisted item
+    assert isinstance(params[26], str) and len(params[26]) == 64  # D-039-1-I signature
+
+
+def test_an_item_from_another_organisation_is_refused() -> None:
+    """F2: provenance fields cannot be used to cross a tenant boundary."""
+    item = "66666666-6666-4666-8666-666666666666"
+    client, conn = _client(
+        user=_member(ORG_A),
+        rows=[{"item_key": item, "organization_id": ORG_B, "extracted_data": None}],
+    )
+    response = client.post(
+        CLARIFY,
+        json={
+            "organization_id": ORG_A,
+            "activity": "Waste",
+            "clarification": "Landfill",
+            "item_id": item,
+        },
+    )
+    assert response.status_code == 403
+    # only the context LOOKUP ran — no adjudication was written
+    assert not any(q.startswith("INSERT") for q in conn.queries)
 
 
 # ---------------------------------------------------------------------------
@@ -638,7 +730,7 @@ def test_decline_persists_unresolved_declined_without_a_factor() -> None:
     assert body["actor_scope"] == "organization_member"
     assert body["clarification_type"] == "declined"
 
-    params = conn.params[0]
+    params = _insert_params(conn)
     assert params[3] == ORG_A  # organisation from the authorised context
     assert params[4] == "Waste"  # original extracted evidence preserved
     assert params[6] == "i_dont_know"  # the user's statement, kept separate
@@ -652,11 +744,14 @@ def test_decline_retry_returns_the_stored_adjudication() -> None:
     )
     assert response.status_code == 201
     assert response.json()["outcome_status"] == "unresolved_declined"
+    # the replay guard is now the context-bounded effective lookup, then the
+    # replay-protected INSERT
+    assert "AND is_current" in conn.queries[0]
     assert (
         "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
-        in conn.queries[0]
+        in conn.queries[1]
     )
-    assert "activity_key = $2" in conn.queries[1]  # re-read of the stored row
+    assert "INSERT INTO public.activity_clarifications" in conn.queries[1]
 
 
 def test_decline_repeated_returns_the_same_state() -> None:

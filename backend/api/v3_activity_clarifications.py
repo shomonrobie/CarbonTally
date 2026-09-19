@@ -42,7 +42,11 @@ from api.dependencies import (
 )
 from auth import AuthUser, get_current_user
 from domain.matching import MatchRequest
-from engines.activity_clarification import assess_family_conflict
+from engines.activity_clarification import (
+    assess_family_conflict,
+    decline_clarification as decline_clarification_record,
+    resolve_clarification,
+)
 from engines.factor_matching import FactorMatchingEngine
 
 router = APIRouter(
@@ -77,17 +81,23 @@ class ClarificationStateOut(BaseModel):
 
 
 class ClarificationSubmitIn(BaseModel):
-    """A semantic clarification. Factor metadata is rejected outright."""
+    """A semantic clarification. Factor metadata and evidence values are rejected.
+
+    ``unit``/``scope`` are deliberately absent (F4): the authoritative values come
+    from the persisted extraction line, so a client cannot steer selection by
+    supplying them — with ``extra="forbid"`` any attempt is a 422.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     organization_id: str
     activity: str
     clarification: str
+    #: Lookup key for the persisted extraction item; the server re-derives the
+    #: organisation, provenance and authoritative unit/scope from it (F2).
+    item_id: Optional[str] = None
     activity_key: str = ""
-    #: Policy INPUTS (scoping evidence already visible to the user), never the answer.
-    unit: Optional[str] = None
-    scope: Optional[str] = None
+    #: Matching scope only — not the recorded answer (see the docstring above).
     country: str = "GB"
     reporting_year: Optional[int] = None
 
@@ -99,6 +109,7 @@ class ClarificationDeclineIn(BaseModel):
 
     organization_id: str
     activity: str
+    item_id: Optional[str] = None
     activity_key: str = ""
 
 
@@ -167,6 +178,36 @@ async def _candidates(
         organization_id=organization_id,
     )
     return list(matching_engine.clarification_candidates(request))
+
+
+async def _item_evidence(
+    repos: RepositoryBundle,
+    *,
+    organization_id: str,
+    item_id: Optional[str],
+    activity: str,
+) -> dict:
+    """Server-derived provenance + authoritative evidence for a persisted item (F2).
+
+    Returns an empty dict when no item is supplied — provenance then stays NULL and no
+    unit/scope is invented. Raises 404 for an unknown item, and 403 when the item
+    belongs to another organisation: provenance fields can never be used to cross a
+    tenant boundary (D-039-1-F).
+    """
+    if not item_id:
+        return {}
+    ctx = await repos.clarifications.resolve_evidence(item_id, activity)
+    if ctx is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="extraction item not found"
+        )
+    derived = ctx.get("organization_id")
+    if derived and derived != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="extraction item belongs to another organisation",
+        )
+    return ctx
 
 
 def _validate_semantic_choice(
@@ -321,18 +362,29 @@ async def submit_clarification(
     server-generated state. A factor id is never accepted or returned as a choice.
     """
     await ensure_processing_org_access(current_user, repos, payload.organization_id)
+    evidence = await _item_evidence(
+        repos,
+        organization_id=payload.organization_id,
+        item_id=payload.item_id,
+        activity=payload.activity,
+    )
+    # F4: the authoritative unit/scope come from the persisted extraction line (None when
+    # no single line matches) — never from the request body.
+    unit = evidence.get("unit")
+    scope = evidence.get("scope")
+    context_key = payload.item_id or payload.activity_key or (
+        f"{payload.organization_id}:{payload.activity}"
+    )
     candidates = await _candidates(
         matching_engine,
         organization_id=payload.organization_id,
         activity=payload.activity,
-        unit=payload.unit,
-        scope=payload.scope,
+        unit=unit,
+        scope=scope,
         country=payload.country,
         reporting_year=payload.reporting_year,
     )
-    assessment = assess_family_conflict(
-        payload.activity, candidates, unit=payload.unit, scope=payload.scope
-    )
+    assessment = assess_family_conflict(payload.activity, candidates, unit=unit, scope=scope)
     if assessment.verdict not in _SUBMITTABLE_VERDICTS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -346,22 +398,35 @@ async def submit_clarification(
         assessment.options,
         payload.activity,
         candidates,
-        unit=payload.unit,
-        scope=payload.scope,
+        unit=unit,
+        scope=scope,
     )
-    outcome = await repos.clarifications.apply_clarification(
+    record, _factor = resolve_clarification(
         payload.activity,
         payload.clarification,
         candidates,
-        organization_id=payload.organization_id,
+        unit=unit,
+        scope=scope,
+        activity_key=context_key,
         actor_id=current_user.user_id,
         actor_scope=_actor_scope(current_user),
-        activity_key=payload.activity_key
-        or f"{payload.organization_id}:{payload.activity}",
-        unit=payload.unit,
-        scope=payload.scope,
     )
-    return _result_out(outcome)
+    stored = await repos.clarifications.apply_versioned(
+        record,
+        organization_id=payload.organization_id,
+        actor_id=current_user.user_id,
+        item_id=evidence.get("item_key"),
+        batch_key=evidence.get("batch_key"),
+        source_evidence_ref=evidence.get("source_evidence_ref"),
+        context_key=context_key,
+        evidence_signature=(
+            repos.clarifications.evidence_signature(payload.activity, unit, scope)
+            if evidence
+            else None
+        ),
+        evidence_context=evidence.get("evidence_context"),
+    )
+    return _result_out({"record": stored, "resolved": bool(stored.get("selected_factor_id"))})
 
 
 @router.post(
@@ -373,15 +438,63 @@ async def decline_clarification(
     payload: ClarificationDeclineIn,
     current_user: AuthUser = Depends(get_current_user),
     repos: RepositoryBundle = Depends(get_repositories),
+    matching_engine: FactorMatchingEngine = Depends(get_matching_engine),
 ) -> ClarificationResultOut:
-    """The explicit "I don't know" path: ``unresolved_declined``, no factor, no guess."""
+    """The explicit "I don't know" path — only where clarification actually applies.
+
+    F3: the SAME assessment the clarification path uses gates the decline. A decline is
+    refused (409, no write) when the activity is deterministic/not-required, so a
+    meaningless ``unresolved_declined`` cannot be manufactured for it.
+    """
     await ensure_processing_org_access(current_user, repos, payload.organization_id)
-    outcome = await repos.clarifications.apply_decline(
-        payload.activity,
+    evidence = await _item_evidence(
+        repos,
         organization_id=payload.organization_id,
+        item_id=payload.item_id,
+        activity=payload.activity,
+    )
+    unit = evidence.get("unit")
+    scope = evidence.get("scope")
+    context_key = payload.item_id or payload.activity_key or (
+        f"{payload.organization_id}:{payload.activity}"
+    )
+    candidates = await _candidates(
+        matching_engine,
+        organization_id=payload.organization_id,
+        activity=payload.activity,
+        unit=unit,
+        scope=scope,
+        country="GB",
+        reporting_year=None,
+    )
+    assessment = assess_family_conflict(payload.activity, candidates, unit=unit, scope=scope)
+    if assessment.verdict not in _SUBMITTABLE_VERDICTS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "decline is only available where clarification is required "
+                f"(verdict: {assessment.verdict})"
+            ),
+        )
+    record = decline_clarification_record(
+        payload.activity,
+        activity_key=context_key,
         actor_id=current_user.user_id,
         actor_scope=_actor_scope(current_user),
-        activity_key=payload.activity_key
-        or f"{payload.organization_id}:{payload.activity}",
     )
-    return _result_out(outcome)
+    stored = await repos.clarifications.apply_versioned(
+        record,
+        organization_id=payload.organization_id,
+        actor_id=current_user.user_id,
+        item_id=evidence.get("item_key"),
+        batch_key=evidence.get("batch_key"),
+        source_evidence_ref=evidence.get("source_evidence_ref"),
+        context_key=context_key,
+        evidence_signature=(
+            repos.clarifications.evidence_signature(payload.activity, unit, scope)
+            if evidence
+            else None
+        ),
+        evidence_context=evidence.get("evidence_context"),
+    )
+    return _result_out({"record": stored, "resolved": False})
