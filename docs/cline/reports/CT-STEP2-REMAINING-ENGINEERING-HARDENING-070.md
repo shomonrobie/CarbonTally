@@ -180,6 +180,7 @@ related       extraction/OCR unit+integration suites                90 passed
 Limitations: no Tesseract binary exists in this environment (the recogniser is stubbed where a
 working OCR host must be simulated; the render — the memory-critical part — runs for real), so
 OCR *accuracy* is not verifiable here; `rapidocr_onnxruntime` is absent, so the ONNX
+recogniser itself was not exercised (its renderer was). No production memory claim is made.
 
 ## 8. E — entity routing
 
@@ -486,5 +487,3 @@ H  this report
 ```
 
 Not independently verified · nothing PO-closed · nothing deployed.
-
-recogniser itself was not exercised (its renderer was). No production memory claim is made.
