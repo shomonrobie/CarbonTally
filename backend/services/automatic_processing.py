@@ -1257,6 +1257,10 @@ class AutomaticProcessingService:
             )
             if policy_factor is None:
                 return None  # the policy is still unresolved — never guess
+            # Local import, matching the module's existing convention for this
+            # symbol: nothing is consumed until the policy has re-selected.
+            from domain.matching import MatchRequest
+
             clarified_request = MatchRequest(
                 id=request.id,
                 activity=record.policy_input,

@@ -1,13 +1,15 @@
 """Unit tests for the automatic-processing service (CL-56) with fake repos."""
 from __future__ import annotations
 
+import copy
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from decimal import Decimal
 from typing import Any, Optional
 
 import pytest
 
+from data.activity_clarifications import ActivityClarificationsRepository
 from domain.automatic_processing import AutomaticProcessingJob
 from domain.factor import EmissionFactor
 from domain.matching import MatchResult
@@ -118,12 +120,99 @@ class _FakeProcessing:
         return None
 
 
+class _ClarificationConn:
+    """Capturing fake connection whose READ SEMANTICS mirror the real SQL.
+
+    Two scripted sets, because the two reads have different semantics:
+
+    * ``items`` — persisted extraction contexts, returned in call order (the
+      ``manual_extraction_items`` lookup);
+    * ``adjudications`` — ``activity_clarifications`` rows, filtered EXACTLY as the
+      effective-read SQL does: only a row that is ``is_current`` **and** belongs to
+      the organisation in ``$1`` is visible. A retired version or another tenant's
+      row is therefore never handed to the service, which is the boundary being
+      asserted — not a stub that would answer "yes" unconditionally.
+
+    Writes are recorded but never performed, so ``writes`` proves the consumption
+    path is read-only.
+    """
+
+    def __init__(self, *, items: Sequence[Any] = (), adjudications: Sequence[dict] = ()) -> None:
+        self.items = list(items)
+        self.adjudications = list(adjudications)
+        self.queries: list[str] = []
+        self.params: list[tuple] = []
+
+    async def fetchrow(self, query: str, *args: Any) -> Any:
+        self.queries.append(" ".join(query.split()))
+        self.params.append(args)
+        if "AND is_current" in query:
+            return self._effective(args)
+        return self.items.pop(0) if self.items else None
+
+    async def fetch(self, query: str, *args: Any) -> list[Any]:
+        self.queries.append(" ".join(query.split()))
+        self.params.append(args)
+        return []
+
+    async def execute(self, query: str, *args: Any) -> str:
+        self.queries.append(" ".join(query.split()))
+        self.params.append(args)
+        return "OK"
+
+    def _effective(self, args: tuple) -> Optional[dict]:
+        """Only a CURRENT row of the organisation in ``$1`` is visible."""
+        org = str(args[0])
+        for row in self.adjudications:
+            if row.get("is_current") and str(row.get("organization_id")) == org:
+                return row
+        return None
+
+    @property
+    def writes(self) -> list[str]:
+        return [q for q in self.queries if q.startswith(("INSERT", "UPDATE", "DELETE"))]
+
+
+class _ClarificationAcquire:
+    def __init__(self, conn: _ClarificationConn) -> None:
+        self._conn = conn
+
+    async def __aenter__(self) -> _ClarificationConn:
+        return self._conn
+
+    async def __aexit__(self, *exc: Any) -> bool:
+        return False
+
+
+class _ClarificationPool:
+    def __init__(self, conn: _ClarificationConn) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _ClarificationAcquire:
+        return _ClarificationAcquire(self._conn)
+
+
 class _FakeRepos:
-    def __init__(self, job: AutomaticProcessingJob) -> None:
+    def __init__(
+        self,
+        job: AutomaticProcessingJob,
+        *,
+        adjudications: Sequence[dict] = (),
+        evidence_rows: Sequence[Any] = (),
+    ) -> None:
         self.processing = _FakeProcessing()
         self.processing.store[job.id] = job
         self.logs = _FakeLogs()
         self.organizations = _FakeOrganizations()
+        # F-039-1 (063) F1 — the REAL clarifications repository over the capturing
+        # fake connection, so the service's adjudication consumption executes the
+        # genuine server-side derivation, tenant scoping and current-version read.
+        self.clarification_conn = _ClarificationConn(
+            items=evidence_rows, adjudications=adjudications
+        )
+        self.clarifications = ActivityClarificationsRepository(
+            _ClarificationPool(self.clarification_conn)  # type: ignore[arg-type]
+        )
 
 
 class _FakeFactors:
@@ -185,7 +274,22 @@ class _FakeManualExtraction:
 
 
 class _FakeMatchingEngine:
+    """Keyword matcher double.
+
+    ``clarification_candidates`` supplies the SCRIPTED candidate window for the
+    family-conflict gate. It defaults to empty, which reproduces the previous
+    behaviour (no diversion) for every pre-existing test; the F-039-1 lifecycle
+    tests pass the real 041/039 ``Waste`` window so the genuine diversion is
+    reached. ``requests`` records every match request, so a test can prove WHICH
+    text the policy produced.
+    """
+
+    def __init__(self, candidates: Sequence[Any] = ()) -> None:
+        self._candidates = list(candidates)
+        self.requests: list[Any] = []
+
     async def match(self, request):
+        self.requests.append(request)
         return MatchResult(
             status="matched",
             factor=_FACTOR,
@@ -193,6 +297,9 @@ class _FakeMatchingEngine:
             methodology="keyword_search",
             stages_executed=("keyword_search",),
         )
+
+    def clarification_candidates(self, request):
+        return list(self._candidates)
 
 
 class _FakeCalculationEngine:
@@ -226,15 +333,24 @@ def _csv_job(**overrides) -> AutomaticProcessingJob:
     return AutomaticProcessingJob(**base)
 
 
-def _make_service(job: AutomaticProcessingJob, audit_logger=None):
-    repos = _FakeRepos(job)
+def _make_service(
+    job: AutomaticProcessingJob,
+    audit_logger=None,
+    *,
+    candidates: Sequence[Any] = (),
+    evidence_rows: Sequence[Any] = (),
+    adjudications: Sequence[dict] = (),
+):
+    repos = _FakeRepos(
+        job, adjudications=adjudications, evidence_rows=evidence_rows
+    )
     repos.factors = _FakeFactors()
     repos.customer_factors = _FakeCustomerFactors()
     repos.notifications = _FakeNotifications()
     repos.manual_extraction = _FakeManualExtraction()
     service = AutomaticProcessingService(
         repos,
-        matching_engine=_FakeMatchingEngine(),
+        matching_engine=_FakeMatchingEngine(candidates),
         calculation_engine=_FakeCalculationEngine(),
         audit_logger=audit_logger,
     )
@@ -1107,4 +1223,436 @@ class TestGate6W4ResumeIntegrity:
         assert stored.calculation_snapshot_id == "snap-1"
         assert stored.extracted_data["quantity"] == 950.0
         assert stored.automation_extracted_data == dict(self.ORIGINAL)
+
+
+
+# ---------------------------------------------------------------------------
+# F-039-1 (063) — adjudication lifecycle: F1 consumption inside automatic mapping
+# ---------------------------------------------------------------------------
+#
+# These tests drive the REAL service over the REAL clarifications repository (a
+# scripted, capturing connection — no database is touched), the REAL clarification
+# engine and the REAL factor-selection policy. Only the transport-adjacent
+# dependencies are doubles.
+#
+# The activity is deliberately the bare ``Waste``: with the 041/039 candidate
+# window it produces the treatment-vs-combustion family collision, which is the
+# only shape that actually reaches the clarification diversion the lifecycle
+# exists for. Diesel alone produces policy ambiguity and would not exercise the
+# intended diversion branch.
+#
+# NOTE on authorization: the F1 consumption path is the durable worker path and
+# carries no user context, so there is no authorization call to exercise at this
+# layer — its boundary is the SERVER-DERIVED tenant + bounded context, asserted
+# in A8. Consultant/client authorization lives at the HTTP boundary and is
+# exercised against the real ``ensure_processing_org_access`` in the read-endpoint
+# tests (Parts B/C).
+
+_ORG_B = "99999999-9999-4999-8999-999999999999"
+_ITEM = "22222222-2222-4222-8222-222222222222"
+_BATCH = "33333333-3333-4333-8333-333333333333"
+_FILE = "44444444-4444-4444-8444-444444444444"
+
+
+def _signature(
+    activity: str = "Waste",
+    unit: Optional[str] = "tonnes",
+    scope: Optional[str] = "Scope 3",
+) -> str:
+    """The D-F039-1-I signature, produced by the repository's own helper."""
+    return ActivityClarificationsRepository.evidence_signature(activity, unit, scope)
+
+
+def _waste_candidates() -> list:
+    """The 041/039 ``Waste`` window: three treatment routes + a waste-oils fuel."""
+    def _f(
+        name: str,
+        *,
+        unit: str = "tonnes",
+        scope: str = "Scope 3",
+        value: str = "1.26338",
+        fid: str = "f-1",
+    ) -> EmissionFactor:
+        text = f"{name} [{unit}]" if "[" not in name else name
+        return EmissionFactor(
+            id=fid, reporting_year=2025, activity_type=text,
+            co2e_multiplier=Decimal(value), unit=unit, scope=scope,
+            factor_source="DEFRA-DESNZ", factor_set="DEFRA-2025", country="GB",
+            provider_key="DEFRA-DESNZ", natural_key=("2025", text, "GB", unit, scope),
+        )
+
+    return [
+        _f("Waste disposal > Construction > Aggregates - Landfill (kg CO2e)", fid="lf"),
+        _f("Waste disposal > Construction > Aggregates - Open-loop (kg CO2e)",
+           value="1.00835", fid="ol"),
+        _f("Waste disposal > Construction > Aggregates - Incineration with Energy "
+           "Recovery (kg CO2e)", value="0.02106", fid="inc"),
+        _f("Fuels > Liquid fuels > Waste oils (kg CO2e)", scope="Scope 1",
+           value="3219.37916", fid="oils"),
+    ]
+
+
+
+
+def _waste_item_row(
+    *,
+    organization_id: str = _ORG,
+    unit: str = "tonnes",
+    scope: str = "Scope 3",
+    activity: str = "Waste",
+) -> dict:
+    """The PERSISTED extraction context the server derives evidence and tenant from."""
+    return {
+        "item_key": _ITEM,
+        "batch_key": _BATCH,
+        "source_file_id": _FILE,
+        "source_file_name": "waste.csv",
+        "organization_id": organization_id,
+        "extracted_data": {
+            "supplier": "Acme Waste Ltd",
+            "date": "05/01/2025",
+            "line_items": [
+                {
+                    "activity": activity,
+                    "source_line": activity,
+                    "unit": unit,
+                    "scope": scope,
+                    "quantity": 12.5,
+                }
+            ],
+        },
+    }
+
+
+def _waste_job(**overrides: Any) -> AutomaticProcessingJob:
+    """A job resuming at mapping with one bare-``Waste`` line (the F-039-1 shape)."""
+    base = dict(
+        stage="extracting",
+        status="processing",
+        source_item_id=_ITEM,
+        extracted_data={
+            "supplier": "Acme Waste Ltd",
+            "date": "05/01/2025",
+            "line_items": [
+                {
+                    "activity": "Waste",
+                    "source_line": "Waste",
+                    "unit": "tonnes",
+                    "scope": "Scope 3",
+                    "quantity": 12.5,
+                }
+            ],
+        },
+    )
+    base.update(overrides)
+    return _csv_job(**base)
+
+
+def _adjudication_row(
+    *,
+    clarification: str = "Landfill",
+    evidence_signature: Optional[str] = None,
+    selected_factor_id: Optional[str] = "lf",
+    organization_id: str = _ORG,
+    is_current: bool = True,
+    version: int = 1,
+    **over: Any,
+) -> dict:
+    """One persisted ``activity_clarifications`` version, as the repository reads it."""
+    row = {
+        "id": f"row-v{version}",
+        "adjudication_id": "adj-1",
+        "organization_id": organization_id,
+        "activity_key": _ITEM,
+        "original_activity": "Waste",
+        "clarification": clarification,
+        "clarification_type": "semantic_activity",
+        "policy_input": f"Waste {clarification}",
+        "outcome_status": "selected",
+        "selected_factor_id": selected_factor_id,
+        "version": version,
+        "is_current": is_current,
+        "effective_context_key": _ITEM,
+        "evidence_signature": evidence_signature,
+        "re_evaluation_required": False,
+    }
+    row.update(over)
+    return row
+
+
+def _waste_service(
+    job: AutomaticProcessingJob,
+    *,
+    adjudications: Sequence[dict] = (),
+    item_row: Optional[dict] = None,
+):
+    """Service + repos wired for the bare-``Waste`` diversion with scripted rows."""
+    return _make_service(
+        job,
+        candidates=_waste_candidates(),
+        evidence_rows=[_waste_item_row() if item_row is None else item_row],
+        adjudications=list(adjudications),
+    )
+
+
+def _matched_activities(service: AutomaticProcessingService) -> list[str]:
+    """Every activity text the matching engine was asked to match, in order."""
+    return [str(request.activity) for request in service._matching_engine.requests]
+
+
+class TestAdjudicationLifecycleConsumption:
+    """F-039-1 (063) A1–A8 — the F1 consumption contract at the service level."""
+
+    # -- A1: no adjudication -> the existing diversion stays in force ---------
+    async def test_a1_bare_waste_without_an_adjudication_still_diverts(self) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(job)
+
+        final = await service.process_job(job, "token-a1")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None          # nothing mapped -> no factor guessed
+        reason = repos.processing.marked_blocked[-1]
+        assert "clarification required for 'Waste'" in reason
+        # The reason is the ENGINE's own family-conflict explanation, so the
+        # diversion came from the real assessment rather than a helper stub.
+        assert "treatment/material handling" in reason
+        assert "factor-1" not in reason
+        # The consumption path really was entered, asking for the CURRENT row of
+        # the bounded context.
+        conn = repos.clarification_conn
+        effective = [q for q in conn.queries if "AND is_current" in q]
+        assert len(effective) == 1
+        assert "organization_id = $1" in effective[0]
+        assert "effective_context_key = $2" in effective[0]
+        assert conn.writes == []
+
+    # -- A2: compatible adjudication -> consumed, processing proceeds ---------
+    async def test_a2_a_compatible_adjudication_is_consumed_and_processing_proceeds(
+        self,
+    ) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job, adjudications=[_adjudication_row(evidence_signature=_signature())]
+        )
+
+        final = await service.process_job(job, "token-a2")
+
+        assert final.stage == "review"
+        assert repos.processing.marked_blocked == []
+        mapped = final.mapped_data["line_items"][0]
+        assert mapped["status"] == "mapped"
+        assert mapped["factor_id"] == _FACTOR.id
+        # The stored SEMANTIC clarification was re-entered into the existing policy
+        # (the policy's own text is what the matcher was asked for) …
+        assert _matched_activities(service) == ["Waste", "Waste Landfill"]
+        # … and the resulting match — not the stored factor id — is what was mapped.
+        assert mapped["factor_id"] != "lf"
+        # The lookup carried the full bounded context, never the activity text alone.
+        assert repos.clarification_conn.params[1] == (_ORG, _ITEM, _ITEM, "Waste")
+
+    # -- A3: the stored selected_factor_id can never bypass the policy --------
+    async def test_a3_a_stored_selected_factor_id_cannot_bypass_the_policy(
+        self,
+    ) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job,
+            adjudications=[
+                _adjudication_row(
+                    clarification="Landfill",   # the policy resolves this to "lf"
+                    selected_factor_id="ol",    # deliberately a DIFFERENT factor
+                    evidence_signature=_signature(),
+                )
+            ],
+        )
+
+        final = await service.process_job(job, "token-a3")
+
+        assert final.stage == "review"
+        mapped = final.mapped_data["line_items"][0]
+        assert mapped["factor_id"] == _FACTOR.id
+        # Neither the stored id nor the policy's own winner is taken as an override:
+        # the mapped factor is what the matching engine returned for the POLICY INPUT.
+        assert mapped["factor_id"] not in {"ol", "lf"}
+        assert _matched_activities(service)[-1] == "Waste Landfill"
+        # No mapping entry anywhere carries the stored factor id.
+        assert all(
+            entry.get("factor_id") not in {"ol", "lf"}
+            for entry in final.mapped_data["line_items"]
+        )
+
+
+    # -- A4: changed authoritative evidence -> no silent reuse ----------------
+    async def test_a4_changed_evidence_signature_prevents_silent_reuse(self) -> None:
+        job = _waste_job()
+        historical = _adjudication_row(evidence_signature=_signature())  # stored: tonnes
+        before = copy.deepcopy(historical)
+        assert _signature() != _signature(unit="litres")
+        service, repos = _waste_service(
+            job,
+            adjudications=[historical],
+            item_row=_waste_item_row(unit="litres"),  # persisted evidence changed
+        )
+
+        final = await service.process_job(job, "token-a4")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
+        # The historical adjudication is untouched, nothing was written, and the
+        # policy was never re-entered with the stale semantics.
+        assert historical == before
+        assert repos.clarification_conn.writes == []
+        assert _matched_activities(service) == ["Waste"]
+
+    # -- A5: no stored signature -> no proof of compatibility -> no reuse ----
+    async def test_a5_a_row_without_an_evidence_signature_is_not_silently_reused(
+        self,
+    ) -> None:
+        job = _waste_job()
+        legacy = _adjudication_row(evidence_signature=None)
+        before = copy.deepcopy(legacy)
+        service, repos = _waste_service(job, adjudications=[legacy])
+
+        final = await service.process_job(job, "token-a5")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
+        assert legacy == before
+        assert repos.clarification_conn.writes == []
+        assert _matched_activities(service) == ["Waste"]
+
+    # -- A6: the policy abstains again -> unresolved, no fallback ------------
+    async def test_a6_a_still_ambiguous_adjudication_leaves_the_activity_unresolved(
+        self,
+    ) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job,
+            adjudications=[
+                _adjudication_row(
+                    clarification="Waste disposal",  # the policy: still ambiguous
+                    selected_factor_id="lf",         # must NOT be used as a fallback
+                    evidence_signature=_signature(),
+                )
+            ],
+        )
+
+        final = await service.process_job(job, "token-a6")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        reason = repos.processing.marked_blocked[-1]
+        assert "clarification required for 'Waste'" in reason
+        assert "lf" not in reason
+        # The policy was re-run and abstained, so the matcher was never asked to
+        # realise the adjudication's factor id.
+        assert _matched_activities(service) == ["Waste"]
+        assert repos.clarification_conn.writes == []
+
+
+    # -- A7: versioning — only the current version is consumed ---------------
+    async def test_a7_only_the_current_version_is_consumed(self) -> None:
+        job = _waste_job()
+        v1 = _adjudication_row(
+            clarification="Incineration", version=1, is_current=False,
+            evidence_signature=_signature(),
+        )
+        v2 = _adjudication_row(
+            clarification="Landfill", version=2, is_current=True,
+            evidence_signature=_signature(),
+        )
+        snapshot = (copy.deepcopy(v1), copy.deepcopy(v2))
+        service, repos = _waste_service(job, adjudications=[v1, v2])
+
+        final = await service.process_job(job, "token-a7")
+
+        assert final.stage == "review"
+        # v2's clarification — not v1's — is what reached the existing policy.
+        assert _matched_activities(service) == ["Waste", "Waste Landfill"]
+        assert "Waste Incineration" not in _matched_activities(service)
+        # The immutable history is still intact and unchanged …
+        assert (v1, v2) == snapshot
+        assert [row["version"] for row in repos.clarification_conn.adjudications] == [1, 2]
+        # … and consumption wrote nothing at all (no silent overwrite/supersede).
+        assert repos.clarification_conn.writes == []
+        # The effective read is the CURRENT-version predicate.
+        assert "AND is_current" in repos.clarification_conn.queries[1]
+
+    async def test_a7_a_retired_version_alone_is_never_consumed(self) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job,
+            adjudications=[
+                _adjudication_row(
+                    clarification="Landfill", version=1, is_current=False,
+                    evidence_signature=_signature(),
+                )
+            ],
+        )
+
+        final = await service.process_job(job, "token-a7b")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
+        assert _matched_activities(service) == ["Waste"]
+        assert repos.clarification_conn.writes == []
+
+    # -- A8: bounded context + tenant isolation ------------------------------
+    async def test_a8_the_lookup_carries_the_resolved_tenant_and_bounded_context(
+        self,
+    ) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job, adjudications=[_adjudication_row(evidence_signature=_signature())]
+        )
+
+        final = await service.process_job(job, "token-a8")
+
+        assert final.stage == "review"          # A consumes A's own adjudication
+        conn = repos.clarification_conn
+        assert conn.params[1] == (_ORG, _ITEM, _ITEM, "Waste")
+        assert "organization_id = $1" in conn.queries[1]
+        for clause in ("effective_context_key = $2", "activity_key = $3",
+                       "original_activity = $4", "AND is_current"):
+            assert clause in conn.queries[1]
+
+    async def test_a8_another_tenants_adjudication_is_never_consumed(self) -> None:
+        job = _waste_job()                       # organisation A
+        foreign = _adjudication_row(
+            organization_id=_ORG_B, evidence_signature=_signature()
+        )
+        before = copy.deepcopy(foreign)
+        service, repos = _waste_service(job, adjudications=[foreign])
+
+        final = await service.process_job(job, "token-a8b")
+
+        assert final.stage == "blocked"          # the diversion, not B's answer
+        assert final.mapped_data is None
+        assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
+        assert foreign == before                 # B's row was not touched
+        assert repos.clarification_conn.writes == []
+        assert _matched_activities(service) == ["Waste"]
+
+    async def test_a8_the_job_cannot_steer_the_tenant_the_lookup_is_scoped_to(
+        self,
+    ) -> None:
+        """The look-up tenant is the PERSISTED item's, never the job's/client's."""
+        job = _waste_job(organization_id=_ORG)   # the job claims organisation A
+        service, repos = _waste_service(
+            job,
+            item_row=_waste_item_row(organization_id=_ORG_B),   # the item is B's
+            adjudications=[_adjudication_row(organization_id=_ORG)],  # A's row
+        )
+
+        final = await service.process_job(job, "token-a8c")
+
+        assert repos.clarification_conn.params[1][0] == _ORG_B
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
+        assert _matched_activities(service) == ["Waste"]
 
