@@ -261,3 +261,123 @@ async def test_history_is_deterministic_oldest_first_and_tenant_scoped() -> None
     query = conn.queries[0]
     assert "ORDER BY version ASC" in query
     assert "organization_id = $1" in query
+
+
+# ---------------------------------------------------------------------------
+# Evidence provenance + D-F039-1-I compatibility signature
+# ---------------------------------------------------------------------------
+
+
+def test_signature_covers_exactly_activity_unit_and_scope() -> None:
+    base = ActivityClarificationsRepository.evidence_signature("Waste", "tonnes", "Scope 3")
+    assert base == ActivityClarificationsRepository.evidence_signature(
+        " waste ", "TONNES", "scope 3"
+    )  # normalised
+    assert base != ActivityClarificationsRepository.evidence_signature(
+        "Waste", "litres", "Scope 3"
+    )
+    assert base != ActivityClarificationsRepository.evidence_signature(
+        "Waste", "tonnes", "Scope 1"
+    )
+    assert base != ActivityClarificationsRepository.evidence_signature(
+        "Waste disposal", "tonnes", "Scope 3"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_evidence_derives_provenance_and_authoritative_unit() -> None:
+    conn, repo = _repo(
+        rows=[
+            {
+                "item_key": ITEM,
+                "batch_key": None,
+                "organization_id": ORG,
+                "source_file_id": "file-9",
+                "source_file_name": "invoice.pdf",
+                "extracted_data": {
+                    "line_items": [
+                        {"activity": "Waste", "unit": "tonnes", "scope": "Scope 3"},
+                        {"activity": "Diesel", "unit": "litres"},
+                    ]
+                },
+            }
+        ]
+    )
+    ctx = await repo.resolve_evidence(ITEM, "Waste")
+    assert ctx["organization_id"] == ORG
+    assert ctx["source_evidence_ref"] == "file-9"  # persisted file identity, not the body
+    assert ctx["unit"] == "tonnes" and ctx["scope"] == "Scope 3"
+
+
+@pytest.mark.asyncio
+async def test_unmatched_or_ambiguous_line_yields_no_unit_and_no_invention() -> None:
+    conn, repo = _repo(
+        rows=[
+            {
+                "item_key": ITEM,
+                "organization_id": ORG,
+                "extracted_data": {
+                    "line_items": [
+                        {"activity": "Waste", "unit": "tonnes"},
+                        {"source_line": "Waste", "unit": "litres"},
+                    ]
+                },
+            }
+        ]
+    )
+    ctx = await repo.resolve_evidence(ITEM, "Waste")  # two matching lines
+    assert ctx["unit"] is None and ctx["scope"] is None
+    conn2, repo2 = _repo(rows=[{"item_key": ITEM, "organization_id": ORG, "extracted_data": None}])
+    ctx2 = await repo2.resolve_evidence(ITEM, "Waste")
+    assert ctx2["unit"] is None and ctx2["scope"] is None
+
+
+@pytest.mark.asyncio
+async def test_effective_compatible_requires_a_matching_evidence_signature() -> None:
+    sig = ActivityClarificationsRepository.evidence_signature("Waste", "tonnes", "Scope 3")
+    row = dict(CURRENT_V1, evidence_signature=sig)
+    conn, repo = _repo(rows=[row])
+    got, ok = await repo.effective_compatible(
+        organization_id=ORG,
+        activity_key="k1",
+        original_activity="Waste",
+        unit="tonnes",
+        scope="Scope 3",
+    )
+    assert ok is True and got == row
+
+
+@pytest.mark.asyncio
+async def test_effective_compatible_rejects_changed_evidence_and_missing_signature() -> None:
+    sig = ActivityClarificationsRepository.evidence_signature("Waste", "tonnes", "Scope 3")
+    changed = dict(CURRENT_V1, evidence_signature=sig)
+    _c, repo = _repo(rows=[changed])
+    got, ok = await repo.effective_compatible(
+        organization_id=ORG,
+        activity_key="k1",
+        original_activity="Waste",
+        unit="litres",  # evidence changed
+        scope="Scope 3",
+    )
+    assert got is not None and ok is False
+
+    legacy = dict(CURRENT_V1, evidence_signature=None)
+    _c2, repo2 = _repo(rows=[legacy])
+    got2, ok2 = await repo2.effective_compatible(
+        organization_id=ORG,
+        activity_key="k1",
+        original_activity="Waste",
+        unit="tonnes",
+        scope="Scope 3",
+    )
+    assert got2 is not None and ok2 is False  # no proof of compatibility → not reused
+
+    _c3, repo3 = _repo(rows=[None])
+    got3, ok3 = await repo3.effective_compatible(
+        organization_id=ORG,
+        activity_key="k1",
+        original_activity="Waste",
+        unit=None,
+        scope=None,
+    )
+    assert got3 is None and ok3 is False

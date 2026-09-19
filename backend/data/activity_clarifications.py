@@ -31,6 +31,7 @@ is additionally constrained by an explicit ``organization_id`` predicate.
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
 from typing import Any, Optional, Sequence
 
@@ -58,11 +59,19 @@ _COLUMNS = (
 _CONTEXT_SQL = """
     SELECT i.id              AS item_key,
            i.batch_id        AS batch_key,
-           b.organization_id AS organization_id
+           i.file_id         AS source_file_id,
+           i.file_name       AS source_file_name,
+           b.organization_id AS organization_id,
+           i.extracted_data  AS extracted_data
       FROM public.manual_extraction_items i
       LEFT JOIN public.manual_extraction_batches b ON b.id = i.batch_id
      WHERE i.id = $1
 """
+
+#: The persisted evidence keys a clarification request may never set (D-039-1-F/-I).
+_EVIDENCE_TEXT_KEYS = ("activity", "source_line", "raw_description", "description")
+_EVIDENCE_UNIT_KEYS = ("unit", "raw_unit")
+_EVIDENCE_SCOPE_KEYS = ("scope",)
 
 _INSERT_SQL = f"""
     INSERT INTO public.activity_clarifications (
@@ -142,6 +151,51 @@ def _as_uuid(value: Optional[str]) -> Optional[str]:
     return str(value)
 
 
+def _line_evidence(
+    extracted_data: Any, activity: Optional[str]
+) -> tuple:
+    """Authoritative ``(unit, scope)`` from the persisted extraction line.
+
+    Reads only the persisted ``extracted_data`` line items and accepts a line only on
+    an EXACT (case-insensitive) match of the extracted activity text. Zero or several
+    matches yield ``(None, None)``: no line is invented and no client value is
+    substituted, so the policy decides (D-039-1-I safe path).
+    """
+    payload = loads_jsonb(extracted_data)
+    if payload is None:
+        return None, None
+    if isinstance(payload, dict):
+        lines = payload.get("line_items") or payload.get("lines") or []
+    elif isinstance(payload, list):
+        lines = payload
+    else:
+        return None, None
+    wanted = (activity or "").strip().casefold()
+    if not wanted:
+        return None, None
+    matches = []
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        for key in _EVIDENCE_TEXT_KEYS:
+            value = line.get(key)
+            if isinstance(value, str) and value.strip().casefold() == wanted:
+                matches.append(line)
+                break
+    if len(matches) != 1:
+        return None, None
+    line = matches[0]
+
+    def _first(keys):
+        for key in keys:
+            value = line.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    return _first(_EVIDENCE_UNIT_KEYS), _first(_EVIDENCE_SCOPE_KEYS)
+
+
 class ActivityClarificationsRepository(AbstractRepository[dict]):
     """Persists and reads the adjudication rows for one organisation.
 
@@ -153,19 +207,98 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
 
     # -- server-side context -------------------------------------------------
     async def resolve_context(self, item_id: str) -> Optional[dict]:
-        """Resolve tenant + parent keys for an extraction item, server-side.
+        """Resolve the authoritative context for an extraction item, server-side.
 
-        Returns ``None`` when the item does not exist, so callers reject an
-        unknown item instead of persisting an orphan adjudication.
+        Returns ``None`` when the item does not exist, so callers reject an unknown
+        item instead of persisting an orphan adjudication. Provenance
+        (``source_evidence_ref``), the authoritative unit/scope and the evidence
+        signature are all derived from the PERSISTED item (D-039-1-F/-I) — never from
+        a request body.
+        """
+        return await self.resolve_evidence(item_id)
+
+    async def resolve_evidence(
+        self, item_id: str, activity: Optional[str] = None
+    ) -> Optional[dict]:
+        """Server-derived provenance + authoritative evidence for one item.
+
+        The tenant comes from ``item → batch → organization``; the evidence reference
+        from the persisted file identity; ``unit``/``scope`` only from the persisted
+        ``extracted_data`` line that matches the extracted activity exactly. When no
+        single line matches, ``unit``/``scope`` stay ``None`` — the safe path: nothing
+        is invented and no client value is substituted.
         """
         row = await self._fetch_one(_CONTEXT_SQL, _as_uuid(item_id))
         if row is None:
             return None
+        data = dict(row)
+        unit, scope = _line_evidence(data.get("extracted_data"), activity)
         return {
-            "item_key": _as_uuid(row["item_key"]),
-            "batch_key": _as_uuid(row["batch_key"]),
-            "organization_id": _as_uuid(row["organization_id"]),
+            "item_key": _as_uuid(data.get("item_key")),
+            "batch_key": _as_uuid(data.get("batch_key")),
+            "organization_id": _as_uuid(data.get("organization_id")),
+            "source_evidence_ref": _as_uuid(data.get("source_file_id"))
+            or data.get("source_file_name"),
+            "unit": unit,
+            "scope": scope,
+            "evidence_context": {
+                "original_activity": activity,
+                "unit": unit,
+                "scope": scope,
+                "item_key": _as_uuid(data.get("item_key")),
+                "batch_key": _as_uuid(data.get("batch_key")),
+            },
         }
+
+    @staticmethod
+    def evidence_signature(
+        original_activity: Optional[str],
+        unit: Optional[str],
+        scope: Optional[str],
+    ) -> str:
+        """The D-F039-1-I compatibility signature.
+
+        Covers exactly the three mandated fields — the original extracted activity
+        text, the authoritative persisted unit and the authoritative persisted scope —
+        and nothing else (no filename, OCR text, quantity, date or other metadata).
+        Generated server-side from persisted evidence only.
+        """
+        parts = [
+            (original_activity or "").strip().casefold(),
+            (unit or "").strip().casefold(),
+            (scope or "").strip().casefold(),
+        ]
+        return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+    async def effective_compatible(
+        self,
+        *,
+        organization_id: str,
+        activity_key: str,
+        original_activity: str,
+        unit: Optional[str],
+        scope: Optional[str],
+        context_key: Optional[str] = None,
+    ) -> tuple:
+        """Return ``(row, compatible)`` for the bounded context.
+
+        ``compatible`` is true only when the stored signature equals the signature of
+        the CURRENT persisted evidence. A row with no stored signature is treated as
+        NOT compatible — without evidence to compare there is no proof of
+        compatibility, so the adjudication must not be silently reused
+        (D-039-1-G/-I).
+        """
+        row = await self.effective(
+            organization_id=organization_id,
+            activity_key=activity_key,
+            original_activity=original_activity,
+            context_key=context_key,
+        )
+        if row is None:
+            return None, False
+        stored = row.get("evidence_signature")
+        current = self.evidence_signature(original_activity, unit, scope)
+        return row, bool(stored) and stored == current
 
     # -- writes --------------------------------------------------------------
     async def record(
