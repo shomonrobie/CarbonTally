@@ -18,6 +18,7 @@ Covered here:
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -459,3 +460,81 @@ async def test_effective_compatible_rejects_changed_evidence_and_missing_signatu
         scope=None,
     )
     assert got3 is None and ok3 is False
+
+
+# ---------------------------------------------------------------------------
+# Workstream C — effective-adjudication determinism (documented, no behaviour change)
+# ---------------------------------------------------------------------------
+# Finding: the effective read carries no ``ORDER BY``/``LIMIT``. That is CORRECT and is
+# not replaced by ordering: the query's predicate set is exactly the columns of the
+# D-F039-1-J partial UNIQUE index, so the database can never return more than one current
+# row for a bounded context — the read cannot see an arbitrarily ordered pair in the first
+# place. These tests pin the reasoning to the shipped artefacts so it cannot silently
+# drift (a future predicate change without the matching index fails here).
+
+_CONTEXT_INDEX_COLUMNS = (
+    "(organization_id, effective_context_key, activity_key, original_activity) WHERE is_current"
+)
+
+
+def _migration_sql(filename: str) -> str:
+    """Read a shipped migration from the repo root (located by its own migrations dir)."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "supabase" / "migrations").is_dir():
+            return (parent / "supabase" / "migrations" / filename).read_text()
+    raise AssertionError("could not locate repo root (supabase/migrations)")
+
+
+@pytest.mark.asyncio
+async def test_effective_read_is_bounded_by_a_unique_context_index() -> None:
+    """One statement, the full context boundary, and no reliance on row order."""
+    conn, repo = _repo(rows=[CURRENT_V1])
+    row = await repo.effective(
+        organization_id=ORG, activity_key="k1", original_activity="Waste"
+    )
+    assert row == CURRENT_V1
+    assert len(conn.queries) == 1                     # a single bounded read
+    query = conn.queries[0]
+    for predicate in ("organization_id = $1", "effective_context_key = $2",
+                      "activity_key = $3", "original_activity = $4", "AND is_current"):
+        assert predicate in query
+    # determinism comes from the uniqueness invariant, never from ORDER BY/LIMIT
+    assert "ORDER BY" not in query.upper()
+    assert "LIMIT" not in query.upper()
+
+
+@pytest.mark.asyncio
+async def test_the_effective_read_predicates_match_the_shipped_uniqueness_index() -> None:
+    """The migration that makes the read deterministic must match the read's boundary."""
+    from data.activity_clarifications import _CURRENT_FOR_UPDATE_SQL, _EFFECTIVE_SQL
+
+    migration = _migration_sql(
+        "20260931000000_p8_fs_adjudication_context_lineage.sql"
+    )
+    normalised = " ".join(migration.split())     # the file wraps the definition
+    assert "CREATE UNIQUE INDEX" in normalised
+    assert "activity_clarifications_context_unique" in normalised
+    assert _CONTEXT_INDEX_COLUMNS in normalised
+    for statement in (_EFFECTIVE_SQL, _CURRENT_FOR_UPDATE_SQL):
+        for column in ("organization_id", "effective_context_key", "activity_key",
+                       "original_activity"):
+            assert column in statement
+        assert "is_current" in statement
+
+
+@pytest.mark.asyncio
+async def test_multiple_reads_of_the_same_context_return_the_same_current_row() -> None:
+    """Repeated reads are identical: there is no second current row to alternate with."""
+    conn, repo = _repo(rows=[CURRENT_V1] * 5)
+    seen = {
+        (row["id"], row["version"])
+        for row in [
+            await repo.effective(
+                organization_id=ORG, activity_key="k1", original_activity="Waste"
+            )
+            for _ in range(5)
+        ]
+    }
+    assert seen == {("row-v1", 1)}
+    assert all("AND is_current" in query for query in conn.queries)
+

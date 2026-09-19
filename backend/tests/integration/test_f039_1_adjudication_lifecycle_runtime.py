@@ -568,7 +568,93 @@ async def test_history_contract_is_tenant_and_consultant_bounded(pool) -> None:
         assert (await client.get(
             HISTORY, params={**base_a, "adjudication_id": lineage})).status_code == 403
 
+    # and an unauthenticated caller is refused outright
     async with _client(_api_app(pool, user=None)) as client:
         assert (await client.get(
             HISTORY, params={**base_a, "adjudication_id": lineage})).status_code == 401
+
+
+
+# ---------------------------------------------------------------------------
+# Workstream C — effective-adjudication determinism against the REAL schema
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_effective_read_determinism_is_enforced_by_the_real_schema(pool) -> None:
+    """No ORDER BY/LIMIT is needed: the predicates match a UNIQUE index (D-F039-1-J).
+
+    Proven in three parts against the real database: the uniqueness basis exists, the read
+    really is bounded by exactly that basis, and repeated reads of a multi-version lineage
+    always return the same current row (there is no second current row to alternate with).
+    """
+    index_sql = """
+        SELECT c.relname AS name,
+               i.indisunique AS is_unique,
+               pg_get_indexdef(i.indexrelid) AS definition
+          FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+         WHERE c.relname = ANY($1::text[])
+    """
+    async with pool.acquire() as conn:
+        rows = {
+            r["name"]: r for r in await conn.fetch(index_sql, [
+                "activity_clarifications_context_unique",
+                "activity_clarifications_current_unique",
+                "activity_clarifications_replay_unique",
+                "activity_clarifications_pkey",
+            ])
+        }
+
+    # 1. every single-row read is backed by a UNIQUE index
+    for name in ("activity_clarifications_context_unique",
+                 "activity_clarifications_current_unique",
+                 "activity_clarifications_replay_unique",
+                 "activity_clarifications_pkey"):
+        assert name in rows, f"{name} is missing: the determinism basis is absent"
+        assert rows[name]["is_unique"] is True, f"{name} is not unique"
+    assert ("(organization_id, effective_context_key, activity_key, original_activity) "
+            "WHERE is_current") in rows["activity_clarifications_context_unique"]["definition"]
+    assert "(adjudication_id) WHERE is_current" in \
+        rows["activity_clarifications_current_unique"]["definition"]
+
+    # 2. a real 3-version lineage in one bounded context
+    org = await _new_org(pool)
+    repo = ActivityClarificationsRepository(pool)
+    key = f"f0391-070:{uuid.uuid4()}"
+    actor = str(uuid.uuid4())
+    signature = repo.evidence_signature("Waste", "tonnes", "Scope 3")
+    versions = []
+    for clarification in ("Landfill", "Incineration", "Waste oils"):
+        record, _factor = resolve_clarification(
+            "Waste", clarification, [], activity_key=key)
+        versions.append(await repo.apply_versioned(
+            record, organization_id=org, actor_id=actor, context_key=key,
+            evidence_signature=signature))
+    assert [v["version"] for v in versions] == [1, 2, 3]
+    assert len({str(v["adjudication_id"]) for v in versions}) == 1   # one lineage
+
+    # 3. the read is deterministic: 25 reads, always the SAME current row
+    seen = set()
+    for _ in range(25):
+        row = await repo.effective(
+            organization_id=org, activity_key=key, original_activity="Waste",
+            context_key=key)
+        seen.add((str(row["id"]), int(row["version"])))
+    assert seen == {(str(versions[2]["id"]), 3)}
+
+    # and the consumption read (which delegates to the effective read) agrees
+    compatible_row, compatible = await repo.effective_compatible(
+        organization_id=org, activity_key=key, original_activity="Waste",
+        unit="tonnes", scope="Scope 3", context_key=key)
+    assert compatible is True
+    assert str(compatible_row["id"]) == str(versions[2]["id"])
+
+    # the rejected alternative: supplying ORDER BY/LIMIT would not strengthen this —
+    # the invariant, not the row order, is what makes the answer unambiguous
+    async with pool.acquire() as conn:
+        current = await conn.fetchval(
+            "SELECT count(*) FROM public.activity_clarifications "
+            "WHERE organization_id=$1 AND effective_context_key=$2 AND is_current", org, key)
+    assert current == 1
 
