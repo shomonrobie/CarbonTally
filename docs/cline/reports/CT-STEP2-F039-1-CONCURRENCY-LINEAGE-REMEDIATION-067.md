@@ -429,11 +429,17 @@ Exhausted convergence attempts:
 ```text
 branch  p8-release-reconciled          (no reset, no rebase, no force-push)
 base    e907e4b893b2675a57c085f6495bcf4a7be46649
-commit  <see the git-state block appended below>
-push    <see the git-state block appended below>
-secrets none introduced (no .env, no key, no token, no signed URL, no credential)
-scope   no unrelated change absorbed; the four edited test assertions exist solely because
-        the transition gained a first statement (the context lock)
+commit  dab6af1a82d72f6fb6095d3c64f7783252b47f97
+        "fix(p8/fs): F-039-1 one adjudication lineage per bounded context (D-F039-1-J)"
+push    pushed to origin/p8-release-reconciled: e907e4b..dab6af1 (verified with ls-remote:
+        refs/heads/p8-release-reconciled == dab6af1a82d72f6fb6095d3c64f7783252b47f97)
+files   7 (3 new: migration, concurrency suite, this report; 4 modified: repository, API,
+        and the two unit test files whose statement-order assertions the new lock affects)
+        1101 insertions(+), 37 deletions(-)
+tree    clean after the commit
+secrets none introduced (diff scanned for JWTs, keys, private keys, service-role material
+        and non-local connection strings: 0 hits)
+scope   no unrelated change absorbed
 ```
 
 ## STOP-CONDITION CHECK
