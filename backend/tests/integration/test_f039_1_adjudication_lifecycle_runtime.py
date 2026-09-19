@@ -130,7 +130,17 @@ def _api_app(pool, *, user, engine=None) -> FastAPI:
     inside the SAME event loop as the asyncpg pool — ``TestClient`` runs the app in a
     separate loop, which an asyncpg pool cannot be shared across.
     """
-    bundle = type("Bundle", (), {"clarifications": ActivityClarificationsRepository(pool)})()
+    from data.consultants import ConsultantsRepository
+
+    bundle = type(
+        "Bundle", (),
+        {
+            "clarifications": ActivityClarificationsRepository(pool),
+            # the real consultant chain (memberships → firm profile → client grant), so
+            # consultant/you-vs-client isolation is exercised against the real tables
+            "consultants": ConsultantsRepository(pool),
+        },
+    )()
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_repositories] = lambda: bundle
@@ -413,4 +423,152 @@ async def test_api_rejects_malformed_identifiers_with_422_not_500(pool) -> None:
         assert await conn.fetchval(
             "SELECT count(*) FROM public.activity_clarifications "
             "WHERE organization_id=$1", org) == 0
+
+
+
+# ---------------------------------------------------------------------------
+# F-064-1 — the /history identifier contract against the real schema
+# ---------------------------------------------------------------------------
+# The parameter is named ``adjudication_id`` and /effective publishes that LINEAGE identity
+# (``adjudication.adjudication_id``) alongside the version ROW identity
+# (``adjudication.id``). The shipped 055 schema makes them different values, which is why
+# resolving only the row column 404'd the documented form.
+
+OPTIONS = "/api/v3/activity-clarifications/options"
+
+
+async def _semantic_options(client, base: dict, limit: int = 5) -> list:
+    """The engine's OWN eligible semantic options (the API refuses anything else)."""
+    offered = await client.get(OPTIONS, params=base)
+    assert offered.status_code == 200, offered.text
+    return [o["semantic_term"] for o in offered.json()["options"]][:limit]
+
+
+async def _consultant_identity(pool, org: str, *, status: str = "active") -> AuthUser:
+    """A REAL consultant: users + firm profile + active membership + client grant."""
+    consult, firm = str(uuid.uuid4()), str(uuid.uuid4())
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO public.users (id,email) VALUES ($1,$2)",
+            consult, f"f0391-070-cons-{consult[:8]}@qa.local")
+        await conn.execute(
+            "INSERT INTO public.consultant_profiles (id,user_id,company_name,"
+            " white_label_enabled) VALUES ($1,$2,'F0391-070 Firm',false)", firm, consult)
+        await conn.execute(
+            "INSERT INTO public.consultant_firm_members (firm_id,user_id,role,is_active)"
+            " VALUES ($1,$2,'owner',true)", firm, consult)
+        await conn.execute(
+            "INSERT INTO public.consultant_clients (consultant_id,organization_id,"
+            " client_name,status) VALUES ($1,$2,'F0391-070 Client',$3)", firm, org, status)
+    return AuthUser(user_id=consult, email="f0391-070-cons@qa.local", role="consultant")
+
+
+
+@pytest.mark.asyncio
+async def test_history_is_addressable_by_the_lineage_identity_effective_publishes(pool) -> None:
+    """F-064-1: the id /effective publishes as ``adjudication_id`` addresses /history."""
+    await _seed_factors(pool)
+    org = await _new_org(pool)
+    item = await _new_item(pool, org)
+    user = _member(org, str(uuid.uuid4()))
+    base = {"organization_id": org, "activity": "Waste", "item_id": item}
+
+    async with _client(_api_app(pool, user=user)) as client:
+        terms = await _semantic_options(client, base, limit=4)
+        assert len(terms) == 4, terms
+        for term in terms:
+            written = await client.post(CLARIFY, json={**base, "clarification": term})
+            assert written.status_code == 201, written.text
+
+        current = (await client.get(EFFECTIVE, params=base)).json()["adjudication"]
+        lineage, row_id = str(current["adjudication_id"]), str(current["id"])
+        # the 055 shape that broke the old row-only resolution
+        assert lineage != row_id
+
+        by_lineage = await client.get(HISTORY, params={**base, "adjudication_id": lineage})
+        assert by_lineage.status_code == 200, by_lineage.text
+        body = by_lineage.json()
+        assert body["adjudication_id"] == lineage
+        assert [v["version"] for v in body["versions"]] == [1, 2, 3, 4]
+        assert body["current_version"] == 4
+        assert body["versions"][3]["is_current"] is True
+        assert body["versions"][0]["clarification"] == terms[0]  # immutable history
+
+        # the compatibility form (a version row identity) resolves to the same lineage
+        by_row = await client.get(HISTORY, params={**base, "adjudication_id": row_id})
+        assert by_row.status_code == 200, by_row.text
+        assert by_row.json()["adjudication_id"] == lineage
+        assert [v["version"] for v in by_row.json()["versions"]] == [1, 2, 3, 4]
+
+        # the lineage identity is stable across versions: a further modification does not
+        # invalidate the identifier a caller already holds
+        again = await client.post(CLARIFY, json={**base, "clarification": terms[0]})
+        assert again.status_code == 201, again.text
+        after = await client.get(HISTORY, params={**base, "adjudication_id": lineage})
+        assert after.status_code == 200
+        assert [v["version"] for v in after.json()["versions"]] == [1, 2, 3, 4, 5]
+        assert after.json()["adjudication_id"] == lineage
+
+        # unknown and malformed identifiers stay explicit 4xx answers
+        unknown = await client.get(
+            HISTORY, params={**base, "adjudication_id": str(uuid.uuid4())})
+        assert unknown.status_code == 404
+        malformed = await client.get(
+            HISTORY, params={**base, "adjudication_id": "not-a-uuid"})
+        assert malformed.status_code == 422
+
+
+
+@pytest.mark.asyncio
+async def test_history_contract_is_tenant_and_consultant_bounded(pool) -> None:
+    """The corrected addressing changes no authorisation boundary."""
+    await _seed_factors(pool)
+    org_a, org_b = await _new_org(pool), await _new_org(pool)
+    item_a = await _new_item(pool, org_a)
+    item_b = await _new_item(pool, org_b)
+    member_a = _member(org_a, str(uuid.uuid4()))
+    base_a = {"organization_id": org_a, "activity": "Waste", "item_id": item_a}
+
+    async with _client(_api_app(pool, user=member_a)) as client:
+        terms = await _semantic_options(client, base_a, limit=2)
+        for term in terms:
+            assert (await client.post(
+                CLARIFY, json={**base_a, "clarification": term})).status_code == 201
+        lineage = (await client.get(EFFECTIVE, params=base_a)).json()[
+            "adjudication"]["adjudication_id"]
+        assert (await client.get(
+            HISTORY, params={**base_a, "adjudication_id": lineage})).status_code == 200
+        # the same member cannot address org A's lineage inside another organisation
+        assert (await client.get(HISTORY, params={
+            **base_a, "adjudication_id": lineage, "organization_id": org_b,
+        })).status_code == 403
+
+    # a legitimate member of org B, with org B's item, cannot read org A's lineage
+    async with _client(_api_app(pool, user=_member(org_b, str(uuid.uuid4())))) as client:
+        cross = await client.get(HISTORY, params={
+            "organization_id": org_b, "activity": "Waste", "item_id": item_b,
+            "adjudication_id": lineage})
+        assert cross.status_code == 404, cross.text
+        assert "versions" not in cross.json()
+
+    # an ACTIVE consultant client reads it; an ended grant does not
+    for status_value, expected in (("active", 200), ("ended", 403)):
+        consultant = await _consultant_identity(pool, org_a, status=status_value)
+        async with _client(_api_app(pool, user=consultant)) as client:
+            response = await client.get(
+                HISTORY, params={**base_a, "adjudication_id": lineage})
+            assert response.status_code == expected, (status_value, response.text)
+            if expected == 200:
+                assert response.json()["adjudication_id"] == lineage
+                assert [v["version"] for v in response.json()["versions"]] == [1, 2]
+
+    # a consultant granted only org B has no access to org A
+    ungranted = await _consultant_identity(pool, org_b)
+    async with _client(_api_app(pool, user=ungranted)) as client:
+        assert (await client.get(
+            HISTORY, params={**base_a, "adjudication_id": lineage})).status_code == 403
+
+    async with _client(_api_app(pool, user=None)) as client:
+        assert (await client.get(
+            HISTORY, params={**base_a, "adjudication_id": lineage})).status_code == 401
 

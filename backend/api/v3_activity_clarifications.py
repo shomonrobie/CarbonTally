@@ -739,12 +739,18 @@ async def get_adjudication_history(
 ) -> AdjudicationHistoryOut:
     """Every immutable version of ONE adjudication, oldest → newest.
 
-    The named adjudication is first resolved **inside the authorised tenant and
-    the asserted bounded context**: an id from another organisation, another
-    context, or one that does not exist at all is refused (404) rather than
-    walked. The versions themselves come from the repository's own history read,
-    which is tenant-scoped and deterministically ordered by version; nothing here
-    can be turned into an organisation-wide or global history search.
+    Identifier contract (F-064-1): ``adjudication_id`` is the **lineage** identity — the
+    value ``/effective`` publishes as ``adjudication.adjudication_id`` and the value this
+    response returns. A caller that addresses the version row it saw
+    (``adjudication.id``) is also accepted and resolved to that row's lineage, so the
+    previously working addressing form keeps working.
+
+    Whichever form is supplied, the identifier is resolved **inside the authorised tenant
+    and the asserted bounded context**: an id from another organisation, another context,
+    or one that does not exist at all is refused (404) rather than walked. The versions
+    themselves come from the repository's own history read, which is tenant-scoped and
+    deterministically ordered by version; nothing here can be turned into an
+    organisation-wide or global history search.
     """
     organization_id = _uuid_query(organization_id, "organization_id")
     item_id = _uuid_query(item_id, "item_id")
@@ -753,14 +759,28 @@ async def get_adjudication_history(
     await _require_item_bound_context(
         repos, organization_id=organization_id, item_id=item_id, activity=activity
     )
-    seed = await repos.clarifications.get(adjudication_id, organization_id=organization_id)
-    if seed is None or not _in_bounded_context(seed, item_id=item_id, activity=activity):
+    # 1. the documented form: address the lineage directly (one tenant-scoped read).
+    lineage_id = adjudication_id
+    rows = await repos.clarifications.history(lineage_id, organization_id=organization_id)
+    if not rows:
+        # 2. compatibility form: address one persisted version row; resolve its lineage.
+        seed = await repos.clarifications.get(adjudication_id, organization_id=organization_id)
+        if seed is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="adjudication not found in this extraction context",
+            )
+        lineage_id = str(seed.get("adjudication_id") or adjudication_id)
+        rows = await repos.clarifications.history(lineage_id, organization_id=organization_id)
+    # The bounded-context guard applies to the lineage that was found, so a well-formed
+    # identifier from another context is refused instead of walked.
+    if not any(
+        _in_bounded_context(row, item_id=item_id, activity=activity) for row in rows
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="adjudication not found in this extraction context",
         )
-    lineage_id = seed.get("adjudication_id") or adjudication_id
-    rows = await repos.clarifications.history(lineage_id, organization_id=organization_id)
     versions = [
         projected
         for projected in (_adjudication_version_out(row) for row in rows)

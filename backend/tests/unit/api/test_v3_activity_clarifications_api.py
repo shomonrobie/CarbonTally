@@ -859,6 +859,11 @@ def test_clarification_is_not_adjudicated_when_the_engine_does_not_ask() -> None
 
 _ITEM = "22222222-2222-4222-8222-222222222222"
 _ADJ = "55555555-5555-4555-8555-555555555555"
+#: Version ROW identities (``AdjudicationVersionOut.id``) — uuid-shaped, because the real
+#: columns are uuid and the read boundary rejects anything else with 422.
+_ROW_V1 = "77777777-7777-4777-8777-777777777777"
+_ROW_V2 = "88888888-8888-4888-8888-888888888888"
+_ROW_OTHER = "99999999-9999-4999-8999-999999999998"
 EFFECTIVE = "/api/v3/activity-clarifications/effective"
 HISTORY = "/api/v3/activity-clarifications/history"
 
@@ -924,6 +929,19 @@ def _params(**over) -> dict:
 def _adjudication_queries(conn) -> list[str]:
     """Every statement that touched the adjudication table (never a global read)."""
     return [q for q in conn.queries if "public.activity_clarifications" in q]
+
+
+def _history_statements(conn) -> list[str]:
+    """The lineage history reads (deterministically ordered, tenant-scoped)."""
+    return [q for q in conn.queries if "ORDER BY version ASC" in q]
+
+
+def _by_row_id_statements(conn) -> list[str]:
+    """The by-ROW-id reads (the compatibility path only, never the documented one)."""
+    return [
+        q for q in conn.queries
+        if "public.activity_clarifications" in q and "AND id = $2" in q
+    ]
 
 
 
@@ -1025,12 +1043,14 @@ def test_effective_read_requires_the_item_bounded_context() -> None:
 # -- Part C: the immutable history read --------------------------------------
 
 
-def _history_params(**over) -> dict:
-    return _params(adjudication_id=_ADJ, **over)
+def _history_params(adjudication_id: str = _ADJ, **over) -> dict:
+    return _params(adjudication_id=adjudication_id, **over)
 
 
 def test_history_read_returns_a_single_version() -> None:
-    client, conn = _client(user=_member(), rows=[_item_row(), _read_row(), [_read_row()]])
+    # F-064-1: the documented address is the LINEAGE id, so the history read is the first
+    # (and only) adjudication statement — no row-id lookup is needed.
+    client, conn = _client(user=_member(), rows=[_item_row(), [_read_row()]])
     response = client.get(HISTORY, params=_history_params())
     assert response.status_code == 200
     body = response.json()
@@ -1040,16 +1060,19 @@ def test_history_read_returns_a_single_version() -> None:
     assert [v["version"] for v in body["versions"]] == [1]
     assert body["versions"][0]["is_current"] is True
     assert "ORDER BY version ASC" in conn.queries[-1]
+    assert len(_history_statements(conn)) == 1        # one lineage read
+    assert _by_row_id_statements(conn) == []          # no row-id lookup needed
 
 
 def test_history_read_returns_every_version_in_deterministic_order() -> None:
     v1 = _read_row(version=1, is_current=False, clarification="Incineration")
     v2 = _read_row(version=2, is_current=True, clarification="Landfill")
-    client, conn = _client(user=_member(), rows=[_item_row(), _read_row(), [v1, v2]])
+    client, conn = _client(user=_member(), rows=[_item_row(), [v1, v2]])
     response = client.get(HISTORY, params=_history_params())
     assert response.status_code == 200
     body = response.json()
     assert body["count"] == 2
+    assert body["adjudication_id"] == _ADJ  # the canonical LINEAGE identity
     assert [v["version"] for v in body["versions"]] == [1, 2]  # oldest → newest
     # v2 is the current one; v1 stays historical
     assert body["current_version"] == 2
@@ -1067,7 +1090,7 @@ def test_history_read_never_mutates_the_stored_versions() -> None:
     v1 = _read_row(version=1, is_current=False, clarification="Incineration")
     v2 = _read_row(version=2, is_current=True, clarification="Landfill")
     snapshot = (dict(v1), dict(v2))
-    client, _conn = _client(user=_member(), rows=[_item_row(), _read_row(), [v1, v2]])
+    client, _conn = _client(user=_member(), rows=[_item_row(), [v1, v2]])
     body = client.get(HISTORY, params=_history_params()).json()
     assert (v1, v2) == snapshot  # the read is a projection, not an edit
     # v1's own fields are echoed exactly as stored
@@ -1086,7 +1109,7 @@ def test_history_read_is_denied_for_another_organization() -> None:
 
 def test_history_read_allows_an_authorized_consultant_client() -> None:
     client, conn = _client(
-        user=_consultant(), rows=[_item_row(), _read_row(), [_read_row()]],
+        user=_consultant(), rows=[_item_row(), [_read_row()]],
         **_consultant_grants(),
     )
     response = client.get(HISTORY, params=_history_params())
@@ -1122,22 +1145,27 @@ def test_history_read_refuses_an_adjudication_outside_the_bounded_context() -> N
     other = _read_row()
     other["activity_key"] = "other-item"
     other["effective_context_key"] = "other-item"
-    client, conn = _client(user=_member(), rows=[_item_row(), other, [_read_row()]])
+    client, conn = _client(user=_member(), rows=[_item_row(), [other]])
     response = client.get(HISTORY, params=_history_params())
     assert response.status_code == 404
     assert "this extraction context" in response.json()["detail"]
-    assert not any("ORDER BY version" in q for q in conn.queries)  # history never read
+    # the lineage was read under the caller's tenant, but its rows are never disclosed
+    assert conn.params[-1] == (ORG_A, _ADJ)
+    assert "versions" not in response.json()
 
 
 def test_history_read_refuses_an_adjudication_for_a_different_activity() -> None:
     other = _read_row(activity="Waste disposal")
-    client, conn = _client(user=_member(), rows=[_item_row(), other, [_read_row()]])
-    assert client.get(HISTORY, params=_history_params()).status_code == 404
-    assert not any("ORDER BY version" in q for q in conn.queries)
+    client, conn = _client(user=_member(), rows=[_item_row(), [other]])
+    response = client.get(HISTORY, params=_history_params())
+    assert response.status_code == 404
+    assert conn.params[-1] == (ORG_A, _ADJ)
+    assert "versions" not in response.json()
 
 
 def test_history_read_reports_an_unknown_adjudication_or_item_as_not_found() -> None:
-    unknown, _conn = _client(user=_member(), rows=[_item_row(), None, [_read_row()]])
+    # the lineage read finds nothing, the compatibility row-id read finds nothing → 404
+    unknown, _conn = _client(user=_member(), rows=[_item_row(), [], None])
     assert unknown.get(HISTORY, params=_history_params()).status_code == 404
     unknown_item, _conn2 = _client(user=_member(), rows=[None])
     response = unknown_item.get(HISTORY, params=_history_params())
@@ -1145,11 +1173,82 @@ def test_history_read_reports_an_unknown_adjudication_or_item_as_not_found() -> 
     assert "item not found" in response.json()["detail"]
 
 
+# -- F-064-1: the /history identifier contract --------------------------------
+# The parameter is named ``adjudication_id`` and documented as the adjudication whose
+# versions are requested; /effective publishes that same lineage identity. Before this
+# correction the seed was resolved only against the row ``id`` column, so the value
+# /effective hands back returned 404 while a version row id worked.
+
+
+def test_history_read_resolves_the_lineage_identity_published_by_effective() -> None:
+    """The value ``/effective`` publishes as ``adjudication_id`` must address /history."""
+    effective, effective_conn = _client(user=_member(), rows=[_item_row(), _read_row()])
+    published = effective.get(
+        EFFECTIVE, params=_params()
+    ).json()["adjudication"]["adjudication_id"]
+    assert published == _ADJ
+
+    history, history_conn = _client(user=_member(), rows=[_item_row(), [_read_row()]])
+    response = history.get(HISTORY, params=_history_params(adjudication_id=published))
+    assert response.status_code == 200, response.text
+    assert response.json()["adjudication_id"] == published
+    assert [v["version"] for v in response.json()["versions"]] == [1]
+    # resolved in ONE tenant-scoped lineage read — no row-id lookup is needed
+    assert len(_history_statements(history_conn)) == 1
+    assert _by_row_id_statements(history_conn) == []
+    assert history_conn.params[-1] == (ORG_A, published)
+    # and the addressing is identical to the effective read's own row identity
+    assert effective_conn.params[-1] == (ORG_A, _ITEM, _ITEM, "Waste")
+
+
+def test_history_read_still_accepts_a_version_row_id() -> None:
+    """Compatibility: a caller addressing the version row it saw still gets the lineage."""
+    v1 = _read_row(version=1, is_current=False, clarification="Incineration")
+    v2 = _read_row(version=2, is_current=True, clarification="Landfill")
+    v2["id"] = _ROW_V2
+    client, conn = _client(user=_member(), rows=[_item_row(), [], v2, [v1, v2]])
+    response = client.get(HISTORY, params=_history_params(adjudication_id=_ROW_V2))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # the response always reports the canonical LINEAGE identity, never the row id
+    assert body["adjudication_id"] == _ADJ
+    assert [v["version"] for v in body["versions"]] == [1, 2]
+    assert body["current_version"] == 2
+    # the lineage attempt, then the row-id resolution, then the lineage read again
+    assert len(_history_statements(conn)) == 2
+    assert len(_by_row_id_statements(conn)) == 1
+    by_id_at = conn.queries.index(_by_row_id_statements(conn)[0])
+    assert conn.params[by_id_at] == (ORG_A, _ROW_V2)
+
+
+def test_history_read_refuses_a_row_id_from_another_context() -> None:
+    """The compatibility path is bounded exactly like the documented one."""
+    other = _read_row()
+    other["id"] = _ROW_OTHER
+    other["adjudication_id"] = "99999999-9999-4999-8999-999999999999"
+    other["activity_key"] = "other-item"
+    other["effective_context_key"] = "other-item"
+    client, _conn = _client(user=_member(), rows=[_item_row(), [], other, [other]])
+    response = client.get(HISTORY, params=_history_params(adjudication_id=_ROW_OTHER))
+    assert response.status_code == 404
+    assert "this extraction context" in response.json()["detail"]
+
+
+def test_history_read_never_returns_another_tenant_through_either_form() -> None:
+    """Both addressing forms are tenant-scoped: nothing is readable across organisations."""
+    for identifier in (_ADJ, _ROW_V1):
+        client, conn = _client(user=_member(), rows=[_item_row(), [], None])
+        response = client.get(HISTORY, params=_history_params(adjudication_id=identifier))
+        assert response.status_code == 404, identifier
+        assert all(params[0] == ORG_A for params in conn.params[-2:])
+        assert "versions" not in response.json()
+
+
 def test_both_reads_are_tenant_scoped_without_a_global_lookup() -> None:
     effective, effective_conn = _client(user=_member(), rows=[_item_row(), _read_row()])
     assert effective.get(EFFECTIVE, params=_params()).status_code == 200
     history, history_conn = _client(
-        user=_member(), rows=[_item_row(), _read_row(), [_read_row()]]
+        user=_member(), rows=[_item_row(), [_read_row()]]
     )
     assert history.get(HISTORY, params=_history_params()).status_code == 200
     for conn in (effective_conn, history_conn):
