@@ -43,6 +43,7 @@ from api.dependencies import (
 )
 from auth import AuthUser, get_current_user
 from domain.matching import MatchRequest
+from data.activity_clarifications import AdjudicationConcurrencyConflict
 from engines.activity_clarification import (
     assess_family_conflict,
     decline_clarification as decline_clarification_record,
@@ -54,6 +55,26 @@ router = APIRouter(
     prefix="/api/v3/activity-clarifications",
     tags=["V3 — Activity Clarification"],
 )
+
+
+async def _store_adjudication(repos: RepositoryBundle, record, /, **kwargs) -> dict:
+    """Persist the adjudication transition, converging on ONE lineage (D-F039-1-J).
+
+    The repository already serialises writers of a bounded context and retries a lost race.
+    If even the bounded retries are lost — only possible when a writer outside the
+    application keeps committing the same context — the conflict is reported as an explicit
+    409 the user can retry, never as a raw database error and never as a forked lineage.
+    """
+    try:
+        return await repos.clarifications.apply_versioned(record, **kwargs)
+    except AdjudicationConcurrencyConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "another clarification for this activity was committed concurrently; "
+                "reload the effective adjudication and retry"
+            ),
+        ) from exc
 
 
 def _validate_identifier(value: Optional[str]) -> Optional[str]:
@@ -451,7 +472,8 @@ async def submit_clarification(
         actor_id=current_user.user_id,
         actor_scope=_actor_scope(current_user),
     )
-    stored = await repos.clarifications.apply_versioned(
+    stored = await _store_adjudication(
+        repos,
         record,
         organization_id=payload.organization_id,
         actor_id=current_user.user_id,
@@ -522,7 +544,8 @@ async def decline_clarification(
         actor_id=current_user.user_id,
         actor_scope=_actor_scope(current_user),
     )
-    stored = await repos.clarifications.apply_versioned(
+    stored = await _store_adjudication(
+        repos,
         record,
         organization_id=payload.organization_id,
         actor_id=current_user.user_id,

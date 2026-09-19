@@ -278,12 +278,17 @@ async def test_modification_creates_a_new_version_and_retires_the_previous() -> 
     )
     assert stored["version"] == 2
 
-    # 1. the current version is resolved WITH the row lock (serialises concurrent writers)
-    assert conn.queries[0].startswith("SELECT")
-    assert "FOR UPDATE" in conn.queries[0]
-    assert conn.params[0] == (ORG, "k1", "k1", "Waste")
+    # 1. the bounded context is locked FIRST (D-F039-1-J), inside the transaction, with a
+    #    key derived from exactly the four context columns
+    assert conn.queries[0] == "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
+    lock_key = conn.params[0][0]
+    assert ORG in lock_key and "k1" in lock_key and "Waste" in lock_key
+    # 2. then the current version is resolved WITH the row lock
+    assert conn.queries[1].startswith("SELECT")
+    assert "FOR UPDATE" in conn.queries[1]
+    assert conn.params[1] == (ORG, "k1", "k1", "Waste")
 
-    # 2. the retire happens BEFORE the insert (the constraint cannot be deferred)
+    # 3. the retire happens BEFORE the insert (the partial indexes cannot be deferred)
     retire_at = conn.statement_index("UPDATE public.activity_clarifications")
     insert_at = conn.statement_index("INSERT INTO public.activity_clarifications")
     assert retire_at < insert_at
@@ -294,13 +299,13 @@ async def test_modification_creates_a_new_version_and_retires_the_previous() -> 
     assert "selected_factor" not in assignments
     assert "outcome_status" not in assignments
 
-    # 3. version 2 insert carries lineage identity, version and supersedes linkage
+    # 4. version 2 insert carries lineage identity, version and supersedes linkage
     insert = conn.params[insert_at]
     assert "adj-1" in insert  # same adjudication_id as version 1
     assert 2 in insert  # version
     assert "row-v1" in insert  # supersedes_id
 
-    # 4. the whole transition is ONE transaction on ONE acquired connection: the
+    # 5. the whole transition is ONE transaction on ONE acquired connection: the
     #    lineage can never be observed with zero current versions, and a failed insert
     #    rolls the retire back instead of stranding the lineage.
     assert conn.acquires == 1
@@ -319,8 +324,10 @@ async def test_identical_clarification_is_a_replay_not_a_new_version() -> None:
         actor_id=ACTOR,
     )
     assert stored == CURRENT_V1
-    assert len(conn.queries) == 1  # no insert, no supersede
-    assert "FOR UPDATE" in conn.queries[0]  # resolved under the same lock
+    # the context lock, then the locking current-version read — no insert, no supersede
+    assert len(conn.queries) == 2
+    assert conn.queries[0] == "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
+    assert "FOR UPDATE" in conn.queries[1]
     assert conn.transactions == 1
 
 

@@ -525,10 +525,12 @@ def test_identical_successful_clarification_retried_returns_the_stored_row() -> 
     )
     assert response.status_code == 201
     assert response.json()["selected_factor_id"] == "lf"
-    # the effective lookup runs first; the replay-guarded INSERT is the second statement
+    # statement 0 is the bounded-context lock (D-F039-1-J); the replay-guarded INSERT is
+    # statement 2 (after the locking current-version read)
+    assert conn.queries[0] == "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
     assert (
         "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
-        in conn.queries[1]
+        in conn.queries[2]
     )
 
 
@@ -592,6 +594,31 @@ def test_forged_unit_or_scope_in_the_body_is_rejected() -> None:
         }
         assert client.post(CLARIFY, json=body).status_code == 422
     assert conn.params == []
+
+
+def test_convergence_conflict_is_reported_as_409_not_500(monkeypatch) -> None:
+    """D-F039-1-J: an unconverged context is an explicit retryable conflict, never a 500.
+
+    The repository already serialises writers and retries a lost race; this pins the
+    remaining error surface — if even the bounded retries lose, the caller must receive a
+    409 (retry) and never a raw database error or a forked lineage.
+    """
+    from data.activity_clarifications import AdjudicationConcurrencyConflict
+
+    payload = {"organization_id": ORG_A, "activity": "Waste"}
+    client, _conn = _client(user=_member())
+    bundle = client.app.dependency_overrides[get_repositories]()
+
+    async def _loses_the_context_race(*_args, **_kwargs):
+        raise AdjudicationConcurrencyConflict("bounded context not converged")
+
+    monkeypatch.setattr(bundle.clarifications, "apply_versioned", _loses_the_context_race)
+
+    clarify = client.post(CLARIFY, json={**payload, "clarification": "Landfill"})
+    decline = client.post(DECLINE, json=payload)
+    for response in (clarify, decline):
+        assert response.status_code == 409, response.text
+        assert "concurrently" in response.json()["detail"]
 
 
 def test_authoritative_evidence_is_derived_from_the_persisted_item() -> None:
@@ -771,14 +798,15 @@ def test_decline_retry_returns_the_stored_adjudication() -> None:
     )
     assert response.status_code == 201
     assert response.json()["outcome_status"] == "unresolved_declined"
-    # the replay guard is now the context-bounded effective lookup, then the
+    # the context lock (D-F039-1-J), then the context-bounded locking lookup, then the
     # replay-protected INSERT
-    assert "AND is_current" in conn.queries[0]
+    assert conn.queries[0] == "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
+    assert "AND is_current" in conn.queries[1]
     assert (
         "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
-        in conn.queries[1]
+        in conn.queries[2]
     )
-    assert "INSERT INTO public.activity_clarifications" in conn.queries[1]
+    assert "INSERT INTO public.activity_clarifications" in conn.queries[2]
 
 
 def test_decline_repeated_returns_the_same_state() -> None:

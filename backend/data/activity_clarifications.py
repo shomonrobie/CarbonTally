@@ -168,6 +168,62 @@ def _as_uuid(value: Optional[str]) -> Optional[str]:
     return str(value)
 
 
+#: Serialise every writer of ONE bounded context for the rest of its transaction
+#: (D-F039-1-J). ``activity_clarifications_context_unique`` is the *guarantee* that
+#: two current rows for one bounded context can never be committed; this lock is the
+#: *convergence* mechanism: writers queue per context, so each one's read observes the
+#: previous writer's committed state and joins that writer's lineage instead of
+#: discovering "no current row" (which a READ COMMITTED snapshot can still report after
+#: a peer committed, because the peer's newly inserted current row is not visible to a
+#: statement that started earlier).
+#:
+#: The key is the bounded context itself, hashed by the SERVER (so client/server can
+#: never disagree). ``pg_advisory_xact_lock`` is released automatically at commit or
+#: rollback, so a failed transition can never leak the lock. A hash collision would
+#: only over-serialise two unrelated contexts — it can never admit a second lineage,
+#: because the unique index above is authoritative.
+_CONTEXT_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
+
+#: Bounded convergence attempts. The advisory lock makes one attempt sufficient for
+#: every writer that goes through this repository; the retries exist only for a writer
+#: that bypassed the lock (an ops script or future code path) and lost the race to the
+#: unique index — the retry then joins the lineage that writer committed.
+_MAX_CONVERGENCE_ATTEMPTS = 3
+
+#: The bounded-context unique index this repository must converge on (D-F039-1-J).
+_CONTEXT_UNIQUE_INDEX = "activity_clarifications_context_unique"
+
+
+def _context_lock_key(
+    organization_id: str,
+    context_key: str,
+    activity_key: str,
+    original_activity: str,
+) -> str:
+    """The bounded-context identity used for both the lock and the unique index.
+
+    Exactly the four columns the effective read has always been bounded by — no new
+    notion of "context" is introduced.
+    """
+    return "f0391|{}|{}|{}|{}".format(
+        organization_id, context_key, activity_key, original_activity
+    )
+
+
+class AdjudicationConcurrencyConflict(Exception):
+    """The bounded context could not be converged onto one lineage.
+
+    Raised only when repeated attempts each lost the race to
+    ``activity_clarifications_context_unique`` — i.e. another writer is committing to
+    the same context continuously. No duplicate lineage is ever created instead: the
+    caller is asked to retry rather than being handed a silently forked adjudication.
+    """
+
+
+class _ContextConvergenceRetry(Exception):
+    """Internal signal: the context index rejected this attempt; retry with fresh state."""
+
+
 class _VersionReplayConflict(Exception):
     """Raised inside the version transaction when ``ON CONFLICT DO NOTHING`` fires.
 
@@ -641,39 +697,78 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
     ) -> dict:
         """Persist an adjudication as version 1, as a replay, or as a NEW version.
 
-        * no effective adjudication → version 1 (its own identity);
+        * no effective adjudication → version 1, INSIDE the single lineage of this
+          bounded context (D-F039-1-J);
         * the same clarification already effective → returned unchanged (replay);
         * a different clarification → version + 1 with ``supersedes_id`` pointing at the
           previous row, which is retired via ``is_current = false`` only. The previous
           version keeps its clarification, outcome and factor metadata forever
           (D-039-1-D/-H).
 
-        The whole transition runs in ONE transaction on ONE connection:
+        One-lineage invariant (D-F039-1-J): every writer of this bounded context is
+        serialised by a transaction-scoped advisory lock keyed on the context, and
+        ``activity_clarifications_context_unique`` makes a second current row for the
+        context impossible, so concurrent writers converge into ONE lineage — whether
+        they race for the first version or for a later one. An attempt that still loses
+        to a writer which bypassed the lock is retried with fresh state (bounded); it
+        never forks and never returns a duplicate lineage.
 
-        1. the current version of the bounded context is resolved **under a row lock**
-           (``SELECT … FOR UPDATE``), so a concurrent modifier of the same lineage waits
-           and then versions the row its peer committed instead of racing the same
-           version number;
-        2. the previous version is retired (``is_current = false``) — this must happen
-           BEFORE the new row is written, because
-           ``activity_clarifications_current_unique`` is a PARTIAL UNIQUE INDEX on
-           ``(adjudication_id) WHERE is_current`` and cannot be deferred;
-        3. the new version is inserted as current.
-
-        Because 2 and 3 share one transaction, the lineage is never observable with zero
-        current versions, and if the insert fails for any reason the retire is rolled
-        back and the previous version stays current (all-or-nothing).
-
-        ``organization_id``/``actor_id`` come from trusted server context; factor
-        metadata is copied from ``record`` alone.
+        The transition runs in ONE transaction on ONE connection: lock the context →
+        resolve the current version under a row lock → retire it → insert the new
+        current version. Because the retire and the insert share the transaction the
+        lineage is never observable with zero current versions, and a failed insert
+        rolls the retire back.
         """
         if not organization_id:
             raise ValueError("organization_id is required (resolve it server-side)")
         key = context_key or record.activity_key
+        for _attempt in range(_MAX_CONVERGENCE_ATTEMPTS):
+            try:
+                return await self._apply_versioned_once(
+                    record,
+                    organization_id=organization_id,
+                    actor_id=actor_id,
+                    item_id=item_id,
+                    batch_key=batch_key,
+                    source_evidence_ref=source_evidence_ref,
+                    key=key,
+                    evidence_signature=evidence_signature,
+                    evidence_context=evidence_context,
+                )
+            except _ContextConvergenceRetry:
+                # Lost the context race to a writer that did not take the lock; the
+                # winner is committed by now, so a fresh attempt joins its lineage.
+                continue
+        raise AdjudicationConcurrencyConflict(
+            "the bounded context could not be converged onto a single adjudication "
+            f"lineage after {_MAX_CONVERGENCE_ATTEMPTS} attempts"
+        )
+
+    async def _apply_versioned_once(
+        self,
+        record: ClarificationRecord,
+        *,
+        organization_id: str,
+        actor_id: str,
+        item_id: Optional[str],
+        batch_key: Optional[str],
+        source_evidence_ref: Optional[str],
+        key: str,
+        evidence_signature: Optional[str],
+        evidence_context: Optional[dict],
+    ) -> dict:
+        """One attempt at the versioned transition (see :meth:`apply_versioned`)."""
         attempted_version: Optional[int] = None
         try:
             async with self._pool.acquire() as conn:
                 async with conn.transaction():
+                    # D-F039-1-J — serialise this bounded context. The lock is released
+                    # with the transaction, including on rollback.
+                    await conn.execute(
+                        _CONTEXT_LOCK_SQL,
+                        _context_lock_key(organization_id, key, record.activity_key,
+                                          record.original_activity),
+                    )
                     current = await conn.fetchrow(
                         _CURRENT_FOR_UPDATE_SQL,
                         _as_uuid(organization_id),
@@ -725,6 +820,12 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
                         # is actually effective.
                         raise _VersionReplayConflict()
                     return dict(inserted)
+        except asyncpg.UniqueViolationError as exc:
+            if getattr(exc, "constraint_name", None) == _CONTEXT_UNIQUE_INDEX:
+                # A writer that bypassed the context lock committed to the same bounded
+                # context. Converge (retry with fresh state) — never fork.
+                raise _ContextConvergenceRetry() from exc
+            raise
         except _VersionReplayConflict:
             # Same semantics as ``record()``: the exact version already exists, so answer
             # with the row stored for that key (tenant-scoped) rather than inventing one.
