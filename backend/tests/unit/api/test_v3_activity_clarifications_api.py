@@ -493,7 +493,7 @@ def test_identical_successful_clarification_retried_returns_the_stored_row() -> 
     assert response.status_code == 201
     assert response.json()["selected_factor_id"] == "lf"
     assert (
-        "ON CONFLICT ON CONSTRAINT activity_clarifications_unique DO NOTHING"
+        "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
         in conn.queries[0]
     )
 
@@ -653,7 +653,7 @@ def test_decline_retry_returns_the_stored_adjudication() -> None:
     assert response.status_code == 201
     assert response.json()["outcome_status"] == "unresolved_declined"
     assert (
-        "ON CONFLICT ON CONSTRAINT activity_clarifications_unique DO NOTHING"
+        "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
         in conn.queries[0]
     )
     assert "activity_key = $2" in conn.queries[1]  # re-read of the stored row

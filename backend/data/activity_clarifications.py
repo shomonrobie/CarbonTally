@@ -31,6 +31,7 @@ is additionally constrained by an explicit ``organization_id`` predicate.
 """
 from __future__ import annotations
 
+import uuid
 from typing import Any, Optional, Sequence
 
 import asyncpg
@@ -47,7 +48,9 @@ _COLUMNS = (
     "source_evidence_ref, clarification, clarification_type, policy_input, "
     "outcome_status, selected_factor_id, selected_factor_name, factor_set, "
     "factor_source, reporting_year, unit, scope, eligible_group_count, "
-    "eligible_groups, actor_id, actor_scope, created_at, updated_at"
+    "eligible_groups, actor_id, actor_scope, created_at, updated_at, "
+    "adjudication_id, version, supersedes_id, is_current, effective_context_key, "
+    "evidence_signature, evidence_context, re_evaluation_required"
 )
 
 #: Server-side tenant resolution: the item carries no organization_id, so the
@@ -67,13 +70,41 @@ _INSERT_SQL = f"""
         source_evidence_ref, clarification, clarification_type, policy_input,
         outcome_status, selected_factor_id, selected_factor_name, factor_set,
         factor_source, reporting_year, unit, scope, eligible_group_count,
-        eligible_groups, actor_id, actor_scope
+        eligible_groups, actor_id, actor_scope, adjudication_id, version,
+        supersedes_id, is_current, effective_context_key, evidence_signature,
+        evidence_context
     ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        $16, $17, $18, $19::jsonb, $20, $21
+        $16, $17, $18, $19::jsonb, $20, $21, $22, $23, $24, $25, $26, $27,
+        $28::jsonb
     )
-    ON CONFLICT ON CONSTRAINT activity_clarifications_unique DO NOTHING
+    ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING
     RETURNING {_COLUMNS}
+"""
+
+#: The effective (current) adjudication for one bounded context (Finding 1).
+_EFFECTIVE_SQL = f"""
+    SELECT {_COLUMNS} FROM public.activity_clarifications
+     WHERE organization_id = $1
+       AND effective_context_key = $2
+       AND activity_key = $3
+       AND original_activity = $4
+       AND is_current
+"""
+
+#: Full immutable version history, deterministic (oldest → newest).
+_HISTORY_SQL = f"""
+    SELECT {_COLUMNS} FROM public.activity_clarifications
+     WHERE organization_id = $1 AND adjudication_id = $2
+     ORDER BY version ASC
+"""
+
+#: Retire a superseded version. Only ``is_current`` changes; every other column —
+#: including factor metadata — is left exactly as it was (D-039-1-D/-H).
+_SUPERSEDE_SQL = """
+    UPDATE public.activity_clarifications
+       SET is_current = false, updated_at = now()
+     WHERE organization_id = $1 AND id = $2
 """
 
 _SELECT_BY_KEY_SQL = f"""
@@ -82,6 +113,7 @@ _SELECT_BY_KEY_SQL = f"""
        AND activity_key = $2
        AND original_activity = $3
        AND clarification = $4
+       AND version = $5
 """
 
 _SELECT_BY_ID_SQL = f"""
@@ -145,6 +177,13 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
         batch_key: Optional[str] = None,
         source_evidence_ref: Optional[str] = None,
         eligible_groups: Sequence[Any] = (),
+        adjudication_id: Optional[str] = None,
+        version: int = 1,
+        supersedes_id: Optional[str] = None,
+        is_current: bool = True,
+        effective_context_key: Optional[str] = None,
+        evidence_signature: Optional[str] = None,
+        evidence_context: Optional[dict] = None,
     ) -> Optional[dict]:
         """Persist one engine-produced adjudication. Idempotent by construction.
 
@@ -181,6 +220,13 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
             dumps_jsonb(list(eligible_groups)),
             _as_uuid(record.actor_id),
             record.actor_scope,
+            _as_uuid(adjudication_id) or str(uuid.uuid4()),
+            int(version),
+            _as_uuid(supersedes_id),
+            bool(is_current),
+            effective_context_key or record.activity_key,
+            evidence_signature,
+            dumps_jsonb(evidence_context or {}),
         )
         if row is not None:
             return dict(row)
@@ -190,6 +236,7 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
             record.activity_key,
             record.original_activity,
             record.clarification,
+            int(version),
         )
         logger.info(
             "activity clarification already adjudicated (idempotent replay): %s/%s",
@@ -292,14 +339,16 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
         clarification: str,
         *,
         organization_id: str,
+        version: int = 1,
     ) -> Optional[dict]:
-        """Retrieve the persisted adjudication (provenance read) for one key."""
+        """Retrieve one persisted version (provenance read) for an exact key."""
         row = await self._fetch_one(
             _SELECT_BY_KEY_SQL,
             _as_uuid(organization_id),
             activity_key,
             original_activity,
             clarification,
+            int(version),
         )
         return dict(row) if row is not None else None
 
@@ -333,3 +382,94 @@ class ActivityClarificationsRepository(AbstractRepository[dict]):
     def decode_eligible_groups(row: dict) -> list:
         """Decode the persisted ``eligible_groups`` JSONB for callers/tests."""
         return list(loads_jsonb(row.get("eligible_groups")) or [])
+
+    # -- adjudication lifecycle (F-039-1 A/B/C/D) ---------------------------
+    async def effective(
+        self,
+        *,
+        organization_id: str,
+        activity_key: str,
+        original_activity: str,
+        context_key: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The current/effective adjudication for ONE bounded context.
+
+        Deliberately requires the full context boundary (organisation +
+        ``effective_context_key`` + activity key + the original extracted activity):
+        looking up by activity text alone would leak one context's adjudication into
+        another, which D-039-1-C forbids.
+        """
+        row = await self._fetch_one(
+            _EFFECTIVE_SQL,
+            _as_uuid(organization_id),
+            context_key or activity_key,
+            activity_key,
+            original_activity,
+        )
+        return dict(row) if row is not None else None
+
+    async def history(
+        self, adjudication_id: str, *, organization_id: str
+    ) -> list[dict]:
+        """Every version of one adjudication, oldest → newest (immutable history)."""
+        rows = await self._fetch_all(
+            _HISTORY_SQL, _as_uuid(organization_id), _as_uuid(adjudication_id)
+        )
+        return [dict(row) for row in rows]
+
+    async def supersede(self, row: dict, *, organization_id: str) -> None:
+        """Retire the previous version (``is_current`` only — nothing else changes)."""
+        await self._execute(
+            _SUPERSEDE_SQL, _as_uuid(organization_id), _as_uuid(row.get("id"))
+        )
+
+    async def apply_versioned(
+        self,
+        record: ClarificationRecord,
+        *,
+        organization_id: str,
+        actor_id: str,
+        item_id: Optional[str] = None,
+        batch_key: Optional[str] = None,
+        source_evidence_ref: Optional[str] = None,
+        context_key: Optional[str] = None,
+        evidence_signature: Optional[str] = None,
+        evidence_context: Optional[dict] = None,
+    ) -> dict:
+        """Persist an adjudication as version 1, as a replay, or as a NEW version.
+
+        * no effective adjudication → version 1 (its own identity);
+        * the same clarification already effective → returned unchanged (replay);
+        * a different clarification → version + 1 with ``supersedes_id`` pointing at the
+          previous row, which is retired via ``is_current = false`` only. The previous
+          version keeps its clarification, outcome and factor metadata forever
+          (D-039-1-D/-H).
+        """
+        key = context_key or record.activity_key
+        current = await self.effective(
+            organization_id=organization_id,
+            activity_key=record.activity_key,
+            original_activity=record.original_activity,
+            context_key=key,
+        )
+        if current is not None and (current.get("clarification") or "") == record.clarification:
+            return current  # idempotent replay — nothing new, nothing overwritten
+        version = 1 if current is None else int(current.get("version") or 1) + 1
+        stored = await self.record(
+            record,
+            organization_id=organization_id,
+            item_id=item_id,
+            batch_key=batch_key,
+            source_evidence_ref=source_evidence_ref,
+            eligible_groups=record.notes,
+            adjudication_id=(current or {}).get("adjudication_id"),
+            version=version,
+            supersedes_id=(current or {}).get("id"),
+            is_current=True,
+            effective_context_key=key,
+            evidence_signature=evidence_signature,
+            evidence_context=evidence_context,
+        )
+        if current is not None and stored is not None:
+            await self.supersede(current, organization_id=organization_id)
+        return stored or {}

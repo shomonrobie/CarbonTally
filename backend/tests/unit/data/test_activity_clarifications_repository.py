@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from data.activity_clarifications import ActivityClarificationsRepository
+from engines.activity_clarification import ClarificationRecord
 
 ORG = "11111111-1111-4111-8111-111111111111"
 ITEM = "22222222-2222-4222-8222-222222222222"
@@ -98,8 +99,12 @@ async def test_insert_is_idempotent_and_returns_the_stored_row() -> None:
     conn, repo = _repo(rows=[None, existing])  # insert conflicts → re-read the stored row
     out = await repo.apply_decline("Waste", organization_id=ORG, actor_id=ACTOR, activity_key="k1")
     assert out["record"] == existing
-    assert "ON CONFLICT ON CONSTRAINT activity_clarifications_unique DO NOTHING" in conn.queries[0]
+    assert (
+        "ON CONFLICT ON CONSTRAINT activity_clarifications_replay_unique DO NOTHING"
+        in conn.queries[0]
+    )
     assert "activity_key = $2" in conn.queries[1]
+    assert "AND version = $5" in conn.queries[1]
 
 
 @pytest.mark.asyncio
@@ -160,3 +165,99 @@ def test_no_authoring_method_accepts_factor_metadata() -> None:
     for name in ("record", "apply_clarification", "apply_decline"):
         params = set(inspect.signature(getattr(ActivityClarificationsRepository, name)).parameters)
         assert not (params & forbidden), f"{name} exposes {params & forbidden}"
+
+
+# ---------------------------------------------------------------------------
+# Adjudication lifecycle (F-039-1 A/B/C/D) — versioned, context-bounded
+# ---------------------------------------------------------------------------
+
+CURRENT_V1 = {
+    "id": "row-v1",
+    "adjudication_id": "adj-1",
+    "version": 1,
+    "clarification": "Landfill",
+    "is_current": True,
+    "factor_set": "DEFRA-2025",
+}
+
+
+def _landfill_record(*, clarification: str = "Landfill") -> ClarificationRecord:
+    """An engine-shaped adjudication record (the repository persists these only)."""
+    return ClarificationRecord(
+        clarification_id="c1",
+        activity_key="k1",
+        original_activity="Waste",
+        clarification=clarification,
+        clarification_type="semantic_activity",
+        status="clarification_supplied",
+        outcome_status="selected",
+        policy_input=f"Waste {clarification}",
+        actor_id=ACTOR,
+        actor_scope="organization_member",
+        created_at="2026-09-18T00:00:00+00:00",
+    )
+
+
+@pytest.mark.asyncio
+async def test_effective_lookup_requires_the_full_context_boundary() -> None:
+    conn, repo = _repo(rows=[CURRENT_V1])
+    row = await repo.effective(
+        organization_id=ORG, activity_key="k1", original_activity="Waste"
+    )
+    assert row == CURRENT_V1
+    query = conn.queries[0]
+    assert "is_current" in query
+    assert "effective_context_key = $2" in query
+    assert "original_activity = $4" in query  # never activity text alone
+
+
+@pytest.mark.asyncio
+async def test_modification_creates_a_new_version_and_retires_the_previous() -> None:
+    conn, repo = _repo(
+        rows=[
+            CURRENT_V1,  # effective lookup → existing version 1
+            {"id": "row-v2", "version": 2, "supersedes_id": "row-v1"},  # inserted v2
+            "UPDATE 1",  # supersede
+        ]
+    )
+    stored = await repo.apply_versioned(
+        _landfill_record(clarification="Incineration"),
+        organization_id=ORG,
+        actor_id=ACTOR,
+    )
+    assert stored["version"] == 2
+    # version 2 insert carries adjudication identity, version and supersedes linkage
+    insert = conn.params[1]
+    assert "adj-1" in insert  # same adjudication_id as version 1
+    assert 2 in insert  # version
+    assert "row-v1" in insert  # supersedes_id
+    # the ONLY statement touching the old version is the is_current flip
+    update_sql = conn.queries[2]
+    assert update_sql.startswith("UPDATE public.activity_clarifications")
+    # only the currency flag changes — no clarification/outcome/factor column is touched
+    assignments = update_sql.split("SET", 1)[1].split("WHERE")[0]
+    assert assignments.strip().startswith("is_current = false")
+    assert "selected_factor" not in assignments
+    assert "outcome_status" not in assignments
+
+
+@pytest.mark.asyncio
+async def test_identical_clarification_is_a_replay_not_a_new_version() -> None:
+    conn, repo = _repo(rows=[CURRENT_V1])
+    stored = await repo.apply_versioned(
+        _landfill_record(clarification="Landfill"),
+        organization_id=ORG,
+        actor_id=ACTOR,
+    )
+    assert stored == CURRENT_V1
+    assert len(conn.queries) == 1  # no insert, no supersede
+
+
+@pytest.mark.asyncio
+async def test_history_is_deterministic_oldest_first_and_tenant_scoped() -> None:
+    conn, repo = _repo(rows=[[{"version": 1}, {"version": 2}]])
+    rows = await repo.history("adj-1", organization_id=ORG)
+    assert [r["version"] for r in rows] == [1, 2]
+    query = conn.queries[0]
+    assert "ORDER BY version ASC" in query
+    assert "organization_id = $1" in query
