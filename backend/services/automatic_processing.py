@@ -36,7 +36,7 @@ import os
 import uuid
 from datetime import date as _Date, datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from core.logging import get_logger
 from domain.automatic_processing import (
@@ -179,6 +179,30 @@ def _unresolved_mapping_entry(
     if unit:
         entry["unit"] = unit
     return entry
+
+
+class _AdjudicationConsumption(NamedTuple):
+    """The outcome of ONE adjudication-consumption attempt (F-064-2).
+
+    Three distinct situations used to collapse into a bare ``None``, which made
+    "no adjudication applies" indistinguishable from "the consumption path is broken":
+
+    * ``result`` set                     — a compatible adjudication was consumed;
+    * ``result is None``, ``failed`` off — legitimate no-result (no persisted item, no
+      current row, incompatible evidence, flagged for re-evaluation, or the policy is
+      still unresolved): the caller keeps the EXISTING clarification-required behaviour;
+    * ``result is None``, ``failed`` on  — the lookup/consumption itself raised: the
+      caller still diverts (processing is never broken by consumption, and no factor is
+      ever invented) but persists a distinct reason, so a broken path stays observable
+      instead of masquerading as "no adjudication exists".
+
+    ``reason`` is a stable, non-technical sentence for the job's persisted state; the
+    exception and its traceback stay in the log and are never exposed to the caller.
+    """
+
+    result: Optional[Any] = None
+    failed: bool = False
+    reason: str = ""
 
 
 def _clarification_entry(
@@ -1213,12 +1237,13 @@ class AutomaticProcessingService:
         unit: Optional[str],
         candidates,
         request: MatchRequest,
-    ):
+    ) -> _AdjudicationConsumption:
         """F-039-1 (F1) — consume a COMPATIBLE persisted adjudication for this item.
 
-        Returns a mapping result produced by the EXISTING matching/policy path when a
-        compatible adjudication applies to the bounded context (``job.source_item_id``),
-        or ``None`` to preserve the current clarification-required behaviour.
+        Returns an :class:`_AdjudicationConsumption` produced by the EXISTING
+        matching/policy path when a compatible adjudication applies to the bounded context
+        (``job.source_item_id``); otherwise a no-result outcome that preserves the current
+        clarification-required behaviour.
 
         The stored ``selected_factor_id`` is NEVER read: only the stored semantic
         clarification is re-entered into the policy (``resolve_clarification`` →
@@ -1226,15 +1251,18 @@ class AutomaticProcessingService:
         existing confidence check applies. Incompatible evidence (D-F039-1-I), a row with
         no signature, and a row already flagged for re-evaluation all fall back to the
         existing unresolved behaviour. Consumption can never break processing.
+
+        F-064-2: a lookup/consumption FAILURE is reported as ``failed=True`` rather than as
+        an ordinary no-result, so a broken path cannot masquerade as "no adjudication".
         """
         clarifications = getattr(self._repos, "clarifications", None)
         context_key = getattr(job, "source_item_id", None)
         if clarifications is None or not context_key:
-            return None
+            return _AdjudicationConsumption()
         try:
             evidence = await clarifications.resolve_evidence(context_key, activity)
             if evidence is None:
-                return None
+                return _AdjudicationConsumption()
             row, compatible = await clarifications.effective_compatible(
                 organization_id=evidence.get("organization_id") or job.organization_id,
                 activity_key=context_key,
@@ -1244,7 +1272,7 @@ class AutomaticProcessingService:
                 context_key=context_key,
             )
             if row is None or not compatible or row.get("re_evaluation_required"):
-                return None
+                return _AdjudicationConsumption()
             from engines.activity_clarification import resolve_clarification
 
             record, policy_factor = resolve_clarification(
@@ -1256,7 +1284,8 @@ class AutomaticProcessingService:
                 activity_key=context_key,
             )
             if policy_factor is None:
-                return None  # the policy is still unresolved — never guess
+                # the policy is still unresolved — never guess
+                return _AdjudicationConsumption()
             # Local import, matching the module's existing convention for this
             # symbol: nothing is consumed until the policy has re-selected.
             from domain.matching import MatchRequest
@@ -1272,12 +1301,18 @@ class AutomaticProcessingService:
                 max_stages=getattr(request, "max_stages", 6),
             )
             mapped = await self._matching_engine.match(clarified_request)
-            return await self._prefer_aggregate_factor(activity, unit, mapped)
+            return _AdjudicationConsumption(
+                result=await self._prefer_aggregate_factor(activity, unit, mapped)
+            )
         except Exception:  # noqa: BLE001 — consumption must never break processing
             logger.exception(
                 "F-039-1: adjudication consumption failed for job %s", getattr(job, "id", "?")
             )
-            return None
+            # F-064-2: the durable job reason distinguishes this from "no adjudication".
+            # No exception detail travels with it — the traceback stays in the log.
+            return _AdjudicationConsumption(
+                failed=True, reason="adjudication consumption failed"
+            )
 
     async def _map(self, job: AutomaticProcessingJob, lock_token: str) -> str:
         """Auto-map activity/unit to an emission factor (D-cf-5 precedence)."""
@@ -1384,16 +1419,26 @@ class AutomaticProcessingService:
                     candidates=gate_candidates,
                     request=request,
                 )
-                if consumed is None:
+                if consumed.result is None:
+                    # F-064-2: a consumption FAILURE keeps the same safe diversion (no
+                    # factor is ever invented and processing continues) but is recorded as
+                    # the failure it is — never as "no adjudication exists".
+                    failure = (
+                        f"{consumed.reason} for {activity!r}; falling back to clarification"
+                        if consumed.failed
+                        else None
+                    )
                     reasons.append(
-                        f"line {idx + 1}: clarification required for {activity!r} "
-                        f"({assessment.reason})"
+                        f"line {idx + 1}: " + (failure or (
+                            f"clarification required for {activity!r} "
+                            f"({assessment.reason})"
+                        ))
                     )
                     mapped_lines.append(
                         _clarification_entry(line, idx, assessment, activity=activity, unit=unit)
                     )
                     continue
-                result = consumed
+                result = consumed.result
             if result.status != "matched" or result.confidence < AUTO_MAPPING_CONFIDENCE_MIN:
                 reasons.append(
                     f"line {idx + 1}: no confident factor for "

@@ -1656,3 +1656,91 @@ class TestAdjudicationLifecycleConsumption:
         assert "clarification required for 'Waste'" in repos.processing.marked_blocked[-1]
         assert _matched_activities(service) == ["Waste"]
 
+
+
+# ---------------------------------------------------------------------------
+# F-064-2 — a consumption FAILURE is not "no adjudication"
+# ---------------------------------------------------------------------------
+# The helper used to catch every exception, log it and return None, so a broken
+# consumption path degraded silently into the ordinary clarification diversion: the two
+# situations were indistinguishable in the job's own persisted state. The outcome is now
+# explicit (result / no-result / failed) while the processing behaviour is unchanged: the
+# diversion still happens, nothing is consumed, and no factor is ever fabricated.
+
+
+class TestConsumptionFailureIsObservable:
+    """F-064-2 — failures are durable and honest; no internals escape."""
+
+    async def test_failure_is_reported_as_a_consumption_failure_not_as_no_adjudication(
+        self,
+    ) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job, adjudications=[_adjudication_row(evidence_signature=_signature())]
+        )
+
+        async def _boom(*_args, **_kwargs):
+            raise RuntimeError("qa-injected repository outage")
+
+        repos.clarifications.effective_compatible = _boom  # the real repo, forced to fail
+
+        final = await service.process_job(job, "token-f064")
+
+        # processing still completes the same way: blocked, nothing mapped, no guess
+        assert final.stage == "blocked"
+        assert final.mapped_data is None
+        reason = repos.processing.marked_blocked[-1]
+        assert "adjudication consumption failed for 'Waste'" in reason
+        assert "clarification required for 'Waste'" not in reason
+        # no internals leak: the exception type/message never reaches the job state
+        assert "qa-injected" not in reason and "RuntimeError" not in reason
+        # nothing was mapped, and the store was never written a fabricated mapping
+        assert final.mapped_data is None
+        assert repos.clarification_conn.writes == []
+
+    async def test_a_legitimate_no_result_is_still_the_plain_diversion(self) -> None:
+        """The pre-existing no-adjudication behaviour is unchanged (A1 by construction)."""
+        job = _waste_job()
+        service, repos = _waste_service(job)          # no adjudication exists
+
+        final = await service.process_job(job, "token-f064b")
+
+        assert final.stage == "blocked"
+        reason = repos.processing.marked_blocked[-1]
+        assert "clarification required for 'Waste'" in reason
+        assert "adjudication consumption failed" not in reason
+
+    async def test_a_failure_never_produces_a_mapping_entry_or_a_factor(self) -> None:
+        job = _waste_job()
+        service, repos = _waste_service(
+            job, adjudications=[_adjudication_row(evidence_signature=_signature())]
+        )
+
+        async def _boom(*_args, **_kwargs):
+            raise ValueError("qa-injected shape error")
+
+        repos.clarifications.resolve_evidence = _boom
+
+        final = await service.process_job(job, "token-f064c")
+
+        assert final.stage == "blocked"
+        assert final.mapped_data is None                       # nothing was mapped
+        assert "adjudication consumption failed" in repos.processing.marked_blocked[-1]
+        assert _matched_activities(service) == ["Waste"]        # no clarified re-match ran
+        assert repos.clarification_conn.writes == []
+
+    async def test_a_successful_consumption_is_unaffected(self) -> None:
+        """The success path is untouched: consumed, mapped, processing proceeds."""
+        job = _waste_job()
+        service, repos = _waste_service(
+            job, adjudications=[_adjudication_row(evidence_signature=_signature())]
+        )
+
+        final = await service.process_job(job, "token-f064d")
+
+        assert final.stage == "review"
+        assert repos.processing.marked_blocked == []
+        mapped = final.mapped_data["line_items"][0]
+        assert mapped["status"] == "mapped"
+        assert "consumption_failed" not in mapped
+
