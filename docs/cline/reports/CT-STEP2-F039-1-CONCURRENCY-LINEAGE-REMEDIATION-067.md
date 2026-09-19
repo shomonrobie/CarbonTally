@@ -458,6 +458,21 @@ unrelated scope expansion required?          NO
 production modification required?            NO
 ```
 
+## DATABASE STATE AT HAND-OFF (verified read-only after the final run)
+
+```text
+ct_f0391_065   (remediation clone, DISPOSABLE) : D-F039-1-J index present; 41 rows, all from
+                                                integration-test fixtures; no QA-probe orgs
+                                                remain (the probes proved RESTORED=True)
+ct_f0391_067_pre (pre-fix clone, DISPOSABLE)   : index ABSENT (the pre-fix state used to show
+                                                the 6/9 test failures); no QA-probe orgs remain
+carbontally_test (template)                    : index ABSENT · 0 rows — UNTOUCHED
+production                                     : not contacted, not modified, nothing deployed
+```
+
+The pre-flight refusal probe cleaned up every row it created (verified: remaining=0), and no
+row belonging to any other party was deleted, merged or rewritten anywhere.
+
 ## VERDICT
 
 ```text
