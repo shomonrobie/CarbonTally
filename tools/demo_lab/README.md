@@ -38,12 +38,17 @@ Ports: gateway `54430` (localhost only), lab backend `8070` (with `--backend`).
 ```bash
 ./tools/demo_lab/run_demo_lab.sh              # stack + provision + verify
 ./tools/demo_lab/run_demo_lab.sh --backend    # ... and start the release backend
+./tools/demo_lab/run_demo_lab.sh --factors    # ... and load the DEMO-T2-C factor datasets
 python3 tools/demo_lab/verify.py              # re-verify (server-side)
+python3 tools/demo_lab/seed_factors.py --dry-run   # factor plan + checksums (no DB access)
+python3 tools/demo_lab/seed_factors.py             # load DEFRA 2025 + SEAI 2025 (serial)
+python3 tools/demo_lab/seed_factors.py --reset      # remove ONLY the T2-C factors + batches
 ./tools/demo_lab/reset_demo_lab.sh            # remove lab DB + containers (+ lab auth users)
 ./tools/demo_lab/reset_demo_lab.sh --purge-state   # also delete local credentials/evidence
 ```
 
 Every step is idempotent: re-running creates nothing twice and destroys no lab data.
+Factor loading is **off by default** and happens only when `--factors` is passed.
 
 ## 3. Actors (authoritative list: `manifest.json`)
 
@@ -81,7 +86,57 @@ E-mail domain: `@demo-lab.carbontally.local` (distinct from the investor demo da
 
 Evidence JSON is written to `<state dir>/evidence/` (no tokens or passwords stored).
 
-## 6. Known limitations (recorded honestly)
+## 6. Factor datasets (DEMO-T2-C)
+
+The lab can be loaded with the **verified** DEFRA and SEAI factor datasets so real factor
+matching/selection can be exercised (server-side; `emission_factors` stays client-inaccessible).
+
+| dataset | workbook (in the release) | factor_set / country | rows |
+|---|---|---|---|
+| DEFRA 2025 (DESNZ) | `tools/carbon_data_factory/factors/ghg-conversion-factors-2025-flat-format.xlsx` | `DEFRA-2025` / `GB` | **7,029** (1,711 skipped, 0 duplicates) |
+| SEAI 2025 (V1.7) | `tools/carbon_data_factory/factors/SEAI-conversion-and-emission-factors.xlsx` | `SEAI-2025` / `IE` | **20** (8 skipped) |
+| | | total | **7,049** `emission_factors`, 2 active `import_batches` |
+
+Mechanism: `tools/demo_lab/seed_factors.py` orchestrates the **existing verified importers**
+(`python -m src.commands.import_defra`, then `... import_seai`) in `sync` mode. No parsing,
+mapping, checksum or provenance logic is duplicated, no raw SQL factor rows are written and
+nothing is copied from the reference database — the importer computes each batch's
+`source_checksum` from the workbook bytes.
+
+**Target guard.** The seeder refuses to write unless the database name is exactly
+`carbontally_demo_local` (exit 3, before any write). `postgres` (the investor/reference dataset),
+`carbontally_test`, `carbontally_qa_phase8`, `ct_*` clones and a DSN with no database name are all
+refused; a local hostname is never treated as evidence of safety.
+
+```bash
+python3 tools/demo_lab/seed_factors.py --dry-run    # plan, workbooks, SHA-256s — no DB access
+python3 tools/demo_lab/seed_factors.py              # DEFRA sync, then SEAI sync (serial)
+python3 tools/demo_lab/seed_factors.py --reset      # remove ONLY the T2-C factors + batches
+python3 tools/demo_lab/seed_factors.py --db-url postgresql://…/carbontally_demo_local
+```
+
+* **Idempotent.** A repeat run re-points the same factor rows to a new provenance batch
+  (0 inserted / 7,029 updated for DEFRA; 0 / 20 for SEAI), deactivates the previous batch and
+  keeps **exactly one active batch** per provider/year. Factor counts stay 7,029 / 20 / 7,049.
+* **O-2 caveat.** `import_batches.rows_imported` is the **insert** count, so a repeat `sync`
+  shows `rows_imported = 0` while every factor is linked to the new batch. Read linked-factor
+  counts from `emission_factors`, never from `rows_imported`.
+* **Reset scope.** `--reset` deletes only `factor_set IN ('DEFRA-2025','SEAI-2025')` and their
+  `import_batches` rows. Organisations, memberships, users, audit rows, customer factors,
+  other providers' rows and all lab infrastructure are untouched (asserted by the run).
+* **Serialised imports (required).** OHD finding **O-1** is unresolved: concurrent imports can
+  leave more than one active batch for a provider/year. The seeder runs DEFRA then SEAI strictly
+  one after the other — never start a second provider import concurrently.
+* **Prerequisites.** The backend venv (`backend/.venv/bin/python`) with `psycopg2`/`openpyxl`
+  installed (override with `DEMO_LAB_PYTHON`), Docker access to the local Supabase cluster, and
+  the two workbooks present at the paths above. The seeder verifies each workbook's SHA-256
+  against the reference value before/after loading.
+* **Evidence.** Written outside the repository:
+  `<state dir>/evidence/t2c_{dryrun,seed,reset}_*.json` (plus `t2c_seed_latest.json`).
+* **Not included:** customer factors, documents, scenarios, calculations, snapshots and reports
+  (later workstreams).
+
+## 7. Known limitations (recorded honestly)
 
 1. **Authentication is delegated to the local stack GoTrue.** The lab does not run its own:
    the supabase GoTrue image migrates an existing `auth` schema but cannot bootstrap one, and
@@ -100,5 +155,7 @@ Evidence JSON is written to `<state dir>/evidence/` (no tokens or passwords stor
    `GET /api/v3/reporting/audit-activity` returns **HTTP 500** for a correctly-authorized
    organisation owner (`asyncpg: operator does not exist: uuid = text`). T1 does not fix it;
    it is reported for a separate bounded task.
-5. No factors, documents, calculations, reports, MPG grants, clarification cases or
-   reconciliation data are created — those belong to later demo workstreams.
+5. Identities and infrastructure only **by default**: no documents, calculations, reports, MPG
+   grants, clarification cases or reconciliation data are created — those belong to later demo
+   workstreams. Factor datasets are loaded **only** when explicitly requested
+   (`run_demo_lab.sh --factors` or `seed_factors.py`); customer factors remain out of scope.
