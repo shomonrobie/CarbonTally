@@ -157,8 +157,11 @@ def select_candidate(scenario: dict, source) -> dict:
     ``expect_unparseable`` scenarios (the deliberate missing-evidence case) select
     the first candidate whose extraction is genuinely incomplete, so the demo
     reproduces an honest unresolved state instead of fabricating one.
+    ``skip_index`` selects the Nth parseable candidate (used by the deliberate
+    ambiguity scenario so it cannot reuse another scenario's document).
     """
     want_unparseable = bool(scenario.get("expect_unparseable"))
+    skip_index = int(scenario.get("skip_index") or 0)
     candidates = sorted(source.glob(scenario["corpus"]["glob"]))
     examined, passes = 0, []
     for start in range(0, min(len(candidates), PROBE_CAP), PROBE_CHUNK):
@@ -170,11 +173,12 @@ def select_candidate(scenario: dict, source) -> dict:
             verdict["accept"] = keep
             if keep:
                 passes.append(verdict)
-        if passes:
+        if len(passes) > skip_index:
             break
     return {"candidates_total": len(candidates), "examined": examined,
             "passes": passes, "want_unparseable": want_unparseable,
-            "selected": passes[0] if passes else None}
+            "skip_index": skip_index,
+            "selected": passes[skip_index] if len(passes) > skip_index else None}
 
 
 def sync_corpus(source: pathlib.Path, dry_run: bool = False) -> dict:
@@ -200,6 +204,14 @@ def sync_corpus(source: pathlib.Path, dry_run: bool = False) -> dict:
                "documents": [], "dry_run": dry_run}
     selections, failures = [], []
     for scenario in spec["scenarios"]:
+        if scenario.get("select") is False:
+            summary["documents"].append({
+                "scenario": scenario["id"],
+                "status": "UNSUPPORTED — not selected",
+                "reason": scenario.get("unsupported_reason",
+                                       "excluded by the scenario contract"),
+            })
+            continue
         selection = select_candidate(scenario, source)
         entry = {"scenario": scenario["id"],
                  "candidates_total": selection["candidates_total"],

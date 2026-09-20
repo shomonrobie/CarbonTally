@@ -49,7 +49,53 @@ evidence; no direct database insertion to bypass the workflow.
 Continuation commit recorded in the final status block below; branch `p8-release-reconciled`, pushed to
 `github`; `c2ff4e6…` not rewritten; working tree clean.
 
-### 4. Final implementation status
+### 5. REM-001-CONT round 2 — PO decisions R-1/R-2 and empirical B-3 (§9–§16)
+
+**R-1 — `uk-spend` (VERIFIED decision implemented).** Per the PO decision, no spend-extraction
+functionality was created. The release documents spend handling only for **supported tabular inputs**
+(CSV/XLSX: "currency amounts without a unit column become spend-based lines",
+`backend/services/automatic_extraction.py`), and no PDF spend path exists. `uk-spend` is therefore
+recorded in `t3_manifest.json` as `supported: false`, `select: false`, with an explicit
+`unsupported_reason` and `expected.outcome = "UNSUPPORTED (no PDF spend path)"` — an explicit recorded
+limitation, not a hidden failure.
+
+**R-2 — `uk-ambiguity` (VERIFIED decision implemented).** No `scottish_power` candidate parsed within
+the deterministic bound, so the scenario was re-pointed at an **already-supported electricity pool**
+(`samples/**/*shell_energy*.pdf`) with `skip_index = 1` (so it cannot reuse another scenario's document).
+The ambiguity itself continues to come from the existing matcher; no threshold was weakened and no
+factor was forced.
+
+**B-3 — empirical factor revalidation (VERIFIED, executed).** Command: `POST /api/v2/factor-match`
+on the running Demo Lab with an org-member token (`backend/.venv/bin/python /tmp/cont_b3.py`,
+HTTP 200 for every probe).
+
+| Family | Matching input | Observed status | Factor ID | Matched factor |
+|---|---|---|---|---|
+| electricity | `Electricity ` / `kWh` / GB / 2025 | **ambiguous** (confidence 0.0) | — | — |
+| natural gas | `Natural gas` / `kWh` / GB / 2025 | **matched** (confidence 1.0) | `b9d1ed06-7e4a-4c26-a91a-46f3fb45bda5` | `Fuels > Gaseous fuels > Natural gas (kg CO2e) [kWh (Net CV)]` |
+| diesel | `Diesel` / `litres` / GB / 2025 | **ambiguous** (confidence 0.0) | — | — |
+| waste (disposal) | `Waste disposal` / `tonnes` / GB / 2025 | **ambiguous** (confidence 0.0) | — | — |
+| waste (collection) | `Waste collection - General` / `tonnes` | **no_match** | — | — |
+| water | `Water supply` / `cubic metres` / GB / 2025 | **matched** (confidence 1.0) | `fb9d28bf-f615-4110-b0e7-0fd13453b666` | `Water supply > Water supply > Water supply (kg CO2e) [cubic metres]` |
+
+This **independently confirms OHD-079's B-3 findings** against the real engine: only natural gas
+(preserving the existing Net-CV behaviour) and water resolve deterministically today; electricity,
+diesel and waste-disposal are genuinely ambiguous; the `Waste collection - General` wording is
+`no_match` — so a generic `Waste + tonnes` line can reach the wrong (`Waste oils`) family, exactly as
+OHD reported. **No factor-engine, alias, threshold or extraction change was made**; these outcomes are
+the product's actual behaviour and are now recorded as the T3 contract.
+
+**R-3 — `expect_unparseable` missing-evidence path:** implemented (selection mode); its end-to-end
+exercise is outstanding (below).
+
+### 6. Round-2 remaining (not executed in this continuation)
+
+The corrected corpus sweep was relaunched after the R-1/R-2 changes (detached, `real-extractor` probe,
+sorted pool, chunk 30, cap 240) and had not finished at hand-off; consequently the §8 validation table,
+the §19 seeding/§20–§21 calculation-reachability, the §23–§24 reset/reseed proof, §25–§26 authenticated
+JWT and isolation re-assertion, §29 idempotency and the §30 matrix remain **NOT EXECUTED**. `uk-spend`
+is **UNSUPPORTED** by the existing product for PDF documents (PO-recorded).
+
 
 **DEMO-T3-REM-001 IMPLEMENTATION BLOCKED — PO REVIEW REQUIRED**
 

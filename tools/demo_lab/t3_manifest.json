@@ -180,20 +180,12 @@
         "factor_family": "existing currency/spend mapping path (no new engine)",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map (spend suggestion) -> validate -> calculate"
+        "workflow": "extract -> map (spend suggestion) -> validate -> calculate",
+        "outcome": "UNSUPPORTED (no PDF spend path)"
       },
-      "accept": {
-        "activity_keywords": [
-          "spend",
-          "invoice",
-          "charge",
-          "cost",
-          "travel",
-          "freight",
-          "fee"
-        ],
-        "units": []
-      }
+      "select": false,
+      "supported": false,
+      "unsupported_reason": "UNSUPPORTED for PDF documents (PO decision R-1): the release documents spend handling only for supported tabular inputs (CSV/XLSX: currency amounts with no unit column become spend-based lines). No PDF spend-extraction capability exists and none may be added. Recorded as an explicit limitation, not hidden."
     },
     {
       "id": "uk-ambiguity",
@@ -202,7 +194,7 @@
       "organization": "Demo Lab Organisation A",
       "data_type": "utility",
       "corpus": {
-        "glob": "samples/**/*scottish_power*.pdf",
+        "glob": "samples/**/*shell_energy*.pdf",
         "candidates": 3
       },
       "intentional_ambiguity": true,
@@ -221,7 +213,9 @@
         "units": [
           "kwh"
         ]
-      }
+      },
+      "skip_index": 1,
+      "representation_note": "R-2: substituted an already-supported electricity representation (shell_energy pool) because no scottish_power candidate parsed within the bound; skip_index=1 guarantees a different document from the other electricity scenarios. The ambiguity itself comes from the existing matcher (multiple eligible families), not from a weakened threshold."
     },
     {
       "id": "uk-missing-evidence",
@@ -335,5 +329,9 @@
     "method": "real-extractor-activity-quantity-unit-v2",
     "selection_seed": 42,
     "note": "accept rules are validated against the RELEASE extractor at sync time; candidates are probed in sorted order (chunk 30, cap 240) and the first candidate that really parses is selected."
+  },
+  "_r_decisions": {
+    "R-1": "uk-spend recorded UNSUPPORTED for PDF (PO decision); select=false",
+    "R-2": "uk-ambiguity re-pointed at an already-supported electricity pool with skip_index=1"
   }
 }
