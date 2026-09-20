@@ -75,11 +75,25 @@ def _service(matcher):
 
 # -- the context helper ------------------------------------------------------
 def test_default_factor_set_is_defra_uk() -> None:
-    assert ap.factor_set_context(None) == ("GB", "DEFRA-DESNZ")
-    assert ap.factor_set_context({}) == ("GB", "DEFRA-DESNZ")
+    assert ap.factor_set_context(None) == ("GB", "defra")
+    assert ap.factor_set_context({}) == ("GB", "defra")
     assert ap.factor_set_context({"factor_country": "  ", "factor_provider": ""}) == (
-        "GB", "DEFRA-DESNZ",
+        "GB", "defra",
     )
+
+
+def test_default_provider_uses_the_index_provider_key_vocabulary() -> None:
+    """G-1 regression — the default provider must speak the factor index's vocabulary.
+
+    ``EmissionFactor.provider_key`` is sourced from ``import_batches.provider_key`` (``defra`` /
+    ``seai``), whereas ``factor_source`` is the presentation label (``DEFRA-DESNZ``).
+    ``FactorSearchIndex.keyword_search`` filters candidates by STRICT equality on
+    ``provider_key``, so a default written in the label vocabulary silently drops every candidate
+    and the real pipeline reports ``no_match`` for exactly the requests the direct
+    ``POST /api/v2/factor-match`` probe matches.
+    """
+    assert ap.DEFAULT_FACTOR_PROVIDER == "defra"
+    assert ap.DEFAULT_FACTOR_PROVIDER != "DEFRA-DESNZ"  # the factor_source label, never the filter
 
 
 def test_document_level_override_selects_another_factor_set() -> None:
@@ -88,11 +102,11 @@ def test_document_level_override_selects_another_factor_set() -> None:
         "IE", "SEAI",
     )
     assert ap.factor_set_context({"factor_provider": "SEAI"}) == ("GB", "SEAI")
-    assert ap.factor_set_context({"factor_country": "IE"}) == ("IE", "DEFRA-DESNZ")
+    assert ap.factor_set_context({"factor_country": "IE"}) == ("IE", "defra")
 
 
 def test_non_mapping_metadata_is_tolerated() -> None:
-    assert ap.factor_set_context("not-a-dict") == ("GB", "DEFRA-DESNZ")
+    assert ap.factor_set_context("not-a-dict") == ("GB", "defra")
 
 
 # -- the matching pipeline receives the effective context --------------------
@@ -103,7 +117,7 @@ async def test_mapping_request_carries_the_effective_factor_set() -> None:
     assert len(matcher.requests) == 1
     request = matcher.requests[0]
     assert request.country == "GB"
-    assert request.preferred_provider == "DEFRA-DESNZ"
+    assert request.preferred_provider == "defra"
 
 
 async def test_mapping_request_honours_a_document_override() -> None:
@@ -120,5 +134,63 @@ async def test_mapping_request_honours_a_document_override() -> None:
 def test_no_jurisdiction_is_derived_from_activity_text() -> None:
     # The context is explicit selection only: metadata keys, never activity keywords.
     assert ap.factor_set_context({"activity": "Irish diesel", "supplier": "SEAI Fuels"}) == (
-        "GB", "DEFRA-DESNZ",
+        "GB", "defra",
     )
+
+
+# -- the default provider must be usable by the REAL matcher (G-1) -----------
+def _gas_factors(activity: str = "Fuels > Gas fuels > Natural gas (kg CO2e)") -> list:
+    """The two DEFRA gas kWh bases, carrying the index's real ``provider_key`` vocabulary."""
+    from domain.factor import EmissionFactor
+
+    return [
+        EmissionFactor(
+            id=factor_id,
+            reporting_year=2025,
+            activity_type=f"{activity} [{unit}]",
+            co2e_multiplier=Decimal(multiplier),
+            unit=unit,
+            scope="Scope 1",
+            factor_source="DEFRA-DESNZ",
+            factor_set="DEFRA-2025",
+            country="GB",
+            provider_key="defra",
+            natural_key=("2025", f"{activity} [{unit}]", "GB", unit, "Scope 1"),
+        )
+        for factor_id, unit, multiplier in (
+            ("f-gross", "kWh (Gross CV)", "0.18494"),
+            ("f-net", "kWh (Net CV)", "0.20489"),
+        )
+    ]
+
+
+async def test_pipeline_default_provider_reaches_the_real_matcher() -> None:
+    """G-1 regression: a gas ``kWh`` request built with the pipeline default still matches.
+
+    Runs the REAL engine over the REAL index with factors carrying ``provider_key='defra'`` — the
+    same strict provider filter that emptied the candidate set in the live pipeline — and pins the
+    historical label as the *defect* case (labels are not provider keys).
+    """
+    from domain.matching import MatchRequest, MatchingPipelineConfig
+    from engines.factor_matching import FactorMatchingEngine, build_matching_pipeline
+    from infra.search_index import FactorSearchIndex
+
+    index = FactorSearchIndex()
+    index.load(_gas_factors())
+    config = MatchingPipelineConfig()
+    engine = FactorMatchingEngine(index, build_matching_pipeline(config), config=config)
+
+    def _request(provider):
+        return MatchRequest(
+            id=str(uuid.uuid4()), activity="Natural gas", country="GB", reporting_year=2025,
+            unit="kWh", organization_id=ORG, preferred_provider=provider, max_stages=6,
+        )
+
+    matched = await engine.match(_request(ap.DEFAULT_FACTOR_PROVIDER))
+    assert matched.status == "matched", matched.stages_executed
+    assert matched.factor is not None and matched.factor.id == "f-net"
+    assert matched.confidence == 1.0
+    assert matched.methodology == "calorific_basis"
+
+    # the historical label is not a provider key → every candidate is filtered out (the defect)
+    assert (await engine.match(_request("DEFRA-DESNZ"))).status == "no_match"

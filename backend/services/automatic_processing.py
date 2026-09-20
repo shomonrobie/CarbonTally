@@ -115,14 +115,20 @@ def _parse_date(value: Any) -> Optional[_Date]:
 #: ``MatchRequest.preferred_provider``, so the effective set is *selected context* rather than a
 #: literal in the mapping code. A future factor set is added as data, not code.
 DEFAULT_FACTOR_COUNTRY = "GB"
-DEFAULT_FACTOR_PROVIDER = "DEFRA-DESNZ"
+#: Provider identity **as carried by the factor index**. ``EmissionFactor.provider_key`` is sourced
+#: from ``import_batches.provider_key`` (``data/emission_factors.py``), whose vocabulary is the
+#: lower-case provider plugin key (``defra`` / ``seai``) — **not** the ``factor_source``
+#: presentation label (``DEFRA-DESNZ``). ``FactorSearchIndex.keyword_search`` filters candidates by
+#: strict equality on ``provider_key``, so this value must use the index vocabulary or every
+#: candidate is discarded before scoring (G-1: pipeline ``no_match`` where the direct probe matched).
+DEFAULT_FACTOR_PROVIDER = "defra"
 
 
 def factor_set_context(metadata: Optional[dict[str, Any]] = None) -> tuple[str, Optional[str]]:
     """Resolve the effective ``(country, provider)`` for one document.
 
     Precedence: explicit document-level override (``factor_country`` / ``factor_provider`` in the job
-    metadata) → the PO-declared default (GB / DEFRA-DESNZ). No jurisdiction is guessed from the
+    metadata) → the PO-declared default (GB / defra). No jurisdiction is guessed from the
     activity text, and nothing is hard-coded to a single factor set: a different set is selected by
     supplying its country/provider, which the matching pipeline already filters on.
     """
