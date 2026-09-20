@@ -49,6 +49,10 @@ TARGET_DB = "carbontally_demo_local"
 GENERATOR_REPO = "https://github.com/shomonrobie/carbon_tally_synthetic_documents_generator"
 GENERATOR_COMMIT = "8ade2bf778d518d59924905849ab114ab2d0820a"
 GENERATOR_SEED = 42
+#: Seeds ONLY the deterministic demo-side corpus *selection* (B-1 remediation).
+#: It is deliberately named separately from the generator's own base seed and from
+#: each document's `generation_seed`, which is recorded per document.
+SELECTION_SEED = 42
 
 #: Curated corpus identifier (bump when the selection changes).
 CORPUS_ID = "t3-uk-curated-v1"
@@ -76,88 +80,177 @@ def assert_lab_database() -> str:
 
 
 # ---------------------------------------------------------------------------
-# corpus curation
+# corpus curation — PROOF OF PARSEABILITY (DEMO-T3-REM-001 / B-1)
 # ---------------------------------------------------------------------------
-_UNIT_TOKENS = ("kwh", "kilowatt", "litre", "liter", "m3", "cubic", "tonne",
-                "kg", "units")
+#: Points at the release's own extractor. The corpus selector must never rely on
+#: superficial heuristics again: the B-1 defect was that an interleaved
+#: "...52097k)Wh" string contains a unit token and never matches a glued-unit
+#: regex, so documents the extractor cannot read scored full marks.
+PROBE_MODULE = pathlib.Path(__file__).resolve().parent / "t3_extract_probe.py"
+#: Deterministic probe batching: sorted order, fixed chunk, fixed cap.
+PROBE_CHUNK = 30
+PROBE_CAP = 240
+#: Recorded in the corpus provenance artefact.
+SELECTION_METHOD = "real-extractor-activity-quantity-unit-v2"
 
 
-def _text_quality(pdf: pathlib.Path) -> dict:
-    """Score a generated PDF's text layer for deterministic parsing.
+def _backend_python() -> str:
+    candidate = lab.REPO_ROOT / "backend" / ".venv" / "bin" / "python"
+    if not candidate.exists():
+        raise SystemExit(
+            "FAIL: the release extractor requires the backend interpreter at "
+            f"{candidate}.\nRun the corpus command inside the backend environment, "
+            "e.g. `backend/.venv/bin/python tools/demo_lab/t3_scenarios.py "
+            "sync-corpus --source /tmp/extgen`. No corpus was written.")
+    return str(candidate)
 
-    Some generator layouts interleave or glue the quantity/unit columns (8A audit).
-    Clean documents are required for the initial T3 corpus, so candidates are
-    scored on: extractable text, a separable quantity+unit pair, and no glued
-    unit tokens (e.g. ``10549.7000kilowatt``).
+
+def probe_candidates(pdfs: list) -> list:
+    """Run CarbonTally's deterministic extractor over candidates (fail loudly)."""
+    if not pdfs:
+        return []
+    result = lab.run([_backend_python(), str(PROBE_MODULE), *[str(p) for p in pdfs]],
+                     timeout=900)
+    if result.returncode != 0:
+        raise SystemExit(
+            "FAIL: candidate parseability probe could not run "
+            f"(exit {result.returncode}).\n{(result.stderr or '').strip()[:600]}\n"
+            "The corpus was NOT modified.")
+    verdicts = []
+    for line in (result.stdout or "").splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                verdicts.append(json.loads(line))
+            except Exception:  # noqa: BLE001
+                continue
+    if len(verdicts) != len(pdfs):
+        raise SystemExit(
+            f"FAIL: probe returned {len(verdicts)} verdicts for {len(pdfs)} candidates; "
+            "refusing to select on incomplete evidence. The corpus was NOT modified.")
+    return verdicts
+
+
+def _accepts(scenario: dict, verdict: dict) -> tuple:
+    """Scenario acceptance rules applied to a REAL extraction verdict."""
+    if not verdict.get("ok"):
+        return False, f"not parseable (status={verdict.get('status')}, " \
+                      f"resolved={verdict.get('resolved')})"
+    accept = scenario.get("accept") or {}
+    unit = str(verdict.get("extracted_unit") or "").lower()
+    activity = str(verdict.get("extracted_activity") or "").lower()
+    quantity = verdict.get("extracted_quantity")
+    if quantity is None or quantity <= 0:
+        return False, "no positive quantity"
+    units = [u.lower() for u in accept.get("units", [])]
+    if units and not any(u in unit or unit in u for u in units):
+        return False, f"unit {unit!r} not in {units}"
+    keywords = [k.lower() for k in accept.get("activity_keywords", [])]
+    if keywords and not any(k in activity for k in keywords):
+        return False, f"activity {activity!r} lacks {keywords}"
+    return True, "parseable with expected semantics"
+
+
+def select_candidate(scenario: dict, source) -> dict:
+    """Deterministically find the FIRST candidate that really parses.
+
+    ``expect_unparseable`` scenarios (the deliberate missing-evidence case) select
+    the first candidate whose extraction is genuinely incomplete, so the demo
+    reproduces an honest unresolved state instead of fabricating one.
     """
-    score = {"text_chars": 0, "unit_found": False, "glued": False, "score": 0}
-    try:
-        import pdfplumber  # local, already a release dependency
-    except Exception as exc:  # pragma: no cover
-        score["error"] = f"pdfplumber unavailable: {exc}"
-        return score
-    try:
-        with pdfplumber.open(str(pdf)) as doc:
-            text = "\n".join((page.extract_text() or "") for page in doc.pages)
-    except Exception as exc:  # noqa: BLE001
-        score["error"] = str(exc)[:120]
-        return score
-    lowered = text.lower()
-    score["text_chars"] = len(text)
-    score["unit_found"] = any(tok in lowered for tok in _UNIT_TOKENS)
-    score["glued"] = bool(re.search(r"\d(?:kwh|kilowatt|litre|tonne|cubic|kg)\b", lowered))
-    score["score"] = (0 if score["glued"] else 1) + (1 if score["unit_found"] else 0) \
-        + (1 if score["text_chars"] > 200 else 0)
-    score["sample"] = text[:200].replace("\n", " | ")
-    return score
+    want_unparseable = bool(scenario.get("expect_unparseable"))
+    candidates = sorted(source.glob(scenario["corpus"]["glob"]))
+    examined, passes = 0, []
+    for start in range(0, min(len(candidates), PROBE_CAP), PROBE_CHUNK):
+        for verdict in probe_candidates(candidates[start:start + PROBE_CHUNK]):
+            examined += 1
+            ok, reason = _accepts(scenario, verdict)
+            verdict["parseable"], verdict["accept_reason"] = ok, reason
+            keep = (not ok) if want_unparseable else ok
+            verdict["accept"] = keep
+            if keep:
+                passes.append(verdict)
+        if passes:
+            break
+    return {"candidates_total": len(candidates), "examined": examined,
+            "passes": passes, "want_unparseable": want_unparseable,
+            "selected": passes[0] if passes else None}
 
 
 def sync_corpus(source: pathlib.Path, dry_run: bool = False) -> dict:
-    """Select + copy the curated corpus from the pinned external checkout."""
+    """Select + copy the curated corpus, proving parseability per document."""
     assert_lab_database()
     spec = manifest()
     if not (source / "generator").is_dir():
         raise SystemExit(f"external generator checkout not found at {source} "
                          f"(expected a clone of {GENERATOR_REPO} at {GENERATOR_COMMIT})")
     summary = {"corpus_id": CORPUS_ID, "source": str(source),
+               "selection": {"method": SELECTION_METHOD,
+                             "probe": "release extractor "
+                                      "(backend/services/automatic_extraction.py)",
+                             "chunk": PROBE_CHUNK, "cap": PROBE_CAP,
+                             "order": "sorted path; first candidate that really parses"},
                "generator": {"repo": GENERATOR_REPO, "commit": GENERATOR_COMMIT,
-                             "seed": GENERATOR_SEED},
+                             "selection_seed": SELECTION_SEED,
+                             "note": "offline corpus producer; never imported or executed "
+                                     "by CarbonTally runtime. `selection_seed` seeds only "
+                                     "the demo corpus selection; each document's own "
+                                     "generation seed is recorded per document as "
+                                     "`document_generation_seed`."},
                "documents": [], "dry_run": dry_run}
-    if not dry_run:
-        CORPUS_DIR.mkdir(parents=True, exist_ok=True)
+    selections, failures = [], []
     for scenario in spec["scenarios"]:
-        selection = scenario["corpus"]
-        candidates = sorted(source.glob(selection["glob"]))
-        if not candidates:
-            summary["documents"].append({"scenario": scenario["id"],
-                                         "error": "no candidate matched the glob"})
+        selection = select_candidate(scenario, source)
+        entry = {"scenario": scenario["id"],
+                 "candidates_total": selection["candidates_total"],
+                 "candidates_examined": selection["examined"],
+                 "passes_found": len(selection["passes"])}
+        chosen = selection["selected"]
+        if not chosen:
+            entry["error"] = ("no candidate passed the real extractor within the "
+                              "deterministic bound")
+            failures.append(scenario["id"])
+            summary["documents"].append(entry)
             continue
-        scored = [(_text_quality(pdf), pdf)
-                  for pdf in candidates[: selection.get("candidates", 4)]]
-        scored.sort(key=lambda item: (-item[0]["score"], str(item[1])))
-        quality, pdf = scored[0]
+        pdf = pathlib.Path(chosen["path"])
         truth = pdf.with_suffix(".json")
-        entry = {"scenario": scenario["id"], "source_pdf": str(pdf),
-                 "source_truth": str(truth) if truth.exists() else None,
-                 "quality": quality, "candidates_considered": len(candidates)}
+        entry.update({
+            "source_pdf": str(pdf),
+            "source_truth": str(truth) if truth.exists() else None,
+            "extractor_verdict": {k: chosen.get(k) for k in
+                                  ("status", "method", "confidence", "completeness",
+                                   "line_item_count", "extracted_activity",
+                                   "extracted_quantity", "extracted_unit", "resolved")},
+            "accept_reason": chosen.get("accept_reason"),
+            "pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
+        })
         if truth.exists():
-            try:
-                entry["generation_seed"] = json.loads(truth.read_text()).get("generation_seed")
-            except Exception:  # noqa: BLE001
-                entry["generation_seed"] = None
-        if not dry_run:
-            target_pdf = CORPUS_DIR / f"{UPLOAD_PREFIX}_{scenario['id']}__{pdf.name}"
-            target_truth = CORPUS_DIR / f"{UPLOAD_PREFIX}_{scenario['id']}__{truth.name}"
-            shutil.copy2(pdf, target_pdf)
-            entry["corpus_pdf"] = str(target_pdf)
-            entry["sha256"] = hashlib.sha256(target_pdf.read_bytes()).hexdigest()
-            if truth.exists():
-                shutil.copy2(truth, target_truth)
-                entry["corpus_truth"] = str(target_truth)
+            truth_doc = json.loads(truth.read_text())
+            entry["document_id"] = truth_doc.get("document_id")
+            entry["document_generation_seed"] = truth_doc.get("generation_seed")
+            entry["truth_sha256"] = hashlib.sha256(truth.read_bytes()).hexdigest()
+        else:
+            entry["document_generation_seed"] = None
+        selections.append((entry, pdf, truth))
         summary["documents"].append(entry)
-    if not dry_run:
-        (CORPUS_DIR / "corpus_provenance.json").write_text(
-            json.dumps(summary, indent=2, default=str) + "\n")
+    if failures:
+        raise SystemExit(
+            "FAIL: no parseable candidate found for: " + ", ".join(failures) +
+            "\nThe existing corpus was NOT replaced. Broaden the scenario accept rules, "
+            "extend PROBE_CAP, or report this as a PO-level blocker.")
+    if dry_run:
+        return summary
+    CORPUS_DIR.mkdir(parents=True, exist_ok=True)
+    for entry, pdf, truth in selections:
+        target_pdf = CORPUS_DIR / f"{UPLOAD_PREFIX}_{entry['scenario']}__{pdf.name}"
+        entry["corpus_pdf"] = str(target_pdf)
+        shutil.copy2(pdf, target_pdf)
+        if truth.exists():
+            target_truth = CORPUS_DIR / f"{UPLOAD_PREFIX}_{entry['scenario']}__{truth.name}"
+            shutil.copy2(truth, target_truth)
+            entry["corpus_truth"] = str(target_truth)
+    (CORPUS_DIR / "corpus_provenance.json").write_text(
+        json.dumps(summary, indent=2, default=str) + "\n")
     return summary
 
 
@@ -494,6 +587,45 @@ def verify() -> dict:
 # ---------------------------------------------------------------------------
 # reset (lab-scoped, corpus artefacts only) + CLI
 # ---------------------------------------------------------------------------
+def storage_service_key() -> str:
+    """Lab service key (the same key the application uses for storage)."""
+    state = lab.load_state()
+    return state.get("stack_service_key") or lab.service_key(state["jwt_secret"])
+
+
+def storage_delete_objects(bucket: str, paths: list, dry_run: bool = False) -> dict:
+    """Delete storage objects through the **Storage API** (B-2 remediation).
+
+    Direct deletion from ``storage.objects`` is refused by the platform trigger
+    ``storage.protect_objects_delete`` ("Direct deletion from storage tables is not
+    allowed. Use the Storage API instead."). That protection is NOT touched: this
+    goes through ``DELETE /storage/v1/object/{bucket}/{path}`` on the lab gateway
+    with the lab service key, exactly like the application's storage client.
+    """
+    deleted, failures = 0, []
+    if dry_run:
+        return {"requested": len(paths), "deleted": 0, "dry_run": True}
+    for path in paths:
+        request = urllib.request.Request(
+            f"{gateway_url()}/storage/v1/object/{bucket}/{path}", method="DELETE",
+            headers={"Authorization": f"Bearer {storage_service_key()}",
+                     "apikey": storage_service_key()})
+        try:
+            response = urllib.request.urlopen(request, timeout=60)
+            if response.status in (200, 204):
+                deleted += 1
+            else:
+                failures.append(f"{path}: HTTP {response.status}")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode()[:120]
+            if exc.code == 404:
+                continue  # already absent → idempotent
+            failures.append(f"{path}: HTTP {exc.code} {body}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"{path}: {str(exc)[:120]}")
+    return {"requested": len(paths), "deleted": deleted, "failures": failures[:5]}
+
+
 def reset(dry_run: bool = False) -> dict:
     """Remove only T3 corpus artefacts; never identities, factors or members."""
     assert_lab_database()
@@ -514,18 +646,36 @@ def reset(dry_run: bool = False) -> dict:
     counts["storage.objects"] = int(_scalar(
         "SELECT count(*) FROM storage.objects WHERE bucket_id='documents' "
         f"AND name LIKE '%{UPLOAD_PREFIX}_%'") or 0)
+    object_paths = [line for line in (lab.psql(
+        "SELECT name FROM storage.objects WHERE bucket_id='documents' "
+        f"AND name LIKE '%{UPLOAD_PREFIX}_%'").stdout or "").splitlines() if line.strip()]
     summary = {"task": TASK_ID, "dry_run": dry_run, "scope": "corpus artefacts only",
-               "affected": counts, "invariants_before": invariants}
-    if not dry_run and any(counts.values()):
+               "affected": counts, "storage_objects": len(object_paths),
+               "invariants_before": invariants}
+    if not dry_run:
+        # B-2: storage objects go through the Storage API (protected tables untouched),
+        # then the database rows (no protected storage table is written directly).
+        summary["storage_api"] = storage_delete_objects("documents", object_paths)
         statements = ["BEGIN;"]
         for table, clause in targets.items():
             statements.append(f"DELETE FROM {table} WHERE {clause};")
-        statements.append("DELETE FROM storage.objects WHERE bucket_id='documents' "
-                          f"AND name LIKE '%{UPLOAD_PREFIX}_%';")
         statements.append("COMMIT;")
         result = lab.psql("".join(statements))
         if "ERROR" in (result.stderr or ""):
             raise SystemExit(f"reset failed: {result.stderr.strip()[:300]}")
+        summary["remaining"] = {
+            "storage_objects": int(_scalar(
+                "SELECT count(*) FROM storage.objects WHERE bucket_id='documents' "
+                f"AND name LIKE '%{UPLOAD_PREFIX}_%'") or 0),
+            "organization_files": int(_scalar(
+                f"SELECT count(*) FROM organization_files WHERE name LIKE '{like}'") or 0),
+            "manual_extraction_items": int(_scalar(
+                "SELECT count(*) FROM manual_extraction_items "
+                f"WHERE file_name LIKE '{like}'") or 0),
+            "document_processing_queue": int(_scalar(
+                "SELECT count(*) FROM document_processing_queue "
+                f"WHERE file_name LIKE '{like}'") or 0),
+        }
     summary["invariants_after"] = {
         "organizations": int(_scalar("SELECT count(*) FROM organizations") or 0),
         "organization_members": int(_scalar("SELECT count(*) FROM organization_members") or 0),

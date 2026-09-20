@@ -196,6 +196,13 @@ def ensure_buckets() -> dict:
     return {"buckets": [line for line in (rows.stdout or "").splitlines() if line.strip()]}
 
 
+#: JWKS endpoint of the local stack GoTrue (lab authentication authority).
+#: The lab GoTrue signs with **ES256** asymmetric keys, so a shared-secret-only
+#: configuration cannot verify user tokens (B-2/O-A): the storage API is given the
+#: JWKS URL in addition to the secret — verification is strengthened, never weakened.
+JWKS_URL = f"http://{lab.STACK_AUTH_CONTAINER}:9999/.well-known/jwks.json"
+
+
 def storage_env() -> list[str]:
     """Environment for the lab-owned storage-api container.
 
@@ -208,6 +215,7 @@ def storage_env() -> list[str]:
     return [
         "-e", f"DATABASE_URL={db_url}",
         "-e", f"PGRST_JWT_SECRET={secret}",
+        "-e", f"JWT_JWKS={JWKS_URL}",
         "-e", f"ANON_KEY={lab.anon_key(secret)}",
         "-e", f"SERVICE_KEY={lab.service_key(secret)}",
         "-e", "TENANT_ID=stub",
