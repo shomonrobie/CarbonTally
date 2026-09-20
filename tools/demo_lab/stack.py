@@ -80,6 +80,40 @@ def ensure_database() -> dict:
     return summary
 
 
+# DR-003 — the lab's canonical browser origin: the CRA dev server the release frontend
+# runs on. Mirrors `backend/config.py` ALLOWED_ORIGINS ("http://localhost:3000") and the
+# local stack GoTrue `GOTRUE_SITE_URL`, so app, backend and gateway agree on one origin.
+BROWSER_ORIGIN = "http://localhost:3000"
+
+
+def _cors_headers() -> str:
+    """Gateway-served CORS for the explicit browser origin (no wildcard).
+
+    The local stack GoTrue validates the preflight's requested-headers list and drops
+    `Access-Control-Allow-Origin` when the browser sends `apikey` (which supabase-js
+    always does); the lab storage API behaves the same way. Serving preflight and the
+    response headers here keeps the allowed origin explicit and deterministic without
+    touching the shared auth/storage containers (DR-003).
+    """
+    return ("    proxy_hide_header Access-Control-Allow-Origin;\n"
+            "    proxy_hide_header Vary;\n"
+            "    add_header Access-Control-Allow-Origin $lab_cors_origin always;\n"
+            "    add_header Access-Control-Expose-Headers"
+            " \"content-length, content-range, x-total-count\" always;\n"
+            "    add_header Vary \"Origin\" always;\n"
+            "    if ($request_method = OPTIONS) {\n"
+            "      add_header Access-Control-Allow-Origin $lab_cors_origin always;\n"
+            "      add_header Access-Control-Allow-Methods"
+            " \"GET, POST, PUT, PATCH, DELETE, OPTIONS\" always;\n"
+            "      add_header Access-Control-Allow-Headers \"authorization, apikey,"
+            " content-type, accept, x-client-info, x-supabase-api-version\" always;\n"
+            "      add_header Access-Control-Max-Age 86400 always;\n"
+            "      add_header Vary \"Origin, Access-Control-Request-Method,"
+            " Access-Control-Request-Headers\" always;\n"
+            "      return 204;\n"
+            "    }\n")
+
+
 def ensure_containers() -> dict:
     """Start the lab's PostgREST and gateway containers (idempotent).
 
@@ -135,15 +169,26 @@ def ensure_containers() -> dict:
     # Gateway: the only container that publishes a host port (localhost only).
     conf = lab.GENERATED_DIR / "nginx.conf"
     conf.write_text(
+        # DR-003 — one explicit browser origin (no wildcard); $lab_cors_origin is empty
+        # for any other origin, so unlisted callers receive no CORS grant.
+        "map $http_origin $lab_cors_origin {\n"
+        "  default \"\";\n"
+        f"  \"{BROWSER_ORIGIN}\" $http_origin;\n"
+        "}\n"
         "server {\n"
         "  listen 80;\n"
         "  client_max_body_size 64m;\n"
-        f"  location /auth/v1/ {{ proxy_pass http://{lab.STACK_AUTH_CONTAINER}:9999/;"
-        " proxy_set_header Host $host; }\n"
+        f"  location /auth/v1/ {{\n{_cors_headers()}"
+        f"    proxy_pass http://{lab.STACK_AUTH_CONTAINER}:9999/;\n"
+        "    proxy_set_header Host $host;\n"
+        "  }\n"
         f"  location /rest/v1/ {{ proxy_pass http://{lab.POSTGREST_CONTAINER}:3000/;"
         " proxy_set_header Host $host; }\n"
-        f"  location /storage/v1/ {{ proxy_pass http://{lab.STORAGE_CONTAINER}:5000/;"
-        " proxy_set_header Host $host; client_max_body_size 64m; }\n"
+        f"  location /storage/v1/ {{\n{_cors_headers()}"
+        f"    proxy_pass http://{lab.STORAGE_CONTAINER}:5000/;\n"
+        "    proxy_set_header Host $host;\n"
+        "    client_max_body_size 64m;\n"
+        "  }\n"
         "  location / { return 404; }\n"
         "}\n")
     conf_hash = hashlib.sha256(conf.read_text().encode()).hexdigest()[:16]
