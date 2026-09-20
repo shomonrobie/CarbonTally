@@ -28,6 +28,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import lab  # noqa: E402
+import storage as lab_storage  # noqa: E402
 
 
 def psql_stdin(sql_text: str, *, timeout: int = 900):
@@ -53,6 +54,12 @@ def ensure_database() -> dict:
         'CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions; '
         'CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions; '
         'CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA extensions;')
+
+    # DEMO-T3-IMP-001 (Scope A) — the storage substrate (platform storage schema,
+    # the four approved D32 policies and the two private buckets) must exist BEFORE
+    # the release migrations run so `20260823000000_d32_private_documents_storage.sql`
+    # can validate its approved policy definitions instead of being tolerated.
+    summary["storage_substrate"] = lab_storage.provision(include_container=False)
 
     import time
     started = time.monotonic()
@@ -120,6 +127,11 @@ def ensure_containers() -> dict:
         lab.save_state(state_file)
         state["started"].append(name)
 
+    # DEMO-T3-IMP-001 (Scope A) — the lab-owned storage API must be up BEFORE the
+    # gateway is (re)created: nginx resolves the upstream name at startup.
+    state["storage"] = lab_storage.ensure_container()
+    state["storage_health"] = lab_storage.container_health()
+
     # Gateway: the only container that publishes a host port (localhost only).
     conf = lab.GENERATED_DIR / "nginx.conf"
     conf.write_text(
@@ -130,6 +142,8 @@ def ensure_containers() -> dict:
         " proxy_set_header Host $host; }\n"
         f"  location /rest/v1/ {{ proxy_pass http://{lab.POSTGREST_CONTAINER}:3000/;"
         " proxy_set_header Host $host; }\n"
+        f"  location /storage/v1/ {{ proxy_pass http://{lab.STORAGE_CONTAINER}:5000/;"
+        " proxy_set_header Host $host; client_max_body_size 64m; }\n"
         "  location / { return 404; }\n"
         "}\n")
     conf_hash = hashlib.sha256(conf.read_text().encode()).hexdigest()[:16]

@@ -1,0 +1,174 @@
+{
+  "_task": "DEMO-T3-IMP-001",
+  "_description": "Curated, deterministic Demo Lab scenario contract. Corpus documents are produced OUTSIDE CarbonTally by the pinned external generator and copied into the Demo Lab state directory by `t3_scenarios.py sync-corpus`. Ground-truth sidecars are an independent verification oracle, never a CarbonTally data source.",
+  "_generator": {
+    "repo": "https://github.com/shomonrobie/carbon_tally_synthetic_documents_generator",
+    "commit": "8ade2bf778d518d59924905849ab114ab2d0820a",
+    "seed": 42,
+    "note": "Documents are selected from the samples generated at this commit; no generator code is imported, executed or copied by CarbonTally."
+  },
+  "actors": [
+    {"key": "org_a_owner", "entity": "customer"},
+    {"key": "org_b_owner", "entity": "customer"},
+    {"key": "consultant_owner", "entity": "consultant"}
+  ],
+  "scenarios": [
+    {
+      "id": "uk-electricity",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*octopus_energy*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "electricity", "unit": "kWh",
+        "factor_family": "DEFRA-2025 electricity family",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map -> validate -> calculate -> review"
+      }
+    },
+    {
+      "id": "uk-gas",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*british_gas*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "natural_gas", "unit": "kWh",
+        "factor_family": "DEFRA-2025 natural gas (unqualified kWh resolves to Net CV per D-A)",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map -> validate -> calculate -> review"
+      }
+    },
+    {
+      "id": "uk-diesel",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*certas_energy*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "diesel", "unit": "litres",
+        "factor_family": "DEFRA-2025 Diesel (must NOT select Biodiesel/HVO)",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map -> validate -> calculate -> review"
+      }
+    },
+    {
+      "id": "uk-waste",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*biffa_waste*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "waste", "unit": "tonnes",
+        "factor_family": "DEFRA-2025 waste-disposal family (NOT liquid 'Waste oils')",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map -> validate -> calculate -> review"
+      }
+    },
+    {
+      "id": "uk-water",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*thames_water*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "water", "unit": "cubic metres or million litres (verify before asserting)",
+        "factor_family": "DEFRA-2025 Water supply / Water treatment",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map -> validate -> calculate -> review"
+      }
+    },
+    {
+      "id": "uk-spend",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "other",
+      "corpus": {"glob": "samples/**/*royal_mail*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "spend-based / general charges", "unit": "currency",
+        "factor_family": "existing currency/spend mapping path (no new engine)",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> map (spend suggestion) -> validate -> calculate"
+      }
+    },
+    {
+      "id": "uk-ambiguity",
+      "kind": "direct",
+      "actor": "org_a_owner",
+      "organization": "Demo Lab Organisation A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*scottish_power*.pdf", "candidates": 3},
+      "intentional_ambiguity": true,
+      "expected": {
+        "activity": "electricity", "unit": "kWh",
+        "factor_family": "multiple eligible electricity families — ambiguity must be preserved, never silently invented",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "ambiguity -> blocked/clarification or review (existing mechanism only)"
+      }
+    },
+    {
+      "id": "uk-missing-evidence",
+      "kind": "direct",
+      "actor": "org_b_owner",
+      "organization": "Demo Lab Organisation B",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*national_rail*.pdf", "candidates": 3},
+      "intentional_missing_evidence": true,
+      "expected": {
+        "activity": "document with intentionally incomplete evidence (no fabricated value)",
+        "unit": "as published by the document",
+        "factor_family": "none asserted — unresolved state must be preserved",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "extract -> blocked / review with a truthfully retained reason"
+      }
+    },
+    {
+      "id": "consultant-client-a",
+      "kind": "consultant",
+      "actor": "consultant_owner",
+      "client_organization": "Demo Lab Client A",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/consultants/**/*edf_energy*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "electricity", "unit": "kWh",
+        "factor_family": "DEFRA-2025 electricity family",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "consultant client upload -> same pipeline in the client context"
+      }
+    },
+    {
+      "id": "consultant-client-b",
+      "kind": "consultant",
+      "actor": "consultant_owner",
+      "client_organization": "Demo Lab Client B",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/consultants/**/*veolia_uk*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "waste", "unit": "tonnes",
+        "factor_family": "DEFRA-2025 waste family",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "consultant client upload -> same pipeline in the client context"
+      }
+    },
+    {
+      "id": "direct-org-b-isolation",
+      "kind": "direct",
+      "actor": "org_b_owner",
+      "organization": "Demo Lab Organisation B",
+      "data_type": "utility",
+      "corpus": {"glob": "samples/**/*e.on_energy*.pdf", "candidates": 3},
+      "expected": {
+        "activity": "electricity", "unit": "kWh",
+        "factor_family": "DEFRA-2025 electricity family",
+        "factor_set": "DEFRA-2025", "country": "GB",
+        "workflow": "direct-customer isolation control (Org B must not see Org A or clients)"
+      }
+    }
+  ]
+}

@@ -40,11 +40,14 @@ BACKEND_PORT = 8070
 #: Containers created by this tooling (all prefixed, all disposable).
 POSTGREST_CONTAINER = f"{LAB_ID}_postgrest"
 GATEWAY_CONTAINER = f"{LAB_ID}_gateway"
-LAB_CONTAINERS = (POSTGREST_CONTAINER, GATEWAY_CONTAINER)
+#: DEMO-T3-IMP-001 (Scope A) — lab-owned storage API (documents + artefacts).
+STORAGE_CONTAINER = f"{LAB_ID}_storage"
+LAB_CONTAINERS = (POSTGREST_CONTAINER, STORAGE_CONTAINER, GATEWAY_CONTAINER)
 
 #: The developer's LOCAL Supabase stack (source of the cluster only — never mutated).
 STACK_DB_CONTAINER = "supabase_db_carbon_ledger"
 STACK_AUTH_CONTAINER = "supabase_auth_carbon_ledger"
+STACK_STORAGE_CONTAINER = "supabase_storage_carbon_ledger"
 STACK_NETWORK = "supabase_network_carbon_ledger"
 STACK_DB_PORT = 54426
 STACK_DB_USER = "postgres"
@@ -52,6 +55,7 @@ STACK_DB_PASSWORD = "postgres"
 
 IMAGES = {
     "postgrest": "public.ecr.aws/supabase/postgrest:v14.5",
+    "storage": "public.ecr.aws/supabase/storage-api:v1.69.0",
     "gateway": "nginx:alpine",
 }
 
