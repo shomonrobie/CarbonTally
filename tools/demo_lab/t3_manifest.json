@@ -38,7 +38,8 @@
         "factor_family": "DEFRA-2025 electricity family",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map -> validate -> calculate -> review"
+        "workflow": "extract -> map -> validate -> calculate -> review",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -52,7 +53,8 @@
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (40/40 examined; units: <none>x35, kWhx4, tx1)"
     },
     {
       "id": "uk-gas",
@@ -61,8 +63,8 @@
       "organization": "Demo Lab Organisation A",
       "data_type": "utility",
       "corpus": {
-        "glob": "samples/**/*british_gas*.pdf",
-        "candidates": 3
+        "glob": "samples/**/ORG_022_british_gas_202511.pdf",
+        "candidates": 1
       },
       "expected": {
         "activity": "natural_gas",
@@ -70,7 +72,8 @@
         "factor_family": "DEFRA-2025 natural gas (unqualified kWh resolves to Net CV per D-A)",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map -> validate -> calculate -> review"
+        "workflow": "extract -> map -> validate -> calculate -> review",
+        "outcome": "EXPECTED MATCHED (2025 Net-CV gas); calculation reachability subject to the existing gate"
       },
       "accept": {
         "activity_keywords": [
@@ -87,8 +90,17 @@
         "factor_id": "b9d1ed06-7e4a-4c26-a91a-46f3fb45bda5",
         "factor": "Fuels > Gaseous fuels > Natural gas (kg CO2e) [kWh (Net CV)]",
         "confidence": 1.0,
-        "probe": "POST /api/v2/factor-match {activity: Natural gas, unit: kWh, country: GB, reporting_year: 2025}"
-      }
+        "probe": "POST /api/v2/factor-match {activity: Natural gas, unit: kWh, country: GB, reporting_year: 2025}",
+        "extractor_verified": {
+          "activity": "Natural gas",
+          "quantity": 12181.4,
+          "unit": "kWh",
+          "date": "05/05/2025",
+          "reporting_year": 2025
+        }
+      },
+      "skip_index": 0,
+      "pinned_candidate": "ORG_022_british_gas_202511.pdf"
     },
     {
       "id": "uk-diesel",
@@ -106,7 +118,8 @@
         "factor_family": "DEFRA-2025 Diesel (must NOT select Biodiesel/HVO)",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map -> validate -> calculate -> review"
+        "workflow": "extract -> map -> validate -> calculate -> review",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -121,7 +134,8 @@
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Diesel, unit: litres, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (32/32 examined)"
     },
     {
       "id": "uk-waste",
@@ -139,7 +153,8 @@
         "factor_family": "DEFRA-2025 waste-disposal family (NOT liquid 'Waste oils')",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map -> validate -> calculate -> review"
+        "workflow": "extract -> map -> validate -> calculate -> review",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -154,7 +169,8 @@
         "expectation": "EXPECTED_NO_MATCH",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Waste collection - General, unit: tonnes}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (32/32 examined)"
     },
     {
       "id": "uk-water",
@@ -172,7 +188,8 @@
         "factor_family": "DEFRA-2025 Water supply / Water treatment",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "extract -> map -> validate -> calculate -> review"
+        "workflow": "extract -> map -> validate -> calculate -> review",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -191,7 +208,8 @@
         "factor": "Water supply > Water supply > Water supply (kg CO2e) [cubic metres]",
         "confidence": 1.0,
         "probe": "POST /api/v2/factor-match {activity: Water supply, unit: cubic metres, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (44/44 examined with core.units.normalize_unit; m3->cubic metres recognised, but usable m3 quantities lack a 2025 reporting year and 2025-dated rows lack quantity/unit)"
     },
     {
       "id": "uk-spend",
@@ -217,7 +235,8 @@
       "unsupported_reason": "UNSUPPORTED for PDF documents (PO decision R-1): the release documents spend handling only for supported tabular inputs (CSV/XLSX: currency amounts with no unit column become spend-based lines). No PDF spend-extraction capability exists and none may be added. Recorded as an explicit limitation, not hidden.",
       "b3_expectation": {
         "expectation": "UNSUPPORTED_PDF"
-      }
+      },
+      "finding": "UNSUPPORTED for PDF (unchanged PO decision): no PDF spend capability"
     },
     {
       "id": "uk-ambiguity",
@@ -236,7 +255,8 @@
         "factor_family": "multiple eligible electricity families \u2014 ambiguity must be preserved, never silently invented",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "ambiguity -> blocked/clarification or review (existing mechanism only)"
+        "workflow": "ambiguity -> blocked/clarification or review (existing mechanism only)",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -252,7 +272,8 @@
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (40/40 examined)"
     },
     {
       "id": "uk-missing-evidence",
@@ -277,7 +298,8 @@
         "activity_keywords": [],
         "units": []
       },
-      "expect_unparseable": true
+      "expect_unparseable": true,
+      "finding": "INTENTIONAL EVIDENCE/COMPLETENESS GATE (unchanged): completeness 0.33 < 0.50, unresolved quantity/unit"
     },
     {
       "id": "consultant-client-a",
@@ -286,8 +308,8 @@
       "client_organization": "Demo Lab Client A",
       "data_type": "utility",
       "corpus": {
-        "glob": "samples/**/consultants/**/*edf_energy*.pdf",
-        "candidates": 3
+        "glob": "samples/**/ORG_029_edf_energy_202510.pdf",
+        "candidates": 1
       },
       "expected": {
         "activity": "electricity",
@@ -295,7 +317,8 @@
         "factor_family": "DEFRA-2025 electricity family",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "consultant client upload -> same pipeline in the client context"
+        "workflow": "consultant client upload -> same pipeline in the client context",
+        "outcome": "EXPECTED AMBIGUOUS (existing matcher) - ambiguity/manual-review demonstration in the client context"
       },
       "accept": {
         "activity_keywords": [
@@ -308,8 +331,17 @@
       "b3_expectation": {
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
-        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
-      }
+        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}",
+        "extractor_verified": {
+          "activity": "Electricity",
+          "quantity": 69992.94,
+          "unit": "kWh",
+          "date": "07-03-2025",
+          "reporting_year": 2025
+        }
+      },
+      "skip_index": 0,
+      "pinned_candidate": "ORG_029_edf_energy_202510.pdf"
     },
     {
       "id": "consultant-client-b",
@@ -327,7 +359,8 @@
         "factor_family": "DEFRA-2025 waste family",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "consultant client upload -> same pipeline in the client context"
+        "workflow": "consultant client upload -> same pipeline in the client context",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -342,7 +375,8 @@
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Waste disposal, unit: tonnes, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (16/16 examined)"
     },
     {
       "id": "direct-org-b-isolation",
@@ -360,7 +394,8 @@
         "factor_family": "DEFRA-2025 electricity family",
         "factor_set": "DEFRA-2025",
         "country": "GB",
-        "workflow": "direct-customer isolation control (Org B must not see Org A or clients)"
+        "workflow": "direct-customer isolation control (Org B must not see Org A or clients)",
+        "outcome": "NON-CALCULATING BY EVIDENCE: "
       },
       "accept": {
         "activity_keywords": [
@@ -374,7 +409,8 @@
         "expectation": "EXPECTED_AMBIGUOUS",
         "confidence": 0.0,
         "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
-      }
+      },
+      "finding": "NO VIABLE CANDIDATE ESTABLISHED IN FULL 2025-MONTH SUBSET (44/44 examined)"
     }
   ],
   "_selection": {
@@ -390,5 +426,27 @@
     "method": "POST /api/v2/factor-match on the running Demo Lab (org-member token)",
     "established": "REM-001-CONT round 2",
     "note": "expectations describe ACTUAL product behaviour; no engine/alias/threshold change."
+  },
+  "_rem001_reconciliation": {
+    "authorization": "PO decision 2026-09-20 - bounded corpus/manifest reconciliation only",
+    "generator_pin": "8ade2bf778d518d59924905849ab114ab2d0820a",
+    "authorized_substitutions": {
+      "uk-gas": "ORG_022_british_gas_202511.pdf",
+      "consultant-client-a": "ORG_029_edf_energy_202510.pdf"
+    },
+    "established_no_viable_candidate": [
+      "consultant-client-b",
+      "direct-org-b-isolation",
+      "uk-ambiguity",
+      "uk-diesel",
+      "uk-electricity",
+      "uk-waste",
+      "uk-water"
+    ],
+    "unchanged_by_decision": [
+      "uk-missing-evidence",
+      "uk-spend"
+    ],
+    "boundaries": "no extraction/mapping/matcher/factor-data/generator/date-parser/unit-normalisation/calculation/database/security change was made or is authorised"
   }
 }
