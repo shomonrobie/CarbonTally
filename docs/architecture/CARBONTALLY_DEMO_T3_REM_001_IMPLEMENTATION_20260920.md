@@ -104,10 +104,37 @@ exercise is outstanding (below).
 * **Round-3 sweep — NOT EXECUTED (still running at hand-off).** No partial/degraded corpus is written;
   the fail-safe remains in force.
 
-Consequence: the §8 validation table, the real-API seeding journey (§19), extraction/evidence/factor/
-calculation evidence (§20–§22), reset/preservation/reseed (§23–§24), the authenticated-user JWT test and
-isolation re-assertion (§25–§26), consultant-client parity checks (§27–§28), idempotent seeding (§29)
-and the §30 matrix remain **NOT EXECUTED**, pending the round-3 sweep completing.
+### 8. Round 3 result — `uk-ambiguity` pool unsuitable (VERIFIED failure, fail-safe intact)
+
+Round-3 sweep outcome (command `backend/.venv/bin/python tools/demo_lab/t3_scenarios.py sync-corpus
+--source /tmp/extgen`, log `/tmp/rem3_sync.txt`):
+
+```
+FAIL: no parseable candidate found for: uk-ambiguity
+The existing corpus was NOT replaced. Broaden the scenario accept rules, extend PROBE_CAP, or report
+this as a PO-level blocker.
+sync_rc=1
+```
+
+* **Every other selectable scenario passed** (the failure list contains only `uk-ambiguity`; `uk-spend`
+  is excluded by the R-1 decision), so the probe-driven selection is working across the corpus.
+* **The `shell_energy` pool (96 candidates) contains no document that the release extractor resolves to
+  activity + quantity + unit** within the deterministic bound (sorted pool, chunk 30, cap 240) — with
+  `skip_index = 0`, so this is not an index artefact but a property of that supplier's layouts.
+* **The fail-safe held**: the on-disk corpus was NOT replaced; no degraded or partial corpus was written
+  at any point in rounds 2–3; the protected storage trigger and all security configuration are untouched.
+
+**Bounded next step (no scope expansion, no engine change):** re-point `uk-ambiguity` at a supplier pool
+already **proven parseable** by an earlier successful selection, with `skip_index = 1` so it cannot reuse
+that scenario's document — i.e. reuse the pool family that resolved `uk-electricity`
+(`*octopus_energy*`, 120 candidates) or `consultant-client-a` (`*edf_energy*`). This is a manifest-only
+change using the existing selector; the ambiguity itself still comes from the existing matcher.
+
+**Downstream evidence remains NOT EXECUTED** as a direct consequence: §8 validation table, real-API
+seeding, E2E extraction/evidence/factor/calculation, missing-evidence execution, reset/preservation/
+reseed, authenticated-user JWT/JWKS test, storage-isolation re-assertion, consultant-client parity
+checks, idempotency and the §30 matrix. `uk-spend` = **UNSUPPORTED** (PO decision R-1);
+B-3 outcomes = **EXPECTED PRODUCT BEHAVIOUR** (empirically verified).
 
 
 The corrected corpus sweep was relaunched after the R-1/R-2 changes (detached, `real-extractor` probe,
