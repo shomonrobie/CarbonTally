@@ -196,11 +196,53 @@ def ensure_buckets() -> dict:
     return {"buckets": [line for line in (rows.stdout or "").splitlines() if line.strip()]}
 
 
-#: JWKS endpoint of the local stack GoTrue (lab authentication authority).
-#: The lab GoTrue signs with **ES256** asymmetric keys, so a shared-secret-only
-#: configuration cannot verify user tokens (B-2/O-A): the storage API is given the
-#: JWKS URL in addition to the secret — verification is strengthened, never weakened.
-JWKS_URL = f"http://{lab.STACK_AUTH_CONTAINER}:9999/.well-known/jwks.json"
+#: Sources for the lab GoTrue JWKS **document** (tried in order).
+#: The lab GoTrue signs with **ES256** asymmetric keys, so storage-api needs the
+#: JWKS — but it requires `JWT_JWKS` to be the JWKS **JSON text**, not a URL
+#: ("Unable to parse JWT_JWKS value to JSON" ⇒ crash loop ⇒ nginx 502 ⇒ the app's
+#: "storage upload failed: Expecting value: line 1 column 1 (char 0)").
+JWKS_SOURCES = (
+    f"http://127.0.0.1:{lab.GATEWAY_PORT}/auth/v1/.well-known/jwks.json",
+    f"http://127.0.0.1:{lab.STACK_DB_PORT - 1}/.well-known/jwks.json",
+)
+
+
+def fetch_jwks_json() -> str:
+    """Return the lab GoTrue JWKS document as compact JSON text (fail loudly).
+
+    Order: host → local stack GoTrue (published port), host → lab gateway, then
+    in-network ``wget`` through the lab gateway container. Verification is never
+    weakened and never disabled; if the JWKS cannot be obtained the container is
+    NOT started with a degraded configuration.
+    """
+    import json as _json
+    import urllib.request as _url
+
+    errors = []
+    for url in JWKS_SOURCES:
+        try:
+            with _url.urlopen(url, timeout=10) as response:
+                payload = _json.loads(response.read().decode())
+            if payload.get("keys"):
+                return _json.dumps(payload, separators=(",", ":"))
+            errors.append(f"{url}: no keys")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{url}: {str(exc)[:80]}")
+    probe = lab.run(["docker", "exec", lab.GATEWAY_CONTAINER, "wget", "-q", "-O", "-",
+                     f"http://{lab.STACK_AUTH_CONTAINER}:9999/.well-known/jwks.json"],
+                    timeout=60)
+    if probe.returncode == 0 and probe.stdout.strip():
+        try:
+            payload = _json.loads(probe.stdout)
+            if payload.get("keys"):
+                return _json.dumps(payload, separators=(",", ":"))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"in-network: {str(exc)[:80]}")
+    raise SystemExit(
+        "FAIL: could not obtain the lab GoTrue JWKS document; refusing to start the "
+        "lab storage API with a degraded (secret-only) JWT configuration.\n  " +
+        "\n  ".join(errors) +
+        "\nEnsure the local stack GoTrue is running, then re-run this command.")
 
 
 def storage_env() -> list[str]:
@@ -215,7 +257,7 @@ def storage_env() -> list[str]:
     return [
         "-e", f"DATABASE_URL={db_url}",
         "-e", f"PGRST_JWT_SECRET={secret}",
-        "-e", f"JWT_JWKS={JWKS_URL}",
+        "-e", f"JWT_JWKS={fetch_jwks_json()}",
         "-e", f"ANON_KEY={lab.anon_key(secret)}",
         "-e", f"SERVICE_KEY={lab.service_key(secret)}",
         "-e", "TENANT_ID=stub",
