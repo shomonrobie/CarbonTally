@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -22,8 +23,55 @@ logger = logging.getLogger(__name__)
 
 SCHEMA = "public"
 TABLE = "emission_factors"
+BATCH_TABLE = "import_batches"
 NO_UNIT = "{no-unit}"
 NO_SCOPE = "{no-scope}"
+
+#: Provider key recorded on ``import_batches.provider_key`` for this importer
+#: (lower-case, matching the existing ``provider_key`` vocabulary: defra, seai, …).
+PROVIDER_KEY = "defra"
+
+#: Status written on a batch that is still being loaded / has finished loading.
+BATCH_STATUS_IMPORTING = "importing"
+BATCH_STATUS_COMPLETED = "completed"
+
+
+@dataclass(frozen=True, slots=True)
+class BatchProvenance:
+    """Provenance for one DEFRA import batch (DEMO-T2-B).
+
+    Mirrors the provenance the SEAI importer records, using the same
+    ``import_batches`` model: provider identity + dataset version + the source
+    artefact and its SHA-256 + the row accounting.
+
+    ``rows_total`` is the number of source rows the importer resolved
+    (imported + skipped + duplicates).
+    """
+
+    reporting_year: int
+    provider_key: str = PROVIDER_KEY
+    provider_version: str = ""
+    source_file: str = ""
+    source_checksum: str = ""
+    rows_total: int = 0
+    rows_skipped: int = 0
+    rows_duplicate: int = 0
+
+
+def provider_version_label(reporting_year: int, workbook_version: str = "") -> str:
+    """Dataset-version label in the shape the SEAI provider already uses.
+
+    ``"2025 (V1.7)"`` is the established form; the DEFRA flat file reports its
+    own version on the front page (currently ``"1"``), so the label is derived
+    from the workbook rather than invented. Falls back to the reporting year
+    alone when the workbook carries no version.
+    """
+    version = (workbook_version or "").strip()
+    if not version:
+        return str(reporting_year)
+    if version.upper().startswith("V"):
+        return f"{reporting_year} ({version})"
+    return f"{reporting_year} (V{version})"
 
 # Query parameters psycopg2 understands; anything else (e.g. Supabase pooler's
 # ``?schema=public``) is dropped so the DSN connects cleanly.
@@ -305,14 +353,129 @@ def write_statistics(result: ImportResult, output_dir: Path) -> str:
 
 # ---------------------------------------------------------------------------
 # Database loader (idempotent upsert by natural key)
+#
+# Provenance (DEMO-T2-B): when a :class:`BatchProvenance` is supplied, one
+# ``import_batches`` row is created for the load, the factors are linked to it
+# through ``import_batch_id``, the row accounting is recorded and the batch is
+# activated — the same model the SEAI importer already uses. Every statement runs
+# in the loader's single transaction, so a failure leaves neither factors nor a
+# completed batch behind.
 # ---------------------------------------------------------------------------
+
+
+def _create_batch(cur: Any, provenance: BatchProvenance, schema: str) -> str:
+    """Insert the batch in the ``importing`` state and return its id."""
+    cur.execute(
+        f"""
+        INSERT INTO {schema}.{BATCH_TABLE} (
+            provider_key, provider_version, source_file, source_checksum,
+            reporting_year, status, rows_total, rows_imported,
+            rows_skipped, rows_duplicate, errors, is_active,
+            created_at, created_by, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, '{BATCH_STATUS_IMPORTING}',
+                  %s, 0, 0, 0, NULL, FALSE, NOW(), NULL, NOW())
+        RETURNING id
+        """,
+        (
+            provenance.provider_key,
+            provenance.provider_version,
+            provenance.source_file,
+            provenance.source_checksum,
+            provenance.reporting_year,
+            provenance.rows_total,
+        ),
+    )
+    return str(cur.fetchone()[0])
+
+
+def _deactivate_other_batches(
+    cur: Any, provenance: BatchProvenance, batch_id: str, schema: str
+) -> int:
+    """Enforce the existing one-active-batch-per-provider+year rule."""
+    cur.execute(
+        f"""
+        UPDATE {schema}.{BATCH_TABLE}
+           SET is_active = FALSE, updated_at = NOW()
+         WHERE provider_key = %s
+           AND reporting_year = %s
+           AND is_active = TRUE
+           AND id <> %s
+        """,
+        (provenance.provider_key, provenance.reporting_year, batch_id),
+    )
+    return cur.rowcount
+
+
+def _upsert_factor_with_batch(
+    cur: Any, factor: EmissionFactor, table: str, batch_id: str
+) -> bool:
+    """Natural-key upsert that records the batch link; ``True`` when inserted."""
+    cur.execute(
+        f"""
+        INSERT INTO {table} (
+            reporting_year, activity_type, co2e_multiplier,
+            unit, scope, factor_source, factor_set, country,
+            import_batch_id
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (
+            reporting_year, activity_type,
+            COALESCE(country, 'GB'),
+            COALESCE(unit, '{NO_UNIT}'),
+            COALESCE(scope, '{NO_SCOPE}')
+        )
+        DO UPDATE SET
+            co2e_multiplier = EXCLUDED.co2e_multiplier,
+            unit = EXCLUDED.unit,
+            scope = EXCLUDED.scope,
+            factor_source = EXCLUDED.factor_source,
+            factor_set = EXCLUDED.factor_set,
+            import_batch_id = EXCLUDED.import_batch_id,
+            updated_at = NOW()
+        RETURNING (xmax = 0) AS was_inserted
+        """,
+        (
+            factor.reporting_year,
+            factor.activity_type,
+            factor.co2e_multiplier,
+            factor.unit,
+            factor.scope,
+            factor.factor_source,
+            factor.factor_set,
+            factor.country,
+            batch_id,
+        ),
+    )
+    return bool(cur.fetchone()[0])
+
+
+def _complete_batch(
+    cur: Any, provenance: BatchProvenance, batch_id: str, *, rows_imported: int, schema: str
+) -> None:
+    """Record the counts and activate the batch."""
+    cur.execute(
+        f"""
+        UPDATE {schema}.{BATCH_TABLE}
+           SET status = '{BATCH_STATUS_COMPLETED}',
+               rows_imported = %s,
+               rows_skipped = %s,
+               rows_duplicate = %s,
+               is_active = TRUE,
+               updated_at = NOW()
+         WHERE id = %s
+        """,
+        (rows_imported, provenance.rows_skipped, provenance.rows_duplicate, batch_id),
+    )
+
+
 def load_to_db(
     factors: list[EmissionFactor],
     mode: str,
-    db_url: Optional[str],
-    supabase_url: Optional[str],
-    supabase_key: Optional[str],
+    db_url: Optional[str] = None,
     schema: str = SCHEMA,
+    supabase_url: Optional[str] = None,
+    supabase_key: Optional[str] = None,
+    *,
+    provenance: Optional[BatchProvenance] = None,
 ) -> dict[str, Any]:
     """Write factors to the database using the best available backend.
 
@@ -322,9 +485,23 @@ def load_to_db(
 
     ``mode`` is ``sync`` (upsert by natural key) or ``replace`` (delete the
     factor set first, then insert — an exact, idempotent refresh).
+
+    ``provenance`` (DEMO-T2-B) turns the load into a provenance-recorded import:
+    one ``import_batches`` row for this dataset, every factor linked through
+    ``import_batch_id``, and the row accounting recorded. Provenance requires the
+    psycopg2 backend because it must share a single transaction with the factor
+    writes; without a DSN the Supabase fallback is refused rather than loading
+    factors with no provenance.
     """
     if db_url:
-        return load_with_psycopg2(factors, mode, db_url, schema)
+        return load_with_psycopg2(factors, mode, db_url, schema, provenance=provenance)
+    if provenance is not None:
+        raise RuntimeError(
+            "DEFRA import provenance requires a direct Postgres connection: pass "
+            "--db-url or set DATABASE_URL / SUPABASE_DB_URL / POSTGRES_URL. The "
+            "Supabase client path cannot create the import_batches row in the same "
+            "transaction as the factor writes."
+        )
     if supabase_url and supabase_key:
         return load_with_supabase(factors, mode, supabase_url, supabase_key)
     raise RuntimeError(
@@ -339,13 +516,23 @@ def load_with_psycopg2(
     mode: str,
     dsn: str,
     schema: str = SCHEMA,
+    *,
+    provenance: Optional[BatchProvenance] = None,
 ) -> dict[str, Any]:
-    """Upsert factors through a direct Postgres connection in one transaction."""
+    """Upsert factors through a direct Postgres connection in one transaction.
+
+    With ``provenance`` the load is batch-recorded: the ``import_batches`` row is
+    created (status ``importing``), any other active batch for the same provider +
+    reporting year is deactivated, every factor is linked to the new batch, and the
+    batch is completed and activated — all inside this single transaction, so a
+    failure rolls the factors and the batch back together.
+    """
     import psycopg2
 
     inserts = 0
     updates = 0
     deleted = 0
+    batch_id: Optional[str] = None
     table = f"{schema}.{TABLE}"
     conn = psycopg2.connect(_sanitize_dsn(dsn), connect_timeout=15)
     try:
@@ -357,7 +544,16 @@ def load_with_psycopg2(
                         (factors[0].factor_set,),
                     )
                     deleted = cur.rowcount
+                if provenance is not None:
+                    batch_id = _create_batch(cur, provenance, schema)
+                    _deactivate_other_batches(cur, provenance, batch_id, schema)
                 for factor in factors:
+                    if batch_id is not None:
+                        if _upsert_factor_with_batch(cur, factor, table, batch_id):
+                            inserts += 1
+                        else:
+                            updates += 1
+                        continue
                     cur.execute(
                         "SELECT id FROM {table} WHERE "
                         "reporting_year = %s AND activity_type = %s AND "
@@ -412,9 +608,13 @@ def load_with_psycopg2(
                             ),
                         )
                         inserts += 1
+                if batch_id is not None:
+                    _complete_batch(
+                        cur, provenance, batch_id, rows_imported=inserts, schema=schema
+                    )
     finally:
         conn.close()
-    return {
+    result: dict[str, Any] = {
         "backend": "psycopg2",
         "mode": mode,
         "inserted": inserts,
@@ -422,6 +622,20 @@ def load_with_psycopg2(
         "deleted_before_insert": deleted,
         "total_processed": len(factors),
     }
+    if provenance is not None and batch_id is not None:
+        result.update(
+            {
+                "batch_id": batch_id,
+                "provider_key": provenance.provider_key,
+                "provider_version": provenance.provider_version,
+                "source_file": provenance.source_file,
+                "source_checksum": provenance.source_checksum,
+                "rows_total": provenance.rows_total,
+                "rows_skipped": provenance.rows_skipped,
+                "rows_duplicate": provenance.rows_duplicate,
+            }
+        )
+    return result
 
 
 

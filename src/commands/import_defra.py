@@ -26,12 +26,15 @@ if __package__ in (None, ""):
 from dotenv import load_dotenv
 
 from src.providers.defra import (
+    PROVIDER_KEY,
+    BatchProvenance,
     analyze_workbook,
     build_stats,
     load_to_db,
     map_all,
     pandas_sheet_stats,
     parse_worksheet,
+    provider_version_label,
     validate_all,
     write_json,
     write_sql,
@@ -228,6 +231,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             supabase_url = os.getenv("SUPABASE_URL")
             supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+            # Provenance (DEMO-T2-B): provider identity, dataset version, the source
+            # artefact actually read and its SHA-256 (computed from the file bytes by
+            # the parser — never hard-coded), plus the row accounting.
+            provenance = BatchProvenance(
+                reporting_year=reporting_year,
+                provider_key=PROVIDER_KEY,
+                provider_version=provider_version_label(
+                    reporting_year, analysis.meta.version
+                ),
+                source_file=str(args.workbook),
+                source_checksum=analysis.meta.file_sha256,
+                rows_total=len(report.factors) + len(report.skipped) + len(report.duplicates),
+                rows_skipped=len(report.skipped),
+                rows_duplicate=len(report.duplicates),
+            )
             try:
                 db_result = load_to_db(
                     report.factors,
@@ -235,12 +253,13 @@ def main(argv: list[str] | None = None) -> int:
                     db_url=db_url,
                     supabase_url=supabase_url,
                     supabase_key=supabase_key,
+                    provenance=provenance,
                 )
                 result.db = db_result
                 logger.info(
-                    "Database load complete (%s): %d inserted, %d updated",
+                    "Database load complete (%s): %d inserted, %d updated, batch=%s",
                     db_result.get("backend"), db_result.get("inserted"),
-                    db_result.get("updated"),
+                    db_result.get("updated"), db_result.get("batch_id"),
                 )
             except Exception as exc:  # noqa: BLE001 — degrade gracefully, artifacts persist
                 result.db = {"backend": "none", "error": str(exc)}

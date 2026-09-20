@@ -35,7 +35,10 @@ from .parser import (
 from .mapper import map_all, map_row
 from .validator import build_stats, validate_all
 from .exporter import (
+    PROVIDER_KEY,
+    BatchProvenance,
     load_to_db,
+    provider_version_label,
     write_json,
     write_sql,
     write_statistics,
@@ -43,6 +46,8 @@ from .exporter import (
 )
 
 __all__ = [
+    "BatchProvenance",
+    "PROVIDER_KEY",
     "DuplicateRow",
     "EmissionFactor",
     "ImportResult",
@@ -65,6 +70,7 @@ __all__ = [
     "build_stats",
     "validate_all",
     "load_to_db",
+    "provider_version_label",
     "write_json",
     "write_sql",
     "write_statistics",
