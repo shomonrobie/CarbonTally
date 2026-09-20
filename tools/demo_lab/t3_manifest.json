@@ -47,6 +47,11 @@
         "units": [
           "kwh"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -76,6 +81,13 @@
           "cubic metres",
           "m3"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_MATCHED",
+        "factor_id": "b9d1ed06-7e4a-4c26-a91a-46f3fb45bda5",
+        "factor": "Fuels > Gaseous fuels > Natural gas (kg CO2e) [kWh (Net CV)]",
+        "confidence": 1.0,
+        "probe": "POST /api/v2/factor-match {activity: Natural gas, unit: kWh, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -104,6 +116,11 @@
           "litres",
           "kg"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Diesel, unit: litres, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -132,6 +149,11 @@
           "tonnes",
           "kg"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_NO_MATCH",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Waste collection - General, unit: tonnes}"
       }
     },
     {
@@ -162,6 +184,13 @@
           "m3",
           "litres"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_MATCHED",
+        "factor_id": "fb9d28bf-f615-4110-b0e7-0fd13453b666",
+        "factor": "Water supply > Water supply > Water supply (kg CO2e) [cubic metres]",
+        "confidence": 1.0,
+        "probe": "POST /api/v2/factor-match {activity: Water supply, unit: cubic metres, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -185,7 +214,10 @@
       },
       "select": false,
       "supported": false,
-      "unsupported_reason": "UNSUPPORTED for PDF documents (PO decision R-1): the release documents spend handling only for supported tabular inputs (CSV/XLSX: currency amounts with no unit column become spend-based lines). No PDF spend-extraction capability exists and none may be added. Recorded as an explicit limitation, not hidden."
+      "unsupported_reason": "UNSUPPORTED for PDF documents (PO decision R-1): the release documents spend handling only for supported tabular inputs (CSV/XLSX: currency amounts with no unit column become spend-based lines). No PDF spend-extraction capability exists and none may be added. Recorded as an explicit limitation, not hidden.",
+      "b3_expectation": {
+        "expectation": "UNSUPPORTED_PDF"
+      }
     },
     {
       "id": "uk-ambiguity",
@@ -214,8 +246,13 @@
           "kwh"
         ]
       },
-      "skip_index": 1,
-      "representation_note": "R-2: substituted an already-supported electricity representation (shell_energy pool) because no scottish_power candidate parsed within the bound; skip_index=1 guarantees a different document from the other electricity scenarios. The ambiguity itself comes from the existing matcher (multiple eligible families), not from a weakened threshold."
+      "skip_index": 0,
+      "representation_note": "R-2: distinct supplier pool (shell_energy) already guarantees a different document from the other electricity scenarios, so skip_index=0 (the previous skip_index=1 required two parseable candidates and was the sole round-2 sweep failure).",
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
+      }
     },
     {
       "id": "uk-missing-evidence",
@@ -267,6 +304,11 @@
         "units": [
           "kwh"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -295,6 +337,11 @@
           "tonnes",
           "kg"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Waste disposal, unit: tonnes, country: GB, reporting_year: 2025}"
       }
     },
     {
@@ -322,6 +369,11 @@
         "units": [
           "kwh"
         ]
+      },
+      "b3_expectation": {
+        "expectation": "EXPECTED_AMBIGUOUS",
+        "confidence": 0.0,
+        "probe": "POST /api/v2/factor-match {activity: Electricity, unit: kWh, country: GB, reporting_year: 2025}"
       }
     }
   ],
@@ -333,5 +385,10 @@
   "_r_decisions": {
     "R-1": "uk-spend recorded UNSUPPORTED for PDF (PO decision); select=false",
     "R-2": "uk-ambiguity re-pointed at an already-supported electricity pool with skip_index=1"
+  },
+  "_b3_evidence": {
+    "method": "POST /api/v2/factor-match on the running Demo Lab (org-member token)",
+    "established": "REM-001-CONT round 2",
+    "note": "expectations describe ACTUAL product behaviour; no engine/alias/threshold change."
   }
 }

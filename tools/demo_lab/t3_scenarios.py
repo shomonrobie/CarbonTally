@@ -181,7 +181,8 @@ def select_candidate(scenario: dict, source) -> dict:
             "selected": passes[skip_index] if len(passes) > skip_index else None}
 
 
-def sync_corpus(source: pathlib.Path, dry_run: bool = False) -> dict:
+def sync_corpus(source: pathlib.Path, dry_run: bool = False,
+                only: list | None = None) -> dict:
     """Select + copy the curated corpus, proving parseability per document."""
     assert_lab_database()
     spec = manifest()
@@ -204,6 +205,8 @@ def sync_corpus(source: pathlib.Path, dry_run: bool = False) -> dict:
                "documents": [], "dry_run": dry_run}
     selections, failures = [], []
     for scenario in spec["scenarios"]:
+        if only and scenario["id"] not in only:
+            continue
         if scenario.get("select") is False:
             summary["documents"].append({
                 "scenario": scenario["id"],
@@ -710,11 +713,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="comma-separated scenario ids (seed/status)")
     parser.add_argument("--wait", type=int, default=120,
                         help="seconds to wait for each job to reach a terminal stage")
+    parser.add_argument("--sync-only", default=None,
+                        help="sync-corpus only: comma-separated scenario ids")
     args = parser.parse_args(argv)
     only = args.only.split(",") if args.only else None
     try:
         if args.command == "sync-corpus":
-            payload = sync_corpus(pathlib.Path(args.source), dry_run=args.dry_run)
+            payload = sync_corpus(pathlib.Path(args.source), dry_run=args.dry_run,
+                                  only=args.sync_only.split(",") if args.sync_only else None)
         elif args.command == "seed":
             payload = seed(dry_run=args.dry_run, only=only, wait_seconds=args.wait)
         elif args.command == "verify":

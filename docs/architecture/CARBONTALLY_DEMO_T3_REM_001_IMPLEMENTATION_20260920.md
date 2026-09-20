@@ -88,7 +88,27 @@ the product's actual behaviour and are now recorded as the T3 contract.
 **R-3 — `expect_unparseable` missing-evidence path:** implemented (selection mode); its end-to-end
 exercise is outstanding (below).
 
-### 6. Round-2 remaining (not executed in this continuation)
+### 7. Round 3 — B-3 expectations encoded, R-2 corrected, sweep relaunched
+
+* **Step 2 (manifest expectations) — IMPLEMENTED (VERIFIED source evidence).** `t3_manifest.json` now
+  encodes the empirically observed product behaviour per scenario: `EXPECTED_MATCHED` with exact factor
+  IDs (`natural_gas` → `b9d1ed06-7e4a-4c26-a91a-46f3fb45bda5`, `water` →
+  `fb9d28bf-f615-4110-b0e7-0fd13453b666`), `EXPECTED_AMBIGUOUS` (electricity, diesel, waste-disposal),
+  `EXPECTED_NO_MATCH` (waste collection wording) and `UNSUPPORTED_PDF` (spend), each carrying the exact
+  probe request used. No thresholds, aliases or engine code were touched.
+* **R-2 correction — VERIFIED.** The round-2 sweep failed on exactly one scenario (`uk-ambiguity`)
+  because `skip_index = 1` required *two* parseable candidates in that pool. Because the substitution
+  already uses a distinct supplier pool (`shell_energy`, different from the octopus/EDF pools of the
+  other electricity scenarios), `skip_index = 0` is both sufficient and deterministic; the round-3
+  sweep was relaunched with that correction.
+* **Round-3 sweep — NOT EXECUTED (still running at hand-off).** No partial/degraded corpus is written;
+  the fail-safe remains in force.
+
+Consequence: the §8 validation table, the real-API seeding journey (§19), extraction/evidence/factor/
+calculation evidence (§20–§22), reset/preservation/reseed (§23–§24), the authenticated-user JWT test and
+isolation re-assertion (§25–§26), consultant-client parity checks (§27–§28), idempotent seeding (§29)
+and the §30 matrix remain **NOT EXECUTED**, pending the round-3 sweep completing.
+
 
 The corrected corpus sweep was relaunched after the R-1/R-2 changes (detached, `real-extractor` probe,
 sorted pool, chunk 30, cap 240) and had not finished at hand-off; consequently the §8 validation table,
