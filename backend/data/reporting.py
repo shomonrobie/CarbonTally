@@ -173,6 +173,16 @@ def coerce_float(value: Any) -> float:
 #: Normalised ORGANISATION-scoped material-activity stream ($1 = organisation).
 #: Unioned from the authoritative org-scoped tables plus the org-tagged audit
 #: ledger, so a material workflow can be reconstructed without a new table.
+#:
+#: F-T1-001 — ``$1`` must be typed consistently across every branch: the five
+#: source tables compare it against ``uuid`` columns, while the audit branch reads
+#: ``metadata->>'organization_id'`` (jsonb ``->>`` yields TEXT). PostgreSQL
+#: resolves a single type per parameter for the whole statement, so the bare
+#: comparison made it infer TEXT and the query failed at parse time with
+#: ``operator does not exist: uuid = text`` (HTTP 500). The parameter's type is
+#: now made explicit as uuid and the jsonb value is compared against its canonical
+#: text form — one uuid-typed parameter, unchanged comparison semantics (matching
+#: ``data/audit.py``), and no cast of arbitrary JSON values to uuid.
 _ORG_ACTIVITY_UNION = f"""
 SELECT a.performed_at AS occurred_at,
        COALESCE(a.metadata->>'category', 'system') AS category,
@@ -185,7 +195,7 @@ SELECT a.performed_at AS occurred_at,
        a.record_id::text AS resource_id,
        a.metadata AS detail
   FROM public.audit_trail a
- WHERE a.metadata->>'organization_id' = $1
+ WHERE a.metadata->>'organization_id' = ($1::uuid)::text
 UNION ALL
 SELECT cs.calculated_at, 'calculation', 'calculation:completed',
        COALESCE(cs.calculated_by, 'system'), NULL,

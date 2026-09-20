@@ -25,6 +25,7 @@ from tests.unit.api.fakes import (
     member_user,
     org_admin_user,
     org_owner_user,
+    org_viewer_user,
     staff_user,
 )
 
@@ -101,6 +102,20 @@ def test_audit_activity_org_owner_allowed(client, world, user_provider):
 def test_audit_activity_member_denied(client, world, user_provider):
     """Member (not owner/admin) must not read org audit records."""
     user_provider.set_user(member_user("org-a", "u-m", "m@example.test"))
+    assert client.get(
+        "/api/v3/reporting/audit-activity?organization_id=org-a"
+    ).status_code == 403
+
+
+def test_audit_activity_viewer_denied(client, world, user_provider):
+    """F-T1-001 regression: a viewer is not owner/admin — the read is denied.
+
+    The defect itself was in the SQL beneath this gate (a parameter-typing
+    conflict raised HTTP 500 for authorised readers); the gate behaviour below is
+    the boundary that must stay intact, so it is asserted explicitly for the
+    viewer role in addition to the member case.
+    """
+    user_provider.set_user(org_viewer_user("org-a", "u-v", "v@example.test"))
     assert client.get(
         "/api/v3/reporting/audit-activity?organization_id=org-a"
     ).status_code == 403

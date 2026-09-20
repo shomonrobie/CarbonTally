@@ -223,6 +223,23 @@ def member_user(org_id: str, user_id: str, email: str) -> AuthUser:
     )
 
 
+def org_viewer_user(org_id: str, user_id: str, email: str) -> AuthUser:
+    """An organisation viewer — read-only role, never owner/admin.
+
+    Mirrors the release's own resolution (``auth.py`` sets
+    ``role = role_name = f"org_{org_role}"``), so the owner/admin-only audit
+    surface must deny it.
+    """
+    return AuthUser(
+        user_id=user_id,
+        email=email,
+        role="org_viewer",
+        role_name="org_viewer",
+        organization_id=org_id,
+        is_org_member=True,
+    )
+
+
 def org_admin_user(org_id: str, user_id: str, email: str) -> AuthUser:
     """An organisation admin (``role_name='admin'`` short-circuits
     ``require_org_admin`` without a Supabase round-trip in unit tests)."""
