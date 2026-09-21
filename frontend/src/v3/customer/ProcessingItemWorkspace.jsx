@@ -700,7 +700,10 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
           <strong>Calculated result</strong>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{data.calculated_emissions_kg_co2e} kg CO2e</div>
           <div className="v3-muted" style={{ fontSize: 12 }}>
-            Scope {data.mapped_data?.scope || '-'} · Methodology {data.mapped_data?.methodology || 'direct_multiply'}
+            {/* DR-007 — scope is not carried on mapped_data; it is authoritative on the
+                calculated emissions row (see the evidence pane below), with the mapped
+                factor's own scope as a fallback. */}
+            Scope {data.mapped_data?.scope || evidence?.emissions?.[0]?.scope || '-'} · Methodology {data.mapped_data?.methodology || 'direct_multiply'}
           </div>
         </div>
       )}

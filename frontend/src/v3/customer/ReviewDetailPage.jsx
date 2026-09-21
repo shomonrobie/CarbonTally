@@ -78,7 +78,7 @@ export default function ReviewDetailPage() {
       ['Status', <StatusBadge status={status} key="s" />],
       ['Extracted activity', data.extracted_data?.activity || '—'],
       ['Quantity', data.extracted_data?.quantity ? `${data.extracted_data.quantity} ${data.extracted_data.unit || ''}` : '—'],
-      ['Mapped activity', data.mapped_data?.activity_type || '—'],
+      ['Mapped activity', data.mapped_data?.activity_type || data.mapped_data?.activity || '—'],
       ['Emission factor', data.mapped_data?.factor_label || data.emission_factor_used || '—'],
       ['Calculated (kg CO₂e)', data.calculated_emissions_kg_co2e ?? '—'],
     ];

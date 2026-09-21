@@ -109,10 +109,16 @@ export default function DocumentsPage() {
     {
       key: 'created',
       header: 'Uploaded',
-      accessor: 'created_at',
+      accessor: 'uploaded_at',
       sortable: true,
-      sortValue: (d) => (d.created_at ? new Date(d.created_at).getTime() : -1),
-      render: (d) => <span className="v3-muted">{d.created_at || '—'}</span>,
+      // DR-007 — the V3 documents API exposes the upload timestamp as
+      // `uploaded_at` (backend/data/documents.py: upload_date or created_at);
+      // `created_at` is kept as a fallback for older payloads.
+      sortValue: (d) => {
+        const t = d.uploaded_at || d.created_at;
+        return t ? new Date(t).getTime() : -1;
+      },
+      render: (d) => <span className="v3-muted">{d.uploaded_at || d.created_at || '—'}</span>,
     },
     {
       key: 'actions',
