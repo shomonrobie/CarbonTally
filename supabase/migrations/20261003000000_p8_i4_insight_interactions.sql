@@ -143,7 +143,9 @@ CREATE TABLE IF NOT EXISTS public.carbontally_insight_tool_calls (
     -- Allowlisted/normalised projections only (PO Q6). No raw payloads, no secrets.
     arguments        jsonb NOT NULL DEFAULT '{}'::jsonb,
     result_metadata  jsonb NOT NULL DEFAULT '{}'::jsonb,
-    references       jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- `references` is a PostgreSQL reserved keyword: it must always be quoted
+    -- (OHD D-1 — an unquoted identifier aborts the whole migration).
+    "references"     jsonb NOT NULL DEFAULT '[]'::jsonb,
     arguments_hash   char(64) NOT NULL,
     result_hash      char(64) NOT NULL,
     result_item_count integer NOT NULL DEFAULT 0,

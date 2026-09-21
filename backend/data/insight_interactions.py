@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Sequence
 
-from data.base import AbstractRepository, dumps_jsonb
+from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
 from domain.insight_interaction import InsightInteraction, InsightToolCall
 
 _INTERACTION_COLUMNS = (
@@ -34,7 +34,7 @@ _INTERACTION_COLUMNS = (
 
 _TOOL_CALL_COLUMNS = (
     "id, interaction_id, organization_id, call_ordinal, tool_name, contract_version, "
-    "tool_status, arguments, result_metadata, references, arguments_hash, "
+    'tool_status, arguments, result_metadata, "references", arguments_hash, '
     "result_hash, result_item_count, truncated, duration_ms, created_at"
 )
 
@@ -98,7 +98,7 @@ _COMPLETE_SQL = f"""
 _RECORD_TOOL_CALL_SQL = f"""
     INSERT INTO public.carbontally_insight_tool_calls
         (interaction_id, organization_id, call_ordinal, tool_name, contract_version,
-         tool_status, arguments, result_metadata, references, arguments_hash,
+         tool_status, arguments, result_metadata, "references", arguments_hash,
          result_hash, result_item_count, truncated, duration_ms)
     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14)
     ON CONFLICT (interaction_id, tool_name, arguments_hash) DO NOTHING
@@ -144,7 +144,7 @@ def _row_to_interaction(row: Any) -> InsightInteraction:
         tool_call_count=int(r.get("tool_call_count") or 0),
         reference_count=int(r.get("reference_count") or 0),
         error_class=r.get("error_class"),
-        metadata=dict(r.get("metadata") or {}),
+        metadata=loads_jsonb(r.get("metadata")) or {},
         created_at=r.get("created_at"),
         completed_at=r.get("completed_at"),
     )
@@ -152,7 +152,10 @@ def _row_to_interaction(row: Any) -> InsightInteraction:
 
 def _row_to_tool_call(row: Any) -> InsightToolCall:
     r = dict(row)
-    refs = r.get("references") or []
+    # asyncpg returns jsonb as text in this configuration: decode through the
+    # project helper (data.base.loads_jsonb) instead of coercing the string
+    # with dict(), which raised ValueError (OHD D-3).
+    refs = loads_jsonb(r.get("references")) or []
     return InsightToolCall(
         id=str(r["id"]),
         interaction_id=str(r["interaction_id"]),
@@ -161,9 +164,9 @@ def _row_to_tool_call(row: Any) -> InsightToolCall:
         tool_name=r["tool_name"],
         contract_version=r["contract_version"],
         tool_status=r["tool_status"],
-        arguments=dict(r.get("arguments") or {}),
-        result_metadata=dict(r.get("result_metadata") or {}),
-        references=tuple(dict(x) for x in refs),
+        arguments=loads_jsonb(r.get("arguments")) or {},
+        result_metadata=loads_jsonb(r.get("result_metadata")) or {},
+        references=tuple(dict(x) for x in refs if isinstance(x, dict)),
         arguments_hash=r["arguments_hash"],
         result_hash=r["result_hash"],
         result_item_count=int(r.get("result_item_count") or 0),

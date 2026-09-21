@@ -263,3 +263,35 @@ The four long-standing pre-existing failures (three in `tests/unit/api/test_revi
 **IMPLEMENTED** (this report, by Cline): Layer-2 persistence, orchestration, tool integration, provider narration with truthful attribution, the fourteen-state answer model, canonical-audit correlation, idempotency/retry bounds, creator-private authorization, the I4 API surface, tests, and the additive Master Specification decision intake.
 
 **NOT VERIFIED** (not claimed): independent verification, live-database migration execution, live-RLS enforcement, live-provider behaviour, and any acceptance/closure of I4. I4 remains open pending OHD verification and the PO's closure decision. I5–I8 remain NOT AUTHORISED.
+
+---
+
+# 22. I4 BOUNDED REMEDIATION (2026-09-21) — OHD D-1…D-4
+
+**22.1 OHD report reference.** `docs/implementation/phase8/CT-P8-I4-OHD-VERIFICATION-20260921.md` (commit `b33f16c9248eda38661cc0ce57dfe20489fd5f87`), verdict `FAIL — I4 IMPLEMENTATION NOT VERIFIED`; verified implementation `d9bdfab`. Full detail: `CT-P8-I4-REMEDIATION-20260921.md`.
+
+**22.2 D-1 remediation.** The shipped migration declared the column `references` unquoted (reserved keyword) → `syntax error at or near "references"`. Fixed by consistently quoting `"references"` in the DDL (same identifier, no rename, no semantic change, no unrelated column touched).
+
+**22.3 D-2 remediation.** `_TOOL_CALL_COLUMNS` and `_RECORD_TOOL_CALL_SQL` in `backend/data/insight_interactions.py` used the bare word; both now use `"references"`, with placeholder order unchanged. Reference semantics, projections, hashes and the I3 contract are untouched.
+
+**22.4 D-3 remediation.** asyncpg returns `jsonb` as text here, and `dict(str)` raised `ValueError` in the mappers. `metadata`, `arguments`, `result_metadata` and `references` are now decoded through the project helper `data.base.loads_jsonb()` (the convention used by ~57 repositories), NULL defaults preserved, reference items guarded. No parallel JSON mechanism, no other repository modified.
+
+**22.5 D-4 provisioning verification.** D-4 was a consequence of D-1. With D-1 corrected, the unmodified shipped migration applied cleanly to a fresh disposable PostgreSQL 17.6 database and every intended control was confirmed: both tables, RLS enabled on all four `carbontally_insight_*` tables, 8 policies (4 I4 creator-private), both append-only triggers, `authenticated` = INSERT,SELECT only, and the post-condition guards passed. No control was redesigned.
+
+**22.6 Tests added/changed.** New `tests/unit/data/test_i4_repository_sql_and_jsonb.py` (reserved-identifier guard for the migration and the SQL constants; placeholder/column alignment; asyncpg-text JSONB mapper regressions incl. NULL/malformed references) and new `tests/integration/test_i4_live_migration_and_persistence.py` (live disposable-DB migration + controls, real repository round-trip, `"references"` round-trip, append-only enforcement, RLS smoke). No existing test was weakened.
+
+**22.7 Migration execution result.** `psql -1 -v ON_ERROR_STOP=1 -f supabase/migrations/20261003000000_p8_i4_insight_interactions.sql` → `apply_exit=0` (atomic, no error) on the disposable database `ct_i4_remediate_20260921`.
+
+**22.8 Real PostgreSQL result.** Live suite: **4 passed** — migration applies and provisions every control; real repository create/mark/record/read/complete; tool-call idempotency; JSONB and `"references"` round-trip; append-only rejection of UPDATE/DELETE on interactions and tool calls.
+
+**22.9 Real HTTP result.** Not re-run against the live database in this bounded remediation (root cause D-3 is proven fixed at the mapper/asyncpg boundary by §22.8, which the HTTP path uses). The HTTP suite remains the in-memory orchestration suite; a live-DB HTTP round-trip is recorded as a remaining limitation for OHD to exercise.
+
+**22.10 Security smoke-test result.** Live RLS smoke passed: creator allowed, peer denied, forged `created_by` denied, anonymous denied; grants show `authenticated` holds only INSERT,SELECT.
+
+**22.11 I3 regression result.** The I3 tools and wiring suites pass unchanged; four-tool catalogue, six-point contract and `ToolStatus` untouched; I1/I2 suites also pass unchanged.
+
+**22.12 Files changed.** The migration, `backend/data/insight_interactions.py`, the two new test modules, this report and `CT-P8-I4-REMEDIATION-20260921.md`. Nothing else.
+
+**22.13 Limitations.** Independent verification outstanding; live suite requires a disposable DSN and skips otherwise (executed here); no live-DB HTTP round-trip; OHD observations O-1…O-8 not addressed (out of scope); declared-but-unproduced answer states unchanged.
+
+**22.14 Verification status.** **Independent OHD verification remains PENDING.** This remediation claims neither `VERIFIED` nor `I4 CLOSED`; the implementation verdict remains `I4 REMEDIATION IMPLEMENTED — READY FOR OHD RE-VERIFICATION`.
