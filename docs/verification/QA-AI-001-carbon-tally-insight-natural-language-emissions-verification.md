@@ -579,9 +579,13 @@ Verification report:
 docs/verification/QA-AI-001-carbon-tally-insight-natural-language-emissions-verification.md
 
 Commit:
-<filled by the committing step — see task log>
+`0f522e2` — "docs: add QA-AI-001 CarbonTally Insight verification" (only this report file; 587 insertions;
+parent `770046a9364630791bad5d6a6ec785ab46d3c9bf`). This Commit/Push metadata was written by an immediate
+follow-up commit on the same file (append-only; no history was rewritten and no other file was touched).
 
 Push:
-<filled by the committing step — see task log>
+**PUSHED** — `github` (`https://github.com/shomonrobie/CarbonTally.git`), `770046a..0f522e2
+p8-release-reconciled -> p8-release-reconciled`; branch `p8-release-reconciled` is the authorized verification
+branch and its remote tracks it (divergence `0 0` before and after).
 
 STOP.
