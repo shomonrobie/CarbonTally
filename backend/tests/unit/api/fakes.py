@@ -4443,6 +4443,11 @@ class InMemoryWorld:
         # API tests that never touch clarification directly (the dedicated
         # clarification API tests inject their own repository).
         self.clarifications = _StubRepo()
+        # Phase 8 I1 — CarbonTally Insight Layer-1 persistence. Stub for API
+        # tests that never touch Insight directly; the dedicated Insight API
+        # tests inject their own in-memory repository through a
+        # ``get_repositories`` dependency override.
+        self.insight = _StubRepo()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -4493,6 +4498,7 @@ class InMemoryWorld:
             billing_usage=self.billing_usage,
             processing=self.processing,
             evidence_line_items=self.evidence_line_items,
+            insight=self.insight,
         )
 
 

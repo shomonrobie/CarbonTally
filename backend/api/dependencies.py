@@ -46,6 +46,7 @@ from data.evidence_line_items import EvidenceLineItemsRepository
 from data.events import EventsRepository
 from data.factor_aliases import FactorAliasesRepository
 from data.imports import ImportsRepository
+from data.insight import InsightRepository
 from data.invitations import InvitationsRepository
 from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
@@ -332,6 +333,9 @@ class RepositoryBundle:
     processing: "DocumentProcessingRepository"
     #: Phase 8 B2 §12.2/§13.2 — evidence line-item addressability.
     evidence_line_items: "EvidenceLineItemsRepository"
+    #: Phase 8 I1 (CT-P8-I1-INSIGHT-PERSISTENCE-20260921-002) — CarbonTally
+    #: Insight Layer-1 persistent conversation foundation (separate domain).
+    insight: InsightRepository
 
 
 async def get_pool():
@@ -390,6 +394,9 @@ async def get_repositories() -> RepositoryBundle:
         # Phase 8 B2 §13.1/§12.2 — evidence line-item addressability (insert-only
         # materialisation + the ordinal→line read surface the calculation paths use).
         evidence_line_items=EvidenceLineItemsRepository(pool),
+        # Phase 8 I1 (CT-P8-I1-INSIGHT-PERSISTENCE-20260921-002) — CarbonTally
+        # Insight Layer-1 persistence (create/list/read + message append).
+        insight=InsightRepository(pool),
     )
 
 

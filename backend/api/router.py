@@ -65,6 +65,7 @@ from api.v3_reporting import router as v3_reporting_router
 from api.v3_context import router as v3_context_router
 from api.v3_health import router as v3_health_router
 from api.v3_activity_clarifications import router as v3_activity_clarifications_router
+from api.v3_insight import router as v3_insight_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -230,6 +231,10 @@ router.include_router(v3_context_router)
 router.include_router(v3_health_router)
 # F-039-1 — authorised activity clarification (F-048-2 / 052).
 router.include_router(v3_activity_clarifications_router)
+# Phase 8 I1 (CT-P8-I1-INSIGHT-PERSISTENCE-20260921-002) — CarbonTally Insight
+# Layer-1 persistent conversation foundation (D2 §24.2). Persistence only: no
+# LLM, no tools, no answer generation (I3–I8 remain unauthorized).
+router.include_router(v3_insight_router)
 
 
 # ---------------------------------------------------------------------------
