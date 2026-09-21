@@ -141,3 +141,124 @@ No secret was read or printed; no provider, network or database call was made.
 Nothing further will be implemented, committed as implementation, or advanced until the PO ratifies the items in §6.
 This report is the decision-ready input for that ratification; on receipt of the decision, I3 can proceed within the
 bounded scope of §7 without any redesign of the closed I1/I2 foundation.
+
+---
+
+# 13. I3 IMPLEMENTATION (PO tool catalogue ratified)
+
+**Authorization:** PO I3 Tool Catalogue Ratification Decision Record (2026-09-21) —
+*"I3 IS AUTHORIZED TO BEGIN"*; four tools RATIFIED; six-point contract adopted;
+references are locators; status vocabulary fixed; report-reading §30.3 adopted; I4+ not authorized.
+**Implementation baseline:** `bfcb04c4a59a3ff6c6bd627d35c7fbd939c30a63` (`bfcb04c`) on `p8-release-reconciled`.
+**Stage verdict (this section):** `I3 IMPLEMENTED — READY FOR INDEPENDENT OHD VERIFICATION` (not closed by Cline).
+
+This section supersedes the *stage* verdict of §11 for the implementation attempt it describes;
+the §1–§10 record above is retained unchanged as the decision history that produced the ratification.
+
+## 13.1 Files created / modified
+
+| File | State | Purpose |
+| --- | --- | --- |
+| `backend/domain/insight_tool.py` | **new** (160 lines) | Six-point contract types: `ToolStatus`, `InsightReference`, `ToolInputSpec`, `ToolDefinition`, `ToolResult`, `bounded()`, `TOOL_CONTRACT_VERSION = i3-6point-v1`. Pure types — no I/O. |
+| `backend/services/insight_tools.py` | **new** (354 lines) | The four ratified tool definitions, the registry, deterministic intent classification, input validation, the deterministic execution path, and the four read-only runners with field projection. |
+| `backend/api/v3_insight_tools.py` | **new** (70 lines) | The I3 HTTP surface: `GET /api/v3/insight/tools`, `POST …/tools/invoke`, `POST …/tools/intent`. Router-level I2 gate. |
+| `backend/api/router.py` | modified (+2 lines, comment + include) | Mounts the I3 router on the V3 composition root. No existing route changed. |
+| `backend/tests/unit/api/test_v3_insight_i3_tools.py` | **new** (490 lines) | The I3 verification suite (30 tests). |
+| `docs/implementation/phase8/CT-P8-I3-INSIGHT-TOOLS-20260921.md` | modified | This report. |
+
+**The closed I1/I2 foundation was not modified**: `backend/api/v3_insight.py`,
+`backend/api/insight_authz.py`, `backend/data/insight.py`, the I1/I2 migrations and the
+I2 tests are byte-unchanged. I3 consumes the I2 boundary through its public entry points only.
+
+## 13.2 The four ratified tools (PO §3/§4)
+
+| Tool | Input (required / optional) | Output allowlist basis | References returned |
+| --- | --- | --- | --- |
+| `report_lookup` | `report_id` | `api.contracts.ReportOut` subset + version summary + `current_version` + `is_approved_or_final` | `report`, `report_version` |
+| `report_version_lookup` | `version_id` **or** `report_id` + `version_number` | report-version identity/state columns | `report_version`, `report` |
+| `report_evidence_lookup` | `report_version_id` | disclosure projection (line identity/coverage) | `report_version`, `evidence_line_item`, `calculation_snapshot` |
+| `calculation_snapshot_lookup` | `snapshot_id` | ratified `CalculationSnapshot` provenance set (PO §3.4) | `calculation_snapshot`, `evidence_line_item` |
+
+`GET /api/v3/insight/tools` exposes exactly these four definitions (names, purpose,
+read-only flag, inputs, authorization, output fields, reference kinds, statuses). No other tool
+exists, and the registry is a closed dict — an unratified name returns `invalid_input` /
+`unratified_tool` rather than being dispatched.
+
+## 13.3 Six-point contract → implementation (PO §5)
+
+| Point | Implementation |
+| --- | --- |
+| 1 identity | `ToolDefinition.name/purpose/read_only`; registry is a closed 4-entry dict |
+| 2 input | `ToolInputSpec` (required/optional) + `_validate_input()`: unknown parameter → `unknown_parameter`; missing required → `missing_required_parameter`; non-string/non-int → `invalid_parameter_type`; >124 chars → `parameter_too_long`; non-numeric version number → `invalid_version_number`; input size bounded by those rules |
+| 3 authorization | every invocation calls `authorize_insight_scope(...)` (the closed I2 layer) and then re-checks the **resolved object's** organisation; a stored id/reference is never a grant |
+| 4 output | explicit allowlists (`_REPORT_FIELDS`, `_REPORT_VERSION_FIELDS`, `_EVIDENCE_LINE_FIELDS`, `_COVERAGE_FIELDS`, `_SNAPSHOT_FIELDS`); `_project()` never passes a stored row through — it copies only allow-listed keys |
+| 5 reference | `InsightReference(kind, id)` restricted to `REFERENCE_KINDS` (unratified kind raises at construction); results carry locators only |
+| 6 failure/status | `ToolResult(status, reason, data, references, truncated)` + `ToolStatus`; no fabricated data; no silent fallback |
+
+## 13.4 Field allowlists — documented mapping (PO §7)
+
+* **Report** (`report_lookup`): `id, organization_id, report_type, reporting_year, report_name, status,
+  created_at, completed_at` + `versions[]`, `current_version`, `is_approved_or_final`.
+  **Omitted deliberately:** `final_report_url`/`storage_url` (signed/artefact URLs — AGENTS.md §68),
+  `user_id`/`created_by`/`updated_by` (internal actors), `generated_content`/`user_edits`/`metadata`/
+  `error_log` (unbounded or internal), `template_id`/`data_sources`/`progress_percentage`/`current_step`.
+* **Report version**: `id, report_id, version_number, status, is_current, created_at`.
+  **Omitted:** `content`, `file_url`, `file_name`, `created_by`, `notes`, `change_summary`.
+* **Evidence line**: `disclosure_value_id, requirement_version_id, calculation_snapshot_id,
+  evidence_line_item_id, line_number, materialisation_kind` + coverage counts
+  (`reference_count`, `line_linked_count`, `snapshot_linked_count`).
+  **Omitted:** `raw_description`, `raw_quantity`, `raw_unit`, `source_page` (extracted source content
+  is not established as caller-visible for this tool — omitted rather than inferred).
+* **Calculation snapshot** (ratified PO §3.4 set): `id, organization_id, activity, activity_type,
+  quantity, quantity_unit, co2e_multiplier, co2e_kg, scope, date, reporting_year, methodology,
+  algorithm_version, content_hash, factor_id, factor_kind, customer_factor_id, factor_source,
+  source_item_id, source_line_item_id`.
+  **Omitted:** `calculated_by`/`performed_by` (internal actors), `request_id`/`import_batch_id`/
+  `factor_set` (internal ingest identifiers), `source_file`/`source_page` (not named in the ratification).
+
+Where visibility was not established by an existing, already-authorized projection, the field was
+**omitted** — the compliant course under PO §7 — so no unresolvable field-visibility decision arose and
+no PO stop condition was triggered.
+
+## 13.5 References and re-resolution (PO §8)
+
+References are locators only, typed to the four ratified domains. Every invocation re-derives the
+caller's scope through I2 and re-checks the resolved object's organisation, so a reference that was
+valid earlier does not carry authority forward: a revoked consultant grant, a removed membership, a
+suspended organisation or another organisation's id all resolve to `not_authorized` with no data
+returned (`data == {}`, `references == []`).
+
+## 13.6 Status vocabulary and report-reading behaviour (PO §9/§10)
+
+`success`, `no_data`, `not_authorized`, `invalid_input`, `error` are implemented; `provider_unavailable`
+is declared but never produced (the four tools are not provider-dependent). Intent refusals
+(`unsupported_intent`, `ambiguous_intent`) use `invalid_input` — no new status category was introduced.
+
+For the three report tools the result always states the version identity **and** lifecycle state, and
+`report_lookup` computes `is_approved_or_final` from the ratified immutable set
+(`IMMUTABLE_REPORT_VERSION_STATUSES = ("APPROVED", "FINAL")`), so a `DRAFT`/`REVIEWED`/
+`CHANGES_REQUESTED`/`REJECTED` current version is never presented as approved or final.
+
+## 13.7 Deterministic intent classification (PO §12)
+
+Keyword routing only — no LLM, no provider, no generation. Most specific intents first; a match on
+two tools is refused as `ambiguous_intent`. Example routes: "show me the report for 2025" →
+`report_lookup`; "which version is current" → `report_version_lookup`; "show the evidence behind
+this number" → `report_evidence_lookup`; "what emission factor was used" →
+`calculation_snapshot_lookup`.
+
+## 13.8 Execution path (PO §13)
+
+`request → deterministic intent classification → ratified tool selection → input validation → I2
+authorization → deterministic domain/data read (existing repositories/projections only) → bounded
+structured result → references + status`. No SQL is composed by the tool layer, no arbitrary query or
+code execution exists, no provider is called, and nothing mutates business state (proved structurally:
+the service module contains no `INSERT`/`UPDATE`/`DELETE`/`save_snapshot`/`set_status` statement).
+
+## 13.9 Audit boundary (PO §11)
+
+No I4 functionality was implemented. Every result carries a deterministic structured `invocation`
+record (`tool`, `contract_version`, `status`, `authorization: "i2-boundary"`, `reference_kinds`) so a
+later canonical audit can persist the invocation **without redesigning the tool contract**. Canonical
+audit persistence itself (including the §30.3 "every report-reading tool call must be audited"
+requirement) remains I4 and is therefore **not** implemented.

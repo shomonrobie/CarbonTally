@@ -66,6 +66,7 @@ from api.v3_context import router as v3_context_router
 from api.v3_health import router as v3_health_router
 from api.v3_activity_clarifications import router as v3_activity_clarifications_router
 from api.v3_insight import router as v3_insight_router
+from api.v3_insight_tools import router as v3_insight_tools_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -235,6 +236,9 @@ router.include_router(v3_activity_clarifications_router)
 # Layer-1 persistent conversation foundation (D2 §24.2). Persistence only: no
 # LLM, no tools, no answer generation (I3–I8 remain unauthorized).
 router.include_router(v3_insight_router)
+# Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the four
+# ratified controlled read-only tools (registry + deterministic execution).
+router.include_router(v3_insight_tools_router)
 
 
 # ---------------------------------------------------------------------------
