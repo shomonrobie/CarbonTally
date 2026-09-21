@@ -21,13 +21,18 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Optional
+import logging
+from typing import TYPE_CHECKING, Any, Optional
 
 from fastapi import HTTPException
 
-from api.dependencies import RepositoryBundle
-from api.insight_authz import InsightAccess, authorize_insight_scope
-from auth import AuthUser
+# OHD D-02 — the API packages are imported lazily/TYPE_CHECKING only: importing
+# them at module load closed a cycle
+# (services.insight_tools -> api.* -> services.insight_tools).
+if TYPE_CHECKING:  # pragma: no cover - type-only
+    from api.dependencies import RepositoryBundle
+    from api.insight_authz import InsightAccess
+    from auth import AuthUser
 from domain.disclosure import IMMUTABLE_REPORT_VERSION_STATUSES
 from domain.insight_tool import (
     MAX_IDENTIFIER_LENGTH,
@@ -38,6 +43,8 @@ from domain.insight_tool import (
     ToolStatus,
     bounded,
 )
+
+logger = logging.getLogger(__name__)
 
 TOOL_REPORT_LOOKUP = "report_lookup"
 TOOL_REPORT_VERSION_LOOKUP = "report_version_lookup"
@@ -217,6 +224,8 @@ async def _authorize(
     current_user: AuthUser, repos: RepositoryBundle, organization_id: str
 ) -> Optional[InsightAccess]:
     """Resolve the caller's scope through the closed I2 boundary (never re-implemented)."""
+    from api.insight_authz import authorize_insight_scope  # deferred: OHD D-02
+
     try:
         return await authorize_insight_scope(current_user, repos, organization_id)
     except HTTPException:
@@ -254,7 +263,12 @@ async def invoke_tool(
         if tool.name == TOOL_CALCULATION_SNAPSHOT_LOOKUP:
             return await _snapshot_lookup(repos, access, payload)
         return _result(tool.name, ToolStatus.INVALID_INPUT, reason="unratified_tool")
-    except Exception:  # noqa: BLE001 - never leak internal detail to the caller
+    except Exception:  # noqa: BLE001 - fail closed; diagnostics stay server-side
+        # Logged server-side (tool name + exception) so genuine internal defects
+        # stay diagnosable without exposing stack traces, SQL, DSNs or internals
+        # through the public API (PO remediation §3). The external status
+        # vocabulary is unchanged: `error` / `internal_error`.
+        logger.exception("insight tool %s failed", tool.name)
         return _result(tool.name, ToolStatus.ERROR, reason="internal_error")
 
 

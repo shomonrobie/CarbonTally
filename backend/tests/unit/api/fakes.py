@@ -4448,6 +4448,9 @@ class InMemoryWorld:
         # tests inject their own in-memory repository through a
         # ``get_repositories`` dependency override.
         self.insight = _StubRepo()
+        # Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the
+        # disclosure projection read model used by report_evidence_lookup.
+        self.disclosure_projection = _StubRepo()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -4499,6 +4502,7 @@ class InMemoryWorld:
             processing=self.processing,
             evidence_line_items=self.evidence_line_items,
             insight=self.insight,
+            disclosure_projection=self.disclosure_projection,
         )
 
 

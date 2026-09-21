@@ -321,3 +321,85 @@ closed I1/I2 authorization foundation (`backend/api/v3_insight.py`, `backend/api
 * **Verdict:** `I3 IMPLEMENTED — READY FOR INDEPENDENT OHD VERIFICATION`.
   I3 is **not** closed and **not** self-declared verified; I4 and later stages remain unauthorized;
   no deployment or production change is authorized by this report.
+
+---
+
+# 14. I3 REMEDIATION (OHD I3 FAIL — `9c92742`)
+
+**Authorization:** PO I3 Remediation Authorization (bounded). Baseline: `9c9274207e4b5bb184b52ad7fb48c721d965ac94`.
+**Stage verdict after remediation:** `I3 REMEDIATED — READY FOR OHD RE-VERIFICATION` (not verified, not closed by Cline).
+
+## 14.1 D-01 (HIGH) — `report_evidence_lookup` could not execute — RESOLVED
+
+**Diagnosis (confirmed):** the tool resolved `repos.disclosure_projection`, but the real
+`RepositoryBundle` declared 46 fields and none was `disclosure_projection`; `api/dependencies.py`
+never mentioned disclosure, and every other consumer builds `DisclosureProjectionRepository(pool)`
+directly. The I3 suite could not detect this because its dependency override injected a duck-typed
+`disclosure_projection`.
+
+**Fix (existing repository architecture; no parallel abstraction):**
+
+* `backend/api/dependencies.py` — imports `DisclosureProjectionRepository`, declares
+  `RepositoryBundle.disclosure_projection`, and constructs it in `get_repositories()` (the same pattern
+  used for the I2 `insight` repository). The bundle now declares 47 fields.
+* `backend/tests/unit/api/fakes.py` — the shared in-memory bundle now supplies a
+  `disclosure_projection` stub. **Disclosed collateral:** adding the required field initially broke
+  847 tests that construct the shared bundle (TypeError); the break was detected by the mandated
+  full-suite run and fixed in this same remediation by wiring the stub. After the fix the full suite
+  returned to its pre-existing 4 failures.
+
+**Regression tests through the REAL construction path** (`backend/tests/unit/api/test_v3_insight_i3_wiring.py`,
+5 tests): the real bundle is obtained by calling the **real `get_repositories()` factory** with only the
+pool provider stubbed (real repository classes, no database); the tests then assert that the real bundle
+provides every repository the tool layer resolves, that the factory constructs each of them, that
+`report_evidence_lookup` returns `success` with the reference/allowlist/determinism guarantees through
+that real bundle, and that `no_data`, cross-scope `not_authorized` and suspended-organisation
+`not_authorized` all behave correctly through it. The previous suite is unchanged and unweakened
+(30 tests still pass).
+
+## 14.2 D-02 (LOW) — service→API circular import — RESOLVED
+
+`services/insight_tools.py` now imports the API packages only under `TYPE_CHECKING` and imports
+`authorize_insight_scope` lazily inside `_authorize()`. Verified: `python -c "import services.insight_tools"`
+succeeds standalone (previously `ImportError: cannot import name 'classify_intent' from partially
+initialized module`), and `import api.router` / `import main` still succeed. A regression test
+(`test_service_module_imports_without_an_api_cycle`) pins the arrangement.
+
+## 14.3 Error boundary (PO §3) — improved, vocabulary unchanged
+
+The blanket handler now logs server-side (`logger.exception("insight tool %s failed", tool.name)`) so
+internal defects remain diagnosable, while the public result stays `error` / `internal_error` — no stack
+trace, SQL, DSN, column name or internal detail is exposed, and no new public status category exists.
+
+## 14.4 Boundaries preserved (PO §5/§6)
+
+Four-tool catalogue, six-point contract, I2 authorization boundary, persona boundaries, reference
+semantics, status vocabulary, field allowlists, deterministic intent classification, report lifecycle
+rules and `CalculationSnapshot` semantics are **unchanged**. No new tool, persona, permission,
+migration, LLM/provider, RAG/embeddings/LangChain, context, UI, retention/export, billing, automatic
+action or I4 canonical audit was introduced.
+
+**I1/I2 files: byte-unchanged** — `backend/api/v3_insight.py`, `backend/api/insight_authz.py`,
+`backend/data/insight.py` and both Insight migrations (`20261001000000`, `20261002000000`) are identical
+to the closed baseline (`git diff` empty). The remediation touched only `api/dependencies.py` (wiring),
+`services/insight_tools.py` (import hygiene + logging), the shared test fakes and the new wiring tests.
+
+## 14.5 Tests (exact, after remediation)
+
+| Suite | Result |
+| --- | --- |
+| I3 tools + wiring (`test_v3_insight_i3_tools.py`, `test_v3_insight_i3_wiring.py`) | **35 passed**, exit 0 (30 original + 5 new real-wiring) |
+| I1/I2 + Insight contract regression | **58 passed**, exit 0 |
+| Focused sanity (work-item assignment, X4 operational intelligence, admin endpoints) | **51 passed**, exit 0 |
+| Full unit suite (`pytest tests/unit --tb=no`) | **4 failed, 2877 passed, 8 skipped in 249.17s** (collected 2,889) |
+
+Pre-existing failures (unchanged, not fixed, not attributable to I3): `test_review_sla_surfaces.py` ×3 and
+`test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged`.
+
+## 14.6 Remediation deliverables
+
+* **Files changed:** `backend/api/dependencies.py`, `backend/services/insight_tools.py`,
+  `backend/tests/unit/api/fakes.py`, `backend/tests/unit/api/test_v3_insight_i3_wiring.py` (new), this report.
+* **D-01:** RESOLVED. **D-02:** RESOLVED. **I1/I2 files changed:** none.
+* **No I4+ functionality implemented; no migration, deployment or production access.**
+* Commit hash and push confirmation: recorded in the final handoff (the commit containing this section).
