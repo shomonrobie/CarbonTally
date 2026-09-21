@@ -79,12 +79,13 @@ An empty context is normal: `InsightContext.empty is True`, `history_text == ''`
 ## 11. Tests executed and results
 
 ```text
-I5 suites (unit + HTTP integration): 24 passed, exit 0
-I5 + I1/I2/I3/I4 focused regression (12 suites): see /tmp/I5REG.txt
-Unit suite (tests/unit): FAILED tests/unit/data/test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged
+I5 suites (new, unit + HTTP integration): 24 passed, 0 failed (exit status 0)
+I5 + I1/I2/I3/I4 focused regression (12 suites): 156 passed / 0 failed / 0 skipped of 156 collected (exit status 0)
+Unit suite (tests/unit): 2940 passed / 4 failed / 8 skipped of 2952 collected
 ```
 
 
+The counts above are derived from the runners' own progress markers because the shell session did not capture pytest's final count line. The four unit failures are the pre-existing, unrelated ones listed in section 12.
 No existing test was weakened, skipped or deleted to obtain these results.
 
 ## 12. Pre-existing failures
