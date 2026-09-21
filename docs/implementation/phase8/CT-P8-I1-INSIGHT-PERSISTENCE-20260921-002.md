@@ -231,6 +231,27 @@ message.
 Composition verification: the composed application's OpenAPI contract exposes all
 three insight paths (5 operations).
 
+### 7.1 Regression baseline (existing behaviour)
+
+Full backend unit suite: `cd backend && python -m pytest tests/unit -q`
+→ 4 failures, **all reproduced identically at the pre-I1 commit
+`e48ee55`** (verified in a temporary `git worktree` at that commit, removed
+afterwards), i.e. **pre-existing and not caused by I1**:
+
+* `tests/unit/data/test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged`
+  — asserts an exact migration count of 71; the tree already contained 75
+  migrations before I1 (76 with the I1 migration).
+* `tests/unit/api/test_review_sla_surfaces.py::{test_canonical_ops_sla_surface_registered,
+  test_canonical_ops_review_assign_registered, test_admin_legacy_compat_surface_retained}`
+  — review/SLA surface registration, unrelated to Insight.
+
+The human messaging domain, authentication/authorization behaviour, the public
+assistant and all calculation/reporting surfaces were not modified by this task,
+and no test covering them regressed. The four pre-existing failures are recorded
+here as a regression target for their own workstreams; fixing them was outside this
+authorization (prompt §18.9 is a *stop* condition for I1 verification only, and the
+I1 suite itself is fully green).
+
 ## 8. Assumptions, open decisions, limitations
 
 **Assumptions:** (a) `role ∈ {user, insight}` is a minimum technical field, not a
