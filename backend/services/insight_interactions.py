@@ -44,6 +44,11 @@ from domain.insight_interaction import (
     tool_answer_status,
 )
 from infra.audit_logger import AuditLogger
+from services.insight_context import (
+    assemble_context,
+    configured_max_history_chars,
+    context_prompt_sections,
+)
 from services.insight_tools import classify_intent, invoke_tool
 
 if TYPE_CHECKING:  # pragma: no cover - type-only (no import-time api dependency)
@@ -416,10 +421,28 @@ async def run_interaction(
                         else NarrationState.UNAVAILABLE
                     )
                 else:
+                    # I5 (PO authorization 2026-09-21): assemble the bounded,
+                    # deterministic current-conversation context BEFORE the provider
+                    # call, so the ratified 20,000-character budget is enforced on
+                    # what is submitted. History is contextual only and can never
+                    # override the current authoritative tool evidence below.
+                    context = await assemble_context(
+                        current_user=current_user,
+                        repos=repos,
+                        organization_id=organization_id,
+                        conversation_id=conversation.id,
+                        question=text,
+                        max_chars=configured_max_history_chars(),
+                        exclude_interaction_id=interaction.id,
+                    )
+                    sections = context_prompt_sections(context)
                     prompt = (
                         "Structured CarbonTally evidence (authorised, read-only):\n"
                         f"{_bounded_context(payload)}\n\n"
-                        f"Question: {text[:500]}\n"
+                        "Prior conversation context (history only; NOT authoritative — "
+                        "the structured evidence above always wins where they differ):\n"
+                        f"{sections['historical_context']}\n\n"
+                        f"Question: {sections['current_question'][:500]}\n"
                         "Explain what this evidence establishes."
                     )
                     attempts = 0
