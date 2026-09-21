@@ -112,21 +112,37 @@ class InsightRepository(AbstractRepository[InsightConversation]):
     """Persistence for the CarbonTally Insight Layer-1 domain."""
 
     # -- AbstractRepository contract -------------------------------------
-    async def get(self, id: str) -> Optional[InsightConversation]:
-        """Return a conversation by id **without** organisation scoping.
+    async def get(
+        self, id: str, *, organization_id: str
+    ) -> Optional[InsightConversation]:
+        """Organisation-scoped conversation read (OHD F-04).
 
-        Internal/service use only. Every organisation-facing path MUST use
-        :meth:`get_conversation`, which is scoped by ``organization_id``
-        (D2 §8.4 — a stored id is not a grant).
+        The I1 contract exposed this read without organisation scoping. It had no
+        caller, and an unscoped read on a service-role pool is a latent
+        authorization bypass (D2 §8.4), so the scope is now a **required**
+        keyword argument — the same shape the repository already uses for
+        ``ActivityClarificationsRepository.get(id, *, organization_id=…)``.
+        There is therefore no unscoped conversation read in the Insight
+        repository at all.
         """
-        row = await self._fetch_one(
-            f"SELECT {_CONVERSATION_COLUMNS} FROM public.carbontally_insight_conversations WHERE id = $1",
-            id,
+        return await self.get_conversation(
+            conversation_id=id, organization_id=organization_id
         )
-        return _row_to_conversation(row) if row else None
 
     async def save(self, entity: InsightConversation) -> InsightConversation:
-        """Insert-or-update a conversation row (technical fields only)."""
+        """Insert-or-update a conversation row (technical fields only).
+
+        Every parameter is cast explicitly. The I1 statement used
+        ``coalesce($5, $6)`` over untyped parameters, which PostgreSQL resolves
+        to ``text`` and which therefore failed with ``DatatypeMismatchError``
+        for a ``timestamptz`` target column (OHD F-02). The casts below follow
+        the ratified I1 column types exactly (uuid / text / timestamptz) and add
+        no product semantics.
+
+        Internal/service use only: this is the repository's insert-or-update
+        path. Request paths MUST create through :meth:`create_conversation`
+        (organisation + creator supplied by the authorization layer).
+        """
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc)
@@ -134,7 +150,14 @@ class InsightRepository(AbstractRepository[InsightConversation]):
             f"""
             INSERT INTO public.carbontally_insight_conversations
                 (id, organization_id, created_by, title, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, coalesce($5, $6), coalesce($7, $6))
+            VALUES (
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::text,
+                coalesce($5::timestamptz, $6::timestamptz),
+                coalesce($7::timestamptz, $6::timestamptz)
+            )
             ON CONFLICT (id) DO UPDATE
                 SET title = EXCLUDED.title,
                     updated_at = EXCLUDED.updated_at

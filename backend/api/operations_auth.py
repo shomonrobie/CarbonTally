@@ -63,6 +63,19 @@ async def _resolve_context(
     return StaffContext(profile=profile, permissions=permissions)
 
 
+async def resolve_staff_context(
+    current_user: AuthUser, repos: RepositoryBundle
+) -> Optional[StaffContext]:
+    """Public alias of the authoritative staff-context resolver.
+
+    Added for the CarbonTally Insight I2 authorization layer so that the staff
+    authorization chain (ACTIVE ``staff_profiles`` + ``staff_roles.permissions``)
+    is *reused* rather than reimplemented. Behaviour is identical to
+    ``_resolve_context``: ``None`` when the caller has no active staff profile.
+    """
+    return await _resolve_context(current_user, repos)
+
+
 async def require_staff(
     current_user: AuthUser = Depends(get_current_user),
     repos: RepositoryBundle = Depends(get_repositories),

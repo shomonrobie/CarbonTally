@@ -110,8 +110,31 @@ class InMemoryInsightRepository:
 
 
 def _bundle(repo):
-    """Minimal bundle: the I1 router only consumes ``repos.insight``."""
-    return SimpleNamespace(insight=repo)
+    """Minimal bundle for the I1 router.
+
+    ``insight`` is the only repository the router consumes directly; ``staff`` and
+    ``consultants`` are the surfaces the I2 authorization layer resolves (both
+    return "no relationship" here, so these tests exercise the customer path).
+    """
+
+    class _NoStaff:
+        async def get_by_user(self, user_id):
+            return None
+
+        async def get_role(self, role_id):
+            return None
+
+    class _NoConsultant:
+        async def get_active_memberships_by_user(self, user_id):
+            return []
+
+        async def get_profile_by_id(self, profile_id):
+            return None
+
+        async def get_client_by_org(self, consultant_id, organization_id):
+            return None
+
+    return type("Bundle", (), {"insight": repo, "staff": _NoStaff(), "consultants": _NoConsultant()})()
 
 
 def _member(user_id: str, organization_id: str) -> AuthUser:

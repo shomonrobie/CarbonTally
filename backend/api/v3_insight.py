@@ -30,15 +30,26 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from api.dependencies import (
-    RepositoryBundle,
-    ensure_org_access,
-    get_repositories,
-    require_org_member,
+from api.dependencies import RepositoryBundle, get_repositories
+from api.insight_authz import (
+    InsightAccess,
+    authorize_insight_scope,
+    conversation_is_visible,
+    require_insight_user,
+    visibility_created_by,
 )
 from auth import AuthUser
 
-router = APIRouter(prefix="/api/v3/insight", tags=["V3 — CarbonTally Insight (I1)"])
+router = APIRouter(
+    prefix="/api/v3/insight",
+    tags=["V3 — CarbonTally Insight"],
+    # I2 (D2 §8.5): authenticated, non-PE principals only, attached to the router
+    # so every present and future Insight route is deny-by-default by
+    # construction. The organization scope is resolved per request by
+    # `authorize_insight_scope` (customer membership / consultant grant /
+    # internal staff profile).
+    dependencies=[Depends(require_insight_user)],
+)
 
 #: I1 persists human-authored messages only. ``insight`` is a reserved author
 #: kind for the later authorized LLM stage; accepting it here would let a caller
@@ -85,20 +96,21 @@ def _message_out(message) -> dict:
 
 async def _authorised_conversation(
     repos: RepositoryBundle,
-    current_user: AuthUser,
+    access: InsightAccess,
     conversation_id: str,
-    organization_id: str,
 ):
-    """Resolve a conversation for the caller or raise 404.
+    """Resolve a conversation for the authorized caller or raise 404.
 
-    Applies both boundaries at once: organisation scope (a conversation in
-    another tenant is invisible) and creator-private visibility (a conversation
-    created by another principal is invisible). A stored id is never a grant.
+    I2 applies both ratified boundaries through the single visibility model
+    (D2 §9.2/§9.6): the authorized organization **and** creator identity. The
+    conversation is re-resolved from the database on every read, so a stored id
+    or an earlier decision is never a grant (D2 §8.4/§8.8) and existence is not
+    disclosed.
     """
     conversation = await repos.insight.get_conversation(
-        conversation_id=conversation_id, organization_id=organization_id
+        conversation_id=conversation_id, organization_id=access.organization_id
     )
-    if conversation is None or conversation.created_by != current_user.user_id:
+    if not conversation_is_visible(access, conversation):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
         )
@@ -108,14 +120,16 @@ async def _authorised_conversation(
 @router.post("/conversations", status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     payload: ConversationCreateIn,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_insight_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
     """Create a persisted CarbonTally Insight conversation (creator-private)."""
-    ensure_org_access(current_user, payload.organization_id)
+    access = await authorize_insight_scope(
+        current_user, repos, payload.organization_id
+    )
     conversation = await repos.insight.create_conversation(
-        organization_id=payload.organization_id,
-        created_by=current_user.user_id,
+        organization_id=access.organization_id,
+        created_by=access.user_id,
         title=payload.title,
     )
     return _conversation_out(conversation)
@@ -126,19 +140,20 @@ async def list_conversations(
     organization_id: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_insight_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
-    """List the caller's own conversations in one organisation (newest first)."""
-    ensure_org_access(current_user, organization_id)
+    """List the caller's own conversations in one authorised organisation."""
+    access = await authorize_insight_scope(current_user, repos, organization_id)
     conversations = await repos.insight.list_conversations(
-        organization_id=organization_id,
-        created_by=current_user.user_id,
+        organization_id=access.organization_id,
+        created_by=visibility_created_by(access),
         limit=limit,
         offset=offset,
     )
     total = await repos.insight.count_conversations(
-        organization_id=organization_id, created_by=current_user.user_id
+        organization_id=access.organization_id,
+        created_by=visibility_created_by(access),
     )
     return {
         "conversations": [_conversation_out(c) for c in conversations],
@@ -152,14 +167,12 @@ async def list_conversations(
 async def get_conversation(
     conversation_id: str,
     organization_id: str = Query(..., min_length=1),
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_insight_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
     """Read one authorised conversation."""
-    ensure_org_access(current_user, organization_id)
-    conversation = await _authorised_conversation(
-        repos, current_user, conversation_id, organization_id
-    )
+    access = await authorize_insight_scope(current_user, repos, organization_id)
+    conversation = await _authorised_conversation(repos, access, conversation_id)
     return _conversation_out(conversation)
 
 
@@ -167,11 +180,13 @@ async def get_conversation(
 async def append_message(
     conversation_id: str,
     payload: MessageCreateIn,
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_insight_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
     """Persist a human-authored message in an authorised conversation."""
-    ensure_org_access(current_user, payload.organization_id)
+    access = await authorize_insight_scope(
+        current_user, repos, payload.organization_id
+    )
     if payload.role != _CLIENT_ROLE:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -180,9 +195,7 @@ async def append_message(
                 "CarbonTally Insight-authored messages belong to a later authorized stage."
             ),
         )
-    conversation = await _authorised_conversation(
-        repos, current_user, conversation_id, payload.organization_id
-    )
+    conversation = await _authorised_conversation(repos, access, conversation_id)
     content = payload.content.strip()
     if not content:
         raise HTTPException(
@@ -192,7 +205,7 @@ async def append_message(
     message = await repos.insight.add_message(
         conversation_id=conversation.id,
         organization_id=conversation.organization_id,
-        created_by=current_user.user_id,
+        created_by=access.user_id,
         role=_CLIENT_ROLE,
         content=content,
     )
@@ -205,14 +218,12 @@ async def list_messages(
     organization_id: str = Query(..., min_length=1),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_insight_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ) -> dict:
     """List the persisted messages of an authorised conversation (ordinal order)."""
-    ensure_org_access(current_user, organization_id)
-    conversation = await _authorised_conversation(
-        repos, current_user, conversation_id, organization_id
-    )
+    access = await authorize_insight_scope(current_user, repos, organization_id)
+    conversation = await _authorised_conversation(repos, access, conversation_id)
     messages = await repos.insight.list_messages(
         conversation_id=conversation.id,
         organization_id=conversation.organization_id,

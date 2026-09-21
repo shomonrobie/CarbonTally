@@ -48,9 +48,12 @@ def _ddl_structure() -> str:
 
 
 def test_i1_migration_is_the_latest_migration() -> None:
-    """The I1 migration must sort after every pre-existing migration."""
+    """I1 exists at its ratified position; only the I2 authorization migration follows."""
     names = sorted(p.name for p in (_REPO_ROOT / "supabase" / "migrations").glob("*.sql"))
-    assert names[-1] == _MIGRATION.name, names[-3:]
+    assert _MIGRATION.name in names
+    # I2 (authorization hardening) is the only migration added after I1.
+    later = names[names.index(_MIGRATION.name) + 1 :]
+    assert later in ([], ["20261002000000_p8_i2_insight_authorization.sql"]), later
 
 
 def test_i1_migration_creates_canonical_insight_tables() -> None:
