@@ -262,3 +262,62 @@ record (`tool`, `contract_version`, `status`, `authorization: "i2-boundary"`, `r
 later canonical audit can persist the invocation **without redesigning the tool contract**. Canonical
 audit persistence itself (including the §30.3 "every report-reading tool call must be audited"
 requirement) remains I4 and is therefore **not** implemented.
+
+## 13.10 Tests and results (Cline, implementation-time evidence — not independent verification)
+
+| Suite | Command | Result |
+| --- | --- | --- |
+| I3 tool suite (30 tests) | `pytest tests/unit/api/test_v3_insight_i3_tools.py -p no:warnings --tb=short` | **30 passed**, exit 0 |
+| I1/I2 + Insight contract regression (58 tests) | `pytest tests/unit/api/test_v3_insight_endpoints.py tests/unit/api/test_v3_insight_i2_authorization.py tests/unit/data/test_i1_insight_migration.py tests/unit/data/test_i2_insight_authorization_contracts.py -p no:warnings` | **58 passed**, exit 0 — no regression from the I3 additions |
+| Composition check | `create_app()` OpenAPI path enumeration | **6** insight paths: the 3 I1/I2 persistence routes + `/api/v3/insight/tools`, `/api/v3/insight/tools/invoke`, `/api/v3/insight/tools/intent` |
+| Full unit suite | `pytest tests/unit --tb=no -p no:warnings` | **NOT COMPLETED in this session** — three detached attempts were truncated by the environment (stopped at 17%, 14%; no summary line produced). OHD should re-run it; the last completed full-suite baseline (I2 remediation) was **2,854 collected / 2,842 passed / 4 failed / 8 skipped**, and I3 adds 30 tests (expected collected ≈ 2,884). **No new failure was observed in any completed suite.** |
+
+**Pre-existing failures (explicitly not fixed, not caused by I3, not attributed to I3):**
+`tests/unit/api/test_review_sla_surfaces.py` — `test_canonical_ops_sla_surface_registered`,
+`test_canonical_ops_review_assign_registered`, `test_admin_legacy_compat_surface_retained`; and
+`tests/unit/data/test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged`
+(an exact migration-count expectation of 71 while the repository holds 77 migrations).
+
+## 13.11 PO §14 verification coverage → tests
+
+| Required coverage | Tests |
+| --- | --- |
+| ALLOW for each authorized persona | `test_report_lookup_allows_customer_in_own_active_organisation`, `test_every_authorized_persona_passes_and_unauthorized_personas_do_not` (customer member, consultant with grant, internal staff with `can_view_all`) |
+| DENY for unauthorized/cross-scope | `test_report_lookup_reference_does_not_grant_cross_scope_access`, `test_report_lookup_denies_foreign_organisation_request`, `test_calculation_snapshot_lookup_denials`, `test_report_version_lookup_statuses`, `test_report_evidence_lookup_denials`, `test_staff_without_the_ops_permission_gains_no_tool_scope` |
+| Inactive/suspended organisation | `test_report_lookup_denies_suspended_organisation` |
+| Current-scope reauthorization | consultant revocation inside `test_every_authorized_persona_passes_and_unauthorized_personas_do_not` (grant `ended` → next read `not_authorized`) |
+| Forged/stored identifier cannot bypass | the cross-organisation reference tests above (object-level re-check after resolving the id) |
+| Only four tools callable; unsupported refused | `test_registry_exposes_exactly_the_four_ratified_tools`, `test_invalid_inputs_are_refused` (`unratified_tool`) |
+| No arbitrary query execution / no mutation path | `test_tool_layer_contains_no_mutation_path` (source-level: no INSERT/UPDATE/DELETE/save/status transitions) |
+| Input validation (valid/invalid/malformed/bounded) | `test_invalid_inputs_are_refused`, `test_report_version_lookup_statuses` (`invalid_version_number`) |
+| Output boundaries (authorized fields only, bounded, no leakage) | allowlist-by-omission assertions in the report, version, evidence and snapshot tests + `test_output_is_bounded` (200-item bound, `truncated` flag) |
+| Determinism | `test_identical_requests_produce_identical_results` (byte-identical results; no timestamps) |
+| Reference semantics (valid, stale, reauthorization, cross-scope) | the reference assertions + cross-scope denials above |
+| Status handling (`success`/`no_data`/`not_authorized`/`invalid_input`/`error`) | exercised across the suite; `error` is reachable only by an unexpected internal exception and is asserted structurally (never leaks detail) |
+| Report lifecycle (§30.3) | `test_report_lookup_never_presents_a_draft_as_approved`, version/state fields in `test_report_lookup_allows_customer_in_own_active_organisation` and `test_report_version_lookup_by_id_and_by_number`, `test_report_evidence_lookup_returns_references_only` |
+| Audit compatibility without I4 | `invocation` record asserted in the success test (§13.9) |
+| PE / public refusal | `test_processing_entity_and_public_are_refused_at_the_gate` (403 / 401) |
+
+## 13.12 Explicitly NOT implemented (PO §15)
+
+No LLM/provider integration, no prompts, no natural-language answering, no RAG/embeddings/vector
+search, no LangChain or orchestration framework, no conversation context/memory, no frontend/UI, no
+retention/export, no billing/allowance, no automatic or consequential actions, no external API calls,
+no auditor/PE/public Insight access, no I4 canonical audit implementation, no I5/I6/I7/I8 work, no
+additional tools, no new personas, no new permissions, no new status categories, no change to the
+closed I1/I2 authorization foundation (`backend/api/v3_insight.py`, `backend/api/insight_authz.py`,
+`backend/data/insight.py` and both Insight migrations are byte-unchanged).
+
+**No migration was created or applied; no production access, deployment or data change occurred.**
+
+## 13.13 Deliverables and repository state
+
+* **Implementation commit:** `674fe077d38ed3cfe6ef21685d9b16f515ea1ce7` (`674fe07`), pushed to
+  `github/p8-release-reconciled` (`bfcb04c..674fe07`); this report is committed with it.
+* **Files changed:** `backend/domain/insight_tool.py` (new), `backend/services/insight_tools.py` (new),
+  `backend/api/v3_insight_tools.py` (new), `backend/api/router.py` (+2 lines: import + include),
+  `backend/tests/unit/api/test_v3_insight_i3_tools.py` (new), and this report.
+* **Working tree:** clean; remote aligned `0 0`.
+* **Verdict:** `I3 IMPLEMENTED — READY FOR INDEPENDENT OHD VERIFICATION`.
+  I3 is **not** closed and **not** self-declared verified; I4 and later stages remain unauthorized;
+  no deployment or production change is authorized by this report.
