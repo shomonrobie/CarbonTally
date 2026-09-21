@@ -5,7 +5,9 @@
 **Branch:** `p8-release-reconciled`
 **Starting SHA:** `66adfb5fb45e1945b65202544f74364b83e9df79` (OHD I1 verification, verdict PASS)
 **Implementation commit:** `de18c358b35b4378c8a2b8edce257c8c440e8cec`
-**Verdict:** `READY FOR INDEPENDENT OHD I2 VERIFICATION` — I2 is **not** independently verified and **not** closed by this report.
+**Remediation commit:** see §12 (this addendum); baseline for remediation `682d591` (OHD I2 FAIL)
+**Verdict (original implementation):** OHD returned **FAIL** (`OHD-P8-I2-INSIGHT-AUTHORIZATION-20260921`) — I2 was NOT verified and NOT closed; I3 remains unauthorised.
+**Verdict after remediation:** `I2 REMEDIATED — READY FOR OHD RE-VERIFICATION` (§12). Remediation is **not** independent verification.
 
 ## 1. Authoritative specification
 
@@ -225,3 +227,215 @@ Cline's tests are implementation evidence, not independent verification. I2 is *
 verified, **not** closed, and **no** later stage was started. The next step is
 independent OHD verification of this commit, then PO closure of I2 before any I3
 authorization.
+
+---
+
+# 12. OHD I2 FAIL — remediation addendum
+
+**OHD verification:** `OHD-P8-I2-INSIGHT-AUTHORIZATION-20260921`, report commit
+`682d5913d572cffc0226844f03cfcf76b2353a38`, implementation under review
+`de18c358b35b4378c8a2b8edce257c8c440e8cec`.
+**OHD verdict:** **FAIL** — I1 hardening F-01…F-06 verified; I2 authorization largely
+correct; but one material ratified requirement failed (customer own-org ALLOW) and one
+required matrix row was unenforced (inactive organisation → DENY). I2 NOT closed, I3
+NOT authorised.
+**Remediation baseline:** `682d591` (branch `p8-release-reconciled`).
+
+## 12.1 F-01 — every real customer was denied (root cause and fix)
+
+**Root cause (confirmed in code).** `auth.py:313` builds the authenticated
+organisation-member principal as
+
+```python
+role = f"org_{org_role}" if org_role else "org_viewer"
+role_name = role
+```
+
+so the production role strings are `org_owner` / `org_admin` / `org_member` /
+`org_viewer`. `insight_authz` compared against the **bare** forms (`owner`, `admin`,
+`member`, `viewer`), so the customer branch never matched and every legitimate
+customer received 403 on all five routes.
+
+**Fix (narrowest Insight-specific correction; no global auth change).**
+`normalize_org_role()` strips the platform's `org_` prefix (case-insensitively) before
+the ratified-role check, so **both** the canonical production form and the bare form
+resolve to the same ratified role. `role_name` is left as the platform sets it; no
+resolver, middleware or platform authorization code was modified. `auth.py`,
+`api/dependencies.py`, `api/operations_auth.py` (beyond the earlier additive alias) and
+`api/consultant_auth.py` are **untouched** by the remediation.
+
+**Regression protection.** The I2 test suite now constructs principals **exactly as
+`auth.py` does** (`role = role_name = "org_<role>"`): the customer matrix is
+parametrised over `org_owner`, `org_admin`, `org_member`, `org_viewer`, and
+`test_role_normalization_accepts_production_and_bare_forms` pins the contract. This is
+the specific defect class that must not recur.
+
+## 12.2 F-02 — inactive organisation is now DENIED
+
+**Decision applied (PO):** an organisation must be **ACTIVE** for Insight access —
+customer **and** consultant.
+
+**Implementation.** `authorize_insight_scope` performs
+`organization_is_active(repos, organization_id)` (via the existing
+`repositories.organizations.get_by_id(...).is_active`) **before** any scope branch, and
+fails closed when the organisation is missing, inactive, or the repository surface is
+unavailable. Applied uniformly to every persona (customer, consultant, staff) — the
+narrowest rule that satisfies the decision and cannot be gamed by persona choice.
+
+**Why the backend needed an explicit check.** `public.is_org_member()` itself requires
+an ACTIVE organisation, so the RLS layer already blocks the client path for a suspended
+organisation (live-verified: 0 rows). The backend uses `service_role` (BYPASSRLS), so
+the application check is the control on that path.
+
+**Tests.** customer → suspended org: DENY (list, create); suspension takes effect on the
+**next read** and restoration returns access; consultant with a valid grant → suspended
+customer org: DENY; unknown organisation id: DENY. Live RLS test
+`test_suspended_organisation_is_blocked_for_the_client_path` confirms RLS and the
+application rule agree.
+
+## 12.3 F-03 — live-RLS test made hermetic
+
+`backend/tests/unit/data/test_i2_insight_rls_live.py` was hard-coded to fixed UUIDs and
+used table-wide `count(*)`, so a second run (or any leftover object in the disposable
+database) could perturb it. It is now hermetic:
+
+* **fresh UUIDs per run** for both organisations, both users and the conversation — no id
+  can collide with, or be counted from, another run's rows;
+* **every assertion is scoped to this run's own row** (`WHERE conversation_id = $1` /
+  `WHERE organization_id = $1`) instead of counting shared tables;
+* one transaction per test, **always rolled back**; no TRUNCATE, no DELETE;
+* the DSN guard is unchanged and fail-closed: it refuses any database whose name looks
+  persistent (`demo`, `qa`, `investor`, `prod`, `live`) or is a main application database,
+  and it **skips** (never falls back) when no DSN is set;
+* the intentional RLS rejection runs inside a `SAVEPOINT`, so the surrounding assertion
+  transaction stays usable and no ordering coupling remains.
+
+## 12.4 F-04 — disposable test database refreshed
+
+`carbontally_test` predated the consultant engagement/permission migrations, so the
+consultant relationship could not be exercised there. Bounded refresh performed **only**
+on that disposable database:
+
+| Migration applied | Effect (verified via `information_schema.columns`) |
+| --- | --- |
+| `20260906090000_p6_1c_consultant_engagement.sql` | `consultant_clients`: **20 → 24** columns (`relationship_origin`, `engagement_requested_at`, `engagement_decided_by`, `engagement_decided_at`) |
+| `20260906100000_p6_2a_consultant_processing_permissions.sql` | `consultant_firm_members`: **17 → 23** columns; `can_*` processing flags now **10** |
+
+Both are additive `ADD COLUMN IF NOT EXISTS` + guarded `DO` blocks, applied with
+`ON_ERROR_STOP=1` (exit 0 each). No persistent database was touched, no migration file was
+modified, and no rows were deleted. The live RLS suite re-ran green afterwards (5 passed).
+Live consultant-resolution testing against the current schema is therefore now possible
+for OHD; consultant authorization here is covered by the API suite, which drives the
+**real** `ensure_consultant_org_access` resolver.
+
+## 12.5 O-01 — auditor denial is now explicit
+
+`is_auditor_principal()` refuses an auditor/assurance-reviewer identity **by name**
+(`auditor`, `org_auditor`, `assurance_reviewer`, `auditor_reviewer` — matched on `role`
+**and** `role_name`, case-insensitively) and is checked **first** in both
+`resolve_insight_persona` and `authorize_insight_scope`, so the refusal is a named
+decision rather than a by-product of the absence of a relationship. No auditor role,
+table, permission model or invitation model was created (D2 §10.3). A parametrised test
+covers all three real spellings, asserting persona `auditor`, `403`, and no writes.
+
+## 12.6 O-02 — staff scope is bounded by existing staff permissions
+
+**Authoritative source (existing, unchanged):** `resolve_staff_context` → ACTIVE
+`staff_profiles`; permissions from `staff_roles.permissions` via `staff_profiles.role_id`;
+`entity_id IS NULL` = internal staff.
+
+**New bound:** those permissions must actually grant ops-wide customer visibility — the
+platform's existing **`can_view_all`** (the permission the operations dashboard itself
+requires, `api/v3_operations.py:629`) or the platform's `is_superuser` flag. Staff
+identity alone now grants **nothing**.
+
+**Resulting scope.** With `can_view_all`/`is_superuser`: internal-staff scope for any
+**active** organisation, still creator-private (the PO decision authorises staff *use* for
+internal intelligence, not reading other principals' conversations). Without it: no staff
+scope at all; because the platform sets a staff principal's `role` to the *staff* role
+name rather than `org_<role>`, such a principal gains no customer scope from membership
+either — **deny-by-default**, recorded as a deliberate limitation (§12.11) rather than an
+invented fallback. No global staff model was redesigned and no new permission invented.
+
+## 12.7 Consultant authorization — preserved, not regressed
+
+Unchanged by the remediation: `consultant_clients` with `status = 'active'` remains the
+single authoritative consultant→customer relationship, resolved by the pre-existing
+`api.consultant_auth.ensure_consultant_org_access` (called, not reimplemented). No parallel
+relationship exists. The only added condition is the organisation-active check (F-02),
+applied **on top of** a valid grant: an ended or absent grant still DENIES, an inactive
+firm membership still DENIES, revocation still takes effect on the next read, and an active
+grant no longer suffices for a **suspended** customer organisation. API tests cover active
+grant / no grant / `ended` grant / multiple authorized customers / unassigned customer
+named in the request / revocation.
+
+## 12.8 Tests and regression (remediation)
+
+| Suite | Result |
+| --- | --- |
+| Focused I1+I2 unit/contract (5 modules) | **58 passed, 5 skipped**, exit 0 |
+| Live RLS (disposable `carbontally_test`, hermetic) | **5 passed**, exit 0 |
+| Full backend unit suite (`pytest tests/unit --tb=no`) | **4 failed, 2842 passed, 8 skipped in 250.02s** (collected 2,854) |
+
+Regression comparison: pre-I1 2,791 / 4 failures · I1 HEAD 2,808 / 4 failures · I2
+implementation 2,841 / 4 failures / 7 skipped · **I2 remediated 2,854 / 4 failures / 8
+skipped**. **Delta: +13 tests, +0 new failures.** The 4 failures are the same pre-existing
+ones (`test_review_sla_surfaces.py` ×3 and the D17 exact migration-count assertion); none
+was fixed and none is attributed to this work. The extra skip is the new live
+suspended-organisation test (no DSN in the full-suite run).
+
+**Every-read re-authorization re-verified after remediation:** suspension, membership
+revocation and consultant-grant revocation each end access on the next read; restoration
+returns it; conversation ids and request parameters cannot expand authorization; no
+authorization result is cached across requests.
+
+## 12.9 Files changed by the remediation
+
+* `backend/api/insight_authz.py` — role normalisation (F-01), organisation-active check
+  (F-02), explicit auditor refusal (O-01), staff-scope permission binding (O-02)
+* `backend/tests/unit/api/test_v3_insight_i2_authorization.py` — production role shapes,
+  suspended-organisation cases, staff-permission cases, explicit auditor cases, role
+  contract
+* `backend/tests/unit/api/test_v3_insight_endpoints.py` — I1 bundle gains the
+  organisation-active stub surface
+* `backend/tests/unit/data/test_i2_insight_rls_live.py` — hermetic rewrite (F-03) + the
+  suspended-organisation RLS case
+* this report (this addendum)
+
+No migration was added by the remediation (the I2 migration `20261002000000` is unchanged);
+no repository file outside this list was modified, and OHD's verification report was not
+touched.
+
+## 12.10 Environment boundaries (remediation)
+
+* **Disposable:** `carbontally_test` — I2 migration re-verified, p6_1c/p6_2a applied
+  (F-04), hermetic live RLS suite run. Fixtures are rolled back; no fixture rows persist.
+* **Demo Lab (`carbontally_demo_local`): untouched.** **QA (`carbontally_qa_phase8`):
+  untouched.** **Production: untouched.** No deployment was performed.
+
+## 12.11 Remaining limitations (post-remediation)
+
+1. A staff principal **with** the ops permission has internal scope over any active
+   organisation but remains creator-private; **data-level** staff scope ("within their
+   existing staff/admin permissions") is fully enforceable only at the I3 tool layer
+   (invariant I-5) — no customer data surface exists yet.
+2. A staff principal **without** the ops permission receives no Insight scope at all
+   (deny-by-default). If the PO wants such staff to retain customer-workspace Insight for
+   their own organisation, the organisation role must be resolved separately from the
+   staff role — a product decision, not invented here.
+3. The auditor refusal is a role-name vocabulary check because CarbonTally has no auditor
+   identity source (D2 §10.3); if an auditor model is ever ratified, this check must be
+   re-pointed at it.
+4. `can_view_all` / `is_superuser` are the only existing permissions used; a narrower or
+   differently shaped staff Insight permission would be a new permission decision.
+5. Consultant live-resolver testing is now *possible* in the refreshed disposable database
+   (F-04), but this remediation exercised consultant authorization through the API suite
+   rather than adding a new live resolver test.
+
+## 12.12 Status
+
+`I2 REMEDIATED — READY FOR OHD RE-VERIFICATION`.
+
+I2 remains **NOT verified** and **NOT closed**; I3 is **not** authorised and was not
+started. No LLM/provider, tools, context, UI, audit-interaction, retention or billing work
+exists. This addendum is implementation evidence, not independent verification.

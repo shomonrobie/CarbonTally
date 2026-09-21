@@ -134,7 +134,22 @@ def _bundle(repo):
         async def get_client_by_org(self, consultant_id, organization_id):
             return None
 
-    return type("Bundle", (), {"insight": repo, "staff": _NoStaff(), "consultants": _NoConsultant()})()
+    class _OrgRepo:
+        """Active-organisation stub for the Insight org-active check (OHD F-02)."""
+
+        async def get_by_id(self, org_id):
+            return type("O", (), {"id": org_id, "is_active": True})()
+
+    return type(
+        "Bundle",
+        (),
+        {
+            "insight": repo,
+            "staff": _NoStaff(),
+            "consultants": _NoConsultant(),
+            "organizations": _OrgRepo(),
+        },
+    )()
 
 
 def _member(user_id: str, organization_id: str) -> AuthUser:

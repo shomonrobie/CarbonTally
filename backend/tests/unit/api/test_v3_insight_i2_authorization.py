@@ -42,7 +42,9 @@ ORG_C = "33333333-3333-4333-8333-333333333333"
 CONSULTANT = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 STAFF = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 FIRM = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-ALL_ROLES = ("owner", "admin", "member", "viewer")
+#: The exact role strings `auth.py` produces for organisation members
+#: (``role = f"org_{org_role}"``): OHD I2 F-01.
+ALL_ROLES = ("org_owner", "org_admin", "org_member", "org_viewer")
 
 
 # --------------------------------------------------------------------------
@@ -102,7 +104,17 @@ class _ConsultantRepo:
         return self.grants.get((consultant_id, organization_id))
 
 
-def _bundle(repo, staff=None, consultants=None):
+class _OrgRepo:
+    """``OrganizationsRepository`` surface used by the OHD-F-02 active check."""
+
+    def __init__(self, active=()):
+        self.active = set(active)
+
+    async def get_by_id(self, org_id: str):
+        return type("O", (), {"id": org_id, "is_active": org_id in self.active})()
+
+
+def _bundle(repo, staff=None, consultants=None, orgs=None):
     return type(
         "Bundle",
         (),
@@ -110,6 +122,7 @@ def _bundle(repo, staff=None, consultants=None):
             "insight": repo,
             "staff": staff or _StaffRepo(),
             "consultants": consultants or _ConsultantRepo(),
+            "organizations": orgs if orgs is not None else _OrgRepo({ORG_A, ORG_B, ORG_C}),
         },
     )()
 
@@ -118,15 +131,22 @@ def _user(
     user_id: str,
     organization_id: str | None = ORG_A,
     *,
-    role: str = "member",
+    role: str = "org_member",
     is_org_member: bool = True,
     is_staff: bool = False,
     entity_id: str | None = None,
 ) -> AuthUser:
+    """Build a principal the way the platform does.
+
+    `auth.py:313` sets ``role = f"org_{org_role}"`` **and** ``role_name = role``
+    for an organisation member, so the default here is the production shape
+    (``org_member``), not a bare role (OHD I2 F-01).
+    """
     return AuthUser(
         user_id=user_id,
         email=f"{user_id[:8]}@example.test",
         role=role,
+        role_name=role,
         organization_id=organization_id,
         is_org_member=is_org_member,
         is_staff=is_staff,
@@ -141,10 +161,11 @@ def api():
     consultants = _ConsultantRepo()
     app = FastAPI()
     app.include_router(v3_insight.router)
+    orgs = _OrgRepo({ORG_A, ORG_B, ORG_C})
     state = {
-        "user": _user(ALICE, ORG_A, role="owner"),
+        "user": _user(ALICE, ORG_A, role="org_owner"),
         "unauthenticated": False,
-        "repos": _bundle(repo, staff, consultants),
+        "repos": _bundle(repo, staff, consultants, orgs),
     }
 
     async def _current_user():
@@ -169,6 +190,7 @@ def api():
             "repo": repo,
             "staff": staff,
             "consultants": consultants,
+            "orgs": orgs,
             "state": state,
         },
     )()
@@ -313,7 +335,7 @@ def test_consultant_grant_revocation_ends_access_on_the_next_read(api):
 # --------------------------------------------------------------------------
 def test_internal_staff_gets_internal_scope_from_an_active_staff_profile(api):
     api.staff.roles["r-admin"] = StaffRole(
-        id="r-admin", name="admin", permissions={"can_view_customers": True}
+        id="r-admin", name="admin", permissions={"can_view_all": True}
     )
     api.staff.add_profile(STAFF, entity_id=None, role_id="r-admin")
     # A staff principal who is ALSO an org member of ORG_B: staff scope must be
@@ -340,8 +362,11 @@ def test_staff_shaped_identity_without_an_active_profile_gains_no_staff_scope(ap
 def test_staff_remain_creator_private_on_the_insight_surface(api):
     """The PO decision authorizes staff *use*, not reading others' conversations."""
     conversation = _create(api)  # ALICE / ORG_A
-    api.staff.add_profile(STAFF, entity_id=None)
-    api.state["user"] = _user(STAFF, ORG_A, role="member", is_org_member=True, is_staff=True)
+    api.staff.roles["r-ops"] = StaffRole(id="r-ops", name="admin", permissions={"can_view_all": True})
+    api.staff.add_profile(STAFF, entity_id=None, role_id="r-ops")
+    api.state["user"] = _user(
+        STAFF, ORG_A, role="operator", is_org_member=True, is_staff=True
+    )
 
     assert (
         api.client.get(
@@ -376,13 +401,16 @@ def test_pe_staff_profile_is_denied_even_if_the_identity_flags_disagree(api):
     assert _list(api, ORG_A).status_code == 403
 
 
-def test_auditor_persona_receives_no_insight_access(api):
-    """D2 §10.3 / PO decision — auditors receive no access."""
+@pytest.mark.parametrize("role", ("auditor", "org_auditor", "assurance_reviewer"))
+def test_auditor_persona_is_explicitly_denied(api, role):
+    """OHD I2 O-01 — named refusal, not implicit fall-through."""
     api.state["user"] = _user(
-        "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", None, role="auditor", is_org_member=False
+        "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", ORG_A, role=role, is_org_member=True
     )
-    assert insight_authz.resolve_insight_persona(api.state["user"]) == "non_member"
+    assert insight_authz.resolve_insight_persona(api.state["user"]) == "auditor"
+    assert insight_authz.is_auditor_principal(api.state["user"]) is True
     assert _list(api, ORG_A).status_code == 403
+    assert api.repo.writes == 0
 
 
 def test_public_or_unauthenticated_callers_are_denied_with_a_challenge(api):
@@ -462,3 +490,119 @@ def test_persona_decision_table_enumerates_every_persona():
     allows = {p for p, d in insight_authz.PERSONA_DECISIONS.items() if d.startswith("ALLOW")}
     assert allows == {"customer", "consultant", "staff_internal"}
     assert insight_authz.INSIGHT_VISIBILITY_MODEL == "creator_private"
+
+
+# --------------------------------------------------------------------------
+# OHD I2 F-02 — the organisation must be ACTIVE
+# --------------------------------------------------------------------------
+def test_customer_is_denied_for_an_inactive_organization(api):
+    api.state["user"] = _user(ALICE, ORG_A, role="org_owner")
+    api.orgs.active.discard(ORG_A)
+
+    assert _list(api, ORG_A).status_code == 403
+    assert (
+        api.client.post(
+            f"{BASE}/conversations", json={"organization_id": ORG_A, "title": "suspended"}
+        ).status_code
+        == 403
+    )
+    assert api.repo.writes == 0
+
+
+def test_organization_suspension_takes_effect_on_the_next_read(api):
+    api.state["user"] = _user(ALICE, ORG_A, role="org_owner")
+    conversation = _create(api)
+
+    api.orgs.active.discard(ORG_A)
+    assert _list(api, ORG_A).status_code == 403
+    assert (
+        api.client.get(
+            f"{BASE}/conversations/{conversation['id']}", params={"organization_id": ORG_A}
+        ).status_code
+        == 403
+    )
+
+    api.orgs.active.add(ORG_A)  # restoration returns access
+    assert _list(api, ORG_A).status_code == 200
+
+
+def test_consultant_is_denied_for_an_inactive_customer_organization(api):
+    api.consultants.add_firm_member(CONSULTANT)
+    api.consultants.grant(ORG_A)
+    api.state["user"] = _user(CONSULTANT, None, role="consultant", is_org_member=False)
+
+    assert _list(api, ORG_A).status_code == 200  # active customer + active grant
+    api.orgs.active.discard(ORG_A)
+    assert _list(api, ORG_A).status_code == 403  # grant survives, organisation does not
+
+
+def test_unknown_organization_is_denied(api):
+    api.state["user"] = _user(ALICE, ORG_A, role="org_owner")
+    assert _list(api, "99999999-9999-4999-8999-999999999999").status_code == 403
+
+
+# --------------------------------------------------------------------------
+# OHD I2 O-02 — staff scope is bound to existing staff permissions
+# --------------------------------------------------------------------------
+def test_staff_without_the_ops_permission_gains_no_staff_scope(api):
+    """Staff identity alone must not invent cross-organisation access."""
+    api.staff.roles["r-op"] = StaffRole(
+        id="r-op", name="operator", permissions={"can_process": True}
+    )
+    api.staff.add_profile(STAFF, entity_id=None, role_id="r-op")
+    api.state["user"] = _user(STAFF, ORG_B, role="operator", is_org_member=True, is_staff=True)
+
+    # Deny-by-default: the principal carries the *staff* role, so no customer
+    # scope is invented from membership either.
+    assert _list(api, ORG_A).status_code == 403
+    assert _list(api, ORG_B).status_code == 403
+    assert api.repo.writes == 0
+
+
+def test_staff_with_the_ops_permission_receives_internal_scope(api):
+    api.staff.roles["r-ops"] = StaffRole(
+        id="r-ops", name="admin", permissions={"can_view_all": True}
+    )
+    api.staff.add_profile(STAFF, entity_id=None, role_id="r-ops")
+    api.state["user"] = _user(
+        STAFF, None, role="admin", is_org_member=False, is_staff=True
+    )
+    assert _list(api, ORG_A).status_code == 200
+
+
+def test_superuser_flag_grants_internal_scope(api):
+    api.staff.roles["r-sys"] = StaffRole(
+        id="r-sys", name="system_admin", permissions={"is_superuser": True}
+    )
+    api.staff.add_profile(STAFF, entity_id=None, role_id="r-sys")
+    api.state["user"] = _user(
+        STAFF, None, role="system_admin", is_org_member=False, is_staff=True
+    )
+    assert _list(api, ORG_A).status_code == 200
+
+
+def test_staff_scope_helpers_are_bound_to_the_existing_vocabulary(api):
+    assert insight_authz.STAFF_INSIGHT_PERMISSIONS == ("can_view_all",)
+    permitted = type("C", (), {"permissions": {"can_view_all": True}})()
+    denied = type("C", (), {"permissions": {"can_process": True}})()
+    empty = type("C", (), {"permissions": None})()
+    assert insight_authz.staff_context_grants_insight_scope(permitted) is True
+    assert insight_authz.staff_context_grants_insight_scope(denied) is False
+    assert insight_authz.staff_context_grants_insight_scope(empty) is False
+
+
+# --------------------------------------------------------------------------
+# OHD I2 F-01 — the role contract
+# --------------------------------------------------------------------------
+def test_role_normalization_accepts_production_and_bare_forms(api):
+    assert insight_authz.normalize_org_role("org_owner") == "owner"
+    assert insight_authz.normalize_org_role("owner") == "owner"
+    assert insight_authz.normalize_org_role("ORG_ADMIN") == "admin"
+    assert insight_authz.normalize_org_role("org_viewer") == "viewer"
+    assert insight_authz.normalize_org_role("auditor") == "auditor"
+    assert insight_authz.normalize_org_role(None) == ""
+
+
+def test_unratified_customer_role_is_denied_even_with_membership(api):
+    api.state["user"] = _user(ALICE, ORG_A, role="org_supervisor", is_org_member=True)
+    assert _list(api, ORG_A).status_code == 403

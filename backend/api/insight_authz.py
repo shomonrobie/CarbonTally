@@ -56,7 +56,29 @@ from auth import AuthUser, get_current_user
 INSIGHT_VISIBILITY_MODEL = "creator_private"
 
 #: D2 §9.5 / PO decision — customer roles that may use Insight.
+#:
+#: The **canonical production form** is what `auth.py` sets for an organisation
+#: member: ``role = f"org_{org_role}"`` and ``role_name = role`` (auth.py:313), so
+#: the authenticated principal carries ``org_owner`` / ``org_admin`` /
+#: ``org_member`` / ``org_viewer`` (OHD I2 F-01). The bare forms are accepted too,
+#: but the ``org_`` shape is the contract the platform actually produces.
 CUSTOMER_INSIGHT_ROLES = ("owner", "admin", "member", "viewer")
+
+#: Prefix the platform's resolver applies to an organisation role (auth.py:313).
+ORG_ROLE_PREFIX = "org_"
+
+#: Auditor personas — explicitly DENIED (PO decision: auditors have no Insight).
+#: No auditor role/table/permission model exists in CarbonTally (D2 §10.3), so this
+#: is a named refusal of the persona rather than a new permission system.
+AUDITOR_ROLE_NAMES = ("auditor", "org_auditor", "assurance_reviewer", "auditor_reviewer")
+
+#: Existing CarbonTally staff permission that authorizes CarbonTally-internal
+#: ops-wide visibility across customer organisations (`can_view_all` — the
+#: permission the ops dashboard itself requires, `api/v3_operations.py:629`), plus
+#: the platform's superuser flag. Staff Insight scope is bound to *these* existing
+#: permissions: staff status alone grants nothing (ODH I2 O-02).
+STAFF_INSIGHT_PERMISSIONS = ("can_view_all",)
+STAFF_SUPERUSER_FLAG = "is_superuser"
 
 #: Persona vocabulary (explicit, enumerable, testable).
 PERSONA_CUSTOMER = "customer"
@@ -77,6 +99,63 @@ PERSONA_DECISIONS: dict[str, str] = {
     PERSONA_NON_MEMBER: "DENY — no established authorization relationship for this organisation",
     PERSONA_UNAUTHENTICATED: "DENY — no authenticated principal",
 }
+
+
+def normalize_org_role(role: Optional[str]) -> str:
+    """Normalise an organisation role to its bare form.
+
+    `auth.py` produces ``org_<role>`` for organisation members (e.g. ``org_owner``),
+    so both the canonical ``org_*`` shape and the bare form resolve to the same
+    ratified role. Anything else is returned unchanged (and therefore fails the
+    deny-by-default role check).
+    """
+    value = (role or "").strip().lower()
+    if value.startswith(ORG_ROLE_PREFIX):
+        value = value[len(ORG_ROLE_PREFIX) :]
+    return value
+
+
+def is_auditor_principal(current_user: Optional[AuthUser]) -> bool:
+    """Explicit auditor/assurance-reviewer detection (PO decision: DENY).
+
+    CarbonTally has no auditor role, table or permission model (D2 §10.3); if a
+    principal ever carries such a role name it is refused by *name*, rather than
+    only by the absence of an authorization relationship (OHD I2 O-01).
+    """
+    if current_user is None:
+        return False
+    for candidate in (getattr(current_user, "role", None), getattr(current_user, "role_name", None)):
+        if (candidate or "").strip().lower() in AUDITOR_ROLE_NAMES:
+            return True
+    return False
+
+
+def staff_context_grants_insight_scope(context) -> bool:
+    """Whether the caller's *existing* staff permissions authorize Insight scope.
+
+    Bound to the platform's existing permission vocabulary — the ops-wide customer
+    visibility permission the operations dashboard itself requires, or the
+    platform superuser flag. Staff identity alone grants nothing (ODH I2 O-02).
+    """
+    permissions = dict(getattr(context, "permissions", None) or {})
+    if any(permissions.get(name) is True for name in STAFF_INSIGHT_PERMISSIONS):
+        return True
+    return permissions.get(STAFF_SUPERUSER_FLAG) is True
+
+
+async def organization_is_active(repos: RepositoryBundle, organization_id: str) -> bool:
+    """The organisation must exist and be ACTIVE to be an Insight scope.
+
+    OHD I2 F-02: the backend pool bypasses the RLS suspension predicate, so this
+    check is performed explicitly. It is narrow to the Insight boundary — no global
+    organisation-authorization behaviour is changed.
+    """
+    lookup = getattr(repos.organizations, "get_by_id", None)
+    if lookup is None:
+        # No organisation repository surface: fail closed rather than assume active.
+        return False
+    organization = await lookup(organization_id)
+    return organization is not None and bool(getattr(organization, "is_active", False))
 
 
 @dataclass(frozen=True)
@@ -161,23 +240,38 @@ async def authorize_insight_scope(
     if current_user.is_entity_staff:
         raise _denied("Processing Entity users receive no CarbonTally Insight access")
 
-    # 1. CarbonTally-internal staff/admin scope (explicit staff authorization).
+    # 0. Explicit auditor refusal (PO decision) — named, not an accident of
+    #    fall-through (OHD I2 O-01).
+    if is_auditor_principal(current_user):
+        raise _denied("Auditors receive no CarbonTally Insight access")
+
+    # 0b. The organisation must exist and be ACTIVE (OHD I2 F-02). The backend
+    #     pool bypasses the RLS suspension predicate, so this is checked here.
+    if not await organization_is_active(repos, organization_id):
+        raise _denied("Organization access denied")
+
+    # 1. CarbonTally-internal staff/admin scope. Bound to the caller's *existing*
+    #    staff permissions (can_view_all / superuser); staff identity alone grants
+    #    nothing, and a staff member without that permission simply gains no staff
+    #    scope (ODH I2 O-02).
     staff = await resolve_staff_context(current_user, repos)
     if staff is not None:
         if staff.profile.entity_id is not None:
             raise _denied("Processing Entity users receive no CarbonTally Insight access")
-        return InsightAccess(
-            user_id=current_user.user_id,
-            organization_id=organization_id,
-            persona=PERSONA_STAFF_INTERNAL,
-            staff_permissions=dict(staff.permissions or {}),
-        )
+        if staff_context_grants_insight_scope(staff):
+            return InsightAccess(
+                user_id=current_user.user_id,
+                organization_id=organization_id,
+                persona=PERSONA_STAFF_INTERNAL,
+                staff_permissions=dict(staff.permissions or {}),
+            )
 
-    # 2. Customer scope — the caller's own organisation only.
+    # 2. Customer scope — the caller's own organisation only, using the role shape
+    #    the platform's resolver actually produces (``org_owner`` … ``org_viewer``).
     if current_user.is_org_member and current_user.organization_id:
         if organization_id != current_user.organization_id:
             raise _denied()
-        if (current_user.role or "").lower() not in CUSTOMER_INSIGHT_ROLES:
+        if normalize_org_role(current_user.role) not in CUSTOMER_INSIGHT_ROLES:
             raise _denied()
         return InsightAccess(
             user_id=current_user.user_id,
@@ -202,16 +296,22 @@ def resolve_insight_persona(current_user: Optional[AuthUser]) -> str:
 
     Scope-bearing personas are resolved by :func:`authorize_insight_scope`,
     which is the authorization decision. This helper only names what the
-    principal *is*.
+    principal *is*. Auditor is checked first so an auditor identity is named even
+    when it also carries a membership (OHD I2 O-01).
     """
     if current_user is None or not getattr(current_user, "user_id", None):
         return PERSONA_UNAUTHENTICATED
+    if is_auditor_principal(current_user):
+        return PERSONA_AUDITOR
     if current_user.is_entity_staff:
         return PERSONA_PROCESSING_ENTITY
     if current_user.is_internal_staff:
         return PERSONA_STAFF_INTERNAL
+    # Customer membership uses the production ``org_<role>`` shape (auth.py:313).
     if current_user.is_org_member and current_user.organization_id:
-        return PERSONA_CUSTOMER
+        if normalize_org_role(current_user.role) in CUSTOMER_INSIGHT_ROLES:
+            return PERSONA_CUSTOMER
+        return PERSONA_NON_MEMBER
     return (
         PERSONA_CONSULTANT
         if (current_user.role or "").lower() == "consultant"
