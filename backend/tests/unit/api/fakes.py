@@ -4448,6 +4448,8 @@ class InMemoryWorld:
         # tests inject their own in-memory repository through a
         # ``get_repositories`` dependency override.
         self.insight = _StubRepo()
+        # Phase 8 I4 (PO I4 authorization) — Layer-2 interaction evidence.
+        self.insight_interactions = _StubRepo()
         # Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the
         # disclosure projection read model used by report_evidence_lookup.
         self.disclosure_projection = _StubRepo()
@@ -4502,6 +4504,7 @@ class InMemoryWorld:
             processing=self.processing,
             evidence_line_items=self.evidence_line_items,
             insight=self.insight,
+            insight_interactions=self.insight_interactions,
             disclosure_projection=self.disclosure_projection,
         )
 

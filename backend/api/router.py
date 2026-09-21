@@ -67,6 +67,7 @@ from api.v3_health import router as v3_health_router
 from api.v3_activity_clarifications import router as v3_activity_clarifications_router
 from api.v3_insight import router as v3_insight_router
 from api.v3_insight_tools import router as v3_insight_tools_router
+from api.v3_insight_interactions import router as v3_insight_interactions_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -239,6 +240,8 @@ router.include_router(v3_insight_router)
 # Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the four
 # ratified controlled read-only tools (registry + deterministic execution).
 router.include_router(v3_insight_tools_router)
+# Phase 8 I4 — Layer-2 interaction orchestration API (PO I4 authorization).
+router.include_router(v3_insight_interactions_router)
 
 
 # ---------------------------------------------------------------------------

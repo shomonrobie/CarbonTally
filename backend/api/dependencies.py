@@ -48,6 +48,7 @@ from data.factor_aliases import FactorAliasesRepository
 from data.imports import ImportsRepository
 from data.disclosure_projection import DisclosureProjectionRepository
 from data.insight import InsightRepository
+from data.insight_interactions import InsightInteractionRepository
 from data.invitations import InvitationsRepository
 from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
@@ -337,6 +338,9 @@ class RepositoryBundle:
     #: Phase 8 I1 (CT-P8-I1-INSIGHT-PERSISTENCE-20260921-002) — CarbonTally
     #: Insight Layer-1 persistent conversation foundation (separate domain).
     insight: InsightRepository
+    #: Phase 8 I4 (PO I4 authorization 2026-09-21) — Layer-2 interaction
+    #: and tool-call evidence (append-only) for the authorized I4 stage.
+    insight_interactions: InsightInteractionRepository
     #: Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the disclosure
     #: projection read model the evidence tool requires (OHD D-01).
     disclosure_projection: DisclosureProjectionRepository
@@ -401,6 +405,9 @@ async def get_repositories() -> RepositoryBundle:
         # Phase 8 I1 (CT-P8-I1-INSIGHT-PERSISTENCE-20260921-002) — CarbonTally
         # Insight Layer-1 persistence (create/list/read + message append).
         insight=InsightRepository(pool),
+        # Phase 8 I4 — Layer-2 evidence repository (real wiring, not a
+        # test-only attribute; I3 D-01 lesson).
+        insight_interactions=InsightInteractionRepository(pool),
         # Phase 8 I3 — evidence-tool read model (OHD D-01: must be real wiring,
         # not a test-only attribute).
         disclosure_projection=DisclosureProjectionRepository(pool),

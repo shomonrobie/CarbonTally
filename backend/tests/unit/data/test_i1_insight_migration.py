@@ -53,7 +53,17 @@ def test_i1_migration_is_the_latest_migration() -> None:
     assert _MIGRATION.name in names
     # I2 (authorization hardening) is the only migration added after I1.
     later = names[names.index(_MIGRATION.name) + 1 :]
-    assert later in ([], ["20261002000000_p8_i2_insight_authorization.sql"]), later
+    # I2 (authorization hardening) and, under the PO I4 implementation
+    # authorization (2026-09-21), the I4 Layer-2 migration are the only
+    # migrations added after I1. I5+ must not appear here.
+    assert later in (
+        [],
+        ["20261002000000_p8_i2_insight_authorization.sql"],
+        [
+            "20261002000000_p8_i2_insight_authorization.sql",
+            "20261003000000_p8_i4_insight_interactions.sql",
+        ],
+    ), later
 
 
 def test_i1_migration_creates_canonical_insight_tables() -> None:

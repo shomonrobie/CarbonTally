@@ -2128,6 +2128,37 @@ This closure does **not** authorize I4.
 
 I4, I5, I6, I7, and I8 remain **NOT AUTHORIZED** and require separate PO authorization.
 
+## 48.5 PO decision intake — Q1–Q14 and I4 authorisation (2026-09-21)
+
+The Product Owner has resolved the I4 pre-authorisation decisions. Recorded here so
+this specification no longer presents them as open; the decision text itself lives in
+the dated decision/closure documents under `docs/architecture/` and
+`docs/implementation/phase8/`.
+
+| Decision | PO resolution (2026-09-21) |
+| --- | --- |
+| Q1 — dormant `ai_content_history` | **CLOSED — Option C**: retained unchanged and **outside I4** (`CARBONTALLY_P8_I4_Q1_AI_CONTENT_HISTORY_CLOSURE_20260921.md`). I4 must not read, write, migrate, rename, alter, or reuse it as any Insight store or as the audit ledger |
+| Q2 — canonical audit ledger | `public.audit_trail` via the existing `infra/audit_logger.py` + `data/audit.py`; no competing ledger, and `audit_logs`/`processing_audit_trail`/`review_audit_trail`/`activity_logs` are not canonical |
+| Q3 — status vocabularies | The closed I3 six-value `ToolStatus` contract is unchanged; I4 keeps a **separate** fourteen-state answer vocabulary |
+| Q4 — raw question | Persisted once in the I1 message layer; Layer 2 stores only a content hash (plus references/ids) |
+| Q5 — Layer-2 mutability | Append-only/immutable after creation; corrections are new linked records |
+| Q6 — tool arguments/results | Allowlisted structured projections only; no raw payloads, secrets or unrestricted result content |
+| Q7 — interaction lifecycle | Owned by Layer 2 (I1 stays the conversation/message layer) |
+| Q8 — visibility | Creator-private only; no new shared visibility, personas or permissions |
+| Q9 — correlation | Immutable `interaction_id` with child `tool_call_id`s, correlatable to the canonical audit event |
+| Q10 — idempotency/retry | Bounded retry; no duplicate interaction identities or duplicate logical tool calls; truthful partial-failure state |
+| Q11 — provider unavailable | Degraded service, never fabrication: deterministic results are preserved and `provider_unavailable` is returned where provider work is required |
+| Q12 — retention/deletion/export | Deferred to I7; not implemented at I4 |
+| Q13 — billing/credits | Deferred to I8; not implemented at I4 |
+| Q14 — provider/evaluation/SLO | Existing provider abstraction only; truthful attribution; usage/cost may remain NULL; no evaluation platform, RAG, embeddings or orchestration framework |
+
+**Stage status change:** I4 is **AUTHORISED — IMPLEMENTATION IN PROGRESS** (PO I4
+Implementation Authorization, 2026-09-21). I4 is **not** closed and **not** verified;
+independent verification remains outstanding. I5–I8 remain **NOT AUTHORISED** and the
+Q12/Q13 items remain deferred to I7/I8 respectively.
+
+---
+
 # Appendix A — Source References
 
 ## CarbonTally internal authority
