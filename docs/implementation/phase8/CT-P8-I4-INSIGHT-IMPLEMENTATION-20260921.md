@@ -225,12 +225,15 @@ The closed I3 `ToolStatus` six-value contract is unchanged; the fourteen-state I
 ## 17. Full-suite result
 
 ```text
-FULL UNIT SUITE STILL RUNNING AT REPORT TIME — see the focused 125-test I4 + I1/I2/I3 regression run recorded in section 16.
+4 failed, 2909 passed, 8 skipped in 287.77s (0:04:47)
 ```
 
 ## 18. Known pre-existing failures
 
-- (no full-suite failure list captured at report time)
+- `FAILED tests/unit/api/test_review_sla_surfaces.py::test_canonical_ops_sla_surface_registered`
+- `FAILED tests/unit/api/test_review_sla_surfaces.py::test_canonical_ops_review_assign_registered`
+- `FAILED tests/unit/api/test_review_sla_surfaces.py::test_admin_legacy_compat_surface_retained`
+- `FAILED tests/unit/data/test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged`
 
 The four long-standing pre-existing failures (three in `tests/unit/api/test_review_sla_surfaces.py` and `tests/unit/data/test_d17_provider_ownership_migration_revision.py::TestRevisionScope::test_migration_ordering_is_unchanged`) were previously assessed as I3-independent; this run is compared against that baseline and any additional failure introduced by I4 would be reported here.
 
