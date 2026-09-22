@@ -8,9 +8,10 @@
 | Repository | `/home/shomonrobie/ct_93d5cdd` |
 | Branch | `p8-release-reconciled` |
 | Starting HEAD | `4887c668ac618cff5974bc510b355a6a6c84e149` (`4887c66`) |
-| Implementation revision | `09e2315141a4df6fc90e78f70d53d74cbd0c9d3a` (`09e2315`) — 18 files changed, +3,678 / −0 |
-| Implementation status | **I6 IMPLEMENTED — READY FOR INDEPENDENT VERIFICATION** |
-| Independent verification | **NOT PERFORMED** — Cline does not verify, accept or close I6 |
+| Implementation revision | `09e231503703895ebeec637e846cac6ce8523091` (`09e2315`) — 18 files changed, +3,678 / −0 |
+| Revision note (A-1 correction) | The digest first recorded on this line, `09e2315141a4df6fc90e78f70d53d74cbd0c9d3a`, **is not an object in this repository**. OHD independent verification `P8-I6-OHD-VERIFY-20260922-01` §19 recorded this as nonblocking observation **A-1** (a documentation-accuracy defect, not an implementation defect) and identified the real commit as `09e231503703895ebeec637e846cac6ce8523091` (`09e2315`), the parent of the documentation revision `ea7ccc2` and the child of the implementation baseline `4887c66`. The digest was corrected **at PO closure on 2026-09-22 as a documentation-only change**: no implementation, test, contract, schema or configuration was altered by it. |
+| Implementation status | **I6 IMPLEMENTED — READY FOR INDEPENDENT VERIFICATION** (superseded by PO closure: see `docs/architecture/CARBONTALLY_P8_I6_INSIGHT_CLOSURE_20260922.md`) |
+| Independent verification | **NOT PERFORMED by Cline** — Cline does not verify, accept or close I6. Independent verification was subsequently performed by OHD: `docs/implementation/phase8/CT-P8-I6-OHD-VERIFICATION-20260922.md` (verification ID `P8-I6-OHD-VERIFY-20260922-01`, verdict **`I6 VERIFIED PASS`**, commit `4acc249`), and I6 was closed by the Product Owner in `docs/architecture/CARBONTALLY_P8_I6_INSIGHT_CLOSURE_20260922.md`. |
 
 ---
 
