@@ -17,6 +17,17 @@ jest.mock('../../supabaseClient', () => ({
   supabase: { auth: { getSession: jest.fn(), getUser: jest.fn() } },
 }));
 
+// InsightReferences renders the shared-viewer evidence handoff as a router link;
+// router primitives are mocked here (repo convention — the installed module
+// cannot be resolved in this environment).
+jest.mock('react-router-dom', () => {
+  const ReactActual = require('react');
+  return {
+    Link: ({ to, children, ...rest }) =>
+      ReactActual.createElement('a', { href: to, ...rest }, children),
+  };
+});
+
 jest.mock('../api', () => ({
   resolveV3Organization: jest.fn(),
   listInsightConversations: jest.fn(),

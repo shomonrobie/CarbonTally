@@ -115,9 +115,13 @@ def _fixture_objects():
 
 def test_evidence_record_structure_and_origins():
     emission, snapshot, item, file_row, factor = _fixture_objects()
+    # COMPLETE now requires a *verified* page: the authoritative evidence line is
+    # the only source of one (a snapshot page alone is unverified — see
+    # ``test_evidence_record_page_is_unverified_without_a_line``).
+    line = {"id": "line-a", "line_number": 1, "source_page": 2, "row_reference": None}
     rec = build_evidence_record(
         emission=emission, snapshot=snapshot, item=item,
-        file_row=file_row, factor=factor, customer_factor=None,
+        file_row=file_row, factor=factor, customer_factor=None, line=line,
     )
     assert rec["completeness"] == "COMPLETE"  # document + line + page + calc + factor
     sections = rec["sections"]
@@ -167,6 +171,30 @@ def test_evidence_record_honest_when_no_page():
     assert "page/location not available" in rec["source_location"]["display"]
 
 
+def test_evidence_record_page_is_unverified_without_a_line():
+    """A snapshot page with no authoritative line is NOT an exact location.
+
+    Historical rows were written from the document page *count* (F-B2-7), so the
+    stored value is retained for audit but must never be presented as a location.
+    """
+    emission, snapshot, item, file_row, factor = _fixture_objects()
+    snapshot = dict(snapshot, source_page=3)  # e.g. a 3-page document's page count
+    rec = build_evidence_record(
+        emission=emission, snapshot=snapshot, item=item,
+        file_row=file_row, factor=factor, customer_factor=None,
+    )
+    assert rec["completeness"] == "PARTIAL"
+    assert rec["source_location"]["page"] is None
+    assert rec["source_location"]["page_state"] == "unverified"
+    assert rec["source_location"]["reported_page"] == 3
+    assert "not verified" in rec["source_location"]["display"]
+    td = rec["technical_details"]
+    assert td["source_page"] is None
+    assert td["source_page_state"] == "unverified"
+    assert td["source_page_reported"] == 3
+    assert td["evidence_line_item_id"] is None
+
+
 def test_source_location_excel_row_cell():
     loc = source_location_precision(
         has_document=True, page=None, has_item=True, sheet="Sheet1", row="12", column="B"
@@ -204,8 +232,28 @@ def _install_chain(world, org_id="org-a"):
             "calculated_at": "2025-06-01T00:00:00", "calculated_by": org_id,
             "request_id": "r1", "factor_id": "f1", "customer_factor_id": None,
             "source_item_id": "item-a", "source_file": "INV-10482.pdf",
-            "source_page": 2,
+            "source_page": 2, "source_line_item_id": "line-a",
         }
+
+    # The authoritative evidence line (the only source of a verified page).
+    world.evidence_line_items.seed(
+        {
+            "id": "line-a",
+            "organization_id": org_id,
+            "source_item_id": "item-a",
+            "source_file_id": "file-a",
+            "line_number": 1,
+            "source_page": 2,
+            "row_reference": None,
+            "raw_description": "Electricity supply 500 kWh",
+            "raw_quantity": "500",
+            "raw_unit": "kWh",
+            "payload_hash": "h1",
+            "extraction_method": "pdf_text",
+            "materialisation_kind": "FORWARD",
+            "created_at": "2025-06-01T00:00:00+00:00",
+        }
+    )
 
     async def items_get(item_id: str):
         return SimpleNamespace(
@@ -260,6 +308,13 @@ def test_evidence_endpoint_returns_record_and_audits(client, world, user_provide
     assert rec["sections"]["calculation"]["fields"]["formula"].startswith("500 kWh")
     assert rec["technical_details"]["emission_log_id"] == "log-a"
     assert rec["technical_details"]["organization_file_id"] == "file-a"
+    # The verified location and the shared-viewer handoff come from the line.
+    assert data["evidence"]["source_page"] == 2
+    assert data["evidence"]["source_page_state"] == "verified"
+    assert data["evidence"]["source_line_item_id"] == "line-a"
+    # A Member is CONTROLLED: no storage pointer (corrected D33 posture).
+    assert data["evidence"]["drill_down_depth"] == "CONTROLLED"
+    assert data["source_document"]["signed_url"] == ""
 
     # audit written — ids only, no URLs/secrets
     entries = [e for e in world.audit._entries if e.action == "evidence.access"]

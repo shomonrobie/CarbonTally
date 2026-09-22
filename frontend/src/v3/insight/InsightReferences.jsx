@@ -8,12 +8,15 @@
 // error) renders one non-disclosing state that reveals nothing about whether
 // the protected resource exists.
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Icon from '../components/ui/Icon';
 import { invokeInsightTool } from '../api';
 import {
+  EVIDENCE_HANDOFF_LABEL,
   REFERENCE_UNAVAILABLE,
   REFERENCE_UNRESOLVABLE,
+  evidenceHandoffPath,
   projectEvidenceRows,
   referenceKindLabel,
   referenceLabel,
@@ -40,6 +43,7 @@ export function InsightReference({ reference, organizationId }) {
   const id = reference.id;
   const kindLabel = referenceKindLabel(kind);
   const resolver = referenceResolver(kind, id);
+  const handoff = evidenceHandoffPath(kind, id);
 
   const open = async () => {
     if (!resolver) return;
@@ -63,6 +67,10 @@ export function InsightReference({ reference, organizationId }) {
   };
 
   const projection = result ? projectEvidenceRows(result.data) : { rows: [], collections: [] };
+  // A resolved snapshot can carry the authoritative evidence line it was
+  // calculated from — that is the only resolved-data handoff (never a guess).
+  const resolvedHandoff =
+    state === 'resolved' ? evidenceHandoffPath(kind, id, result?.data) : null;
 
   return (
     <li className="ct-insight-ref" data-testid="insight-reference" data-reference-kind={kind}>
@@ -82,6 +90,16 @@ export function InsightReference({ reference, organizationId }) {
         >
           Open reference
         </Button>
+      ) : handoff ? (
+        // The evidence handoff: Insight explains, the shared Source Evidence
+        // Viewer resolves and re-authorizes. The link carries the locator only.
+        <Link
+          className="ct-insight-ref__handoff"
+          to={handoff}
+          data-testid="insight-evidence-handoff"
+        >
+          <Icon name="evidence" size={14} aria-hidden="true" /> {EVIDENCE_HANDOFF_LABEL}
+        </Link>
       ) : (
         <div className="ct-insight-ref__note" data-testid="insight-reference-unresolvable">
           <span className="ct-insight-ref__note-title">{REFERENCE_UNRESOLVABLE.title}.</span>{' '}
@@ -119,6 +137,15 @@ export function InsightReference({ reference, organizationId }) {
           )}
           {projection.rows.length === 0 && projection.collections.length === 0 && (
             <p className="v3-muted">CarbonTally returned no displayable fields for this reference.</p>
+          )}
+          {resolvedHandoff && resolvedHandoff !== handoff && (
+            <Link
+              className="ct-insight-ref__handoff"
+              to={resolvedHandoff}
+              data-testid="insight-evidence-handoff"
+            >
+              <Icon name="evidence" size={14} aria-hidden="true" /> {EVIDENCE_HANDOFF_LABEL}
+            </Link>
           )}
         </div>
       )}

@@ -332,6 +332,33 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         )
         return [dict(r) for r in rows]
 
+    async def list_for_line(
+        self, line_item_id: str, organization_id: str, limit: int = 5
+    ) -> list[dict]:
+        """Source Evidence Viewer — the calculations derived from one evidence line.
+
+        Bounded, org-scoped and allowlist-only: the caller receives the stable
+        reference and the calculation result context, never the raw snapshot row.
+        ``organization_id`` is applied in SQL as well as checked by the API, so a
+        stored line id can never widen scope.
+        """
+        rows = await self._fetch_all(
+            """
+            SELECT id, organization_id, source_item_id, source_line_item_id,
+                   activity, activity_type, quantity, quantity_unit, co2e_kg,
+                   scope, date, reporting_year, methodology, algorithm_version,
+                   content_hash, calculated_at
+              FROM public.calculation_snapshots
+             WHERE source_line_item_id = $1 AND organization_id = $2
+             ORDER BY calculated_at DESC
+             LIMIT $3
+            """,
+            line_item_id,
+            organization_id,
+            int(limit),
+        )
+        return [dict(r) for r in rows]
+
     async def get_snapshot(self, snapshot_id: str) -> Optional[dict]:
         """One immutable calculation-snapshot row (raw dict), or ``None``."""
         row = await self._fetch_one(

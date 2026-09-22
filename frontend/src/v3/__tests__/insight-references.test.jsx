@@ -12,6 +12,16 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
+// Router primitives are mocked (repo convention): the installed react-router-dom
+// cannot be resolved in this environment. A link still renders its href.
+jest.mock('react-router-dom', () => {
+  const ReactActual = require('react');
+  return {
+    Link: ({ to, children, ...rest }) =>
+      ReactActual.createElement('a', { href: to, ...rest }, children),
+  };
+});
+
 jest.mock('../../supabaseClient', () => ({
   supabase: { auth: { getSession: jest.fn(), getUser: jest.fn() } },
 }));
@@ -118,7 +128,7 @@ describe('InsightReferences renders locators', () => {
     expect(screen.queryByTestId('insight-reference-resolved')).not.toBeInTheDocument();
   });
 
-  test('an unresolvable kind is offered no client-side route at all', () => {
+  test('an evidence line item hands off to the shared viewer, not to a new tool', () => {
     render(
       <InsightReferences
         references={[{ kind: 'evidence_line_item', id: 'line-1' }]}
@@ -126,9 +136,29 @@ describe('InsightReferences renders locators', () => {
       />,
     );
 
+    // No I3 tool accepts an evidence line-item id (the four-tool catalogue is
+    // unchanged), so nothing is invoked and no existence is disclosed.
     expect(screen.queryByRole('button', { name: /open/i })).not.toBeInTheDocument();
-    expect(screen.getByTestId('insight-reference-unresolvable')).toBeInTheDocument();
     expect(api.invokeInsightTool).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('insight-reference-unresolvable')).not.toBeInTheDocument();
+
+    // PO 2026-09-22 — Insight explains; the evidence system proves. The handoff
+    // carries the locator only; the viewer re-authorizes on read.
+    const handoff = screen.getByTestId('insight-evidence-handoff');
+    expect(handoff).toHaveAttribute('href', '/evidence/line-items/line-1');
+    expect(screen.getByText('View source evidence')).toBeInTheDocument();
+  });
+
+  test('a kind with no evidence line keeps the unresolvable locator state', () => {
+    render(
+      <InsightReferences
+        references={[{ kind: 'unknown_kind', id: 'x-1' }]}
+        organizationId="org-1"
+      />,
+    );
+
+    expect(screen.getByTestId('insight-reference-unresolvable')).toBeInTheDocument();
+    expect(screen.queryByTestId('insight-evidence-handoff')).not.toBeInTheDocument();
   });
 });
 
@@ -166,6 +196,31 @@ describe('reference resolution always goes through the backend', () => {
     expect(resolved).toHaveTextContent('2025 SECR report');
     expect(resolved).toHaveTextContent('Reporting year');
     expect(resolved).toHaveTextContent('Versions: 1');
+  });
+
+  test('a resolved snapshot hands off its authoritative evidence line to the viewer', async () => {
+    api.invokeInsightTool.mockResolvedValue({
+      tool: 'calculation_snapshot_lookup',
+      status: 'success',
+      contract_version: 'i3-6point-v1',
+      data: { id: 'snap-1', co2e_kg: '150.4', source_line_item_id: 'line-9' },
+      references: [],
+      reason: null,
+      truncated: false,
+    });
+
+    render(
+      <InsightReferences
+        references={[{ kind: 'calculation_snapshot', id: 'snap-1' }]}
+        organizationId="org-1"
+      />,
+    );
+
+    expect(screen.queryByTestId('insight-evidence-handoff')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Calculation snapshot snap-1' }));
+
+    const handoff = await screen.findByTestId('insight-evidence-handoff');
+    expect(handoff).toHaveAttribute('href', '/evidence/line-items/line-9');
   });
 
   test('a saved id alone grants nothing: resolution re-reads through the backend every time', async () => {

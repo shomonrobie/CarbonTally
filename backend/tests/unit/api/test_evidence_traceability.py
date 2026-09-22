@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from domain.calculation import CalculationSnapshot
-from tests.unit.api.fakes import member_user
+from tests.unit.api.fakes import member_user, org_owner_user
 
 
 def _log(org_id: str = "org-a", snapshot_id: str = "snap-a") -> SimpleNamespace:
@@ -134,6 +134,12 @@ def test_snapshot_domain_carries_source_item():
 
 
 def test_emission_evidence_org_member(client, world, user_provider, monkeypatch):
+    """A Member may trace the emission but must NOT receive a signed document URL.
+
+    PO authorization (2026-09-22): the D33 path previously issued a signed
+    source-document URL to any organisation member. DM-6 FULL depth (Owner/Admin)
+    is required for the storage pointer; a Member is CONTROLLED.
+    """
     import api.v3_emissions as v3_emissions
 
     _install_chain(world)
@@ -147,7 +153,29 @@ def test_emission_evidence_org_member(client, world, user_provider, monkeypatch)
     assert data["evidence"]["source_item_id"] == "item-a"
     assert data["source_document"]["name"] == "Electricity_Invoice_Jan25.pdf"
     assert data["source_item"]["extracted_data"]["activity"] == "Electricity"
+    # Corrected posture — no storage pointer below FULL.
+    assert data["source_document"]["signed_url"] == ""
+    assert data["evidence"]["signed_url"] == ""
+    assert data["evidence"]["drill_down_depth"] == "CONTROLLED"
+
+
+def test_emission_evidence_owner_receives_signed_document(
+    client, world, user_provider, monkeypatch
+):
+    """An Owner (DM-6 FULL) may still open the source document."""
+    import api.v3_emissions as v3_emissions
+
+    _install_chain(world)
+    monkeypatch.setattr(
+        "services.storage.storage_signed_url", lambda *a, **k: "https://signed/x"
+    )
+    user_provider.set_user(org_owner_user("org-a", "u-owner", "owner@example.test"))
+    resp = client.get("/api/v3/emissions/log-a/evidence")
+    assert resp.status_code == 200
+    data = resp.json()
     assert data["source_document"]["signed_url"] == "https://signed/x"
+    assert data["source_document"]["path"] == "uploads/org-a/2025/01/electricity-jan25.pdf"
+    assert data["evidence"]["drill_down_depth"] == "FULL"
 
 
 def test_emission_evidence_cross_org_denied(client, world, user_provider, monkeypatch):

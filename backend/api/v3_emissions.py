@@ -384,6 +384,8 @@ async def emission_evidence(
     source document metadata + an authorized signed URL (never a public URL).
     """
     from domain.audit import AuditEntry
+    from domain.disclosure import DisclosureViolation
+    from domain.disclosure_exposure import assert_drilldown_allowed, exposure_for_role
     from domain.evidence import build_evidence_record
     from services.storage import path_from_url, storage_signed_url
 
@@ -391,6 +393,26 @@ async def emission_evidence(
     if log is None:
         raise HTTPException(status_code=404, detail="emission not found")
     ensure_org_access(current_user, log.organization_id)
+
+    # DM-6 (ratified): this endpoint discloses evidence, so the caller's drill-down
+    # depth decides what may be returned. Denied roles (Processing Entity staff,
+    # CarbonTally internal staff, unrecognised roles) get a 403 rather than a
+    # partially redacted answer; the document/storage pointer (the signed source
+    # document URL) is only issued at FULL depth, which corrects the D33
+    # inconsistency where any organisation member could obtain a signed
+    # source-document URL below the ratified document-reference boundary.
+    _role = (getattr(current_user, "role_name", None) or current_user.role or "").lower()
+    if _role.startswith("org_"):
+        _role = _role[len("org_"):]
+    exposure = exposure_for_role(
+        _role,
+        is_entity_staff=bool(getattr(current_user, "is_entity_staff", False)),
+        is_internal_staff=bool(getattr(current_user, "is_internal_staff", False)),
+    )
+    try:
+        assert_drilldown_allowed(exposure, what="source evidence")
+    except DisclosureViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     snapshot = None
     if log.snapshot_id:
@@ -401,6 +423,18 @@ async def emission_evidence(
     if item_id:
         item = await repos.manual_extraction.get_item(str(item_id))
 
+    # The resolved evidence line is the only authoritative source of an exact page
+    # and of the addressable line identity. Best-effort: an absent line (flat
+    # extraction, pre-B2 history, or no materialisation) simply means the line-level
+    # fields are NULL — never a fabricated location.
+    line = None
+    line_id = snapshot.get("source_line_item_id") if snapshot else None
+    if line_id:
+        try:
+            line = await repos.evidence_line_items.get(str(line_id))
+        except Exception:  # noqa: BLE001 — provenance is non-essential to the read
+            line = None
+
     file_row = None
     if item is not None and item.file_id:
         file_row = await repos.files.get(item.file_id)
@@ -408,8 +442,9 @@ async def emission_evidence(
         # Fallback: canonical path match (historical rows before D33 backfill).
         file_row = await repos.files.get_by_path(item.file_url)
 
+    # DM-6: the signed URL is a storage pointer — FULL depth only.
     signed_url = ""
-    if file_row is not None:
+    if file_row is not None and exposure.allow_document_refs:
         signed_url = storage_signed_url(path_from_url(file_row.path))
 
     factor = None
@@ -426,6 +461,7 @@ async def emission_evidence(
         file_row=file_row,
         factor=factor,
         customer_factor=customer_factor,
+        line=line,
     )
 
     # D33.1 — append-only evidence-access audit (ids only; never tokens/URLs).
@@ -486,12 +522,13 @@ async def emission_evidence(
             {
                 "id": file_row.id,
                 "name": file_row.name,
-                "path": file_row.path,
+                # Storage pointers are issued at FULL depth only (DM-6).
+                "path": file_row.path if exposure.allow_document_refs else None,
                 "file_type": file_row.file_type,
                 "size_bytes": file_row.size_bytes,
                 "uploaded_by": file_row.uploaded_by,
                 "uploaded_at": file_row.uploaded_at,
-                "metadata": file_row.metadata,
+                "metadata": file_row.metadata if exposure.allow_document_refs else None,
                 "signed_url": signed_url,
             }
             if file_row is not None
@@ -501,9 +538,21 @@ async def emission_evidence(
         "customer_factor": customer_factor,
         "evidence": {
             "source_item_id": item_id,
+            # The addressable evidence-line identity — the handoff the shared viewer
+            # consumes. It is a locator: the viewer re-authorizes on read.
+            "source_line_item_id": (
+                line.get("id") if (line is not None and exposure.allow_lines) else None
+            ),
             "source_file": snapshot.get("source_file") if snapshot else None,
-            "source_page": snapshot.get("source_page") if snapshot else None,
+            # Only a verified page is offered as a location (never a page count).
+            "source_page": evidence_record["technical_details"]["source_page"],
+            "source_page_state": evidence_record["technical_details"]["source_page_state"],
+            "source_row_reference": evidence_record["technical_details"][
+                "source_row_reference"
+            ],
             "signed_url": signed_url,
+            "drill_down_depth": exposure.depth,
+            "drill_down_rationale": exposure.rationale,
             "authorized_org": log.organization_id,
         },
         "evidence_record": evidence_record,

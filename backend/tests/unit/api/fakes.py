@@ -371,6 +371,20 @@ class MemoryLogs:
     async def list_snapshots(self, org_id: str, period: object, limit: int, offset: int):
         return []
 
+    async def list_for_line(self, line_item_id: str, organization_id: str, limit: int = 5):
+        """Source Evidence Viewer — seeded snapshot refs for one evidence line."""
+        rows = [
+            dict(row)
+            for row in getattr(self, "_line_snapshots", [])
+            if str(row.get("source_line_item_id")) == str(line_item_id)
+            and str(row.get("organization_id")) == str(organization_id)
+        ]
+        return rows[: int(limit)]
+
+    def seed_line_snapshots(self, rows: list[dict]) -> None:
+        """Test seeding for ``list_for_line`` (never used by production code)."""
+        self._line_snapshots = [dict(row) for row in rows]
+
     async def create(
         self,
         org_id: str,
@@ -3005,16 +3019,49 @@ class _StubRepo:
 
 
 class _EvidenceLinesStub(_StubRepo):
-    """B2 evidence line-item stub: an empty ordinal->line resolve (13.2)."""
+    """B2 evidence line-item stub: ordinal resolve, by-id read and seeding.
+
+    Source Evidence Viewer tests seed real line rows here so the shared viewer
+    endpoint can be exercised in memory (no database).
+    """
+
+    def __init__(self, lines: Optional[dict[str, dict]] = None) -> None:
+        self._lines: dict[str, dict] = {
+            str(key): dict(value) for key, value in (lines or {}).items()
+        }
+
+    def seed(self, line: dict) -> None:
+        self._lines[str(line["id"])] = dict(line)
+
+    async def get(self, id: str):
+        row = self._lines.get(str(id))
+        return dict(row) if row is not None else None
 
     async def get_by_ordinals(self, source_item_id: str, ordinals):
-        return {}
+        wanted = {int(o) for o in (ordinals or [])}
+        return {
+            int(row["line_number"]): str(row["id"])
+            for row in self._lines.values()
+            if str(row.get("source_item_id")) == str(source_item_id)
+            and int(row.get("line_number") or 0) in wanted
+        }
 
     async def list_for_item(self, organization_id: str, source_item_id: str):
-        return []
+        return [
+            dict(row)
+            for row in self._lines.values()
+            if str(row.get("source_item_id")) == str(source_item_id)
+            and str(row.get("organization_id")) == str(organization_id)
+        ]
 
     async def count_for_item(self, source_item_id: str) -> int:
-        return 0
+        return len(
+            [
+                row
+                for row in self._lines.values()
+                if str(row.get("source_item_id")) == str(source_item_id)
+            ]
+        )
 
 
 class _SettingsStub:

@@ -1281,6 +1281,11 @@ export const getCustomerDashboardReport = (organizationId, params = {}) => {
 export const getEmissionEvidence = (logId) =>
   v3Fetch(`/api/v3/emissions/${logId}/evidence`);
 
+// Shared Source Evidence Viewer — resolve one evidence line item (allowlisted
+// provenance; the backend re-authorizes the caller on every read).
+export const getEvidenceLine = (lineItemId) =>
+  v3Fetch(`/api/v3/evidence/line-items/${encodeURIComponent(lineItemId)}`);
+
 export const getDocumentEmissions = (fileId) =>
   v3Fetch(`/api/v3/documents/${fileId}/emissions`);
 

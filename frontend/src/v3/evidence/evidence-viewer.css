@@ -1,0 +1,187 @@
+/* frontend/src/v3/evidence/evidence-viewer.css
+   Shared Source Evidence Viewer (D21 semantic tokens; no one-off visual system). */
+
+.ct-ev {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ct-ev__back-link {
+  color: var(--v3-primary, #2f855a);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ct-ev__back-link:hover {
+  text-decoration: underline;
+}
+
+.ct-ev__title {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--v3-text, #1a202c);
+}
+
+.ct-ev__subtitle {
+  margin: 4px 0 0;
+  max-width: 80ch;
+}
+
+.ct-ev__card {
+  background: var(--v3-surface, #fff);
+  border: 1px solid var(--v3-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.ct-ev__card-title {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.ct-ev__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .ct-ev__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ct-ev__pane {
+  background: var(--v3-surface, #fff);
+  border: 1px solid var(--v3-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.ct-ev__pane-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.ct-ev__pane-sub {
+  margin: 4px 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.ct-ev__notice {
+  border: 1px dashed var(--v3-border-strong, #cbd5e0);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--v3-bg, #f7fafc);
+}
+
+.ct-ev__notice p {
+  margin: 6px 0 0;
+}
+
+.ct-ev__location {
+  border-left: 3px solid var(--v3-border-strong, #cbd5e0);
+  background: var(--v3-bg, #f7fafc);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.ct-ev__location--exact {
+  border-left-color: var(--v3-primary, #2f855a);
+}
+
+.ct-ev__location--restricted,
+.ct-ev__location--unavailable {
+  border-left-color: var(--v3-warning-text, #744210);
+}
+
+.ct-ev__location-label {
+  font-weight: 700;
+  color: var(--v3-text, #1a202c);
+}
+
+.ct-ev__location-detail,
+.ct-ev__location-note {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ct-ev__section-title {
+  margin: 14px 0 6px;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v3-text-muted, #718096);
+}
+
+.ct-ev__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.ct-ev__field {
+  min-width: 0;
+}
+
+.ct-ev__field-key {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v3-text-muted, #718096);
+}
+
+.ct-ev__field-value {
+  font-weight: 600;
+  color: var(--v3-text, #1a202c);
+  overflow-wrap: anywhere;
+}
+
+.ct-ev__calc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ct-ev__calc {
+  border: 1px solid var(--v3-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ct-ev__calc-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ct-ev__calc-meta {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.ct-ev__footnote {
+  margin-top: 12px;
+  font-style: italic;
+}
+
+.ct-ev__access {
+  margin-top: 12px;
+}
+
+.ct-ev__access summary {
+  cursor: pointer;
+  font-weight: 600;
+}

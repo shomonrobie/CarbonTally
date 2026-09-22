@@ -14,6 +14,13 @@
 //
 // Resolution uses the **ratified I3 read-only tool surface** — the only
 // authorized by-identifier path that exists. No new API is created for I6.
+//
+// Evidence handoff (PO 2026-09-22): `evidence_line_item` is still NOT an I3 tool
+// (the closed four-tool catalogue is unchanged), but it is now addressable by the
+// shared Source Evidence Viewer, so Insight links to the viewer instead of
+// duplicating any evidence resolution.
+
+import { evidenceViewerPathForReference } from '../evidence/evidenceLocation';
 
 export const REFERENCE_KIND_LABELS = {
   report: 'Report',
@@ -87,6 +94,24 @@ export const REFERENCE_UNRESOLVABLE = {
   body:
     'This reference type has no by-identifier lookup available from Insight. It is shown as a provenance locator only.',
 };
+
+// ---------------------------------------------------------------------------
+// Evidence handoff (PO 2026-09-22)
+//
+// "Insight explains; the evidence system proves." When a reference can be tied to
+// an authoritative evidence LINE, Insight hands it off to the shared Source
+// Evidence Viewer, which resolves AND re-authorizes it. Insight duplicates no
+// evidence resolution and never guesses a document, page, row or line: without an
+// authoritative line identity there is no handoff and the existing truthful
+// answer state stands.
+// ---------------------------------------------------------------------------
+
+export const EVIDENCE_HANDOFF_LABEL = 'View source evidence';
+
+/** The shared-viewer path for a reference, or `null` when none is authoritative. */
+export function evidenceHandoffPath(kind, id, resolvedData = null) {
+  return evidenceViewerPathForReference(kind, id, resolvedData);
+}
 
 /** How a resolution outcome should be presented (never discloses existence). */
 export function resolutionPresentation(result) {

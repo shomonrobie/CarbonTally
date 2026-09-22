@@ -4,15 +4,33 @@
 // data (mapping, factor, calculation, result), shows an honest evidence-completeness
 // badge and source-location precision, and exposes stable record identifiers in a
 // "Technical details" expansion. Never fabricates precision.
+//
+// PO authorization (2026-09-22): the panel also hands off to the shared Source
+// Evidence Viewer when the calculation has an authoritative evidence line. The
+// location shown is the *server-verified* one — a historically recorded page that
+// no per-line source supports is reported as unverified, never as an exact page.
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { evidenceViewerPath } from '../evidence/evidenceLocation';
 
 const BADGE = { COMPLETE: 'complete', PARTIAL: 'partial', UNAVAILABLE: 'unavailable' };
+
+const PAGE_STATE_TEXT = {
+  verified: 'Verified from the evidence line',
+  unverified:
+    'A page value is recorded but not verified as this emission\'s source page',
+  unavailable: 'No exact source page recorded',
+};
 
 export default function EvidenceRecordPanel({ evidence }) {
   const record = evidence?.evidence_record || {};
   const sections = record.sections || {};
   const completeness = record.completeness || 'UNAVAILABLE';
   const badge = BADGE[completeness] || 'unavailable';
+  const technical = record.technical_details || {};
+  const pageState = evidence?.source_page_state || technical.source_page_state;
+  const lineId = evidence?.source_line_item_id || technical.evidence_line_item_id;
+  const viewerPath = evidenceViewerPath(lineId, { from: '/emissions' });
 
   return (
     <div className="v3-result-card" style={{ marginTop: 12 }}>
@@ -72,7 +90,23 @@ export default function EvidenceRecordPanel({ evidence }) {
           Open source document
         </a>
       ) : (
-        <p className="v3-muted">No stored source document available.</p>
+        <p className="v3-muted">
+          {evidence?.source_document
+            ? 'The stored source document is not available at your access level.'
+            : 'No stored source document available.'}
+        </p>
+      )}
+
+      {/* SHARED SOURCE EVIDENCE VIEWER HANDOFF (PO 2026-09-22) */}
+      {viewerPath && (
+        <p style={{ marginTop: 10 }}>
+          <Link className="v3-btn v3-btn-sm" to={viewerPath}>
+            View source evidence
+          </Link>
+          <span className="v3-muted" style={{ marginLeft: 10 }}>
+            Opens the original document beside this extracted evidence.
+          </span>
+        </p>
       )}
 
       {/* TECHNICAL DETAILS / EVIDENCE RECORD */}
@@ -84,9 +118,15 @@ export default function EvidenceRecordPanel({ evidence }) {
           <div className="v3-meta-item"><div className="k">Extraction item id</div><div className="v v3-mono">{record.technical_details?.manual_extraction_item_id || '—'}</div></div>
           <div className="v3-meta-item"><div className="k">Source file id</div><div className="v v3-mono">{record.technical_details?.organization_file_id || '—'}</div></div>
           <div className="v3-meta-item"><div className="k">Factor id</div><div className="v v3-mono">{record.technical_details?.emission_factor_id || '—'}</div></div>
-          {record.technical_details?.source_page != null && (
-            <div className="v3-meta-item"><div className="k">Source page</div><div className="v">{record.technical_details.source_page}</div></div>
-          )}
+          <div className="v3-meta-item"><div className="k">Evidence line id</div><div className="v v3-mono">{technical.evidence_line_item_id || '—'}</div></div>
+          <div className="v3-meta-item">
+            <div className="k">Source page</div>
+            <div className="v" data-testid="evidence-source-page">
+              {technical.source_page != null
+                ? technical.source_page
+                : (PAGE_STATE_TEXT[pageState] || PAGE_STATE_TEXT.unavailable)}
+            </div>
+          </div>
         </div>
       </details>
     </div>

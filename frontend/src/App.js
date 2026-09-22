@@ -74,6 +74,7 @@ import IssuesPage from './v3/customer/IssuesPage';
 import ExistingDataDiscoveryPage from './v3/customer/ExistingDataDiscoveryPage';
 import MessagingPage from './v3/customer/MessagingPage';
 import InsightPage from './v3/insight/InsightPage';
+import SourceEvidenceViewer from './v3/evidence/SourceEvidenceViewer';
 import NotificationsPage from './v3/NotificationsPage';
 import RoleRoute from './v3/components/RoleRoute';
 import V3Layout from './v3/components/V3Layout';
@@ -2073,6 +2074,19 @@ export default function App() {
                 <RoleRoute requireOrg>
                   <V3Layout>
                     <InsightPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            {/* Shared Source Evidence Viewer (PO 2026-09-22) — the single evidence
+                viewer reached from customer evidence tracing and from CarbonTally
+                Insight. A stored evidence id is a locator: the backend
+                re-authorizes (DM-6) on every read. */}
+            <Route path="/evidence/line-items/:lineItemId" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <SourceEvidenceViewer />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>

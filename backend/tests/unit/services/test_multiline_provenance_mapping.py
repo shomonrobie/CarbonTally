@@ -163,10 +163,28 @@ class _FakeManualExtraction:
 
 
 class _FakeEvidenceLineItems:
-    """Ordinal → materialised line-id lookup (B2 surface, read-only)."""
+    """Ordinal → materialised line-id lookup (B2 surface, read-only).
+
+    ``pages`` seeds the authoritative per-line ``source_page`` that
+    ``evidence_line_items`` would hold for an ordinal (``None`` = no verified page).
+    """
+
+    def __init__(self, pages: Optional[dict[int, Optional[int]]] = None) -> None:
+        self.pages = dict(pages or {})
+        self.reads: list[str] = []
 
     async def get_by_ordinals(self, item_id: str, ordinals):
         return {ordinal: f"line-{item_id}-{ordinal}" for ordinal in ordinals}
+
+    async def get(self, line_id: str):
+        """The authoritative line row (only ``source_page`` is consumed here)."""
+        self.reads.append(line_id)
+        ordinal = int(str(line_id).rsplit("-", 1)[-1])
+        return {
+            "id": line_id,
+            "line_number": ordinal,
+            "source_page": self.pages.get(ordinal),
+        }
 
 
 class _FakeLogs:
@@ -184,13 +202,13 @@ class _FakeOrganizations:
         return []
 
 
-def _repos(job: AutomaticProcessingJob):
+def _repos(job: AutomaticProcessingJob, *, line_pages=None):
     return SimpleNamespace(
         processing=_FakeProcessing(job),
         factors=_FakeFactors(),
         customer_factors=_FakeCustomerFactors(),
         manual_extraction=_FakeManualExtraction(),
-        evidence_line_items=_FakeEvidenceLineItems(),
+        evidence_line_items=_FakeEvidenceLineItems(line_pages),
         logs=_FakeLogs(),
         notifications=_FakeNotifications(),
         organizations=_FakeOrganizations(),
@@ -399,4 +417,50 @@ async def test_calculation_carries_per_row_provenance() -> None:
     assert all(r.factor is not None and r.factor.id == FACTOR.id for r in requests)
 
 
+
+
+# -- F-B2-7: ``source_page`` is a source LOCATION, never a page count ---------
+async def test_calculation_source_page_is_the_authoritative_line_page() -> None:
+    """The snapshot's page must come from the evidence line, not ``page_count``."""
+    items, _ = _items()
+    seed_job = _multi_row_job(items)
+    seed_repos = _repos(seed_job)
+    await _service(seed_repos)._map(seed_job, "token")
+    mapped_data = seed_repos.processing.stages[-1]["mapped_data"]
+
+    # The document reports 8 pages; every authoritative line lives on page 2.
+    job = _multi_row_job(
+        items,
+        mapped_data=mapped_data,
+        metadata={"mime": "application/pdf", "page_count": 8},
+    )
+    repos = _repos(job, line_pages={1: 2, 2: 2, 3: 2, 4: 2, 5: 2})
+    calculator = _RecordingCalculator()
+    stage = await _service(repos, calculator=calculator)._calculate(job, "token")
+
+    assert stage == "review", repos.processing.blocked
+    pages = [r.source_page for r in calculator.requests]
+    assert pages == [2, 2, 2, 2, 2]
+    assert 8 not in pages, "the document page count must never be a source page"
+
+
+async def test_calculation_source_page_is_null_when_no_line_page_is_verifiable() -> None:
+    """With no authoritative per-line page the value stays NULL (never a count)."""
+    items, _ = _items()
+    seed_job = _multi_row_job(items)
+    seed_repos = _repos(seed_job)
+    await _service(seed_repos)._map(seed_job, "token")
+    mapped_data = seed_repos.processing.stages[-1]["mapped_data"]
+
+    job = _multi_row_job(
+        items,
+        mapped_data=mapped_data,
+        metadata={"mime": "application/pdf", "page_count": 8},
+    )
+    repos = _repos(job)  # no materialised per-line page
+    calculator = _RecordingCalculator()
+    stage = await _service(repos, calculator=calculator)._calculate(job, "token")
+
+    assert stage == "review", repos.processing.blocked
+    assert [r.source_page for r in calculator.requests] == [None] * 5
 

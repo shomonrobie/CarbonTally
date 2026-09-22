@@ -11,7 +11,158 @@ stable record identifiers for auditors/advanced customers.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
+
+# ---------------------------------------------------------------------------
+# Source-location verification state (PO: never present an unverified page as an
+# exact source location)
+# ---------------------------------------------------------------------------
+
+#: The page is corroborated by an authoritative per-line source
+#: (``evidence_line_items.source_page``), so it may be shown as an exact location.
+PAGE_STATE_VERIFIED = "verified"
+#: A page value is stored on the calculation snapshot but **no** authoritative
+#: per-line source supports it (historical rows written from the document page
+#: *count*). It must never be presented as an exact location.
+PAGE_STATE_UNVERIFIED = "unverified"
+#: No page value exists at all.
+PAGE_STATE_UNAVAILABLE = "unavailable"
+
+PAGE_STATES: tuple[str, ...] = (
+    PAGE_STATE_VERIFIED,
+    PAGE_STATE_UNVERIFIED,
+    PAGE_STATE_UNAVAILABLE,
+)
+
+
+def resolve_source_page(
+    *,
+    snapshot_page: Optional[int],
+    line_page: Optional[int],
+) -> tuple[Optional[int], str]:
+    """Resolve the **authoritative** evidence page (never a page *count*).
+
+    The only authoritative per-line page in the platform is
+    ``evidence_line_items.source_page`` — materialised solely from a producer's own
+    ``page`` key and explicitly forbidden from being a page count
+    (B2 §7.1/§11.7, F-B2-7). A value stored only on the calculation snapshot cannot
+    be verified, because the historical write path populated it from
+    ``job.metadata["page_count"]``.
+
+    Returns ``(page, state)`` where ``page`` is the value that may be shown as an
+    exact location (``None`` unless verified).
+    """
+    if isinstance(line_page, int) and not isinstance(line_page, bool) and line_page >= 1:
+        return line_page, PAGE_STATE_VERIFIED
+    if isinstance(snapshot_page, int) and not isinstance(snapshot_page, bool):
+        # Recorded, but not supported by an authoritative per-line source.
+        return None, PAGE_STATE_UNVERIFIED
+    return None, PAGE_STATE_UNAVAILABLE
+
+
+def derive_line_location(
+    *,
+    line: Optional[Mapping[str, Any]],
+    extracted_data: Optional[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Derive one evidence line's source location from authoritative data only.
+
+    * ``page`` — taken from the line's own ``source_page`` (authoritative, verified).
+    * ``sheet`` / ``row`` — taken from the **persisted extraction** for the line's own
+      ordinal (``extracted_data.source_sheet`` and the element's own ``source_row``),
+      which is the producer's authoritative position in the original workbook/CSV.
+      ``source_row`` is a *data-row* index, so it is **never** assumed to equal the
+      evidence ordinal; the ordinal meaning is always reported separately.
+    * ``row_reference`` — a genuine printed reference, when one exists (never today).
+
+    Nothing is fabricated: an absent value is reported as unavailable.
+    """
+    line = line or {}
+    extracted = extracted_data or {}
+
+    line_number = line.get("line_number")
+    ordinal = (
+        int(line_number)
+        if isinstance(line_number, int) and not isinstance(line_number, bool) and line_number >= 1
+        else None
+    )
+
+    page, page_state = resolve_source_page(
+        snapshot_page=None, line_page=line.get("source_page")
+    )
+
+    sheet: Optional[str] = None
+    row: Optional[int] = None
+    items = extracted.get("line_items")
+    if ordinal is not None and isinstance(items, list) and ordinal <= len(items):
+        element = items[ordinal - 1]
+        if isinstance(element, Mapping):
+            raw_row = element.get("source_row")
+            if isinstance(raw_row, int) and not isinstance(raw_row, bool) and raw_row >= 1:
+                row = raw_row
+                raw_sheet = extracted.get("source_sheet")
+                if isinstance(raw_sheet, str) and raw_sheet.strip():
+                    sheet = raw_sheet.strip()
+
+    raw_reference = line.get("row_reference")
+    row_reference = (
+        raw_reference.strip()
+        if isinstance(raw_reference, str) and raw_reference.strip()
+        else None
+    )
+
+    if page is not None:
+        kind = "page"
+        display = f"Source page {page}."
+    elif row is not None and sheet is not None:
+        kind = "sheet_row"
+        display = f"Worksheet {sheet!r}, source row {row}."
+    elif row is not None:
+        kind = "row"
+        display = f"Source row {row}."
+    elif row_reference is not None:
+        kind = "reference"
+        display = f"Source reference {row_reference}."
+    else:
+        kind = "unavailable"
+        display = (
+            "Exact source location is not available for this line. "
+            "The line identifies the extracted row only."
+        )
+
+    if ordinal is not None:
+        ordinal_note = (
+            f"Line {ordinal} of the extracted rows. That ordinal is not a physical "
+            "file row or page on its own."
+        )
+    else:
+        ordinal_note = None
+
+    precision_parts = [
+        part
+        for part in (
+            "page" if page is not None else None,
+            "sheet" if sheet is not None else None,
+            "row" if row is not None else None,
+            "reference" if row_reference is not None else None,
+        )
+        if part
+    ]
+
+    return {
+        "kind": kind,
+        "page": page,
+        "page_state": page_state,
+        "sheet": sheet,
+        "row": row,
+        "column": None,
+        "row_reference": row_reference,
+        "line_number": ordinal,
+        "ordinal_note": ordinal_note,
+        "precision": ", ".join(precision_parts) if precision_parts else "none",
+        "display": display,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Evidence completeness (derived from actual persisted provenance)
@@ -60,15 +211,21 @@ def source_location_precision(
     row: Optional[str] = None,
     column: Optional[str] = None,
     json_path: Optional[str] = None,
+    page_state: str = PAGE_STATE_VERIFIED,
+    reported_page: Optional[int] = None,
 ) -> dict[str, Any]:
     """Report source-location precision HONESTLY (never fabricate).
 
-    Returns the available precision plus a human-readable display string.
+    ``page`` must already be an **authoritative** page (see
+    :func:`resolve_source_page`). ``page_state`` carries the verification state and
+    ``reported_page`` the raw stored value, so a value that cannot be verified is
+    represented as unavailable/unverified instead of being shown as an exact
+    location.
     """
     present = []
     if has_document:
         present.append("document")
-    if page is not None:
+    if page is not None and page_state == PAGE_STATE_VERIFIED:
         present.append(f"page {page}")
     if sheet is not None:
         present.append(f"sheet {sheet}")
@@ -82,7 +239,13 @@ def source_location_precision(
     if has_item:
         present.append("extracted line")
         if page is None and sheet is None and row is None:
-            display = "Source line available; page/location not available."
+            if page_state == PAGE_STATE_UNVERIFIED:
+                display = (
+                    "Source line available; a recorded page value is not verified "
+                    "as an exact location."
+                )
+            else:
+                display = "Source line available; page/location not available."
         else:
             display = "Source document + line with location: " + ", ".join(present) + "."
     elif has_document:
@@ -93,6 +256,8 @@ def source_location_precision(
     return {
         "document_available": bool(has_document),
         "page": page,
+        "page_state": page_state,
+        "reported_page": reported_page,
         "sheet": sheet,
         "row": row,
         "column": column,
@@ -128,12 +293,18 @@ def build_evidence_record(
     file_row: Any,
     factor: Any,
     customer_factor: Any,
+    line: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Build the authorized evidence record for one emission result.
 
     Sections carry an ``origin`` marker — ``original`` (customer source) vs
     ``derived`` (CarbonTally mapping/factor/calculation). The record exposes
     stable record identifiers in a scoped ``technical_details`` block.
+
+    ``line`` is the resolved ``evidence_line_items`` row for this calculation, when
+    one exists. It is the **only** authoritative source of an exact page: a page
+    stored on the snapshot alone cannot be verified (historical rows were written
+    from the document page *count*) and is reported as unverified.
     """
     extracted = (item.extracted_data or {}) if item is not None else {}
     mapped = (item.mapped_data or {}) if item is not None else {}
@@ -142,7 +313,11 @@ def build_evidence_record(
     def _ig(name: str, default=None):
         return getattr(item, name, default) if item is not None else default
 
-    page = (snapshot or {}).get("source_page")
+    reported_page = (snapshot or {}).get("source_page")
+    page, page_state = resolve_source_page(
+        snapshot_page=reported_page,
+        line_page=(line or {}).get("source_page"),
+    )
     sheet = None
     row = None
     column = None
@@ -163,6 +338,7 @@ def build_evidence_record(
         has_item=has_item,
         has_calculation=has_calculation,
         has_factor=has_factor,
+        # COMPLETE requires a *verified* exact location, never a page count.
         has_page=page is not None,
     )
     location = source_location_precision(
@@ -173,6 +349,8 @@ def build_evidence_record(
         row=row,
         column=column,
         json_path=json_path,
+        page_state=page_state,
+        reported_page=reported_page,
     )
 
     # --- SOURCE DOCUMENT (original) ---
@@ -327,7 +505,14 @@ def build_evidence_record(
         "organization_file_id": (file_row.id if file_row else None),
         "emission_factor_id": factor_id,
         "source_file": calc.get("source_file"),
+        # Only a *verified* page is reported as a location; the raw stored value is
+        # kept separately so the state is auditable without being presentable.
         "source_page": page,
+        "source_page_state": page_state,
+        "source_page_reported": reported_page,
+        "evidence_line_item_id": (line or {}).get("id"),
+        "evidence_line_number": (line or {}).get("line_number"),
+        "source_row_reference": (line or {}).get("row_reference"),
         "calculation": {
             "methodology": calc.get("methodology"),
             "algorithm_version": calc.get("algorithm_version"),
