@@ -483,7 +483,18 @@ Static assertions covering every row above were added to `tests/unit/data/test_p
 
 ### 23.1 Recorded outcome
 
-*(filled in by the follow-up documentation commit, in the same manner as the repository's existing precedent of recording a commit SHA in its own report)*
+| Item | Value |
+| --- | --- |
+| P2 implementation commit | `f2e456817e78c4f88e55837129ceefb0e9e90659` |
+| Commit subject | `feat(p8): bounded Insight temporal comparison (P2, capability family 11)` |
+| Commit content | **17 files, 2,415 insertions, 11 deletions** |
+| Push result | `9f32a81..f2e4568  p8-release-reconciled -> p8-release-reconciled` (accepted) |
+| Remote SHA after push | `f2e456817e78c4f88e55837129ceefb0e9e90659` |
+| `git rev-parse HEAD` | `f2e456817e78c4f88e55837129ceefb0e9e90659` |
+| `git rev-parse github/p8-release-reconciled` | `f2e456817e78c4f88e55837129ceefb0e9e90659` |
+| `git rev-list --left-right --count HEAD...github/p8-release-reconciled` | **`0 0`** |
+| `git status --short` | the pre-existing untracked PO/ChatGPT documents only; no tracked modification outstanding |
+| Untracked PO/ChatGPT documents committed? | **no** (`git ls-files` count for those paths = 0) |
 
 ---
 
