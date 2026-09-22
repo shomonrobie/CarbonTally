@@ -822,9 +822,9 @@ These are already closed/ratified. They should not be treated as new PO question
 | **Starting HEAD** | `5d5f7ed94c5821894e8eac6d05ad9af83138746e` |
 | Tree state at start | clean; `HEAD...github/p8-release-reconciled` = `0 0` |
 | Report path | `docs/architecture/CT-P8-PO-DECISION-INVENTORY-20260922.md` |
-| **Commit SHA (this report)** | reported in the task response; the report's own commit is the single commit that adds only this file |
-| **Ending HEAD** | the commit that adds this report (SHA in the task response), plus the optional documentation follow-up that records the SHA table |
-| Push result | reported in the task response (expected: `github/p8-release-reconciled` fast-forward, alignment `0 0` afterwards) |
+| **Commit SHA (this report)** | `910b1849cec3f81e862af3969e452a2b8f71b4f1` — "docs(p8): PO decision inventory / historical context audit"; this commit adds **only** this report file |
+| **Ending HEAD** | the documentation follow-up that records this table (SHA reported in the task response and verifiable with `git log -1 --format=%H`) |
+| Push result | **pushed** to `github/p8-release-reconciled`: `5d5f7ed..910b184 p8-release-reconciled -> p8-release-reconciled`; alignment after push `HEAD...github/p8-release-reconciled` = `0 0`; working tree clean |
 
 **Changes made by this task:** this report file only. No application code, backend, frontend, test, schema, migration, configuration, RLS, contract, tool, endpoint or runtime behaviour was modified; no branch was created; no other checkout was touched. The unrelated `main` working checkout (`/home/shomonrobie/carbon_tally`, dirty) and the stale `origin` remote (`/tmp/ct_step2`) were **inspected only** — their disposition is C-30.
 
