@@ -28,6 +28,7 @@ from domain.insight_interaction import (
 )
 from domain.insight_tool import InsightReference, ToolResult, ToolStatus
 from services import insight_interactions as svc
+from tests.unit.api.insight_limit_fakes import InsightLimitsFake
 
 ORG_A = "11111111-1111-4111-8111-111111111111"
 ORG_B = "22222222-2222-4222-8222-222222222222"
@@ -227,6 +228,8 @@ class _World:
             insight=self.insight,
             insight_interactions=self.interactions,
             audit=self.audit,
+            # Phase 8 I8-A — the shared rate-limit store (same semantics, in memory).
+            insight_limits=InsightLimitsFake(),
         )
 
 
@@ -375,11 +378,19 @@ def test_intent_refusals_use_clarification_and_refusal_states(api, monkeypatch):
     assert no_identifier["answer_status"] == "needs_clarification"
 
 
-def test_i4_answer_vocabulary_is_the_fourteen_ratified_states():
+def test_i4_answer_vocabulary_is_the_ratified_states():
+    """The fourteen Master Spec §14 states plus the authorized ``multiple_matches``.
+
+    ``multiple_matches`` was authorized by the PO Insight
+    Discovery-Aggregation-Provenance package (2026-09-22) so a bounded discovery
+    that matches several authoritative records is reported truthfully instead of
+    being silently converted into ``success``.
+    """
     assert {s.value for s in AnswerStatus} == {
         "success", "zero", "no_data", "not_authorized", "insufficient_data",
-        "needs_clarification", "tool_failure", "provider_unavailable", "partial",
-        "rate_limited", "refused", "ungrounded", "invalid_input", "error",
+        "needs_clarification", "multiple_matches", "tool_failure",
+        "provider_unavailable", "partial", "rate_limited", "refused", "ungrounded",
+        "invalid_input", "error",
     }
     assert set(ALLOWED_TOOL_STATUSES) == {
         "success", "no_data", "not_authorized", "invalid_input",

@@ -22,6 +22,7 @@ from starlette.testclient import TestClient
 from api import v3_insight_tools
 from api.dependencies import get_repositories
 from auth import AuthUser, get_current_user
+from tests.unit.api.insight_limit_fakes import InsightLimitsFake
 
 ORG_A = "11111111-1111-4111-8111-111111111111"
 ORG_B = "22222222-2222-4222-8222-222222222222"
@@ -223,7 +224,9 @@ def _seed():
                           "request_id": "req-1", "import_batch_id": "batch-1", "factor_set": "DEFRA-2025",
                           "source_file": "gas.pdf", "source_page": 3}
     return SimpleNamespace(reports=reports, versions=versions, projection=projection, logs=logs,
-                           staff=staff, consultants=consultants, orgs=orgs)
+                           staff=staff, consultants=consultants, orgs=orgs,
+                           # Phase 8 I8-A — shared rate-limit store (in-memory double).
+                           insight_limits=InsightLimitsFake())
 
 
 @pytest.fixture()
@@ -243,7 +246,9 @@ def api():
         return type("Bundle", (), {"reports": world.reports, "report_versions": world.versions,
                                    "disclosure_projection": world.projection, "logs": world.logs,
                                    "staff": world.staff, "consultants": world.consultants,
-                                   "organizations": world.orgs, "insight": None})()
+                                   "organizations": world.orgs, "insight": None,
+                                   # Phase 8 I8-A — the shared rate-limit store double.
+                                   "insight_limits": InsightLimitsFake()})()
 
     app.dependency_overrides[get_current_user] = _current_user
     app.dependency_overrides[get_repositories] = _repositories
@@ -261,10 +266,17 @@ def _intent(api, text):
 # --------------------------------------------------------------------------
 # Registry boundary (PO §4) and read-only proof
 # --------------------------------------------------------------------------
-def test_registry_exposes_exactly_the_four_ratified_tools(api):
+def test_registry_exposes_the_authorized_tool_catalogue(api):
+    """PO I3 four ratified tools + the three Phase 8 analytics tools (authorized).
+
+    The ratified four remain first and unchanged; ``insight_discovery``,
+    ``insight_aggregation`` and ``insight_aggregate_provenance`` were authorized by
+    the PO Insight Discovery-Aggregation-Provenance package (2026-09-22).
+    """
     body = api.client.get(BASE).json()
     assert [t["name"] for t in body["tools"]] == [
-        "report_lookup", "report_version_lookup", "report_evidence_lookup", "calculation_snapshot_lookup"
+        "report_lookup", "report_version_lookup", "report_evidence_lookup", "calculation_snapshot_lookup",
+        "insight_discovery", "insight_aggregation", "insight_aggregate_provenance",
     ]
     assert all(t["read_only"] is True for t in body["tools"])
     assert body["contract_version"] == "i3-6point-v1"
@@ -275,7 +287,10 @@ def test_registry_declares_the_six_point_contract(api):
         assert tool["purpose"]
         assert tool["authorization"].startswith("i2-boundary")
         assert tool["output_fields"]
-        assert tool["reference_kinds"]
+        # The analytics tools are totals/identities, not evidence-bearing records,
+        # so an empty reference-kind list is a declaration, not an omission.
+        if not tool["name"].startswith("insight_"):
+            assert tool["reference_kinds"]
         assert tool["statuses"] == ["success", "no_data", "not_authorized", "invalid_input", "error"]
 
 

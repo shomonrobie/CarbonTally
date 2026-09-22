@@ -23,6 +23,7 @@ from auth import AuthUser, get_current_user
 from domain.insight_tool import InsightReference, ToolResult, ToolStatus
 from services import insight_context as ctx
 from services import insight_interactions as svc
+from tests.unit.api.insight_limit_fakes import InsightLimitsFake
 
 ORG_A = "11111111-1111-4111-8111-111111111111"
 ALICE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -180,6 +181,7 @@ class _World:
         self.bundle = SimpleNamespace(
             organizations=_Orgs(), staff=_None(), consultants=_None(),
             insight=self.insight, insight_interactions=self.interactions, audit=self.audit,
+            insight_limits=InsightLimitsFake(),
         )
 
 

@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from auth import AuthUser
 from domain.audit import AuditEntry, AuditQuery
+from tests.unit.api.insight_limit_fakes import InsightLimitsFake
 
 #: Sentinel mirroring ``data.manual_extraction._UNSET`` — distinguishes
 #: "leave untouched" from an explicit ``None`` (clear the column).
@@ -4500,6 +4501,9 @@ class InMemoryWorld:
         # Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the
         # disclosure projection read model used by report_evidence_lookup.
         self.disclosure_projection = _StubRepo()
+        # Phase 8 I8-A (PO Insight analytics/rate-limiting package 2026-09-22) —
+        # the shared rate-limit/concurrency store (in-memory double here).
+        self.insight_limits = InsightLimitsFake()
 
     def bundle(self):
         from api.dependencies import RepositoryBundle
@@ -4553,6 +4557,7 @@ class InMemoryWorld:
             insight=self.insight,
             insight_interactions=self.insight_interactions,
             disclosure_projection=self.disclosure_projection,
+            insight_limits=self.insight_limits,
         )
 
 

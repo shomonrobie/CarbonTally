@@ -55,13 +55,20 @@ def test_i1_migration_is_the_latest_migration() -> None:
     later = names[names.index(_MIGRATION.name) + 1 :]
     # I2 (authorization hardening) and, under the PO I4 implementation
     # authorization (2026-09-21), the I4 Layer-2 migration are the only
-    # migrations added after I1. I5+ must not appear here.
+    # migrations added after I1 — plus, under the PO Insight
+    # Discovery-Aggregation-Provenance-RateLimiting authorization (2026-09-22),
+    # the bounded analytics + rate-limit migration. I5+ must not appear here.
     assert later in (
         [],
         ["20261002000000_p8_i2_insight_authorization.sql"],
         [
             "20261002000000_p8_i2_insight_authorization.sql",
             "20261003000000_p8_i4_insight_interactions.sql",
+        ],
+        [
+            "20261002000000_p8_i2_insight_authorization.sql",
+            "20261003000000_p8_i4_insight_interactions.sql",
+            "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
         ],
     ), later
 
