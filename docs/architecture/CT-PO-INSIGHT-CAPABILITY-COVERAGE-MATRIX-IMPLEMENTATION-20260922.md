@@ -196,6 +196,9 @@ EXISTS · PARTIAL · MISSING · PO DECISION REQUIRED · NOT AUTHORIZED · DEFERR
 | Both P1 files tracked | confirmed (`git ls-files`) |
 | Untracked PO/ChatGPT documents | **still untracked** (`git ls-files` count for those paths = 0) |
 | Working tree after push | pre-existing untracked PO/ChatGPT documents only; no tracked modification outstanding |
+| Documentation follow-up | this Git-state record was itself committed as `fbe0adc544f5e4b8493a607b7ee8fcbafcb302eb` (`docs(p8): record P1 commit SHA and push result in the coverage-matrix implementation report`); at the time of writing, the remote tip was `fbe0adc544f5e4b8493a607b7ee8fcbafcb302eb` with alignment **`0 0`** and no other tracked change present |
+
+**Summary of the P1 Git outcome:** two documentation-only commits (`9a521b0` carrying the matrix and this report; `fbe0adc` carrying this Git-state record), zero application-code, migration, schema, test, frontend or configuration changes, and `0 0` alignment with `github/p8-release-reconciled`.
 
 ---
 
