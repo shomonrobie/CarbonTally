@@ -49,6 +49,19 @@ from services.insight_context import (
     configured_max_history_chars,
     context_prompt_sections,
 )
+from services.insight_query_planner import (
+    STATUS_CLARIFICATION,
+    STATUS_INVALID,
+    STATUS_PLANNED,
+    plan_question,
+)
+from services.insight_rate_limit import (
+    RateLimitDecision,
+    acquire_execution_leases,
+    check_request_rates,
+    rate_limited_error,
+    release_execution_leases,
+)
 from services.insight_tools import classify_intent, invoke_tool
 
 if TYPE_CHECKING:  # pragma: no cover - type-only (no import-time api dependency)
@@ -85,6 +98,25 @@ _TOOL_SCOPE_ARGUMENT: dict[str, Optional[str]] = {
     "report_version_lookup": None,
     "report_evidence_lookup": "report_version_id",
     "calculation_snapshot_lookup": "snapshot_id",
+}
+
+#: The Phase 8 analytics tools are not identifier-scoped: they take a bounded,
+#: typed parameter set produced by the deterministic planner (never free text).
+_PLANNED_TOOLS: tuple[str, ...] = (
+    "insight_discovery",
+    "insight_aggregation",
+    "insight_aggregate_provenance",
+)
+
+#: A tool result may carry a reason that must be reported truthfully at the I4
+#: answer-state layer rather than flattened into the tool status mapping.
+_TOOL_REASON_TO_ANSWER: dict[str, AnswerStatus] = {
+    # Several authoritative records matched: ask which one, never choose.
+    "multiple_matches": AnswerStatus.MULTIPLE_MATCHES,
+    # Records were found and the calculated total is genuinely zero.
+    "zero_total": AnswerStatus.ZERO,
+    # An approximate amount without a determinable tolerance is a clarification.
+    "amount_tolerance_required": AnswerStatus.NEEDS_CLARIFICATION,
 }
 
 #: Intent refusals map onto the *I4* answer vocabulary (PO Q3) — never onto a new
@@ -318,6 +350,15 @@ async def run_interaction(
                 replayed=True,
             )
 
+    # Phase 8 I8-A — technical rate limiting, applied before any Insight
+    # execution or provider work. The authenticated identity is the only input,
+    # so no request field can raise a caller's own limit.
+    rate_decision = await check_request_rates(
+        repos=repos, user_id=access.user_id, organization_id=organization_id
+    )
+    if not rate_decision.allowed:
+        raise rate_limited_error(rate_decision)
+
     # PO Q4 — the raw question is persisted once, in the I1 message layer.
     message = await repos.insight.add_message(
         conversation_id=conversation.id,
@@ -327,8 +368,25 @@ async def run_interaction(
         content=text,
     )
 
-    decision = classify_intent(text)
-    selected_tool = decision.get("tool")
+    # Phase 8 analytics — a deterministic, bounded plan is attempted first. When
+    # it declines (``unsupported``) the ratified four-tool keyword classifier runs
+    # exactly as before, so no previously-working question changes meaning.
+    plan = plan_question(text)
+    plan_status = str(plan.get("status") or "")
+    planned_tool = plan.get("tool") if plan_status == STATUS_PLANNED else None
+    planned_input = dict(plan.get("tool_input") or {})
+    decision: dict[str, Any] = {}
+    if planned_tool is None and plan_status not in (STATUS_CLARIFICATION, STATUS_INVALID):
+        decision = classify_intent(text)
+    selected_tool = planned_tool or decision.get("tool")
+    if selected_tool:
+        intent_label: Optional[str] = str(selected_tool)
+    elif plan_status == STATUS_CLARIFICATION:
+        intent_label = f"clarification:{plan.get('reason')}"
+    elif plan_status == STATUS_INVALID:
+        intent_label = f"invalid:{plan.get('reason')}"
+    else:
+        intent_label = decision.get("reason")
     interaction = await repos.insight_interactions.create_interaction(
         organization_id=conversation.organization_id,
         conversation_id=conversation.id,
@@ -336,13 +394,63 @@ async def run_interaction(
         question_hash=hash_text(text),
         request_hash=hash_text(f"{conversation.id}:{idempotency_key or ''}:{text}"),
         idempotency_key=idempotency_key,
-        intent=selected_tool or decision.get("reason"),
-        intent_source="deterministic" if selected_tool else "none",
+        intent=intent_label,
+        intent_source=(
+            "deterministic"
+            if selected_tool or plan_status in (STATUS_CLARIFICATION, STATUS_INVALID)
+            else "none"
+        ),
         message_id=message.id,
     )
     await repos.insight_interactions.mark_executing(
         interaction_id=interaction.id, organization_id=interaction.organization_id
     )
+
+    # Bounded concurrency: refuse rather than queue. A refusal here is recorded
+    # truthfully as the existing I4 ``rate_limited`` answer state, because a
+    # Layer-2 record already exists for this attempt.
+    lease = await acquire_execution_leases(
+        repos=repos, user_id=access.user_id, organization_id=organization_id
+    )
+    if not lease.acquired:
+        denial = RateLimitDecision(
+            allowed=False,
+            scope=lease.scope,
+            limit=lease.max_concurrent,
+            capacity=lease.max_concurrent,
+            remaining=0,
+            retry_after_seconds=lease.retry_after_seconds,
+        )
+        audit_record_id = await _audit(
+            repos=repos,
+            interaction_id=interaction.id,
+            organization_id=interaction.organization_id,
+            actor=access.user_id,
+            action="insight.interaction.failed",
+            answer_status=AnswerStatus.RATE_LIMITED.value,
+            tool_statuses=(),
+            tool_call_ids=(),
+            narration_state=NarrationState.SKIPPED.value,
+            reason="concurrency_limit",
+        )
+        await repos.insight_interactions.complete_interaction(
+            interaction_id=interaction.id,
+            organization_id=interaction.organization_id,
+            lifecycle=InteractionLifecycle.FAILED.value,
+            answer_status=AnswerStatus.RATE_LIMITED.value,
+            narration_state=NarrationState.SKIPPED.value,
+            provider=None,
+            model=None,
+            model_version=None,
+            tokens_used=None,
+            cost=None,
+            tool_call_count=0,
+            reference_count=0,
+            error_class="concurrency_limit",
+            audit_record_id=audit_record_id,
+            metadata={"contract_version": INTERACTION_CONTRACT_VERSION},
+        )
+        raise rate_limited_error(denial)
 
     tool_calls: list[dict[str, Any]] = []
     references: list[dict[str, str]] = []
@@ -356,122 +464,151 @@ async def run_interaction(
     model_version: Optional[str] = None
     error_class: Optional[str] = None
 
-    if selected_tool is None:
-        deterministic_status = _INTENT_REFUSAL_ANSWER.get(
-            str(decision.get("reason")), AnswerStatus.INVALID_INPUT
-        )
-    else:
-        tool_input = build_tool_input(selected_tool, extract_identifiers(text))
-        if tool_input is None:
-            deterministic_status = AnswerStatus.NEEDS_CLARIFICATION
+    # The leases are released on every exit path, including an unexpected
+    # failure, so a crashed request cannot hold capacity (the expiry is a
+    # second safety net for a killed worker).
+    try:
+        if selected_tool is None:
+            if plan_status == STATUS_CLARIFICATION:
+                # A recognised analytics question missing a determinable parameter.
+                deterministic_status = AnswerStatus.NEEDS_CLARIFICATION
+            elif plan_status == STATUS_INVALID:
+                deterministic_status = AnswerStatus.INVALID_INPUT
+            else:
+                deterministic_status = _INTENT_REFUSAL_ANSWER.get(
+                    str(decision.get("reason")), AnswerStatus.INVALID_INPUT
+                )
         else:
-            started = time.perf_counter()
-            result = await invoke_tool(
-                tool_name=selected_tool,
-                current_user=current_user,
-                repos=repos,
-                organization_id=organization_id,
-                tool_input=tool_input,
-            )
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            payload = result.as_dict()
-            if str(result.status) not in ALLOWED_TOOL_STATUSES:  # pragma: no cover
-                raise RuntimeError("unratified tool status returned by I3")
-            projected_args = project_tool_arguments(selected_tool, tool_input)
-            metadata = project_result_metadata(
-                payload, contract_version=result.contract_version
-            )
-            refs = [dict(r.as_dict()) for r in result.references]
-            record = await repos.insight_interactions.record_tool_call(
-                interaction_id=interaction.id,
-                organization_id=interaction.organization_id,
-                call_ordinal=1,
-                tool_name=selected_tool,
-                contract_version=result.contract_version,
-                tool_status=str(result.status),
-                arguments=projected_args,
-                result_metadata=metadata,
-                references=refs,
-                arguments_hash=hash_text(json.dumps(projected_args, sort_keys=True)),
-                result_hash=hash_text(json.dumps(metadata, sort_keys=True, default=str)),
-                result_item_count=int(metadata.get("item_count") or 0),
-                truncated=bool(result.truncated),
-                duration_ms=duration_ms,
-            )
-            call_ids.append(record.id)
-            tool_statuses.append(str(result.status))
-            references.extend(refs)
-            tool_calls.append(
-                {
-                    "tool_call_id": record.id,
-                    "tool": selected_tool,
-                    "status": str(result.status),
-                    "reason": result.reason,
-                    "duration_ms": duration_ms,
-                }
-            )
-            deterministic_status = tool_answer_status(str(result.status))
+            if selected_tool in _PLANNED_TOOLS:
+                # Bounded typed parameters from the deterministic planner; the tool
+                # re-validates every one of them before any read happens.
+                tool_input = planned_input or None
+            else:
+                tool_input = build_tool_input(selected_tool, extract_identifiers(text))
+            if tool_input is None:
+                deterministic_status = AnswerStatus.NEEDS_CLARIFICATION
+            else:
+                started = time.perf_counter()
+                result = await invoke_tool(
+                    tool_name=selected_tool,
+                    current_user=current_user,
+                    repos=repos,
+                    organization_id=organization_id,
+                    tool_input=tool_input,
+                )
+                duration_ms = int((time.perf_counter() - started) * 1000)
+                payload = result.as_dict()
+                if str(result.status) not in ALLOWED_TOOL_STATUSES:  # pragma: no cover
+                    raise RuntimeError("unratified tool status returned by I3")
+                projected_args = project_tool_arguments(selected_tool, tool_input)
+                metadata = project_result_metadata(
+                    payload, contract_version=result.contract_version
+                )
+                refs = [dict(r.as_dict()) for r in result.references]
+                record = await repos.insight_interactions.record_tool_call(
+                    interaction_id=interaction.id,
+                    organization_id=interaction.organization_id,
+                    call_ordinal=1,
+                    tool_name=selected_tool,
+                    contract_version=result.contract_version,
+                    tool_status=str(result.status),
+                    arguments=projected_args,
+                    result_metadata=metadata,
+                    references=refs,
+                    arguments_hash=hash_text(json.dumps(projected_args, sort_keys=True)),
+                    result_hash=hash_text(json.dumps(metadata, sort_keys=True, default=str)),
+                    result_item_count=int(metadata.get("item_count") or 0),
+                    truncated=bool(result.truncated),
+                    duration_ms=duration_ms,
+                )
+                call_ids.append(record.id)
+                tool_statuses.append(str(result.status))
+                references.extend(refs)
+                tool_calls.append(
+                    {
+                        "tool_call_id": record.id,
+                        "tool": selected_tool,
+                        "status": str(result.status),
+                        "reason": result.reason,
+                        "duration_ms": duration_ms,
+                    }
+                )
+                deterministic_status = tool_answer_status(str(result.status))
+                # A truth-bearing reason overrides the flat status mapping: several
+                # matches is not ``success``, and a required tolerance is a
+                # clarification (never a silently invented tolerance).
+                override = _TOOL_REASON_TO_ANSWER.get(str(result.reason))
+                if override is not None:
+                    deterministic_status = override
 
-            # PO Q11/Q14 — bounded narration over the declared tool output only.
-            if narration != NARRATION_NONE and str(result.status) == "success":
-                if llm_client is None:
-                    narration_state = (
-                        NarrationState.SKIPPED
-                        if narration == NARRATION_OPTIONAL
-                        else NarrationState.UNAVAILABLE
-                    )
-                else:
-                    # I5 (PO authorization 2026-09-21): assemble the bounded,
-                    # deterministic current-conversation context BEFORE the provider
-                    # call, so the ratified 20,000-character budget is enforced on
-                    # what is submitted. History is contextual only and can never
-                    # override the current authoritative tool evidence below.
-                    context = await assemble_context(
-                        current_user=current_user,
-                        repos=repos,
-                        organization_id=organization_id,
-                        conversation_id=conversation.id,
-                        question=text,
-                        max_chars=configured_max_history_chars(),
-                        exclude_interaction_id=interaction.id,
-                    )
-                    sections = context_prompt_sections(context)
-                    prompt = (
-                        "Structured CarbonTally evidence (authorised, read-only):\n"
-                        f"{_bounded_context(payload)}\n\n"
-                        "Prior conversation context (history only; NOT authoritative — "
-                        "the structured evidence above always wins where they differ):\n"
-                        f"{sections['historical_context']}\n\n"
-                        f"Question: {sections['current_question'][:500]}\n"
-                        "Explain what this evidence establishes."
-                    )
-                    attempts = 0
-                    while attempts < MAX_PROVIDER_ATTEMPTS and narration_text is None:
-                        attempts += 1
-                        try:
-                            candidate = await llm_client.complete(
-                                prompt=prompt, system=_SYSTEM_PROMPT, temperature=0.0
-                            )
-                        except Exception as exc:  # noqa: BLE001 - failure is a state
-                            error_class = type(exc).__name__
-                            logger.warning(
-                                "insight narration attempt %s failed (%s)",
-                                attempts,
-                                error_class,
-                            )
-                            continue
-                        if candidate and candidate.strip():
-                            narration_text = candidate.strip()
-                    narration_state = (
-                        NarrationState.COMPLETED
-                        if narration_text
-                        else NarrationState.UNAVAILABLE
-                    )
-                    if narration_text:
-                        attribution = configured_provider_attribution()
-                        provider = attribution.get("provider")
-                        model = attribution.get("model")
-                        model_version = attribution.get("model_version")
+                # PO Q11/Q14 — bounded narration over the declared tool output only.
+                # An ambiguous (``multiple_matches``) result is never narrated: the
+                # model must not appear to choose between candidate records.
+                if (
+                    narration != NARRATION_NONE
+                    and str(result.status) == "success"
+                    and deterministic_status is not AnswerStatus.MULTIPLE_MATCHES
+                ):
+                    if llm_client is None:
+                        narration_state = (
+                            NarrationState.SKIPPED
+                            if narration == NARRATION_OPTIONAL
+                            else NarrationState.UNAVAILABLE
+                        )
+                    else:
+                        # I5 (PO authorization 2026-09-21): assemble the bounded,
+                        # deterministic current-conversation context BEFORE the provider
+                        # call, so the ratified 20,000-character budget is enforced on
+                        # what is submitted. History is contextual only and can never
+                        # override the current authoritative tool evidence below.
+                        context = await assemble_context(
+                            current_user=current_user,
+                            repos=repos,
+                            organization_id=organization_id,
+                            conversation_id=conversation.id,
+                            question=text,
+                            max_chars=configured_max_history_chars(),
+                            exclude_interaction_id=interaction.id,
+                        )
+                        sections = context_prompt_sections(context)
+                        prompt = (
+                            "Structured CarbonTally evidence (authorised, read-only):\n"
+                            f"{_bounded_context(payload)}\n\n"
+                            "Prior conversation context (history only; NOT authoritative — "
+                            "the structured evidence above always wins where they differ):\n"
+                            f"{sections['historical_context']}\n\n"
+                            f"Question: {sections['current_question'][:500]}\n"
+                            "Explain what this evidence establishes."
+                        )
+                        attempts = 0
+                        while attempts < MAX_PROVIDER_ATTEMPTS and narration_text is None:
+                            attempts += 1
+                            try:
+                                candidate = await llm_client.complete(
+                                    prompt=prompt, system=_SYSTEM_PROMPT, temperature=0.0
+                                )
+                            except Exception as exc:  # noqa: BLE001 - failure is a state
+                                error_class = type(exc).__name__
+                                logger.warning(
+                                    "insight narration attempt %s failed (%s)",
+                                    attempts,
+                                    error_class,
+                                )
+                                continue
+                            if candidate and candidate.strip():
+                                narration_text = candidate.strip()
+                        narration_state = (
+                            NarrationState.COMPLETED
+                            if narration_text
+                            else NarrationState.UNAVAILABLE
+                        )
+                        if narration_text:
+                            attribution = configured_provider_attribution()
+                            provider = attribution.get("provider")
+                            model = attribution.get("model")
+                            model_version = attribution.get("model_version")
+    finally:
+        await release_execution_leases(repos=repos, lease=lease)
 
     statuses = [tool_answer_status(s) for s in tool_statuses]
     answer_status = (

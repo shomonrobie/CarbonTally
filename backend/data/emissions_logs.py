@@ -18,6 +18,12 @@ from domain.calculation import (
     EmissionLog,
     EmissionsAggregate,
 )
+from domain.insight_query import (
+    canonical_scope,
+    parse_int,
+    parse_iso_date,
+    resolve_amount_bounds,
+)
 
 #: Service-role placeholder used for NOT NULL actor/user columns the v2.1
 #: contract does not pass to the repository.
@@ -56,6 +62,132 @@ _SNAPSHOT_COLUMNS = """
     calculated_at, calculated_by, request_id, factor_kind, customer_factor_id,
     source_item_id, source_line_item_id, source_file, source_page, performed_by
 """
+
+#: Allowed analytics grouping dimensions → fixed, allowlisted SQL expressions
+#: (Phase 8 Insight analytics). ``cs.`` expressions require the snapshot join.
+_ANALYTICS_DIMENSION_EXPRESSIONS: dict[str, str] = {
+    "scope": "COALESCE(l.scope, 'unknown')",
+    "month": "to_char(l.start_date, 'YYYY-MM')",
+    "year": "to_char(l.start_date, 'YYYY')",
+    "activity": "COALESCE(cs.activity_type, 'unknown')",
+    "supplier": "COALESCE(l.supplier_id::text, 'none')",
+    "facility": "COALESCE(l.metadata->>'facility_id', 'none')",
+    "asset": "COALESCE(l.asset_id::text, 'none')",
+}
+
+#: Dimensions whose group keys are organisation-owned catalogue ids → the
+#: (table, key column) used for a bounded, organisation-scoped label lookup.
+_ANALYTICS_LABEL_SOURCES: dict[str, tuple[str, str]] = {
+    "supplier": ("public.suppliers", "id"),
+    "facility": ("public.facilities", "id"),
+    "asset": ("public.assets", "id"),
+}
+
+
+def _analytics_expression(dimension: str) -> str:
+    """Return the allowlisted grouping expression, or raise (never a query)."""
+    try:
+        return _ANALYTICS_DIMENSION_EXPRESSIONS[dimension]
+    except KeyError as exc:
+        raise ValueError(
+            f"dimension {dimension!r} not in {sorted(_ANALYTICS_DIMENSION_EXPRESSIONS)}"
+        ) from exc
+
+
+def _containment_pattern(term: str) -> str:
+    """Build a literal containment pattern, escaping wildcard metacharacters.
+
+    The user's term is never a pattern: ``%`` and ``_`` are escaped so the match
+    stays a deterministic containment test rather than an accidental wildcard
+    search.
+    """
+    escaped = (
+        term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    return f"%{escaped}%"
+
+
+def _snapshot_filter_clause(
+    filters: dict[str, Any], start_index: int
+) -> tuple[str, list[Any]]:
+    """Build the discovery WHERE fragment (fixed literals + positional params).
+
+    Returns ``(clause_sql, params)`` where ``clause_sql`` starts with ``AND`` or is
+    empty. An empty filter set raises, because the caller must never be able to
+    trigger an unbounded scan of the organisation's snapshots.
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    index = start_index
+
+    start = parse_iso_date(filters.get("start_date"))
+    if start is not None:
+        clauses.append(f"s.date >= ${index}")
+        params.append(start)
+        index += 1
+    end = parse_iso_date(filters.get("end_date"))
+    if end is not None:
+        clauses.append(f"s.date <= ${index}")
+        params.append(end)
+        index += 1
+
+    year = parse_int(filters.get("reporting_year"))
+    if year is not None:
+        clauses.append(f"s.reporting_year = ${index}")
+        params.append(year)
+        index += 1
+
+    bounds = resolve_amount_bounds(filters)
+    if bounds is not None:
+        clauses.append(f"s.co2e_kg >= ${index}")
+        params.append(bounds.low)
+        index += 1
+        clauses.append(f"s.co2e_kg <= ${index}")
+        params.append(bounds.high)
+        index += 1
+
+    activity = str(filters.get("activity") or "").strip()
+    if activity:
+        clauses.append(f"s.activity_type ILIKE ${index}")
+        params.append(_containment_pattern(activity))
+        index += 1
+
+    scope = canonical_scope(filters.get("scope"))
+    if scope:
+        clauses.append(f"s.scope = ${index}")
+        params.append(scope)
+        index += 1
+
+    supplier_id = str(filters.get("supplier_id") or "").strip()
+    if supplier_id:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM public.emissions_logs l "
+            f"WHERE l.snapshot_id = s.id AND l.supplier_id::text = ${index})"
+        )
+        params.append(supplier_id)
+        index += 1
+
+    facility_id = str(filters.get("facility_id") or "").strip()
+    if facility_id:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM public.emissions_logs l "
+            f"WHERE l.snapshot_id = s.id AND l.metadata->>'facility_id' = ${index})"
+        )
+        params.append(facility_id)
+        index += 1
+
+    asset_id = str(filters.get("asset_id") or "").strip()
+    if asset_id:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM public.emissions_logs l "
+            f"WHERE l.snapshot_id = s.id AND l.asset_id::text = ${index})"
+        )
+        params.append(asset_id)
+        index += 1
+
+    if not clauses:  # pragma: no cover - validation rejects this case first
+        raise ValueError("discovery filters must contain at least one predicate")
+    return " AND " + " AND ".join(clauses), params
 
 
 def _row_to_log(row: Any) -> EmissionLog:
@@ -532,4 +664,176 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         await self._execute(
             "DELETE FROM public.emissions_logs WHERE id = $1", id
         )
+
+    # ----------------------------------------------------------------------
+    # Phase 8 Insight analytics — bounded discovery / aggregation / provenance
+    #
+    # Authorization: PO Insight Discovery-Aggregation-Provenance package
+    # (2026-09-22). Every SQL fragment below is a fixed allowlisted literal and
+    # every caller value is a positional parameter, so no caller text can reach
+    # the statement. Every query is organisation-scoped and bounded.
+    # ----------------------------------------------------------------------
+
+    async def search_snapshots(
+        self, org_id: str, filters: dict[str, Any], limit: int
+    ) -> list[dict]:
+        """Bounded discovery over the authoritative calculation snapshots.
+
+        Ordering is deterministic (``date`` descending, then ``id``), so an
+        identical authorized request against unchanged data yields an identical
+        candidate list.
+        """
+        clause, params = _snapshot_filter_clause(filters, start_index=2)
+        sql = (
+            f"SELECT {_SNAPSHOT_COLUMNS} FROM public.calculation_snapshots s "
+            f"WHERE s.organization_id = $1{clause} "
+            "ORDER BY s.date DESC, s.id ASC "
+            f"LIMIT ${len(params) + 2}"
+        )
+        rows = await self._fetch_all(sql, org_id, *params, int(limit))
+        return [dict(r) for r in rows]
+
+    async def count_matching_snapshots(
+        self, org_id: str, filters: dict[str, Any], cap: int
+    ) -> int:
+        """Count discovery matches, bounded by ``cap`` (never an unbounded count)."""
+        clause, params = _snapshot_filter_clause(filters, start_index=2)
+        sql = (
+            "SELECT COUNT(*) AS n FROM ("
+            "SELECT 1 FROM public.calculation_snapshots s "
+            f"WHERE s.organization_id = $1{clause} "
+            f"LIMIT ${len(params) + 2}"
+            ") capped"
+        )
+        row = await self._fetch_one(sql, org_id, *params, int(cap))
+        return int(row["n"]) if row is not None else 0
+
+    async def aggregate_groups(
+        self, org_id: str, period: DateRange, dimension: str, limit: int
+    ) -> list[dict]:
+        """CO₂e by an allowlisted dimension over a bounded period (kg CO₂e only).
+
+        The measure is ``emissions_logs.calculated_kg_co2e`` — the same basis the
+        existing emissions aggregates use — and the grouping expression comes from
+        the closed dimension map, so an unsupported dimension is a ``ValueError``
+        rather than a query.
+
+        A summed *quantity* is deliberately not returned: one group can mix
+        litres, kWh, m³ and currency, and presenting such a total as a quantity
+        would be untrue.
+        """
+        expression = _analytics_expression(dimension)
+        join = (
+            "LEFT JOIN public.calculation_snapshots cs "
+            "ON cs.id = l.snapshot_id AND cs.organization_id = $1 "
+            if "cs." in expression
+            else ""
+        )
+        rows = await self._fetch_all(
+            f"""
+            SELECT {expression} AS group_key,
+                   COUNT(*) AS row_count,
+                   SUM(l.calculated_kg_co2e) AS co2e_kg
+            FROM public.emissions_logs l
+            {join}
+            WHERE l.organization_id = $1
+              AND l.start_date BETWEEN $2 AND $3
+            GROUP BY {expression}
+            ORDER BY co2e_kg DESC, group_key ASC
+            LIMIT $4
+            """,
+            org_id,
+            period.start_date,
+            period.end_date,
+            int(limit),
+        )
+        return [dict(r) for r in rows]
+
+    async def group_labels(
+        self, org_id: str, dimension: str, keys: list[str]
+    ) -> dict[str, str]:
+        """Resolve human-readable labels for asset/facility/supplier group keys.
+
+        Bounded to the keys actually returned, organisation-scoped, and never
+        inferred: a key with no matching row simply has no label.
+        """
+        source = _ANALYTICS_LABEL_SOURCES.get(dimension)
+        if source is None or not keys:
+            return {}
+        table, key_column = source
+        rows = await self._fetch_all(
+            f"SELECT t.{key_column}::text AS key, t.name AS label "
+            f"FROM {table} t "
+            "WHERE t.organization_id = $1 AND t.name IS NOT NULL "
+            f"AND t.{key_column}::text = ANY($2::text[])",
+            org_id,
+            [str(k) for k in keys],
+        )
+        return {str(r["key"]): str(r["label"]) for r in rows}
+
+    async def list_group_snapshots(
+        self,
+        org_id: str,
+        period: DateRange,
+        dimension: str,
+        group_key: str,
+        limit: int,
+    ) -> list[dict]:
+        """Bounded provenance: the calculation snapshots behind one aggregate cell.
+
+        Only rows carrying an authoritative ``snapshot_id`` are returned, and the
+        snapshot join is organisation-scoped, so one tenant can never receive
+        another tenant's calculation identity.
+        """
+        expression = _analytics_expression(dimension)
+        rows = await self._fetch_all(
+            f"""
+            SELECT DISTINCT l.snapshot_id AS id,
+                   cs.date AS date,
+                   cs.activity_type AS activity_type,
+                   cs.scope AS scope,
+                   cs.co2e_kg AS co2e_kg,
+                   cs.source_line_item_id AS source_line_item_id
+            FROM public.emissions_logs l
+            JOIN public.calculation_snapshots cs
+              ON cs.id = l.snapshot_id AND cs.organization_id = $1
+            WHERE l.organization_id = $1
+              AND l.start_date BETWEEN $2 AND $3
+              AND l.snapshot_id IS NOT NULL
+              AND {expression} = $4
+            ORDER BY cs.date DESC, l.snapshot_id ASC
+            LIMIT $5
+            """,
+            org_id,
+            period.start_date,
+            period.end_date,
+            str(group_key),
+            int(limit),
+        )
+        return [dict(r) for r in rows]
+
+    async def count_group_snapshots(
+        self, org_id: str, period: DateRange, dimension: str, group_key: str, cap: int
+    ) -> int:
+        """Count contributing snapshots for one aggregate cell, bounded by ``cap``."""
+        expression = _analytics_expression(dimension)
+        row = await self._fetch_one(
+            f"""
+            SELECT COUNT(*) AS n FROM (
+                SELECT DISTINCT l.snapshot_id
+                FROM public.emissions_logs l
+                WHERE l.organization_id = $1
+                  AND l.start_date BETWEEN $2 AND $3
+                  AND l.snapshot_id IS NOT NULL
+                  AND {expression} = $4
+                LIMIT $5
+            ) capped
+            """,
+            org_id,
+            period.start_date,
+            period.end_date,
+            str(group_key),
+            int(cap),
+        )
+        return int(row["n"]) if row is not None else 0
 

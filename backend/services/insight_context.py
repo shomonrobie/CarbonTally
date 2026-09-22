@@ -52,8 +52,9 @@ _MAX_CHARS_ENV = "CARBONTALLY_INSIGHT_CONTEXT_MAX_CHARS"
 #: are considered, newest first, before the budget is applied.
 MAX_HISTORY_INTERACTIONS = 50
 
-#: At most this many tool-call projections per interaction (the I3 catalogue is 4).
-MAX_TOOL_CALLS_PER_INTERACTION = 4
+#: At most this many tool-call projections per interaction (the authorized I3
+#: catalogue is four ratified tools plus three Phase 8 analytics tools).
+MAX_TOOL_CALLS_PER_INTERACTION = 7
 
 #: A single historical block may never consume more than this share of the budget.
 MAX_BLOCK_CHARS = 2_000

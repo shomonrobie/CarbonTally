@@ -2,10 +2,12 @@
 // CarbonTally Insight I6 — the authoritative I4 AnswerStatus presentation
 // vocabulary (presentation only; no contract change).
 //
-// This is the **fourteen** states ratified by the I4 contract
-// (`backend/domain/insight_interaction.py` → `AnswerStatus`, Master Spec §14).
-// It is deliberately NOT the I3 `ToolStatus` vocabulary and the two are never
-// merged: the I4 answer vocabulary describes the outcome of a whole
+// This is the I4 contract vocabulary (`backend/domain/insight_interaction.py`
+// → `AnswerStatus`, Master Spec §14): the **fourteen** states the specification
+// enumerates plus **one** authorized Phase 8 analytics state,
+// `multiple_matches` (PO Insight Discovery-Aggregation-Provenance authorization,
+// 2026-09-22). It is deliberately NOT the I3 `ToolStatus` vocabulary and the two
+// are never merged: the I4 answer vocabulary describes the outcome of a whole
 // interaction, `ToolStatus` describes one tool call inside it.
 //
 // The UI must present the complete vocabulary, including states the current
@@ -26,6 +28,7 @@ export const ANSWER_STATUS_VALUES = [
   'not_authorized',
   'insufficient_data',
   'needs_clarification',
+  'multiple_matches',
   'tool_failure',
   'provider_unavailable',
   'partial',
@@ -82,6 +85,15 @@ const ANSWER_PRESENTATION = {
     summary: "CarbonTally couldn't tell which record this question refers to.",
     guidance:
       'Include a specific reference — for example a report, a report version number, or a calculation snapshot.',
+  },
+  multiple_matches: {
+    label: 'Several records match',
+    tone: 'info',
+    icon: 'search',
+    summary:
+      'More than one of your calculation records matches this question, so CarbonTally has not chosen one for you.',
+    guidance:
+      'The matching records are listed as references below. Add detail (a date, an amount, a scope, a facility or a calculation reference) and ask again so CarbonTally can answer about one record.',
   },
   tool_failure: {
     label: 'Lookup failed',

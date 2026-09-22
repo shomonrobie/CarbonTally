@@ -50,9 +50,13 @@ class InteractionLifecycle(StrEnum):
 class AnswerStatus(StrEnum):
     """Authoritative I4 answer states (Master Spec §14, PO Q3).
 
-    Exactly the fourteen states the specification enumerates. ``success`` is the
-    specification's ``success / answered``. This vocabulary is deliberately not
-    the I3 ``ToolStatus`` vocabulary and must not be merged with it.
+    The specification enumerates fourteen states; Phase 8 Insight analytics adds
+    **one**, ``multiple_matches``, authorized by the PO Insight
+    Discovery-Aggregation-Provenance package (2026-09-22): a bounded discovery
+    that matched several authoritative calculation records must say so rather
+    than silently choosing one. ``success`` is the specification's
+    ``success / answered``. This vocabulary is deliberately not the I3
+    ``ToolStatus`` vocabulary and must not be merged with it.
     """
 
     SUCCESS = "success"
@@ -61,6 +65,7 @@ class AnswerStatus(StrEnum):
     NOT_AUTHORIZED = "not_authorized"
     INSUFFICIENT_DATA = "insufficient_data"
     NEEDS_CLARIFICATION = "needs_clarification"
+    MULTIPLE_MATCHES = "multiple_matches"
     TOOL_FAILURE = "tool_failure"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PARTIAL = "partial"
@@ -105,6 +110,30 @@ TOOL_ARGUMENT_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "report_version_lookup": ("version_id", "report_id", "version_number"),
     "report_evidence_lookup": ("report_version_id",),
     "calculation_snapshot_lookup": ("snapshot_id",),
+    # Phase 8 Insight analytics (bounded typed inputs only; no free text).
+    "insight_discovery": (
+        "start_date",
+        "end_date",
+        "reporting_year",
+        "co2e_kg",
+        "co2e_tolerance_kg",
+        "co2e_tolerance_pct",
+        "co2e_approx",
+        "activity",
+        "scope",
+        "supplier_id",
+        "facility_id",
+        "asset_id",
+        "limit",
+    ),
+    "insight_aggregation": ("group_by", "start_date", "end_date", "limit"),
+    "insight_aggregate_provenance": (
+        "group_by",
+        "group_key",
+        "start_date",
+        "end_date",
+        "limit",
+    ),
 }
 
 #: Q6 — the only result-metadata keys an I4 tool call may persist. Everything
@@ -117,6 +146,8 @@ RESULT_METADATA_ALLOWLIST: tuple[str, ...] = (
     "reference_kinds",
     "reference_count",
     "contract_version",
+    # Phase 8 analytics: a bounded match/group *count* is metadata, not content.
+    "match_count",
 )
 
 _ANSWER_ORDER: tuple[AnswerStatus, ...] = (
@@ -125,6 +156,7 @@ _ANSWER_ORDER: tuple[AnswerStatus, ...] = (
     AnswerStatus.INVALID_INPUT,
     AnswerStatus.RATE_LIMITED,
     AnswerStatus.REFUSED,
+    AnswerStatus.MULTIPLE_MATCHES,
     AnswerStatus.TOOL_FAILURE,
     AnswerStatus.PARTIAL,
     AnswerStatus.NO_DATA,
@@ -209,6 +241,10 @@ def project_result_metadata(result: Mapping[str, Any], *, contract_version: str)
         "reference_count": len(references),
         "contract_version": contract_version,
     }
+    # A bounded match count is evidence metadata (how many records matched), never
+    # record content, so it may be persisted where the tool reports one.
+    if isinstance(data, Mapping) and isinstance(data.get("match_count"), int):
+        projected["match_count"] = int(data["match_count"])
     return {k: v for k, v in projected.items() if k in RESULT_METADATA_ALLOWLIST}
 
 

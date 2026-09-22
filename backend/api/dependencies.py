@@ -49,6 +49,7 @@ from data.imports import ImportsRepository
 from data.disclosure_projection import DisclosureProjectionRepository
 from data.insight import InsightRepository
 from data.insight_interactions import InsightInteractionRepository
+from data.insight_rate_limit import InsightRateLimitRepository
 from data.invitations import InvitationsRepository
 from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
@@ -344,6 +345,10 @@ class RepositoryBundle:
     #: Phase 8 I3 (PO I3 Tool Catalogue Ratification 2026-09-21) — the disclosure
     #: projection read model the evidence tool requires (OHD D-01).
     disclosure_projection: DisclosureProjectionRepository
+    #: Phase 8 I8-A (PO Insight analytics/rate-limiting package 2026-09-22) — the
+    #: shared, atomically-mutated rate-limit and concurrency state. Technical abuse
+    #: protection only; it carries no commercial entitlement meaning.
+    insight_limits: InsightRateLimitRepository
 
 
 async def get_pool():
@@ -411,6 +416,8 @@ async def get_repositories() -> RepositoryBundle:
         # Phase 8 I3 — evidence-tool read model (OHD D-01: must be real wiring,
         # not a test-only attribute).
         disclosure_projection=DisclosureProjectionRepository(pool),
+        # Phase 8 I8-A — shared rate-limit / concurrency state (real wiring).
+        insight_limits=InsightRateLimitRepository(pool),
     )
 
 

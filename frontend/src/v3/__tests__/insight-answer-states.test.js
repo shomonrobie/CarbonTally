@@ -31,6 +31,7 @@ const EXPECTED_VOCABULARY = [
   'not_authorized',
   'insufficient_data',
   'needs_clarification',
+  'multiple_matches',
   'tool_failure',
   'provider_unavailable',
   'partial',
@@ -42,7 +43,7 @@ const EXPECTED_VOCABULARY = [
 ];
 
 describe('I4 answer-state vocabulary (I6-5)', () => {
-  test('covers exactly the fourteen ratified states', () => {
+  test('covers exactly the ratified states plus the authorized analytics state', () => {
     expect([...ANSWER_STATUS_VALUES].sort()).toEqual([...EXPECTED_VOCABULARY].sort());
     // Each ratified state has a presentation (no state falls through to the
     // "not recognised" default).

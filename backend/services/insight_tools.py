@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from fastapi import HTTPException
 
+from core.types import DateRange
 # OHD D-02 — the API packages are imported lazily/TYPE_CHECKING only: importing
 # them at module load closed a cycle
 # (services.insight_tools -> api.* -> services.insight_tools).
@@ -34,6 +35,23 @@ if TYPE_CHECKING:  # pragma: no cover - type-only
     from api.insight_authz import InsightAccess
     from auth import AuthUser
 from domain.disclosure import IMMUTABLE_REPORT_VERSION_STATUSES
+from domain.insight_query import (
+    AGGREGATION_DIMENSIONS,
+    DISCOVERY_FILTERS,
+    MAX_AGGREGATE_GROUPS,
+    MAX_DISCOVERY_RESULTS,
+    MAX_PROVENANCE_SNAPSHOTS,
+    REASON_TOLERANCE_REQUIRED,
+    TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+    TOOL_INSIGHT_AGGREGATION,
+    TOOL_INSIGHT_DISCOVERY,
+    canonical_scope,
+    parse_int,
+    validate_discovery,
+    validate_group_by,
+    validate_limit,
+    validate_period,
+)
 from domain.insight_tool import (
     MAX_IDENTIFIER_LENGTH,
     InsightReference,
@@ -50,6 +68,9 @@ TOOL_REPORT_LOOKUP = "report_lookup"
 TOOL_REPORT_VERSION_LOOKUP = "report_version_lookup"
 TOOL_REPORT_EVIDENCE_LOOKUP = "report_evidence_lookup"
 TOOL_CALCULATION_SNAPSHOT_LOOKUP = "calculation_snapshot_lookup"
+# The Phase 8 Insight analytics tool names (``insight_discovery``,
+# ``insight_aggregation``, ``insight_aggregate_provenance``) are imported from
+# ``domain.insight_query`` so the contract module remains their single definition.
 
 #: Report fields (api.contracts.ReportOut subset). Omitted: signed/artefact URLs
 #: (AGENTS.md §68), internal actors, unbounded/internal content, progress internals.
@@ -115,6 +136,66 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         input=ToolInputSpec(required=("snapshot_id",)),
         authorization="i2-boundary: authorize_insight_scope + object organisation re-check",
         output_fields=_SNAPSHOT_FIELDS,
+        reference_kinds=("calculation_snapshot", "evidence_line_item"),
+    ),
+    ToolDefinition(
+        name=TOOL_INSIGHT_DISCOVERY,
+        purpose=(
+            "Find the authorized calculation records that match bounded typed criteria "
+            "(date/date range, reporting year, CO2e amount with an explicit tolerance, "
+            "activity, scope, supplier, facility, asset)."
+        ),
+        read_only=True,
+        input=ToolInputSpec(optional=DISCOVERY_FILTERS + ("limit",)),
+        authorization="i2-boundary: authorize_insight_scope + organisation-scoped query",
+        output_fields=("match_count", "match_count_capped", "candidates", "basis"),
+        reference_kinds=("calculation_snapshot", "evidence_line_item"),
+    ),
+    ToolDefinition(
+        name=TOOL_INSIGHT_AGGREGATION,
+        purpose=(
+            "Sum authorized emissions in kg CO2e by one allowlisted dimension "
+            "(scope, month, year, activity, supplier, facility, asset) over an "
+            "explicit bounded period."
+        ),
+        read_only=True,
+        input=ToolInputSpec(required=("group_by", "start_date", "end_date"), optional=("limit",)),
+        authorization="i2-boundary: authorize_insight_scope + organisation-scoped query",
+        output_fields=(
+            "group_by",
+            "period",
+            "groups",
+            "group_count",
+            "groups_truncated",
+            "row_count",
+            "total_co2e_kg",
+            "total_is_complete",
+            "basis",
+            "provenance_tool",
+        ),
+        reference_kinds=(),
+    ),
+    ToolDefinition(
+        name=TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+        purpose=(
+            "Identify the bounded set of authorized calculation snapshots that make up "
+            "one aggregate result cell."
+        ),
+        read_only=True,
+        input=ToolInputSpec(
+            required=("group_by", "group_key", "start_date", "end_date"),
+            optional=("limit",),
+        ),
+        authorization="i2-boundary: authorize_insight_scope + organisation-scoped query",
+        output_fields=(
+            "group_by",
+            "group_key",
+            "period",
+            "snapshots",
+            "snapshot_count",
+            "snapshot_count_capped",
+            "basis",
+        ),
         reference_kinds=("calculation_snapshot", "evidence_line_item"),
     ),
 )
@@ -214,7 +295,7 @@ def _validate_input(tool: ToolDefinition, tool_input: Any) -> Optional[str]:
     for key in tool.input.required:
         if not tool_input.get(key):
             return "missing_required_parameter"
-    if not tool.input.required:
+    if tool.name == TOOL_REPORT_VERSION_LOOKUP:
         if not (tool_input.get("version_id") or (tool_input.get("report_id") and tool_input.get("version_number"))):
             return "missing_required_parameter"
     return None
@@ -262,6 +343,12 @@ async def invoke_tool(
             return await _report_evidence_lookup(repos, access, payload)
         if tool.name == TOOL_CALCULATION_SNAPSHOT_LOOKUP:
             return await _snapshot_lookup(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_DISCOVERY:
+            return await _discovery(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_AGGREGATION:
+            return await _aggregation(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_AGGREGATE_PROVENANCE:
+            return await _aggregate_provenance(repos, access, payload)
         return _result(tool.name, ToolStatus.INVALID_INPUT, reason="unratified_tool")
     except Exception:  # noqa: BLE001 - fail closed; diagnostics stay server-side
         # Logged server-side (tool name + exception) so genuine internal defects
@@ -366,3 +453,212 @@ async def _snapshot_lookup(repos: RepositoryBundle, access: InsightAccess, paylo
         [("calculation_snapshot", str(row.get("id"))), ("evidence_line_item", row.get("source_line_item_id", ""))]
     )
     return _result(TOOL_CALCULATION_SNAPSHOT_LOOKUP, ToolStatus.SUCCESS, data=data, references=refs)
+
+
+# --------------------------------------------------------------------------
+# Phase 8 Insight analytics — bounded discovery / aggregation / provenance
+#
+# Authorization: PO Insight Discovery-Aggregation-Provenance package
+# (2026-09-22). These tools read only through the bounded, organization-scoped
+# repository methods; every parameter is validated against the closed
+# vocabulary in ``domain.insight_query`` before a single row is read, and the
+# I2 boundary above has already authorized the caller's organisation.
+# --------------------------------------------------------------------------
+
+#: The aggregation basis, stated in the result so a figure can never be
+#: presented without its unit/basis.
+_BASIS_CO2E = "kg CO2e from emissions_logs.calculated_kg_co2e (organization-scoped)"
+_BASIS_PROVENANCE = "calculation_snapshots linked by emissions_logs.snapshot_id"
+
+
+def _invalid_analytics(tool: str, reason: Optional[str]) -> ToolResult:
+    return _result(tool, ToolStatus.INVALID_INPUT, reason=reason)
+
+
+async def _discovery(repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]) -> ToolResult:
+    """Bounded discovery: zero, one or several matching calculation records."""
+    filters = {
+        key: payload[key]
+        for key in DISCOVERY_FILTERS
+        if payload.get(key) is not None and payload.get(key) != ""
+    }
+    limit, reason = validate_limit(
+        payload.get("limit"), maximum=MAX_DISCOVERY_RESULTS, default=MAX_DISCOVERY_RESULTS
+    )
+    if reason is not None or limit is None:
+        return _invalid_analytics(TOOL_INSIGHT_DISCOVERY, reason)
+    reason = validate_discovery(filters)
+    if reason is not None:
+        return _invalid_analytics(TOOL_INSIGHT_DISCOVERY, reason)
+
+    org = access.organization_id
+    rows = await repos.logs.search_snapshots(org, filters, limit)
+    rows, truncated = bounded(rows, limit)
+    # Bounded count: at most ``limit + 1``, so a huge match set never forces a
+    # full count and the caller still learns that more than the bound matched.
+    counted = await repos.logs.count_matching_snapshots(org, filters, limit + 1)
+    match_count_capped = counted > limit
+    match_count = min(counted, limit + 1) if counted else 0
+    candidates = [_project(r, _SNAPSHOT_FIELDS) for r in rows]
+    refs = _dedupe_refs(
+        [("calculation_snapshot", str(r.get("id"))) for r in rows]
+        + [("evidence_line_item", r.get("source_line_item_id", "")) for r in rows]
+    )
+    data = {
+        "match_count": match_count,
+        "match_count_capped": match_count_capped,
+        "candidates": candidates,
+        "basis": "kg CO2e from calculation_snapshots.co2e_kg (organization-scoped)",
+    }
+    if counted == 0:
+        return _result(TOOL_INSIGHT_DISCOVERY, ToolStatus.NO_DATA, reason="no_matches")
+    if match_count > 1 or match_count_capped:
+        # Several records match: the ambiguity is reported explicitly (I4
+        # ``multiple_matches``) rather than silently choosing one.
+        return _result(
+            TOOL_INSIGHT_DISCOVERY,
+            ToolStatus.SUCCESS,
+            reason="multiple_matches",
+            data=data,
+            references=refs,
+            truncated=truncated or match_count_capped,
+        )
+    return _result(
+        TOOL_INSIGHT_DISCOVERY,
+        ToolStatus.SUCCESS,
+        data=data,
+        references=refs,
+        truncated=truncated,
+    )
+
+
+async def _aggregation(repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]) -> ToolResult:
+    """Bounded aggregation in kg CO₂e by one allowlisted dimension."""
+    dimension = str(payload.get("group_by") or "")
+    reason = validate_group_by(dimension)
+    if reason is not None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATION, reason)
+    start, end, reason = validate_period(payload.get("start_date"), payload.get("end_date"))
+    if reason is not None or start is None or end is None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATION, reason)
+    limit, reason = validate_limit(
+        payload.get("limit"), maximum=MAX_AGGREGATE_GROUPS, default=MAX_AGGREGATE_GROUPS
+    )
+    if reason is not None or limit is None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATION, reason)
+
+    org = access.organization_id
+    period = DateRange(start_date=start, end_date=end)
+    # One extra row is requested so truncation is *detected* rather than assumed.
+    raw_groups = await repos.logs.aggregate_groups(org, period, dimension, limit + 1)
+    shown = raw_groups[:limit]
+    groups_truncated = len(raw_groups) > limit
+    keys = [str(r["group_key"]) for r in shown]
+    labels = await repos.logs.group_labels(org, dimension, keys)
+    groups = [
+        {
+            "key": str(r["group_key"]),
+            "label": labels.get(str(r["group_key"])),
+            "co2e_kg": str(r["co2e_kg"]) if r.get("co2e_kg") is not None else "0",
+            "row_count": int(r["row_count"]),
+        }
+        for r in shown
+    ]
+    # The period total comes from the existing organization-scoped aggregate, so
+    # it stays complete even when the group list is truncated. Its basis is the
+    # same column, so the total and the groups always reconcile.
+    totals = await repos.logs.aggregate(org, period, "scope")
+    data = {
+        "group_by": dimension,
+        "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+        "groups": groups,
+        "group_count": len(groups),
+        "groups_truncated": groups_truncated,
+        "row_count": int(totals.total_rows),
+        "total_co2e_kg": str(totals.total_co2e_kg),
+        "total_is_complete": not groups_truncated,
+        "basis": _BASIS_CO2E,
+        "provenance_tool": TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+    }
+    if int(totals.total_rows) == 0:
+        return _result(TOOL_INSIGHT_AGGREGATION, ToolStatus.NO_DATA, reason="no_rows_in_period")
+    if Decimal(str(totals.total_co2e_kg)) == 0:
+        # Records were found and the calculated total is genuinely zero.
+        return _result(
+            TOOL_INSIGHT_AGGREGATION,
+            ToolStatus.SUCCESS,
+            reason="zero_total",
+            data=data,
+            truncated=groups_truncated,
+        )
+    return _result(
+        TOOL_INSIGHT_AGGREGATION,
+        ToolStatus.SUCCESS,
+        data=data,
+        truncated=groups_truncated,
+    )
+
+
+async def _aggregate_provenance(
+    repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]
+) -> ToolResult:
+    """Bounded provenance: the calculation snapshots behind one aggregate cell."""
+    dimension = str(payload.get("group_by") or "")
+    reason = validate_group_by(dimension)
+    if reason is not None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATE_PROVENANCE, reason)
+    start, end, reason = validate_period(payload.get("start_date"), payload.get("end_date"))
+    if reason is not None or start is None or end is None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATE_PROVENANCE, reason)
+    limit, reason = validate_limit(
+        payload.get("limit"), maximum=MAX_PROVENANCE_SNAPSHOTS, default=MAX_PROVENANCE_SNAPSHOTS
+    )
+    if reason is not None or limit is None:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATE_PROVENANCE, reason)
+    group_key = str(payload.get("group_key") or "").strip()
+    if not group_key or len(group_key) > MAX_IDENTIFIER_LENGTH:
+        return _invalid_analytics(TOOL_INSIGHT_AGGREGATE_PROVENANCE, "missing_group_key")
+
+    org = access.organization_id
+    period = DateRange(start_date=start, end_date=end)
+    rows = await repos.logs.list_group_snapshots(org, period, dimension, group_key, limit)
+    rows, truncated = bounded(rows, limit)
+    counted = await repos.logs.count_group_snapshots(org, period, dimension, group_key, limit + 1)
+    count_capped = counted > limit
+    snapshots = [
+        {
+            "id": str(r["id"]),
+            "date": _json_safe(r.get("date")),
+            "activity_type": _json_safe(r.get("activity_type")),
+            "scope": _json_safe(r.get("scope")),
+            "co2e_kg": _json_safe(r.get("co2e_kg")),
+            "source_line_item_id": _json_safe(r.get("source_line_item_id")),
+        }
+        for r in rows
+    ]
+    refs = _dedupe_refs(
+        [("calculation_snapshot", str(r["id"])) for r in rows]
+        + [("evidence_line_item", r.get("source_line_item_id", "")) for r in rows]
+    )
+    if counted == 0:
+        return _result(
+            TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+            ToolStatus.NO_DATA,
+            reason="no_contributing_snapshots",
+        )
+    data = {
+        "group_by": dimension,
+        "group_key": group_key,
+        "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+        "snapshots": snapshots,
+        "snapshot_count": len(snapshots),
+        "snapshot_count_capped": count_capped,
+        "basis": _BASIS_PROVENANCE,
+    }
+    return _result(
+        TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+        ToolStatus.SUCCESS,
+        data=data,
+        references=refs,
+        truncated=truncated or count_capped,
+    )
