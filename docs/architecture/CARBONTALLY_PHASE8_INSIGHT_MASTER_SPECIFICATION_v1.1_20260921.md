@@ -131,7 +131,7 @@ No implementation agent may convert `OPEN`, `DEFERRED`, or `NOT_AUTHORIZED` into
 | I2 Authorization & visibility | `CLOSED — VERIFIED PASS` | OHD + PO closure |
 | I3 Controlled read-only tools | `CLOSED — VERIFIED PASS` | OHD re-verification + PO closure |
 | I4 AI interaction + canonical audit | `CLOSED — VERIFIED PASS` | implementation `310a62a` · OHD `6a4fda1` · PO closure `CARBONTALLY_P8_I4_INSIGHT_CLOSURE_20260921.md` |
-| I5 Context management | `NOT_AUTHORIZED` | PO gate |
+| I5 Context management | `CLOSED — VERIFIED PASS` | implementation `f9d91e1` · report correction `4d23031` · OHD `cd718d6` · PO closure `CARBONTALLY_P8_I5_INSIGHT_CLOSURE_20260922.md` |
 | I6 Insight UI | `NOT_AUTHORIZED` | PO gate |
 | I7 Privacy/retention/export | `NOT_AUTHORIZED` | PO gate |
 | I8 Billing/production hardening | `NOT_AUTHORIZED` | PO gate |
@@ -1607,7 +1607,7 @@ The known `report_evidence_lookup` real-wiring defect and circular import defect
 
 ## Status
 
-`NOT_AUTHORIZED`
+**`CLOSED — VERIFIED PASS`** (2026-09-22) — authorized 2026-09-21, implemented at `f9d91e1` (report-evidence correction `4d23031`), independently verified by OHD at `cd718d6` (`docs/implementation/phase8/CT-P8-I5-OHD-VERIFICATION-20260922.md`, `I5 VERIFIED PASS — READY FOR PO CLOSURE`), and closed by the Product Owner in `docs/architecture/CARBONTALLY_P8_I5_INSIGHT_CLOSURE_20260922.md`. The I5 stage contract is unchanged by this status update.
 
 ## Future scope
 
@@ -2153,6 +2153,8 @@ the dated decision/closure documents under `docs/architecture/` and
 | Q14 — provider/evaluation/SLO | Existing provider abstraction only; truthful attribution; usage/cost may remain NULL; no evaluation platform, RAG, embeddings or orchestration framework |
 
 **Stage status (updated at PO closure, 2026-09-21):** I4 is **`CLOSED — VERIFIED PASS`** at implementation revision `310a62a` (`310a62a5d1a822ae51a8bf33e33302b690265c0a`), independently re-verified by OHD at `6a4fda1` (`docs/implementation/phase8/CT-P8-I4-OHD-REVERIFICATION-20260921.md`, `PASS — I4 REMEDIATION D1-D4 VERIFIED`), and closed by the Product Owner in `docs/architecture/CARBONTALLY_P8_I4_INSIGHT_CLOSURE_20260921.md`. That closure authorizes nothing further: I5–I8 remain **NOT AUTHORISED**, production deployment is **not** implied, and the Q12/Q13 items remain deferred to I7/I8 respectively.
+
+**Stage status (I5 closure, 2026-09-22):** I5 is **`CLOSED — VERIFIED PASS`** at implementation revision `f9d91e1` (report-evidence correction `4d23031`), independently verified by OHD at `cd718d6` (`docs/implementation/phase8/CT-P8-I5-OHD-VERIFICATION-20260922.md`, `I5 VERIFIED PASS — READY FOR PO CLOSURE`), and closed by the Product Owner in `docs/architecture/CARBONTALLY_P8_I5_INSIGHT_CLOSURE_20260922.md`. This note supersedes the I5 part of the I4 sentence above, factually and for status only: I5 is now authorized and closed, I6 remains PO-authorized at product level but implementation-deferred, and I7/I8 remain **NOT AUTHORISED**; production deployment remains **not** authorized. The I5 context budget remains **20,000 characters by default and configurable**, and is **not** an immutable hard ceiling (O-1 PO decision, 2026-09-22). No I5 technical requirement, and no I6/I7/I8 decision, is changed by this note.
 
 ---
 
