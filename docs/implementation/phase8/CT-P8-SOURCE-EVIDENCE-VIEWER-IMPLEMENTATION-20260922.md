@@ -370,8 +370,14 @@ deployment were not touched; and no destructive historical migration was perform
 | --- | --- |
 | Branch | `p8-release-reconciled` |
 | Remote | `github` (`https://github.com/shomonrobie/CarbonTally.git`) |
-| Implementation + documentation commit | recorded in the checkpoint commit message and reported in the task response |
-| Push status | pushed to `github/p8-release-reconciled` (see task response for the verified alignment) |
+| Implementation + tests + report commit | `999e4fbf92f66079fa78cfb07b8e686097cda628` |
+| Documentation follow-up commit | the commit that records this SHA table (reported in the task response) |
+| Final HEAD | the documentation follow-up commit — reported in the task response and verifiable with `git log -1 --format=%H` |
+| Push status | pushed to `github/p8-release-reconciled`; alignment verified with `git rev-list --left-right --count HEAD...github/p8-release-reconciled` |
+
+Change footprint: 16 modified files, 6 added paths, no deletions, **no migration
+and no schema file touched** (`git status` output at commit time listed only the
+files in §2).
 
 `origin` remains the dead local path `/tmp/ct_step2`; it was **not** modified. No
 other clone or branch was touched.
