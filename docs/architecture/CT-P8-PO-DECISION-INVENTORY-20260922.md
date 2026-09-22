@@ -23,6 +23,41 @@
 
 **Evidence classes** (readiness-audit convention): `VERIFIED` (code/test/runtime evidence or a signed-off closure record) · `DOCUMENTED` (stated in an authoritative record, not independently re-traced) · `INFERRED` (reasoned from ≥2 documents) · `AMBIGUOUS` (documents conflict or are stale) · `UNKNOWN`.
 
+## 0. Status reconciliation note — PO closure of 2026-09-22 (documentation update)
+
+This inventory was written on 2026-09-22 **before** the Product Owner's closure decision for the source-evidence capability. That decision has since been recorded at
+
+`docs/architecture/CT-P8-PO-DECISION-DISPOSITION-CLOSURE-DECISIOIN-FOR-SOURCE-EVIDENCE-VIEWER-AND-INSIGHT-20260922.md`
+
+That record is the authoritative instrument for the statuses below. The sections that follow remain the **pre-closure inventory snapshot** and are retained as historical context (the same convention the Phase 8 closures use: historical text is left as written and superseded for status).
+
+| Item | Authoritative status after the PO decision |
+| --- | --- |
+| Source Evidence Viewer + Insight Evidence Navigation | **`CLOSED — VERIFIED PASS WITH NON-BLOCKING OBSERVATIONS`** (implementation `999e4fb`; OHD `5d5f7ed`, verdict `PASS WITH NON-BLOCKING OBSERVATIONS`, verification ID `OHD-P8-SEV-20260922`) |
+| C-01 | `RATIFIED FOR CURRENT RELEASE; FUTURE SECURITY REVIEW DEFERRED` — **no remediation authorized** |
+| C-02 | `DEFERRED — SECURITY POLICY` — **no code change authorized** |
+| C-03 | `DEFERRED — AUDIT/PROVENANCE POLICY` — **no export/reporting remediation authorized** |
+| C-04 | `ACCEPTED` — no remediation authorized |
+| C-05 | `RATIFIED` — no implementation change authorized |
+| C-06 | **`CLOSED`** by the PO decision |
+| I6 | `CLOSED — VERIFIED PASS` (unchanged; **not** reopened) |
+| I7 | `NOT AUTHORIZED / NOT READY` (unchanged) |
+| I8 | `NOT AUTHORIZED AS FULL STAGE` (unchanged; the I8-A principles remain intact) |
+| Production deployment | `NOT AUTHORIZED` (unchanged) |
+| New implementation arising from the closure | **NONE** |
+
+Consequences for this inventory:
+
+* six items (C-01…C-06) are **disposed of** by the PO decision — C-01, C-04 and C-05 ratified/accepted; C-02 and C-03 deferred by explicit PO decision with no remediation authorized; C-06 closed;
+* the remaining **26 items (C-07…C-32) remain open exactly as recorded**; the deferred product/security/audit items the PO re-listed (C-08…C-12, C-13…C-17, C-18…C-24) are unchanged;
+* **no remediation of C-01/C-02/C-03 is authorized**, so §F.1's remediation branch is not taken and no implementation follows from the closure;
+* the pre-closure statements in §A.2, §A.3, §A.8, §B.7, §C.1, §D.3, §F.1 and §H.1 are superseded **for status only** by this note; their evidence findings stand and were not re-opened;
+* C-32 (durability of capability-level PO authorizations) is partly resolved in practice by the fact that the closure decision is itself a committed PO record; the underlying 2026-09-22 authorization text remains cited by reference only.
+
+**Nothing in this note authorizes implementation.** It records a PO documentation decision only.
+
+---
+
 ## A. Executive status
 
 ### A.1 Closed
@@ -45,11 +80,13 @@
 
 **None.** No Phase 8 item is in the "implemented, awaiting independent verification" state at this HEAD. The most recent implementation (Source Evidence Viewer, `999e4fb`) has been independently verified (A.3).
 
-### A.3 Verified but not PO-closed
+### A.3 Verified and PO-closed (2026-09-22)
+
+> **Updated by the PO closure decision** — see §0. The status below is the authoritative post-decision status; the pre-closure wording is recorded in §0 and in the PO decision itself.
 
 | Item | Implementation | Independent verification | Status |
 | --- | --- | --- | --- |
-| **Shared Source Evidence Viewer + Insight evidence handoff** (incl. the `source_page` provenance correction) | `999e4fb` (documentation revision `de021ab`) | `docs/verification/phase8/CT-P8-SOURCE-EVIDENCE-VIEWER-OHD-VERIFICATION-20260922.md`, commit `5d5f7ed`, verdict **`PASS WITH NON-BLOCKING OBSERVATIONS`** | **VERIFIED — NOT PO-CLOSED.** The OHD report states the implementation "is **not** declared accepted and the PO stage is **not** closed", and that "the disposition of observations 14.1–14.3 remains with the PO". |
+| **Shared Source Evidence Viewer + Insight evidence handoff** (incl. the `source_page` provenance correction) | `999e4fb` (documentation revision `de021ab`) | `docs/verification/phase8/CT-P8-SOURCE-EVIDENCE-VIEWER-OHD-VERIFICATION-20260922.md`, commit `5d5f7ed`, verdict **`PASS WITH NON-BLOCKING OBSERVATIONS`** (`OHD-P8-SEV-20260922`) | **`CLOSED — VERIFIED PASS WITH NON-BLOCKING OBSERVATIONS`** — PO closure 2026-09-22, `docs/architecture/CT-P8-PO-DECISION-DISPOSITION-CLOSURE-DECISIOIN-FOR-SOURCE-EVIDENCE-VIEWER-AND-INSIGHT-20260922.md`. The accepted observations are not implementation blockers; **no remediation is authorized**. |
 
 ### A.4 In progress
 
@@ -76,7 +113,7 @@ I7 implementation · I8 implementation as a full stage (only I8-A *principles* a
 
 ### A.8 Genuine unresolved PO decisions
 
-**32 inventoried items in §C**, grouped as: Source Evidence Viewer closure and residual policy (C-01…C-08), I6 accepted follow-ups (C-09…C-12), I7 prerequisites (C-13…C-17), I8 prerequisites (C-18…C-24), Master Spec §41 residuals and I5 v1 follow-ons (C-25…C-29), repository governance and record durability (C-30…C-32). Evidence quality per item is classified in §H.
+**32 inventoried items in §C**, of which **6 (C-01…C-06) have since been disposed of by the PO closure decision of 2026-09-22** and **26 remain open** — see §0. Groups (pre-closure): Source Evidence Viewer closure and residual policy (C-01…C-08), I6 accepted follow-ups (C-09…C-12), I7 prerequisites (C-13…C-17), I8 prerequisites (C-18…C-24), Master Spec §41 residuals and I5 v1 follow-ons (C-25…C-29), repository governance and record durability (C-30…C-32). Evidence quality per item is classified in §H.
 
 ---
 
@@ -186,7 +223,7 @@ Authoritative record: I5–I8 PO record **§5** (I6-1…I6-10 and the I6 authori
 | I4 | `CLOSED — VERIFIED PASS` | `310a62a` | `6a4fda1` | `725f9f8` |
 | I5 | `CLOSED — VERIFIED PASS` | `f9d91e1` (report correction `4d23031`) | `cd718d6` | `4887c66` |
 | I6 | `CLOSED — VERIFIED PASS` | `09e2315` (docs `ea7ccc2`) | `4acc249` | `67d399f` |
-| **Source Evidence Viewer** | **`VERIFIED` — NOT PO-CLOSED** | `999e4fb` (docs `de021ab`) | `5d5f7ed` — `PASS WITH NON-BLOCKING OBSERVATIONS` | **none** |
+| **Source Evidence Viewer** | **`CLOSED — VERIFIED PASS WITH NON-BLOCKING OBSERVATIONS`** | `999e4fb` (docs `de021ab`) | `5d5f7ed` — `PASS WITH NON-BLOCKING OBSERVATIONS` | `docs/architecture/CT-P8-PO-DECISION-DISPOSITION-CLOSURE-DECISIOIN-FOR-SOURCE-EVIDENCE-VIEWER-AND-INSIGHT-20260922.md` (2026-09-22) |
 
 ### B.8 Repository release authority (established)
 
@@ -206,7 +243,11 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 
 ### C.1 Source Evidence Viewer — closure and residual policy
 
+> **All six items in this group (C-01…C-06) have since been disposed of by the PO closure decision of 2026-09-22 — see §0.** Each item below carries its PO disposition line. The 10-field bodies are the pre-closure inventory record and are retained as historical context; **no remediation is authorized by the disposition**.
+
 **C-01 — `source_item.file_url` returned below DM-6 `FULL` on the customer evidence route**
+
+> **PO disposition (2026-09-22): `RATIFIED FOR CURRENT RELEASE; FUTURE SECURITY REVIEW DEFERRED`.** The PO does **not** authorize changing this behaviour as part of the closure, and records it as a security-sensitive policy inconsistency rather than an endorsement of exposing the pointer. The ratification must not be read as authorization to expose signed URLs, storage credentials, tokens, unrestricted document content, additional storage paths or additional metadata. **No remediation is authorized.** *Authorized today: No (unchanged).*
 1. **Question:** Ratify the existing behaviour, or correct it so the source-document pointer family is withheld below `FULL`?
 2. **Why required:** The route nulls `source_document.path`, `metadata` and the signed URL below `FULL`, but still returns `source_item.file_url` — "the exact value `path_from_url()` converts into a signable storage path". The ratified policy and the shipped behaviour disagree.
 3. **Exposed by:** the Source Evidence Viewer verification (verifier adversarial probe as an org Member).
@@ -219,6 +260,8 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 10. **Still current?** Re-verified at HEAD `5d5f7ed`: `backend/api/v3_emissions.py:509` returns `"file_url": item.file_url` with no exposure gate, while lines 526/531 gate `path`/`metadata`. `VERIFIED`.
 
 **C-02 — DM-6 is not enforced on the customer documents signed-URL route**
+
+> **PO disposition (2026-09-22): `DEFERRED — SECURITY POLICY`.** `GET /api/v3/documents/{file_id}/signed-url` is left unchanged; the PO explicitly does **not** ratify the current arrangement as a permanent security design. A future decision must determine whether (1) document-management access and evidence-disclosure access intentionally have different authorization models, or (2) the DM-6 evidence-depth model becomes a broader document-reference policy. "No implementation may be inferred from this deferral." **No code change is authorized.** *Authorized today: No (unchanged).*
 1. **Question:** Should DM-6 evidence-depth policy apply to `GET /api/v3/documents/{file_id}/signed-url`, which any organisation member can call for their own organisation's file?
 2. **Why required:** This is "the larger policy question behind observation 1"; the two authorisation postures (DM-6 on evidence paths vs `require_org_member()` on the document surface) are unreconciled.
 3. **Exposed by:** the Source Evidence Viewer verification; also recorded as limitation 7 of the implementation report.
@@ -231,6 +274,8 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 10. **Still current?** Re-verified at HEAD `5d5f7ed`: `backend/api/v3_documents.py:574-576` (`get_document_signed_url`) still depends only on `require_org_member()`. `VERIFIED`.
 
 **C-03 — export/reporting still infer evidence COMPLETE from the presence of a page**
+
+> **PO disposition (2026-09-22): `DEFERRED — AUDIT/PROVENANCE POLICY`.** The PO accepts the Source Evidence Viewer correction distinguishing authoritative `source_page`, historical/unverified page information and unavailable source location, but does **not** authorize changes to existing exports/reporting. A future decision must determine whether the platform enforces a uniform rule that `source_page IS NOT NULL` must not by itself establish evidence completeness, considering historical data, exports, reporting, reviewer-facing displays, provenance semantics and I7 export policy. **No historical-data rewriting and no export/reporting remediation are authorized.** *Authorized today: No (unchanged).*
 1. **Question:** Remediate the residual `source_page IS NOT NULL ⇒ COMPLETE` inference (and confirm whether exports/reporting remain out of scope)?
 2. **Why required:** Historical page-*count*-derived values still read as COMPLETE on those two surfaces although the same row correctly reads `PARTIAL`/`unverified` on the corrected customer surfaces — the `page_count`/`source_page` distinction is not uniform platform-wide.
 3. **Exposed by:** the Source Evidence Viewer verification; originally forensic finding `F-B2-7`.
@@ -243,6 +288,8 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 10. **Still current?** Re-verified at HEAD `5d5f7ed`: `backend/data/exports.py:57` (`"COMPLETE" if source_page is not None`) and `backend/data/reporting.py:1107/1111` (`AND source_page IS NOT NULL`) are unchanged. `VERIFIED`.
 
 **C-04 — foreign-organization identifiers return 403 while absent ones return 404**
+
+> **PO disposition (2026-09-22): `ACCEPTED`.** The existing 403/404 distinction is accepted for this release; no remediation is authorized. A future platform-wide non-disclosure policy may revisit this independently.
 1. **Question:** Accept the platform-wide convention (403 for a foreign resource) or require strict non-disclosure (404) on evidence-reading routes?
 2. **Why required:** 403-vs-404 distinguishes "no such line" from "a line exists in another organization" for a caller holding a valid UUID, albeit with a generic body that names nothing.
 3. **Exposed by:** the Source Evidence Viewer verification.
@@ -254,6 +301,8 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 9. **Documented alternatives:** "If the PO wants strict non-disclosure, the smallest remediation is to return 404 for foreign evidence resources on the evidence-reading routes."
 
 **C-05 — ratify `raw_description` being withheld at CONTROLLED depth**
+
+> **PO disposition (2026-09-22): `RATIFIED`.** The current withholding of `raw_description` at CONTROLLED depth is ratified as the current allowlist behaviour, and the PO considers the narrower disclosure posture preferable to unintentionally exposing additional source text. **No implementation change is authorized**; any future change must be an explicit policy decision.
 1. **Question:** Ratify that a Member sees mapped field values but not the raw description, or treat the raw description as a structural key?
 2. **Why required:** The DM-6 allowlist recognises structural key names (`description`, `activity`, `amount`, …) but not `raw_description`, so the withheld key is "a *behavioural* consequence of a key-name choice rather than a stated policy decision".
 3. **Exposed by:** the Source Evidence Viewer verification.
@@ -265,6 +314,8 @@ Every item below is traceable to repository evidence (field 4 = supporting docum
 9. **Documented alternatives:** none recorded beyond ratify-or-not.
 
 **C-06 — PO closure of the Source Evidence Viewer stage (and disposition of the OHD observations)**
+
+> **PO disposition (2026-09-22): `CLOSED`.** The PO formally closed **Shared Source Evidence Viewer + Insight Evidence Navigation** with the final state **IMPLEMENTED → INDEPENDENTLY VERIFIED → PASS WITH NON-BLOCKING OBSERVATIONS → PO ACCEPTED → CLOSED**, i.e. `CLOSED — VERIFIED PASS WITH NON-BLOCKING OBSERVATIONS`. The accepted observations are not implementation blockers. **No code remediation is authorized as a condition of this closure, and no implementation task is created by it.**
 1. **Question:** Accept the OHD verdict, dispose of observations 14.1–14.3 (and optionally 14.4/14.5), and close the stage — or authorize bounded remediation before closure?
 2. **Why required:** The stage is implemented (`999e4fb`) and independently verified (`5d5f7ed`, `PASS WITH NON-BLOCKING OBSERVATIONS`), but the verification explicitly does not accept it and does not close it: "The implementation is **not** declared accepted and the PO stage is **not** closed. That decision, and the disposition of observations 14.1–14.3, remains with the PO."
 3. **Exposed by:** the Source Evidence Viewer implementation and its independent verification.
@@ -615,7 +666,8 @@ Scope delivered, per the implementation report §1: one shared viewer reachable 
 * **Partially authorized?** **Yes — this is the accurate description.** The authorization was bounded: "no I7 retention/erasure policy, no I8 billing/plan gating/metering, no AI/RAG/vector search, no new I3 tool, no I2 semantic change beyond the DM-6 correction, no schema/migration change, no historical data rewrite, no production deployment" (implementation report §1).
 * **Explicitly deferred?** Yes for the surrounding questions — date/amount discovery (C-08), I3 resolvability (C-09), I7 posture (P-5 → C-13…C-17), I8 posture (P-6 → C-24).
 * **Explicitly rejected?** **No.** No record rejects the capability or any of its sub-questions.
-* **Genuinely still requires a PO decision?** **Yes** — C-01, C-02 and C-03 (the observations whose "disposition … remains with the PO"), optionally C-04/C-05, and **C-06 (closure)**. Resolving C-03 in practice means deciding whether the `page_count`/`source_page` distinction must be uniform platform-wide.
+* **Genuinely still requires a PO decision?** *(Pre-closure answer, retained as history)* **Yes** — C-01, C-02 and C-03 (the observations whose "disposition … remains with the PO"), optionally C-04/C-05, and **C-06 (closure)**. Resolving C-03 in practice means deciding whether the `page_count`/`source_page` distinction must be uniform platform-wide.
+* **Post-decision status (2026-09-22):** **resolved by the PO closure decision.** C-06 is **CLOSED**; C-01 is `RATIFIED FOR CURRENT RELEASE; FUTURE SECURITY REVIEW DEFERRED`; C-02 is `DEFERRED — SECURITY POLICY`; C-03 is `DEFERRED — AUDIT/PROVENANCE POLICY`; C-04 is `ACCEPTED`; C-05 is `RATIFIED`. The capability is therefore **`CLOSED — VERIFIED PASS WITH NON-BLOCKING OBSERVATIONS`** — see §0. **No remediation of C-01/C-02/C-03 is authorized**, and the security/audit questions remain explicitly deferred rather than answered.
 
 **The forensic report itself is not, and does not claim to be, an authorization** (§33). The authorization is established only by reference in the implementation and verification reports; see C-32 for the record-keeping consequence.
 
@@ -647,7 +699,9 @@ Scope delivered, per the implementation report §1: one shared viewer reachable 
 
 **Dependency-based only.** This section orders decisions by the dependencies the repository documents. It does not rank them by desirability and does not recommend a product choice.
 
-### F.1 Sequence for the open evidence capability (the only stage currently awaiting a decision)
+### F.1 Sequence for the open evidence capability — **COMPLETED by the PO decision of 2026-09-22**
+
+> **Outcome:** the PO took the **closure branch, not the remediation branch**. C-01/C-02/C-03 were dispositioned (ratify / defer / defer) with **no remediation authorized**, and C-06 was decided as **CLOSED**. No implementation authorization, implementation, OHD verification or further closure follows from this sequence.
 
 ```text
 C-01 + C-02 (+ C-03) [PO disposition of the three observations]
@@ -757,6 +811,8 @@ These are already closed/ratified. They should not be treated as new PO question
 ## H. Evidence quality / uncertainty
 
 ### H.1 Classification of every unresolved item
+
+> **Scope note (2026-09-22 closure):** the classifications below record the *evidence quality* of each item **as at the inventory date (pre-closure)**. C-01…C-06 have since been disposed of by the PO decision (see §0) — their rows remain as the historical evidence assessment, not as current status.
 
 | Item | Class | Basis / uncertainty |
 | --- | --- | --- |
