@@ -249,6 +249,53 @@ def test_migration_creates_the_shared_limiter_tables_with_rls() -> None:
     assert "PRIMARY KEY (scope, scope_key)" in ddl
 
 
+# --------------------------------------------------------------------------
+# The P2 migration (static assertion, no database needed)
+# --------------------------------------------------------------------------
+_P2_MIGRATION = (
+    "supabase/migrations/20261006000000_p8_insight_temporal_comparison.sql"
+)
+
+
+def _p2_ddl() -> str:
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[4]
+    return (root / _P2_MIGRATION).read_text()
+
+
+def test_p2_migration_widens_the_catalogue_by_exactly_one_tool() -> None:
+    ddl = _p2_ddl()
+    assert "DROP CONSTRAINT IF EXISTS ci_tool_calls_tool_name_check" in ddl
+    for name in (
+        "'report_lookup'",
+        "'report_version_lookup'",
+        "'report_evidence_lookup'",
+        "'calculation_snapshot_lookup'",
+        "'insight_discovery'",
+        "'insight_aggregation'",
+        "'insight_aggregate_provenance'",
+        "'insight_temporal_comparison'",
+    ):
+        assert name in ddl, name
+    assert ddl.count("ADD CONSTRAINT ci_tool_calls_tool_name_check") == 1
+
+
+def test_p2_migration_is_additive_idempotent_and_changes_no_vocabulary() -> None:
+    ddl = _p2_ddl()
+    # Additive and re-runnable: the widening drops the constraint first.
+    assert ddl.count("ALTER TABLE public.carbontally_insight_tool_calls") == 2
+    # No destructive statement and no new schema object.
+    for forbidden in ("DROP TABLE", "DROP COLUMN", "DELETE ", "TRUNCATE", "UPDATE public.", "CREATE TABLE"):
+        assert forbidden not in ddl, forbidden
+    # The answer-state vocabulary and the tool-status vocabulary are untouched.
+    assert "ci_interactions_answer_status_check" not in ddl
+    assert "ci_tool_calls_tool_status_check" not in ddl
+    # The P2 zero-baseline case is expressed with existing states plus a result
+    # field, so no sixteenth answer state is introduced anywhere.
+    assert "multiple_matches" not in ddl
+
+
 def test_migration_declares_no_destructive_or_commercial_statement() -> None:
     structure = _structure().upper()
     for forbidden in ("DROP TABLE", "TRUNCATE", "DELETE FROM", "DROP COLUMN", "GRANT "):

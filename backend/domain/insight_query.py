@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Mapping, Optional, Sequence
 
 from core.types import Scope
@@ -42,12 +42,17 @@ ANALYTICS_CONTRACT_VERSION = "i3-analytics-v1"
 TOOL_INSIGHT_DISCOVERY = "insight_discovery"
 TOOL_INSIGHT_AGGREGATION = "insight_aggregation"
 TOOL_INSIGHT_AGGREGATE_PROVENANCE = "insight_aggregate_provenance"
+#: P2 — bounded temporal comparison (Insight capability family 11). Authorized by
+#: the PO P2 implementation authorization (2026-09-22) as **one** additional tool;
+#: it adds no eighth-plus tool and no new answer state.
+TOOL_INSIGHT_TEMPORAL_COMPARISON = "insight_temporal_comparison"
 
 #: Tool name → authorized operation (the only operations that exist).
 ANALYTICS_OPERATIONS: dict[str, str] = {
     TOOL_INSIGHT_DISCOVERY: "discovery",
     TOOL_INSIGHT_AGGREGATION: "aggregation",
     TOOL_INSIGHT_AGGREGATE_PROVENANCE: "provenance",
+    TOOL_INSIGHT_TEMPORAL_COMPARISON: "temporal_comparison",
 }
 
 #: Hard bounds (bounded output is part of the contract, not a preference).
@@ -63,6 +68,44 @@ MAX_TEXT_FILTER_LENGTH = 128
 MAX_TOLERANCE_KG = Decimal("1000000000")
 #: A relative tolerance may not exceed this percentage.
 MAX_TOLERANCE_PERCENT = Decimal("100")
+
+#: The closed temporal-comparison group-by vocabulary (P2).
+#:
+#: A comparison may compare the overall period totals, or group them by a
+#: *category* dimension whose meaning is stable across two periods. Deliberately
+#: **narrower** than ``AGGREGATION_DIMENSIONS``:
+#:
+#: * ``month`` / ``year`` are time dimensions — they bucket the very axis the
+#:   comparison is defined on, so two periods would share buckets and the
+#:   "change" would be meaningless rather than merely imprecise;
+#: * ``supplier`` is structurally present but the emission write path never
+#:   populates ``emissions_logs.supplier_id`` (PO C-06 / D-09 unresolved), so every
+#:   row falls into the single placeholder bucket ``none``: comparing two periods
+#:   there would attribute change to a supplier identity that does not exist.
+#:   Adding supplier comparison therefore waits on D-09, not on this tool.
+#:
+#: ``scope`` / ``activity`` / ``facility`` / ``asset`` are the same
+#: organization-scoped dimensions the verified aggregation tool already exposes;
+#: an unattributed row keeps the documented ``none``/``unknown`` key exactly as
+#: it does there (never a fabricated label).
+TEMPORAL_COMPARISON_DIMENSIONS: tuple[str, ...] = (
+    "scope",
+    "activity",
+    "facility",
+    "asset",
+)
+
+#: Direction vocabulary for a comparison (deterministic, never narrated).
+DIRECTION_INCREASE = "increase"
+DIRECTION_DECREASE = "decrease"
+DIRECTION_NO_CHANGE = "no_change"
+
+#: Percentage-change basis markers (P2 §5 — a zero baseline is reported
+#: truthfully rather than divided by zero or converted into a fabricated value).
+PERCENTAGE_BASIS_PERIOD_A = "period_a_total"
+PERCENTAGE_BASIS_ZERO = "zero_baseline"
+#: Six decimal places, matching the existing tolerance quantisation.
+PERCENTAGE_QUANTUM = Decimal("0.000001")
 
 #: The closed discovery filter vocabulary.
 DISCOVERY_FILTERS: tuple[str, ...] = (
@@ -322,6 +365,138 @@ def validate_period(start: Any, end: Any) -> tuple[Optional[date], Optional[date
     if (end_date - start_date) > timedelta(days=MAX_PERIOD_DAYS):
         return None, None, REASON_PERIOD_TOO_LONG
     return start_date, end_date, None
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalDelta:
+    """The deterministic result of comparing two authoritative kg CO₂e totals.
+
+    ``absolute_change`` is always ``period_b - period_a`` and is always
+    available (it is a subtraction of two authoritative totals). The percentage
+    is available **only** when the baseline is non-zero; a zero baseline reports
+    ``percentage_change_available = False`` with ``percentage_basis =
+    "zero_baseline"`` rather than dividing by zero or inventing a value.
+    """
+
+    absolute_change: Decimal
+    percentage_change: Optional[Decimal]
+    direction: str
+    percentage_change_available: bool
+    percentage_basis: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "absolute_change_kg": str(self.absolute_change),
+            "percentage_change": (
+                str(self.percentage_change) if self.percentage_change is not None else None
+            ),
+            "percentage_change_available": self.percentage_change_available,
+            "percentage_basis": self.percentage_basis,
+            "direction": self.direction,
+        }
+
+
+def compare_totals(period_a: Decimal, period_b: Decimal) -> TemporalDelta:
+    """Compare two authoritative totals deterministically (P2 §4/§5).
+
+    The formula is fixed by the authorization and is **not** configurable:
+
+        absolute_change   = period_B - period_A
+        percentage_change = ((period_B - period_A) / period_A) * 100
+
+    evaluated only when ``period_A != 0``. Direction is a comparison of the same
+    values, so it can never disagree with the absolute change. The percentage is
+    quantised to six decimal places with ``ROUND_HALF_UP`` so repeated identical
+    requests produce identical strings.
+    """
+    change = period_b - period_a
+    if change > 0:
+        direction = DIRECTION_INCREASE
+    elif change < 0:
+        direction = DIRECTION_DECREASE
+    else:
+        direction = DIRECTION_NO_CHANGE
+    if period_a == 0:
+        # A zero baseline: the absolute difference is still authoritative, the
+        # percentage is not computable. Nothing is guessed.
+        return TemporalDelta(
+            absolute_change=change,
+            percentage_change=None,
+            direction=direction,
+            percentage_change_available=False,
+            percentage_basis=PERCENTAGE_BASIS_ZERO,
+        )
+    percentage = (change / period_a * Decimal("100")).quantize(
+        PERCENTAGE_QUANTUM, rounding=ROUND_HALF_UP
+    )
+    return TemporalDelta(
+        absolute_change=change,
+        percentage_change=percentage,
+        direction=direction,
+        percentage_change_available=True,
+        percentage_basis=PERCENTAGE_BASIS_PERIOD_A,
+    )
+
+
+def validate_comparison_dimension(dimension: Any) -> Optional[str]:
+    """Validate the optional comparison group-by dimension.
+
+    Omitting the dimension is valid: it means "compare the overall period
+    totals". Any other value must be in the closed comparison vocabulary.
+    """
+    if dimension is None or str(dimension) == "":
+        return None
+    if str(dimension) not in TEMPORAL_COMPARISON_DIMENSIONS:
+        return REASON_UNSUPPORTED_DIMENSION
+    return None
+
+
+def validate_comparison_periods(
+    period_a_start: Any,
+    period_a_end: Any,
+    period_b_start: Any,
+    period_b_end: Any,
+) -> tuple[Optional[date], Optional[date], Optional[date], Optional[date], Optional[str]]:
+    """Validate two explicit, bounded, inclusive periods.
+
+    Both periods must be fully specified and each is validated exactly as the
+    aggregation contract validates one period (ISO calendar dates only — no time
+    zone conversion and no natural-language interpretation). A missing bound is
+    reported as ``missing_period`` rather than being silently defaulted.
+    """
+    if not all((period_a_start, period_a_end, period_b_start, period_b_end)):
+        return None, None, None, None, REASON_MISSING_PERIOD
+    a_start, a_end, reason = validate_period(period_a_start, period_a_end)
+    if reason is not None:
+        return None, None, None, None, reason
+    b_start, b_end, reason = validate_period(period_b_start, period_b_end)
+    if reason is not None:
+        return None, None, None, None, reason
+    return a_start, a_end, b_start, b_end, None
+
+
+def order_comparison_keys(
+    rows_a: Sequence[Mapping[str, Any]], rows_b: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """Deterministically order the union of two periods' group keys.
+
+    Rule: the existing aggregation ordering convention applied to the two-period
+    set — the largest of the two period totals descending, then ``group_key``
+    ascending as the stable tie-break. The rule is symmetric in (A, B), so
+    swapping the periods cannot reorder the list, and repeated identical
+    requests produce identical output. No database-default ordering, no LLM
+    input and no random component is involved.
+    """
+    magnitude: dict[str, Decimal] = {}
+    for rows in (rows_a, rows_b):
+        for row in rows:
+            key = str(row.get("group_key"))
+            value = row.get("co2e_kg")
+            amount = Decimal(str(value)) if value is not None else Decimal("0")
+            existing = magnitude.get(key)
+            if existing is None or amount > existing:
+                magnitude[key] = amount
+    return sorted(magnitude, key=lambda key: (-magnitude[key], key))
 
 
 @dataclass(frozen=True, slots=True)

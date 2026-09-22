@@ -26,9 +26,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from domain.insight_query import (
+    REASON_UNSUPPORTED_DIMENSION,
+    TEMPORAL_COMPARISON_DIMENSIONS,
     TOOL_INSIGHT_AGGREGATE_PROVENANCE,
     TOOL_INSIGHT_AGGREGATION,
     TOOL_INSIGHT_DISCOVERY,
+    TOOL_INSIGHT_TEMPORAL_COMPARISON,
     canonical_scope,
 )
 
@@ -41,6 +44,8 @@ REASON_PERIOD_REQUIRED = "period_required"
 REASON_GROUP_KEY_REQUIRED = "group_key_required"
 REASON_TOLERANCE_REQUIRED = "amount_tolerance_required"
 REASON_INVALID_SCOPE = "invalid_scope"
+#: P2 — a comparison question whose two explicit periods cannot be determined.
+REASON_COMPARISON_PERIODS_REQUIRED = "comparison_periods_required"
 
 _MONTHS = {
     "january": 1,
@@ -83,6 +88,23 @@ _SCOPE_CANONICAL = re.compile(r"\b(outside of scopes)\b")
 _QUOTED = re.compile(r"[\"'\u201c\u2018]([^\"'\u201d\u2019]{3,128})[\"'\u201d\u2019]")
 _ACTIVITY_LABEL = re.compile(r"\bactivity(?:\s+type)?\s*[:\-]\s*([^,.;?]{3,128})")
 _REPORTING_YEAR = re.compile(r"\breporting\s+year\s*(?:of\s*)?(\d{4})\b")
+
+#: P2 — a *neutral* comparison signal. Directional phrasings ("higher than",
+#: "lower than", "up from", "down from") are deliberately **absent**: the planner
+#: does not interpret comparative direction, so a question that depends on it
+#: stays unsupported rather than being silently mapped onto a reversed baseline.
+_COMPARISON = re.compile(
+    r"\b(?:compare[sd]?|comparison|versus|vs|difference\s+between|change\s+(?:between|from))\b"
+)
+
+#: P2 — the explicit periods a comparison may address, using only the vocabulary
+#: the planner already understands (month name + year, ``YYYY-MM``, ``YYYY``).
+#: No new date syntax, no time zone handling and no natural-language inference.
+_COMPARISON_PERIOD = re.compile(
+    r"(?:\b(?P<monthyear>" + "|".join(_MONTHS) + r")\s+(?P<myear>20\d{2})\b)"
+    r"|(?:\b(?P<iso_year>20\d{2})-(?P<iso_month>0[1-9]|1[0-2])\b)"
+    r"|(?:\b(?P<year>20\d{2})\b)"
+)
 
 _BY_DIMENSION = re.compile(
     r"\b(?:by|per|grouped\s+by|breakdown\s+by|split\s+by|for\s+each)\s+"
@@ -186,6 +208,34 @@ def _month_bounds(year: int, month: int) -> tuple[Optional[str], Optional[str]]:
     following = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     last = date.fromordinal(following.toordinal() - 1)
     return start.isoformat(), last.isoformat()
+
+
+def _comparison_period_bounds(text: str) -> list[tuple[str, str]]:
+    """The explicit periods a comparison question names, in textual order (P2).
+
+    Only the planner's existing month/year vocabulary is recognised. An
+    out-of-range month is skipped rather than corrected, and a repeated mention of
+    the same period collapses to a single entry, so an identical-period
+    comparison cannot masquerade as a two-period comparison.
+    """
+    periods: list[tuple[str, str]] = []
+    for match in _COMPARISON_PERIOD.finditer(text):
+        if match.group("monthyear"):
+            bounds = _month_bounds(
+                int(match.group("myear")), _MONTHS[match.group("monthyear")]
+            )
+        elif match.group("iso_year"):
+            bounds = _month_bounds(
+                int(match.group("iso_year")), int(match.group("iso_month"))
+            )
+        else:
+            year = int(match.group("year"))
+            bounds = (f"{year:04d}-01-01", f"{year:04d}-12-31")
+        if bounds[0] is None or bounds[1] is None:
+            continue
+        if bounds not in periods:
+            periods.append(bounds)
+    return periods
 
 
 def extract_amount(text: str) -> tuple[Optional[str], bool, Optional[str], Optional[str]]:
@@ -324,6 +374,10 @@ def plan_question(text: str) -> dict[str, Any]:
     reporting_year = _REPORTING_YEAR.search(question)
     wants_provenance = bool(_PROVENANCE.search(question))
     wants_discovery = bool(_DISCOVERY.search(question))
+    # P2 — a neutral comparison word plus two explicit periods is the only shape
+    # the planner will map onto the temporal-comparison contract.
+    wants_comparison = bool(_COMPARISON.search(question))
+    comparison_periods = _comparison_period_bounds(question) if wants_comparison else []
 
     analytics_signal = bool(
         dimension
@@ -334,11 +388,41 @@ def plan_question(text: str) -> dict[str, Any]:
         or reporting_year
         or wants_provenance
         or wants_discovery
+        or wants_comparison
     )
     if not analytics_signal:
         return _result(STATUS_UNSUPPORTED)
     if scope_invalid:
         return _result(STATUS_INVALID, reason=REASON_INVALID_SCOPE)
+
+    # P2 — temporal comparison. A *neutral* comparison word always routes to the
+    # comparison contract: fewer than two explicit periods is a clarification
+    # ("which two periods?"), never a silent single-period aggregation of a
+    # question that asked for a comparison.
+    if wants_comparison:
+        if len(comparison_periods) != 2:
+            return _result(
+                STATUS_CLARIFICATION, reason=REASON_COMPARISON_PERIODS_REQUIRED
+            )
+        # A dimension the comparison contract cannot express is an explicit
+        # rejection, never a silently dropped grouping.
+        if dimension is not None and dimension not in TEMPORAL_COMPARISON_DIMENSIONS:
+            return _result(STATUS_INVALID, reason=REASON_UNSUPPORTED_DIMENSION)
+        (a_start, a_end), (b_start, b_end) = comparison_periods
+        comparison_input: dict[str, Any] = {
+            "period_a_start": a_start,
+            "period_a_end": a_end,
+            "period_b_start": b_start,
+            "period_b_end": b_end,
+        }
+        if dimension is not None:
+            comparison_input["group_by"] = dimension
+        return _result(
+            STATUS_PLANNED,
+            tool=TOOL_INSIGHT_TEMPORAL_COMPARISON,
+            operation="temporal_comparison",
+            tool_input=comparison_input,
+        )
 
     # Provenance — the contributing calculations behind one aggregate cell. It
     # requires both an explicit dimension and an explicit group key; neither is

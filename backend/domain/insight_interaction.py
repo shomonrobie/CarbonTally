@@ -134,6 +134,16 @@ TOOL_ARGUMENT_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "end_date",
         "limit",
     ),
+    # P2 — two explicitly bounded periods and one optional category dimension.
+    # Dates and an allowlisted dimension name only; never free text.
+    "insight_temporal_comparison": (
+        "period_a_start",
+        "period_a_end",
+        "period_b_start",
+        "period_b_end",
+        "group_by",
+        "limit",
+    ),
 }
 
 #: Q6 — the only result-metadata keys an I4 tool call may persist. Everything

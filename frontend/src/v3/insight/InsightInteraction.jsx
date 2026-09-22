@@ -13,9 +13,14 @@ import Badge from '../components/ui/Badge';
 import { LoadingState } from '../components/ui/StateViews';
 import { getInsightInteraction } from '../api';
 import InsightAnswerState from './InsightAnswerState';
+import InsightComparison from './InsightComparison';
 import InsightReferences from './InsightReferences';
 import { formatTimestamp } from './format';
 import './insight.css';
+
+// P2 — the only tool whose deterministic detail the interaction view re-reads on
+// demand (the I4 record persists metadata only, by design).
+const COMPARISON_TOOL = 'insight_temporal_comparison';
 
 // The closed I3 ToolStatus vocabulary, presented for evidence only. Kept
 // separate from the I4 answer vocabulary (PO Q3) — never merged.
@@ -165,6 +170,12 @@ export default function InsightInteraction({ row, organizationId, outcome, autoO
                       {call.reason ? <span className="v3-muted">{call.reason}</span> : null}
                       {typeof call.duration_ms === 'number' ? (
                         <span className="v3-muted">{call.duration_ms} ms</span>
+                      ) : null}
+                      {call.tool === COMPARISON_TOOL && call.arguments ? (
+                        <InsightComparison
+                          organizationId={organizationId}
+                          toolArguments={call.arguments}
+                        />
                       ) : null}
                     </li>
                   );

@@ -481,4 +481,61 @@
   }
 }
 
+/* P2 — temporal comparison detail (deterministic result, re-read on demand). */
+.ct-insight-comparison {
+  margin-top: var(--ct-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-2);
+}
+
+.ct-insight-comparison__periods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--ct-space-2);
+  margin: 0;
+}
+
+.ct-insight-comparison__periods dt {
+  font-weight: 600;
+  font-size: var(--ct-font-size-sm);
+}
+
+.ct-insight-comparison__periods dd {
+  margin: var(--ct-space-1) 0 0;
+}
+
+.ct-insight-comparison__delta {
+  margin: 0;
+}
+
+.ct-insight-comparison__subhead {
+  margin: 0 0 var(--ct-space-1);
+  font-size: var(--ct-font-size-sm);
+}
+
+.ct-insight-comparison__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ct-insight-comparison__table th,
+.ct-insight-comparison__table td {
+  text-align: left;
+  padding: var(--ct-space-1) var(--ct-space-2);
+  border-bottom: 1px solid var(--ct-border-subtle, rgba(0, 0, 0, 0.08));
+}
+
+.ct-insight-comparison__basis {
+  margin: 0;
+  font-size: var(--ct-font-size-sm);
+}
+
+@media (max-width: 640px) {
+  .ct-insight-comparison__table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
 

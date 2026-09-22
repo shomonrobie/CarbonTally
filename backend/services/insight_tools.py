@@ -42,11 +42,17 @@ from domain.insight_query import (
     MAX_DISCOVERY_RESULTS,
     MAX_PROVENANCE_SNAPSHOTS,
     REASON_TOLERANCE_REQUIRED,
+    TEMPORAL_COMPARISON_DIMENSIONS,
     TOOL_INSIGHT_AGGREGATE_PROVENANCE,
     TOOL_INSIGHT_AGGREGATION,
     TOOL_INSIGHT_DISCOVERY,
+    TOOL_INSIGHT_TEMPORAL_COMPARISON,
     canonical_scope,
+    compare_totals,
+    order_comparison_keys,
     parse_int,
+    validate_comparison_dimension,
+    validate_comparison_periods,
     validate_discovery,
     validate_group_by,
     validate_limit,
@@ -197,6 +203,51 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "basis",
         ),
         reference_kinds=("calculation_snapshot", "evidence_line_item"),
+    ),
+    # P2 — bounded temporal comparison (Insight capability family 11). Two
+    # explicitly bounded periods on the authoritative kg CO₂e basis; optional
+    # grouping by a closed *category* dimension. No references are returned: the
+    # contributing calculation records stay reachable through the existing
+    # aggregate-provenance tool (and therefore the Shared Source Evidence
+    # Viewer), so no second provenance path and no second reference kind exists.
+    ToolDefinition(
+        name=TOOL_INSIGHT_TEMPORAL_COMPARISON,
+        purpose=(
+            "Compare two explicitly bounded periods on the authoritative kg CO2e "
+            "basis, returning both period totals, the absolute change, the "
+            "percentage change (or a truthful zero-baseline result when the "
+            "baseline is zero) and the direction; optionally grouped by one "
+            "supported category dimension."
+        ),
+        read_only=True,
+        input=ToolInputSpec(
+            required=(
+                "period_a_start",
+                "period_a_end",
+                "period_b_start",
+                "period_b_end",
+            ),
+            optional=("group_by", "limit"),
+        ),
+        authorization="i2-boundary: authorize_insight_scope + organisation-scoped query",
+        output_fields=(
+            "group_by",
+            "period_a",
+            "period_b",
+            "absolute_change_kg",
+            "percentage_change",
+            "percentage_change_available",
+            "percentage_basis",
+            "direction",
+            "groups",
+            "group_count",
+            "groups_truncated",
+            "empty_periods",
+            "comparison_dimensions",
+            "basis",
+            "provenance_tool",
+        ),
+        reference_kinds=(),
     ),
 )
 
@@ -349,6 +400,8 @@ async def invoke_tool(
             return await _aggregation(repos, access, payload)
         if tool.name == TOOL_INSIGHT_AGGREGATE_PROVENANCE:
             return await _aggregate_provenance(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_TEMPORAL_COMPARISON:
+            return await _temporal_comparison(repos, access, payload)
         return _result(tool.name, ToolStatus.INVALID_INPUT, reason="unratified_tool")
     except Exception:  # noqa: BLE001 - fail closed; diagnostics stay server-side
         # Logged server-side (tool name + exception) so genuine internal defects
@@ -469,6 +522,12 @@ async def _snapshot_lookup(repos: RepositoryBundle, access: InsightAccess, paylo
 #: presented without its unit/basis.
 _BASIS_CO2E = "kg CO2e from emissions_logs.calculated_kg_co2e (organization-scoped)"
 _BASIS_PROVENANCE = "calculation_snapshots linked by emissions_logs.snapshot_id"
+#: P2 — the comparison basis is exactly the aggregation basis, applied to two
+#: explicitly bounded periods; stated in the result for the same reason.
+_BASIS_COMPARISON = (
+    "kg CO2e from emissions_logs.calculated_kg_co2e (organization-scoped), "
+    "compared across two explicitly bounded periods"
+)
 
 
 def _invalid_analytics(tool: str, reason: Optional[str]) -> ToolResult:
@@ -661,4 +720,180 @@ async def _aggregate_provenance(
         data=data,
         references=refs,
         truncated=truncated or count_capped,
+    )
+
+
+async def _attach_comparison_groups(
+    repos: RepositoryBundle,
+    org: str,
+    period_a: DateRange,
+    period_b: DateRange,
+    dimension: Optional[str],
+    limit: int,
+    data: dict[str, Any],
+) -> bool:
+    """Fill the grouped comparison block; return whether the group list truncated.
+
+    One extra row is requested per period so truncation is *detected* rather than
+    assumed, and the union is ordered by the deterministic two-period convention
+    (largest of the two period totals, then key). A group present in only one
+    period is still reported, with the other side's authoritative total as zero —
+    the absence is visible in the per-period row counts rather than hidden.
+    """
+    if dimension is None:
+        return False
+    raw_a = await repos.logs.aggregate_groups(org, period_a, dimension, limit + 1)
+    raw_b = await repos.logs.aggregate_groups(org, period_b, dimension, limit + 1)
+    a_more = len(raw_a) > limit
+    b_more = len(raw_b) > limit
+    a_groups = {str(r["group_key"]): r for r in raw_a[:limit]}
+    b_groups = {str(r["group_key"]): r for r in raw_b[:limit]}
+    ordered = order_comparison_keys(list(a_groups.values()), list(b_groups.values()))
+    truncated = a_more or b_more or len(ordered) > limit
+    ordered = ordered[:limit]
+    labels = await repos.logs.group_labels(org, dimension, ordered)
+    groups: list[dict[str, Any]] = []
+    for key in ordered:
+        row_a = a_groups.get(key)
+        row_b = b_groups.get(key)
+        group_a = _group_total(row_a)
+        group_b = _group_total(row_b)
+        groups.append(
+            {
+                "key": key,
+                "label": labels.get(key),
+                "period_a_co2e_kg": str(group_a),
+                "period_b_co2e_kg": str(group_b),
+                "period_a_row_count": int(row_a["row_count"]) if row_a else 0,
+                "period_b_row_count": int(row_b["row_count"]) if row_b else 0,
+                **compare_totals(group_a, group_b).as_dict(),
+            }
+        )
+    data["groups"] = groups
+    data["group_count"] = len(groups)
+    data["groups_truncated"] = truncated
+    return truncated
+
+
+def _group_total(row: Optional[dict[str, Any]]) -> Decimal:
+    """The authoritative kg CO₂e total for one group side (zero when absent)."""
+    if row is None or row.get("co2e_kg") is None:
+        return Decimal("0")
+    return Decimal(str(row["co2e_kg"]))
+
+
+async def _temporal_comparison(
+    repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]
+) -> ToolResult:
+    """Bounded comparison of two explicitly bounded periods (P2, family 11).
+
+    Deterministic by construction:
+
+    * both period totals come from the *existing* organization-scoped aggregate,
+      so they stay complete even when the optional group list is truncated;
+    * the deltas come from the pure ``domain.insight_query.compare_totals``
+      helper — the absolute change is ``period_B - period_A`` and the percentage
+      is computed only when the baseline is non-zero;
+    * grouped output is ordered by the deterministic two-period convention and
+      carries an explicit truncation flag.
+
+    No reference is returned and no contributing record is inlined: the
+    comparison stays traceable through the existing aggregate-provenance tool,
+    which is named in the result together with the exact period bounds it needs.
+    """
+    dimension_raw = payload.get("group_by")
+    dimension = str(dimension_raw).strip() if dimension_raw not in (None, "") else None
+    reason = validate_comparison_dimension(dimension)
+    if reason is not None:
+        return _invalid_analytics(TOOL_INSIGHT_TEMPORAL_COMPARISON, reason)
+
+    a_start, a_end, b_start, b_end, reason = validate_comparison_periods(
+        payload.get("period_a_start"),
+        payload.get("period_a_end"),
+        payload.get("period_b_start"),
+        payload.get("period_b_end"),
+    )
+    if (
+        reason is not None
+        or a_start is None
+        or a_end is None
+        or b_start is None
+        or b_end is None
+    ):
+        return _invalid_analytics(TOOL_INSIGHT_TEMPORAL_COMPARISON, reason)
+
+    limit, reason = validate_limit(
+        payload.get("limit"), maximum=MAX_AGGREGATE_GROUPS, default=MAX_AGGREGATE_GROUPS
+    )
+    if reason is not None or limit is None:
+        return _invalid_analytics(TOOL_INSIGHT_TEMPORAL_COMPARISON, reason)
+
+    org = access.organization_id
+    period_a = DateRange(start_date=a_start, end_date=a_end)
+    period_b = DateRange(start_date=b_start, end_date=b_end)
+
+    totals_a = await repos.logs.aggregate(org, period_a, "scope")
+    totals_b = await repos.logs.aggregate(org, period_b, "scope")
+    a_total = Decimal(str(totals_a.total_co2e_kg))
+    b_total = Decimal(str(totals_b.total_co2e_kg))
+    a_rows = int(totals_a.total_rows)
+    b_rows = int(totals_b.total_rows)
+
+    empty_periods = [
+        label
+        for label, rows in (("period_a", a_rows), ("period_b", b_rows))
+        if rows == 0
+    ]
+    if a_rows == 0 and b_rows == 0:
+        # An absence of records is never presented as a "0 vs 0" comparison:
+        # there is nothing authoritative to compare.
+        return _result(
+            TOOL_INSIGHT_TEMPORAL_COMPARISON,
+            ToolStatus.NO_DATA,
+            reason="no_rows_in_periods",
+        )
+
+    delta = compare_totals(a_total, b_total)
+    data: dict[str, Any] = {
+        "group_by": dimension,
+        "period_a": {
+            "start_date": a_start.isoformat(),
+            "end_date": a_end.isoformat(),
+            "total_co2e_kg": str(a_total),
+            "row_count": a_rows,
+        },
+        "period_b": {
+            "start_date": b_start.isoformat(),
+            "end_date": b_end.isoformat(),
+            "total_co2e_kg": str(b_total),
+            "row_count": b_rows,
+        },
+        **delta.as_dict(),
+        "groups": [],
+        "group_count": 0,
+        "groups_truncated": False,
+        "empty_periods": empty_periods,
+        "comparison_dimensions": list(TEMPORAL_COMPARISON_DIMENSIONS),
+        "basis": _BASIS_COMPARISON,
+        "provenance_tool": TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+    }
+    truncated = await _attach_comparison_groups(
+        repos, org, period_a, period_b, dimension, limit, data
+    )
+
+    if a_total == 0 and b_total == 0:
+        # Records exist and both calculated totals are genuinely zero — the same
+        # truthful convention the aggregation tool uses (``zero_total``).
+        return _result(
+            TOOL_INSIGHT_TEMPORAL_COMPARISON,
+            ToolStatus.SUCCESS,
+            reason="zero_total",
+            data=data,
+            truncated=truncated,
+        )
+    return _result(
+        TOOL_INSIGHT_TEMPORAL_COMPARISON,
+        ToolStatus.SUCCESS,
+        data=data,
+        truncated=truncated,
     )

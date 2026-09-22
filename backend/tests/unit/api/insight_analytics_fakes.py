@@ -45,6 +45,26 @@ class InsightLogsFake:
         self.calls: list[dict[str, Any]] = []
         self.match_count_override: Optional[int] = None
         self.provenance_count_override: Optional[int] = None
+        # P2 — per-period overrides so a two-period comparison can be driven with
+        # different authoritative totals/groups per period. When a period has no
+        # entry the single-period ``totals``/``groups`` values above are used, so
+        # every existing test keeps its original behaviour.
+        self.period_totals: dict[tuple[str, str], dict[str, Any]] = {}
+        self.period_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    @staticmethod
+    def _period_key(period: Any) -> tuple[str, str]:
+        start = getattr(period, "start_date", None)
+        end = getattr(period, "end_date", None)
+        return (str(start), str(end))
+
+    def set_period(self, start: str, end: str, *, rows: int, co2e: str) -> None:
+        """Declare the authoritative totals for one bounded period."""
+        self.period_totals[(start, end)] = {"rows": int(rows), "co2e": Decimal(co2e)}
+
+    def set_period_groups(self, start: str, end: str, groups: list[dict[str, Any]]) -> None:
+        """Declare the authoritative grouped rows for one bounded period."""
+        self.period_groups[(start, end)] = [dict(g) for g in groups]
 
     async def search_snapshots(self, org_id: str, filters: dict, limit: int) -> list[dict]:
         self.calls.append(
@@ -72,7 +92,8 @@ class InsightLogsFake:
                 "limit": limit,
             }
         )
-        return [dict(g) for g in self.groups][:limit]
+        rows = self.period_groups.get(self._period_key(period), self.groups)
+        return [dict(g) for g in rows][:limit]
 
     async def group_labels(self, org_id: str, dimension: str, keys: list[str]) -> dict[str, str]:
         self.calls.append(
@@ -82,9 +103,10 @@ class InsightLogsFake:
 
     async def aggregate(self, org_id: str, period, group_by: str):
         self.calls.append({"method": "aggregate", "org": org_id, "period": period, "group_by": group_by})
+        totals = self.period_totals.get(self._period_key(period), self.totals)
         return SimpleNamespace(
-            total_co2e_kg=Decimal(str(self.totals["co2e"])),
-            total_rows=int(self.totals["rows"]),
+            total_co2e_kg=Decimal(str(totals["co2e"])),
+            total_rows=int(totals["rows"]),
         )
 
     async def list_group_snapshots(

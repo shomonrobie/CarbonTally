@@ -106,6 +106,7 @@ _PLANNED_TOOLS: tuple[str, ...] = (
     "insight_discovery",
     "insight_aggregation",
     "insight_aggregate_provenance",
+    "insight_temporal_comparison",
 )
 
 #: A tool result may carry a reason that must be reported truthfully at the I4

@@ -70,10 +70,10 @@ def test_save_statement_casts_every_parameter_explicitly() -> None:
 # --------------------------------------------------------------------------
 def test_i2_migration_is_the_latest_and_scoped_to_one_policy() -> None:
     names = sorted(p.name for p in _MIGRATIONS.glob("*.sql"))
-    # The Phase 8 Insight discovery/aggregation/rate-limiting migration (PO
-    # authorization 2026-09-22) is the latest; I2 remains the latest
-    # *authorization* migration, unchanged in scope.
-    assert names[-1] == "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql", names[-3:]
+    # The P2 Insight temporal-comparison catalogue migration (PO authorization
+    # 2026-09-22) is the latest; I2 remains the latest *authorization* migration,
+    # unchanged in scope.
+    assert names[-1] == "20261006000000_p8_insight_temporal_comparison.sql", names[-3:]
     assert _I2_MIGRATION.name in names
 
     ddl = _ddl(_read(_I2_MIGRATION))
