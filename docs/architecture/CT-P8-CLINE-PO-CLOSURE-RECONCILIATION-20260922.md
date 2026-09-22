@@ -164,15 +164,23 @@ Total: **4 documentation files** (3 in this commit's change set plus this report
 
 ## 10. Git commit SHA
 
-* Commit: **`DOCUMENTATION COMMIT`** — recorded in the task response and verifiable via `git log -1 --format=%H` on `p8-release-reconciled`.
-* The commit contains documentation changes only and is made on the authoritative release branch.
+* **Documentation commit: `ff354fcc0d4f71f076da2b1a77a48428689892f2`** — `docs(p8): record PO closure of the Source Evidence Viewer and reconcile status` (authoritative release branch `p8-release-reconciled`; parent = starting HEAD `a776158`).
+* The commit contains **exactly four documentation paths** and nothing else:
+  `M docs/architecture/CARBONTALLY_PHASE8_INSIGHT_MASTER_SPECIFICATION_v1.1_20260921.md`,
+  `A docs/architecture/CT-P8-CLINE-PO-CLOSURE-RECONCILIATION-20260922.md`,
+  `A docs/architecture/CT-P8-PO-DECISION-DISPOSITION-CLOSURE-DECISIOIN-FOR-SOURCE-EVIDENCE-VIEWER-AND-INSIGHT-20260922.md`,
+  `M docs/architecture/CT-P8-PO-DECISION-INVENTORY-20260922.md`.
+* A documentation follow-up commit records this SHA table (its SHA is reported in the task response).
 
 ## 11. Push result
 
-* Pushed to the authoritative remote **`github`** (`https://github.com/shomonrobie/CarbonTally.git`), branch **`p8-release-reconciled`**; result recorded in the task response. No remote, branch or topology change.
+* **Pushed** to the authoritative remote **`github`** (`https://github.com/shomonrobie/CarbonTally.git`), branch **`p8-release-reconciled`**: `a776158..ff354fc  p8-release-reconciled -> p8-release-reconciled`.
+* Independently confirmed after the push: `git ls-remote github refs/heads/p8-release-reconciled` = `ff354fcc0d4f71f076da2b1a77a48428689892f2` = local HEAD; `git rev-list --left-right --count HEAD...github/p8-release-reconciled` = `0 0`; re-push reports "Everything up-to-date"; working tree clean.
+* No remote was added, changed or removed; no branch topology changed; no history rewritten.
 
 ## 12. Ending HEAD
 
-* **Ending HEAD:** recorded in the task response (the documentation commit / its follow-up on `p8-release-reconciled`). Starting HEAD was `a77615828e1936043328aa426a84b81f180a45ea`.
+* **Ending HEAD: `ff354fcc0d4f71f076da2b1a77a48428689892f2`** (the documentation commit above), plus the documentation follow-up that records this table — its SHA is reported in the task response and is verifiable with `git log -1 --format=%H`.
+* Starting HEAD was `a77615828e1936043328aa426a84b81f180a45ea`.
 
 **Status: `DOCUMENTATION RECONCILIATION COMPLETE`.**
