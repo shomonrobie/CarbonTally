@@ -183,15 +183,19 @@ EXISTS · PARTIAL · MISSING · PO DECISION REQUIRED · NOT AUTHORIZED · DEFERR
 
 | Item | Value |
 | --- | --- |
-| P1 artifact commit | `PENDING_COMMIT_SHA` |
+| P1 artifact commit | `9a521b06aecc624e15c7687e6384ebb3c75fcf42` |
 | Commit subject | `docs(p8): PO Insight capability coverage matrix (P1, planning artifact only)` |
+| Commit content | **2 files, 1,454 insertions, 0 deletions** — no code, migration, test, frontend or configuration |
 | Branch pushed | `p8-release-reconciled` |
 | Push target | `github/p8-release-reconciled` |
-| Remote SHA after push | `PENDING_REMOTE_SHA` |
-| Alignment after push | `PENDING_ALIGNMENT` |
-| Working tree after push | pre-existing untracked PO/ChatGPT documents only |
-
-> The three `PENDING_*` values are recorded by a follow-up documentation commit to this report, in the same manner as the repository's existing precedent of recording a commit SHA and push result in its own closure report. They are deliberately left unfilled rather than guessed.
+| Push result | `8916f82..9a521b0  p8-release-reconciled -> p8-release-reconciled` (accepted) |
+| Remote SHA after push | `9a521b06aecc624e15c7687e6384ebb3c75fcf42` |
+| `git ls-remote github refs/heads/p8-release-reconciled` | `9a521b06aecc624e15c7687e6384ebb3c75fcf42` |
+| `git rev-parse HEAD` | `9a521b06aecc624e15c7687e6384ebb3c75fcf42` |
+| Alignment after push | **`0 0`** |
+| Both P1 files tracked | confirmed (`git ls-files`) |
+| Untracked PO/ChatGPT documents | **still untracked** (`git ls-files` count for those paths = 0) |
+| Working tree after push | pre-existing untracked PO/ChatGPT documents only; no tracked modification outstanding |
 
 ---
 
