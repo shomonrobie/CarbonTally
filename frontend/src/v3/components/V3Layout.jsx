@@ -34,6 +34,9 @@ const CUSTOMER_LINKS = [
   { to: '/billing', label: 'Billing', icon: 'billing' },
   { to: '/organization', label: 'Organisation', icon: 'organisation' },
   { to: '/messaging', label: 'Messaging', icon: 'messaging' },
+  // I6 — the authenticated Insight workspace (PO I6-1/I6-2): one added entry in
+  // the existing D18 customer model, not a navigation redesign.
+  { to: '/insight', label: 'Insight', icon: 'insight' },
   { to: '/existing-data', label: 'Existing data', icon: 'search' },
 ];
 

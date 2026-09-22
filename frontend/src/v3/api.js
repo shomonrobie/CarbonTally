@@ -1717,3 +1717,97 @@ export const updateAnalyticsSettings = (payload) =>
 export const searchOrg = (organizationId, q, limit = 20) =>
   v3Fetch(`/api/v3/search?organization_id=${encodeURIComponent(organizationId)}&q=${encodeURIComponent(q)}&limit=${limit}`);
 
+// ---------------------------------------------------------------------------
+// CarbonTally Insight (I6 UI — authorized I6 stage)
+//
+// The Insight workspace consumes the **closed** I1–I4 backend contracts only:
+// creator-private conversations and messages (I1), creator-private interactions
+// (I4), and the ratified I3 read-only tool surface (reference resolution).
+//
+// There is deliberately no client-side authorization here. Every call is
+// re-authorized server-side through the closed I2 boundary; a stored id or a
+// reference is only ever a locator handed back to the backend, never a grant.
+// A foreign/unauthorized resource answers 404 or a non-success status and the
+// UI renders a non-disclosing state.
+// ---------------------------------------------------------------------------
+
+const insightQuery = (params) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) search.set(key, String(value));
+  });
+  return search.toString();
+};
+
+/** The caller's own (creator-private) Insight conversations for one org. */
+export const listInsightConversations = (organizationId, { limit = 50, offset = 0 } = {}) =>
+  v3Fetch(`/api/v3/insight/conversations?${insightQuery({ organization_id: organizationId, limit, offset })}`);
+
+/** Start a new creator-private conversation. */
+export const createInsightConversation = (organizationId, title) =>
+  v3Fetch('/api/v3/insight/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ organization_id: organizationId, title: title ? title : null }),
+  });
+
+/** The persisted message history (question + narration) of a conversation. */
+export const listInsightMessages = (organizationId, conversationId, { limit = 200, offset = 0 } = {}) =>
+  v3Fetch(
+    `/api/v3/insight/conversations/${encodeURIComponent(conversationId)}/messages?`
+    + insightQuery({ organization_id: organizationId, limit, offset }),
+  );
+
+/**
+ * Run one authorized interaction (the I4 deterministic-first path).
+ *
+ * `idempotencyKey` is a plain client-generated request key so a retried submit
+ * cannot create a duplicate interaction; the backend owns the replay decision
+ * and reports it truthfully through `replayed`.
+ */
+export const runInsightInteraction = ({
+  organizationId,
+  conversationId,
+  question,
+  idempotencyKey,
+  narration,
+}) =>
+  v3Fetch('/api/v3/insight/interactions', {
+    method: 'POST',
+    body: JSON.stringify({
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      question,
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+      ...(narration ? { narration } : {}),
+    }),
+  });
+
+/** The caller's own interactions (optionally for one conversation). */
+export const listInsightInteractions = (organizationId, { conversationId, limit = 50, offset = 0 } = {}) =>
+  v3Fetch(`/api/v3/insight/interactions?${insightQuery({
+    organization_id: organizationId,
+    conversation_id: conversationId,
+    limit,
+    offset,
+  })}`);
+
+/** One interaction with its tool-call evidence and reference locators. */
+export const getInsightInteraction = (organizationId, interactionId) =>
+  v3Fetch(
+    `/api/v3/insight/interactions/${encodeURIComponent(interactionId)}?`
+    + insightQuery({ organization_id: organizationId }),
+  );
+
+/**
+ * Reference resolution through the ratified I3 read-only tool surface.
+ *
+ * This is the only authorized path for resolving a reference identifier: the
+ * backend re-checks the caller's scope against the resolved object and answers
+ * `not_authorized`/`no_data` without the UI having made any access decision.
+ */
+export const invokeInsightTool = (organizationId, tool, input = {}) =>
+  v3Fetch('/api/v3/insight/tools/invoke', {
+    method: 'POST',
+    body: JSON.stringify({ organization_id: organizationId, tool, input }),
+  });
+

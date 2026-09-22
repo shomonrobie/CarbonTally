@@ -73,6 +73,7 @@ import ReviewDetailPage from './v3/customer/ReviewDetailPage';
 import IssuesPage from './v3/customer/IssuesPage';
 import ExistingDataDiscoveryPage from './v3/customer/ExistingDataDiscoveryPage';
 import MessagingPage from './v3/customer/MessagingPage';
+import InsightPage from './v3/insight/InsightPage';
 import NotificationsPage from './v3/NotificationsPage';
 import RoleRoute from './v3/components/RoleRoute';
 import V3Layout from './v3/components/V3Layout';
@@ -2060,6 +2061,18 @@ export default function App() {
                 <RoleRoute requireOrg>
                   <V3Layout>
                     <MessagingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            {/* I6 — authenticated CarbonTally Insight workspace. Customer
+                workspace only (PO I6-1/I6-2); creator-private conversations,
+                messages and answers are enforced server-side (I2/I4). */}
+            <Route path="/insight" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <InsightPage />
                   </V3Layout>
                 </RoleRoute>
               </ProtectedRoute>

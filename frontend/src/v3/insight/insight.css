@@ -1,0 +1,484 @@
+/* frontend/src/v3/insight/insight.css
+   CarbonTally Insight I6 — workspace presentation.
+
+   Consumes the D21 token vocabulary (tokens.css / v3.css ct-* aliases); no new
+   visual system and no hard-coded palette. The layout is the D20 responsive
+   two-pane pattern (conversations | conversation) that collapses to one column
+   at the tablet breakpoint, with overflow guarded for long identifiers. */
+
+.ct-insight {
+  --ct-insight-panel-bg: var(--ct-color-surface);
+}
+
+.ct-insight-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: var(--ct-space-9);
+  align-items: start;
+}
+
+.ct-insight-layout > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .ct-insight-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ct-space-6);
+  }
+}
+
+/* --- Conversation list --------------------------------------------------- */
+
+.ct-insight-sidebar {
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-xl);
+  padding: var(--ct-space-7);
+  position: sticky;
+  top: 74px;
+}
+
+@media (max-width: 900px) {
+  .ct-insight-sidebar {
+    position: static;
+  }
+}
+
+.ct-insight-new {
+  border-bottom: 1px solid var(--ct-color-border);
+  padding-bottom: var(--ct-space-7);
+  margin-bottom: var(--ct-space-7);
+}
+
+.ct-insight-new__label {
+  display: block;
+  font-size: var(--ct-type-label);
+  font-weight: var(--ct-type-weight-semibold);
+  color: var(--ct-color-text-secondary);
+  margin-bottom: var(--ct-space-3);
+}
+
+.ct-insight-new__row {
+  display: flex;
+  gap: var(--ct-space-3);
+  align-items: flex-start;
+}
+
+.ct-insight-new__row .v3-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ct-insight-sidebar__title {
+  margin: 0 0 var(--ct-space-6);
+  font-size: var(--ct-type-h3);
+  font-weight: var(--ct-type-weight-semibold);
+}
+
+.ct-insight-conversations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-2);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.ct-insight-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--ct-radius-md);
+  padding: var(--ct-space-4) var(--ct-space-5);
+  cursor: pointer;
+  font-family: var(--ct-font-ui);
+  font-size: var(--ct-type-body);
+  color: var(--ct-color-text);
+}
+
+.ct-insight-conversation:hover {
+  background: var(--ct-color-bg);
+}
+
+.ct-insight-conversation--active {
+  background: var(--ct-color-primary-soft);
+  border-color: var(--ct-color-primary-border);
+  font-weight: var(--ct-type-weight-semibold);
+}
+
+.ct-insight-conversation__title {
+  overflow-wrap: anywhere;
+}
+
+.ct-insight-conversation__meta {
+  font-size: var(--ct-type-label);
+  color: var(--ct-color-text-muted);
+}
+
+/* --- Conversation pane --------------------------------------------------- */
+
+.ct-insight-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-9);
+  min-width: 0;
+}
+
+.ct-insight-main__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-2);
+}
+
+.ct-insight-main__title {
+  margin: 0;
+  font-size: var(--ct-type-h2);
+  font-weight: var(--ct-type-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.ct-insight-ask {
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-xl);
+  padding: var(--ct-space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-4);
+}
+
+.ct-insight-ask__label {
+  font-size: var(--ct-type-label);
+  font-weight: var(--ct-type-weight-semibold);
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-insight-ask__input {
+  width: 100%;
+  resize: vertical;
+}
+
+.ct-insight-ask__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ct-space-4);
+}
+
+.ct-insight-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  margin: 0 0 var(--ct-space-6);
+  font-size: var(--ct-type-h3);
+  font-weight: var(--ct-type-weight-semibold);
+}
+
+/* --- Message transcript -------------------------------------------------- */
+
+.ct-insight-history,
+.ct-insight-answers {
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-xl);
+  padding: var(--ct-space-7);
+  min-width: 0;
+}
+
+.ct-insight-thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-6);
+}
+
+.ct-insight-message {
+  border-left: 3px solid var(--ct-color-border-strong);
+  padding-left: var(--ct-space-6);
+}
+
+.ct-insight-message--insight {
+  border-left-color: var(--ct-color-primary);
+}
+
+.ct-insight-message__speaker {
+  margin: 0 0 var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ct-color-text-muted);
+  font-weight: var(--ct-type-weight-semibold);
+}
+
+.ct-insight-message__body {
+  margin: 0;
+  font-size: var(--ct-type-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Interaction / answer state ------------------------------------------ */
+
+.ct-insight-interactions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-7);
+}
+
+.ct-insight-interaction {
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-lg);
+  padding: var(--ct-space-6);
+  background: var(--ct-color-bg);
+  min-width: 0;
+}
+
+.ct-insight-interaction__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-space-3) var(--ct-space-6);
+  margin: 0 0 var(--ct-space-4);
+  font-size: var(--ct-type-label);
+  color: var(--ct-color-text-muted);
+}
+
+.ct-insight-interaction__intent {
+  font-weight: var(--ct-type-weight-semibold);
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-insight-interaction__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-6);
+  margin-top: var(--ct-space-4);
+}
+
+.ct-insight-interaction__actions {
+  margin-top: var(--ct-space-4);
+}
+
+.ct-insight-interaction__subhead {
+  margin: 0 0 var(--ct-space-3);
+  font-size: var(--ct-type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ct-color-text-muted);
+}
+
+.ct-insight-interaction__calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-3);
+}
+
+.ct-insight-call {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-3);
+  min-width: 0;
+}
+
+.ct-insight-call__tool {
+  font-family: var(--ct-font-mono);
+  font-size: var(--ct-type-sm);
+  overflow-wrap: anywhere;
+}
+
+.ct-insight-answer {
+  border-left: 3px solid var(--ct-color-border-strong);
+  padding-left: var(--ct-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-3);
+  min-width: 0;
+}
+
+.ct-insight-answer__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  margin: 0;
+  font-size: var(--ct-type-h3);
+  font-weight: var(--ct-type-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+/* Status is always also carried by the label text and an icon; the tone classes
+   only reinforce it (never colour alone). */
+.ct-insight-answer__title--success { color: var(--ct-color-success-result); }
+.ct-insight-answer__title--info { color: var(--ct-color-accent); }
+.ct-insight-answer__title--warning { color: var(--ct-color-warning-text); }
+.ct-insight-answer__title--error { color: var(--ct-color-error-text-strong); }
+.ct-insight-answer__title--muted { color: var(--ct-color-text-secondary); }
+
+.ct-insight-answer__meta,
+.ct-insight-answer__summary,
+.ct-insight-answer__guidance {
+  margin: 0;
+  font-size: var(--ct-type-body);
+}
+
+.ct-insight-answer__summary {
+  color: var(--ct-color-text);
+}
+
+.ct-insight-answer__guidance {
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-insight-answer__narration {
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-md);
+  padding: var(--ct-space-5);
+}
+
+.ct-insight-answer__narration-label {
+  margin: 0 0 var(--ct-space-2);
+  font-size: var(--ct-type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ct-color-text-muted);
+}
+
+.ct-insight-answer__narration p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- References ---------------------------------------------------------- */
+
+.ct-insight-refs {
+  border-top: 1px solid var(--ct-color-border);
+  padding-top: var(--ct-space-6);
+  min-width: 0;
+}
+
+.ct-insight-refs__title {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  margin: 0 0 var(--ct-space-3);
+  font-size: var(--ct-type-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ct-color-text-muted);
+}
+
+.ct-insight-refs__note {
+  margin: 0 0 var(--ct-space-5);
+}
+
+.ct-insight-refs__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-5);
+}
+
+.ct-insight-ref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-3);
+  min-width: 0;
+}
+
+.ct-insight-ref__locator {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-3);
+  min-width: 0;
+}
+
+.ct-insight-ref__kind {
+  font-size: var(--ct-type-sm);
+  font-weight: var(--ct-type-weight-semibold);
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-insight-ref__id {
+  font-family: var(--ct-font-mono);
+  font-size: var(--ct-type-sm);
+  color: var(--ct-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.ct-insight-ref__note {
+  flex: 1 1 100%;
+  font-size: var(--ct-type-sm);
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-insight-ref__note-title {
+  font-weight: var(--ct-type-weight-semibold);
+}
+
+.ct-insight-ref__resolved {
+  flex: 1 1 100%;
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-md);
+  padding: var(--ct-space-5);
+  min-width: 0;
+}
+
+.ct-insight-ref__rows {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  gap: var(--ct-space-2) var(--ct-space-6);
+  margin: 0;
+  font-size: var(--ct-type-sm);
+}
+
+.ct-insight-ref__rows dt {
+  color: var(--ct-color-text-muted);
+}
+
+.ct-insight-ref__rows dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ct-insight-ref__counts {
+  list-style: none;
+  margin: var(--ct-space-4) 0 0;
+  padding: 0;
+  font-size: var(--ct-type-sm);
+  color: var(--ct-color-text-secondary);
+}
+
+/* Mobile (D20): a single column, narrower gutters and stacked evidence rows. */
+@media (max-width: 640px) {
+  .ct-insight-ref__rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ct-space-1);
+  }
+
+  .ct-insight-answer {
+    padding-left: var(--ct-space-5);
+  }
+}
+
+

@@ -15,6 +15,7 @@ const ICONS = {
   billing: Fi.FiCreditCard,
   organisation: Fi.FiBriefcase,
   messaging: Fi.FiMessageSquare,
+  insight: Fi.FiMessageCircle,
   notifications: Fi.FiBell,
   search: Fi.FiSearch,
   plus: Fi.FiPlus,
