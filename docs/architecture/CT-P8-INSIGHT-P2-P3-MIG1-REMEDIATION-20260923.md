@@ -189,9 +189,15 @@ condition was not triggered.
 
 ## 12. P2 test results
 
-**79 tests: 79 passed, 0 failed** (previously 78 passed / 1 failed — the catalogue
+**43 tests: 43 passed, 0 failed** (previously 42 passed / 1 failed — the catalogue
 pin). Arithmetic, zero-baseline, empty-period, grouping, boundary, tenant
 isolation, provenance and rate-limit tests all unchanged and green.
+
+> **CORRECTION (2026-09-23, P2 test-inventory reconciliation).** This section
+> originally printed **79 tests: 79 passed**. The dedicated P2 suite has always
+> been **43** tests (43 at the P2 implementation commit `f2e4568` and 43 now); the
+> "79" was a mis-derived figure and was never a pytest output. See
+> `docs/architecture/CT-P8-INSIGHT-P2-TEST-INVENTORY-RECONCILIATION-20260923.md`.
 
 ## 13. P3 test results
 
@@ -274,7 +280,7 @@ relevant migration chain passes (81 applied, 80 OK, the one failure being an
 unrelated Supabase Storage-schema artefact); the final I3 constraint accepts
 exactly the authorized 10 tools and rejects an unauthorized name; I4 remains at the
 authorized 15 states including `multiple_matches`; the P2 catalogue pin is
-corrected and passes; P2 (79), P3 (48) and the 299-test Insight regression all pass
+corrected and passes; P2 (43), P3 (48) and the 299-test Insight regression all pass
 with no new failure; the commit is pushed with local/remote aligned and the working
 tree clean apart from the known pre-existing untracked reference documents.
 

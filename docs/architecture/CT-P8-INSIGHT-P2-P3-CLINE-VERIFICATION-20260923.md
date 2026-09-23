@@ -43,8 +43,10 @@ which is *not* the P2 commit).
 `insight_temporal_comparison` is present in `TOOL_REGISTRY`, marked
 `read_only=True`, with required inputs `period_a_start/period_a_end/
 period_b_start/period_b_end` and optional `group_by`/`limit`. The P2 functional
-suite executes: **79 tests, 78 passed, 1 failed** — the single failure is the
-catalogue count pin (§14), which is a test contract, not P2 behaviour. Every P2
+suite executes: **43 tests, 42 passed, 1 failed** — the single failure is the
+catalogue count pin (§14), which is a test contract, not P2 behaviour. (The
+originally printed "79 tests, 78 passed" was a mis-derived count; see the
+correction note in §23.) Every P2
 behavioural test (arithmetic, grouping, boundaries, provenance, tenant, limiter,
 narration boundary) passes. **PASS.**
 
@@ -152,7 +154,9 @@ there — a harness-scope artefact, not a defect in the P2 target object.)
 Reproduced at HEAD: `assert len(TOOL_REGISTRY) == 8` → actual **10**.
 Cause: solely the P3 authorized expansion (an absolute count pin written when P2
 was the last package). `insight_temporal_comparison` itself is correctly
-registered (`read_only=True`, correct input spec) and 78/79 P2 tests pass.
+registered (`read_only=True`, correct input spec) and 42/43 P2 tests pass (43 at
+the time of this pass after the catalogue pin was corrected; the "78/79" figure
+originally printed here was a mis-derived count).
 **Classification: expected stale contract (test-contract debt) — not a P2 defect,
 not a runtime defect; a governance/documentation issue** (an absolute count cannot
 survive a subsequent authorized expansion). Left unmodified as instructed;
@@ -291,9 +295,19 @@ verification-only): rename to a prefix after `20261006000000`.
 | Suite | Exact command (from `backend/`) | Result |
 | --- | --- | --- |
 | P3 | `python -m pytest tests/unit/api/test_p8_insight_data_quality.py -q --no-header -p no:randomly` | **48 passed / 0 failed** (100%) — reproduces the claimed 48 |
-| P2 | `python -m pytest tests/unit/api/test_p8_insight_temporal_comparison.py -q --no-header -p no:randomly` | 79 collected: **78 passed / 1 failed** (§14 pin) |
-| P2+P3 | both files | 127 collected: 126 passed / 1 failed (§14 pin) |
+| P2 | `python -m pytest tests/unit/api/test_p8_insight_temporal_comparison.py -q --no-header -p no:randomly` | **43 collected: 42 passed / 1 failed** (§14 pin) |
+| P2+P3 | both files | **91 collected: 90 passed / 1 failed** (§14 pin) |
 | Insight regression | the 13-file Insight set from the P3 report | **299 collected: 298 passed / 1 failed** — reproduces the claimed 299/298/1 |
+
+> **CORRECTION (2026-09-23, P2 test-inventory reconciliation).** The P2 and
+> combined figures originally printed here were **79** and **127**. Those two
+> numbers were never produced by pytest: no pytest output in any session log
+> contains them, and they were arrived at by arithmetic rather than measurement.
+> The factual inventory is **43 dedicated P2 tests** (43 at the P2 implementation
+> commit `f2e4568` and 43 now — no P2 test was ever added or removed) and
+> **91** for P2+P3. The real, independently reproduced 13-file total (**299**) was
+> correct and is unchanged. See
+> `docs/architecture/CT-P8-INSIGHT-P2-TEST-INVENTORY-RECONCILIATION-20260923.md`.
 
 The claimed counts are **independently reproduced**.
 
