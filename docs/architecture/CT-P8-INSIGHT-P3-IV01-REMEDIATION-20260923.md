@@ -349,10 +349,16 @@ repaired, silenced, skipped or re-pinned by this pass.
 | `github/p8-release-reconciled` at start | identical; `git rev-list --left-right --count HEAD...github/p8-release-reconciled` → `0 0` |
 | `git describe` at start | `v2.1-phase4-371-g0c34908` |
 | Working tree at start and end | **dirty, unaffected by this pass**: ` M .gitignore` (pre-existing PO change, **not** authored here and **not** committed) plus untracked pre-existing artefacts (`?? .costrict/`, `?? 8`, `?? =`, and eight untracked `docs/` PO/ChatGPT reference documents) — all left exactly as found |
-| Remediation commit | the direct child of `0c34908d…` on `p8-release-reconciled`; it contains **exactly three files** — `backend/services/insight_tools.py`, `backend/tests/unit/api/test_p8_insight_data_quality.py`, `docs/architecture/CT-P8-INSIGHT-P3-IV01-REMEDIATION-20260923.md` (its SHA is the branch head after this commit, verifiable with `git log -1 --stat`) |
-| Pushed to | `github/p8-release-reconciled` |
-| Post-push alignment | `git rev-list --left-right --count HEAD...github/p8-release-reconciled` → `0 0`; `git ls-remote github p8-release-reconciled` equals local HEAD |
-| Unauthorized tracked changes | **none** — no P2, migration, catalogue, vocabulary, configuration or frontend file is in the commit |
+| Remediation commit | `8554b785e595c63a58e18d65f9338f01f52377d0` — `fix(p8): remediate P3-IV-01 - the data-quality scan never reports all_checks_passed when nothing was checkable`; direct child of `0c34908d…`; contains **exactly three files** (`backend/services/insight_tools.py` +12, `backend/tests/unit/api/test_p8_insight_data_quality.py` +15/−1, this report new) and nothing else (411 insertions, 1 deletion) |
+| Pushed to | `github/p8-release-reconciled` — `0c34908..8554b78  p8-release-reconciled -> p8-release-reconciled` |
+| Post-push alignment (OBSERVED) | `git rev-list --left-right --count HEAD...github/p8-release-reconciled` → `0 0`; `git ls-remote github refs/heads/p8-release-reconciled` → `8554b785e595c63a58e18d65f9338f01f52377d0` = local HEAD `8554b785e595c63a58e18d65f9338f01f52377d0` |
+| Unauthorized tracked changes | **none** — no P2, migration, catalogue, vocabulary, configuration or frontend file is in the commit; `.gitignore` was deliberately **not** staged |
+
+Post-commit re-verification (OBSERVED, at `8554b78`): the P3 file re-run reports
+`tests=48 failures=0 errors=0 skipped=0` (exit 0), and the verifier's reproduction
+scenario still answers `success no_checkable_records 0 1 0`.
+
+Verification timestamp (local): 2026-09-23T20:29:22+06:00.
 
 No history was rewritten, no force-push, no reset, no clean, no tag. `origin` (the
 local `/tmp/ct_step2` remote) was not contacted; `github` is the authoritative remote.
