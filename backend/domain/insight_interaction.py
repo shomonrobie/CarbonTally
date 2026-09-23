@@ -144,6 +144,10 @@ TOOL_ARGUMENT_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "group_by",
         "limit",
     ),
+    # P3 — quality scan (bounded period, no free text) and reproducibility check
+    # (a single identifier; a reference is never a grant).
+    "insight_data_quality": ("start_date", "end_date", "limit"),
+    "insight_calculation_reproducibility": ("snapshot_id",),
 }
 
 #: Q6 — the only result-metadata keys an I4 tool call may persist. Everything

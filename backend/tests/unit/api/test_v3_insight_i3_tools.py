@@ -267,19 +267,21 @@ def _intent(api, text):
 # Registry boundary (PO §4) and read-only proof
 # --------------------------------------------------------------------------
 def test_registry_exposes_the_authorized_tool_catalogue(api):
-    """PO I3 four ratified tools + the Phase 8 analytics tools (authorized).
+    """PO I3 four ratified tools + the authorized Phase 8 analytics tools.
 
     The ratified four remain first and unchanged; ``insight_discovery``,
     ``insight_aggregation`` and ``insight_aggregate_provenance`` were authorized by
-    the PO Insight Discovery-Aggregation-Provenance package (2026-09-22), and
+    the PO Insight Discovery-Aggregation-Provenance package (2026-09-22),
     ``insight_temporal_comparison`` by the PO P2 implementation authorization
-    (2026-09-22). Exactly one tool was added by P2.
+    (2026-09-22), and ``insight_data_quality`` + ``insight_calculation_reproducibility``
+    by the PO P3 implementation authorization (2026-09-23).
     """
     body = api.client.get(BASE).json()
     assert [t["name"] for t in body["tools"]] == [
         "report_lookup", "report_version_lookup", "report_evidence_lookup", "calculation_snapshot_lookup",
         "insight_discovery", "insight_aggregation", "insight_aggregate_provenance",
         "insight_temporal_comparison",
+        "insight_data_quality", "insight_calculation_reproducibility",
     ]
     assert all(t["read_only"] is True for t in body["tools"])
     assert body["contract_version"] == "i3-6point-v1"

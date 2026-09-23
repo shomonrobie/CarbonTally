@@ -25,6 +25,10 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
+from domain.insight_quality import (
+    TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+    TOOL_INSIGHT_DATA_QUALITY,
+)
 from domain.insight_query import (
     REASON_UNSUPPORTED_DIMENSION,
     TEMPORAL_COMPARISON_DIMENSIONS,
@@ -46,6 +50,8 @@ REASON_TOLERANCE_REQUIRED = "amount_tolerance_required"
 REASON_INVALID_SCOPE = "invalid_scope"
 #: P2 — a comparison question whose two explicit periods cannot be determined.
 REASON_COMPARISON_PERIODS_REQUIRED = "comparison_periods_required"
+#: P3 — a reproducibility question naming no identifiable calculation.
+REASON_SNAPSHOT_REQUIRED = "snapshot_identifier_required"
 
 _MONTHS = {
     "january": 1,
@@ -95,6 +101,27 @@ _REPORTING_YEAR = re.compile(r"\breporting\s+year\s*(?:of\s*)?(\d{4})\b")
 #: stays unsupported rather than being silently mapped onto a reversed baseline.
 _COMPARISON = re.compile(
     r"\b(?:compare[sd]?|comparison|versus|vs|difference\s+between|change\s+(?:between|from))\b"
+)
+
+#: P3 — a data-quality signal. The scan is executed by the existing
+#: ValidationEngine, so the planner contributes only the period.
+_QUALITY = re.compile(
+    r"\b(?:data\s+quality|quality|completeness|incomplete|missing|unmapped|"
+    r"no\s+unit|missing\s+unit)\b"
+)
+
+#: P3 — a reproducibility signal. It names no accounting concept: it asks what
+#: CarbonTally can technically demonstrate for an identified calculation.
+_REPRODUCIBILITY = re.compile(
+    r"\b(?:reproduc\w*|tamper\w*|audit\s+trail\s+for|verify\s+the\s+calculation)\b"
+)
+
+#: P3 — a well-formed record identifier (the same UUID form the ratified tools
+#: accept). A bounded identifier pattern, not free-text parsing: the tool and the
+#: organisation-scoped read re-validate whatever is extracted.
+_UUID = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
 )
 
 #: P2 — the explicit periods a comparison may address, using only the vocabulary
@@ -378,6 +405,11 @@ def plan_question(text: str) -> dict[str, Any]:
     # the planner will map onto the temporal-comparison contract.
     wants_comparison = bool(_COMPARISON.search(question))
     comparison_periods = _comparison_period_bounds(question) if wants_comparison else []
+    # P3 — quality and reproducibility signals (both are answered only by the
+    # existing deterministic machinery; the planner contributes the period or the
+    # identifier and nothing else).
+    wants_quality = bool(_QUALITY.search(question))
+    wants_reproducibility = bool(_REPRODUCIBILITY.search(question))
 
     analytics_signal = bool(
         dimension
@@ -389,6 +421,8 @@ def plan_question(text: str) -> dict[str, Any]:
         or wants_provenance
         or wants_discovery
         or wants_comparison
+        or wants_quality
+        or wants_reproducibility
     )
     if not analytics_signal:
         return _result(STATUS_UNSUPPORTED)
@@ -422,6 +456,33 @@ def plan_question(text: str) -> dict[str, Any]:
             tool=TOOL_INSIGHT_TEMPORAL_COMPARISON,
             operation="temporal_comparison",
             tool_input=comparison_input,
+        )
+
+    # P3 — data-quality scan (family 14). A quality keyword plus an explicit
+    # bounded period; the scan itself is executed entirely by the existing
+    # ValidationEngine, so the planner supplies nothing but the period.
+    if _QUALITY.search(question):
+        if start is None or end is None:
+            return _result(STATUS_CLARIFICATION, reason=REASON_PERIOD_REQUIRED)
+        return _result(
+            STATUS_PLANNED,
+            tool=TOOL_INSIGHT_DATA_QUALITY,
+            operation="data_quality",
+            tool_input={"start_date": start, "end_date": end},
+        )
+
+    # P3 — reproducibility of one identified calculation (family 16). Requires a
+    # well-formed identifier; without one the truthful answer is a clarification,
+    # because nothing may be guessed and no record may be searched for.
+    if _REPRODUCIBILITY.search(question):
+        identifiers = _UUID.findall(question)
+        if not identifiers:
+            return _result(STATUS_CLARIFICATION, reason=REASON_SNAPSHOT_REQUIRED)
+        return _result(
+            STATUS_PLANNED,
+            tool=TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+            operation="calculation_reproducibility",
+            tool_input={"snapshot_id": identifiers[0]},
         )
 
     # Provenance — the contributing calculations behind one aggregate cell. It

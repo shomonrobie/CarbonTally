@@ -58,6 +58,27 @@ from domain.insight_query import (
     validate_limit,
     validate_period,
 )
+from domain.insight_quality import (
+    CONDITION_CONTENT_HASH_MATCHES,
+    CONDITION_EVIDENCE_RESOLVABLE,
+    CONDITION_FACTOR_REFERENCE,
+    CONDITION_INPUTS_RETAINED,
+    CONDITION_METHODOLOGY_RETAINED,
+    CONDITION_PROVENANCE_CONSISTENT,
+    CONDITION_RECOMPUTATION_MATCHES,
+    CONDITION_RESULT_RETAINED,
+    CONDITION_SNAPSHOT_RETAINED,
+    CONDITION_SOURCE_LINEAGE,
+    MAX_QUALITY_RECORDS,
+    QC_STATE_BASIS,
+    QUALITY_SCAN_BASIS,
+    REPRODUCIBILITY_BASIS,
+    ReproducibilityCondition,
+    TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+    TOOL_INSIGHT_DATA_QUALITY,
+    snapshot_from_row,
+    summarise_report,
+)
 from domain.insight_tool import (
     MAX_IDENTIFIER_LENGTH,
     InsightReference,
@@ -67,6 +88,8 @@ from domain.insight_tool import (
     ToolStatus,
     bounded,
 )
+from engines.calculation import CalculationEngine
+from engines.validation import ValidationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +272,75 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         ),
         reference_kinds=(),
     ),
+    # P3 — bounded data-quality scan (Insight family 14). Every finding comes from
+    # the existing ValidationEngine over the organization's own stored snapshots;
+    # P3 adds no rule, no weight and no composite score.
+    ToolDefinition(
+        name=TOOL_INSIGHT_DATA_QUALITY,
+        purpose=(
+            "Report deterministic data-quality findings for the stored calculations "
+            "in one explicitly bounded period, as counts per authoritative validation "
+            "code with the affected records."
+        ),
+        read_only=True,
+        input=ToolInputSpec(required=("start_date", "end_date"), optional=("limit",)),
+        authorization="i2-boundary: authorize_insight_scope + organisation-scoped query",
+        output_fields=(
+            "period",
+            "records_checked",
+            "records_with_findings",
+            "records_passing",
+            "finding_count",
+            "distinct_finding_codes",
+            "findings",
+            "population_truncated",
+            "population_exceeds_bound",
+            "uncheckable_records",
+            "checks_performed",
+            "open_issue_count",
+            "qc_state_basis",
+            "scan_limit",
+            "basis",
+        ),
+        reference_kinds=(),
+    ),
+    # P3 — record-level reproducibility/traceability for one identified
+    # calculation. Reuses the existing CalculationEngine.verify and
+    # ValidationEngine.validate_snapshot; it certifies nothing.
+    ToolDefinition(
+        name=TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+        purpose=(
+            "Report the deterministic reproducibility and traceability conditions of "
+            "one identified calculation from the data CarbonTally retains for it."
+        ),
+        read_only=True,
+        input=ToolInputSpec(required=("snapshot_id",)),
+        authorization="i2-boundary: authorize_insight_scope + object organisation re-check",
+        output_fields=(
+            "snapshot_id",
+            "organization_id",
+            "activity_type",
+            "scope",
+            "date",
+            "co2e_kg",
+            "factor_kind",
+            "factor_id",
+            "customer_factor_id",
+            "methodology",
+            "algorithm_version",
+            "checkable",
+            "reproducible",
+            "conditions",
+            "satisfied_conditions",
+            "unsatisfied_conditions",
+            "verification",
+            "finding_codes",
+            "evidence",
+            "basis",
+            "provenance_tool",
+        ),
+        reference_kinds=("calculation_snapshot", "evidence_line_item"),
+    ),
 )
 
 #: The registry — exactly the four ratified tools (PO §4).
@@ -402,6 +494,10 @@ async def invoke_tool(
             return await _aggregate_provenance(repos, access, payload)
         if tool.name == TOOL_INSIGHT_TEMPORAL_COMPARISON:
             return await _temporal_comparison(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_DATA_QUALITY:
+            return await _data_quality(repos, access, payload)
+        if tool.name == TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY:
+            return await _calculation_reproducibility(repos, access, payload)
         return _result(tool.name, ToolStatus.INVALID_INPUT, reason="unratified_tool")
     except Exception:  # noqa: BLE001 - fail closed; diagnostics stay server-side
         # Logged server-side (tool name + exception) so genuine internal defects
@@ -897,3 +993,421 @@ async def _temporal_comparison(
         data=data,
         truncated=truncated,
     )
+
+
+# --------------------------------------------------------------------------
+# P3 — data quality and audit/reproducibility (Insight families 14 and 16)
+#
+# Authorization: PO P3 implementation authorization (2026-09-23).
+#
+# Both capabilities below are *aggregation and projection only*. Every finding
+# they can report is produced by machinery that already exists in CarbonTally:
+# ``ValidationEngine`` (A1 input completeness / A2 recomputation + content hash /
+# A5 factor provenance) and ``CalculationEngine.verify`` (audit-time
+# reproducibility). P3 adds no check, no severity, no weight and no score.
+# --------------------------------------------------------------------------
+
+#: The checks the scan states it performed — named so a reader can see exactly
+#: what was and was not covered (never a claim about what was not checked).
+_QUALITY_CHECKS: tuple[str, ...] = (
+    "A1 input completeness (activity, quantity, unit, reporting year)",
+    "A2 recomputation of quantity x multiplier against the stored result",
+    "A2 content-hash tamper evidence",
+    "A5 factor provenance consistency for batch-linked factors",
+)
+
+
+def _quality_engine(repos: RepositoryBundle) -> ValidationEngine:
+    """The existing validation engine, built from the same repositories the API binds."""
+    return ValidationEngine(
+        repos.logs,
+        repos.organizations,
+        repos.factors,
+        customer_factors=repos.customer_factors,
+    )
+
+
+def _validation_issue_dict(issue: Any, record_id: str) -> dict[str, Any]:
+    """Project one authoritative ValidationIssue onto a bounded finding record.
+
+    ``record_id`` is the stored calculation this finding belongs to (the identity
+    an operator can act on). ``entity_id`` is kept as the engine's own subject,
+    which differs by check family (the activity text for A1, the snapshot id for
+    A2/A5) — both are reported so a finding stays explainable.
+    """
+    return {
+        "code": str(issue.code),
+        "severity": str(getattr(issue.severity, "value", issue.severity)),
+        "message": str(issue.message),
+        "entity_type": str(issue.entity_type),
+        "entity_id": str(issue.entity_id),
+        "record_id": str(record_id),
+        "field": str(issue.field or ""),
+    }
+
+
+async def _data_quality(
+    repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]
+) -> ToolResult:
+    """Bounded deterministic quality scan of the organisation's stored calculations."""
+    start, end, reason = validate_period(payload.get("start_date"), payload.get("end_date"))
+    if reason is not None or start is None or end is None:
+        return _invalid_analytics(TOOL_INSIGHT_DATA_QUALITY, reason)
+    limit, reason = validate_limit(
+        payload.get("limit"), maximum=MAX_QUALITY_RECORDS, default=MAX_QUALITY_RECORDS
+    )
+    if reason is not None or limit is None:
+        return _invalid_analytics(TOOL_INSIGHT_DATA_QUALITY, reason)
+
+    org = access.organization_id
+    filters = {"start_date": start.isoformat(), "end_date": end.isoformat()}
+    # One extra row is requested so truncation is *detected*, and the count is
+    # bounded by the same cap, so a large period can never force a full scan.
+    rows = await repos.logs.search_snapshots(org, filters, limit + 1)
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    counted = await repos.logs.count_matching_snapshots(org, filters, limit + 1)
+
+    engine = _quality_engine(repos)
+    issues: list[dict[str, Any]] = []
+    checked = 0
+    with_findings = 0
+    uncheckable = 0
+    unresolved_factor = 0
+    for row in rows:
+        snapshot = snapshot_from_row(row)
+        if snapshot is None:
+            # The stored row does not carry the fields the engine needs: reported
+            # as not-checkable rather than silently counted as passing.
+            uncheckable += 1
+            continue
+        checked += 1
+        factor = None
+        if snapshot.factor_kind == "emission_factor" and snapshot.factor_id:
+            factor = await repos.factors.get(snapshot.factor_id)
+            if factor is None:
+                # The A1 unit rule and the A5 provenance context both need the
+                # factor. Its absence is counted, never passed off as "no problem":
+                # "not checked" must not read as "checked and fine".
+                unresolved_factor += 1
+        report = engine.validate_input(
+            # The stored activity text exactly as retained — never a substitute
+            # from another column, so the engine's own empty-activity rule sees
+            # what is really stored.
+            activity=str(row.get("activity") or ""),
+            quantity=snapshot.quantity,
+            reporting_year=snapshot.reporting_year,
+            quantity_unit=snapshot.quantity_unit,
+            factor=factor,
+        )
+        report = report.merge(
+            engine.validate_snapshot(
+                snapshot,
+                factor,
+                factor_source=row.get("factor_source"),
+                factor_set=row.get("factor_set"),
+                import_batch_id=row.get("import_batch_id"),
+            )
+        )
+        if report.issues:
+            with_findings += 1
+        for issue in report.issues:
+            issues.append(_validation_issue_dict(issue, snapshot.id))
+
+    open_issues = await repos.issues.count_for_org(org)
+    summary = summarise_report(
+        issues, records_checked=checked, records_with_findings=with_findings
+    )
+    data: dict[str, Any] = {
+        "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+        **summary,
+        "population_truncated": truncated,
+        "population_exceeds_bound": truncated or counted > limit,
+        "uncheckable_records": uncheckable,
+        "records_with_unresolved_factor": unresolved_factor,
+        "checks_performed": list(_QUALITY_CHECKS),
+        "open_issue_count": int(open_issues),
+        "qc_state_basis": QC_STATE_BASIS,
+        "scan_limit": int(limit),
+        "basis": QUALITY_SCAN_BASIS,
+    }
+    if checked == 0 and uncheckable == 0:
+        # Nothing stored in the period: an absence of records is not a "pass".
+        return _result(
+            TOOL_INSIGHT_DATA_QUALITY, ToolStatus.NO_DATA, reason="no_rows_in_period"
+        )
+    if with_findings == 0:
+        return _result(
+            TOOL_INSIGHT_DATA_QUALITY,
+            ToolStatus.SUCCESS,
+            reason="all_checks_passed",
+            data=data,
+            truncated=truncated,
+        )
+    # Findings are the answer, not an error: the scan succeeded and reports them.
+    return _result(
+        TOOL_INSIGHT_DATA_QUALITY,
+        ToolStatus.SUCCESS,
+        reason="findings_reported",
+        data=data,
+        truncated=truncated,
+    )
+
+
+
+#: The existing A5 provenance codes, used to report the provenance condition from
+#: the validation engine's own vocabulary instead of inventing a new check.
+_PROVENANCE_CODES: frozenset[str] = frozenset(
+    {
+        "VAL_SNAPSHOT_PROVENANCE_MISSING",
+        "VAL_SNAPSHOT_BATCH_MISMATCH",
+        "VAL_SNAPSHOT_SOURCE_MISMATCH",
+        "VAL_FACTOR_ORPHAN",
+    }
+)
+
+
+async def _calculation_reproducibility(
+    repos: RepositoryBundle, access: InsightAccess, payload: dict[str, Any]
+) -> ToolResult:
+    """Record-level reproducibility/traceability for one identified calculation.
+
+    Reuses the existing deterministic machinery end to end:
+
+    * ``CalculationEngine.verify`` — the audit-time reproducibility check
+      (``match`` / ``discrepancy`` / ``tampered``);
+    * ``ValidationEngine.validate_snapshot`` — the A2/A5 codes over the same
+      stored record.
+
+    The result states what CarbonTally can technically demonstrate for this
+    record. It certifies nothing: there is no "audit approved" field, and a
+    limitation is reported as a limitation rather than as a failure.
+    """
+    snapshot_id = str(payload.get("snapshot_id") or "").strip()
+    if not snapshot_id or len(snapshot_id) > MAX_IDENTIFIER_LENGTH:
+        return _invalid_analytics(
+            TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY, "missing_snapshot_id"
+        )
+
+    row = await repos.logs.get_snapshot(snapshot_id)
+    if row is None:
+        return _result(
+            TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+            ToolStatus.NO_DATA,
+            reason="snapshot_not_found",
+        )
+    if str(row.get("organization_id")) != access.organization_id:
+        # A reference is a locator, never a grant: the object is re-checked here.
+        return _result(
+            TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+            ToolStatus.NOT_AUTHORIZED,
+            reason="not_authorized",
+        )
+
+    refs = _dedupe_refs(
+        [
+            ("calculation_snapshot", snapshot_id),
+            ("evidence_line_item", row.get("source_line_item_id", "")),
+        ]
+    )
+    snapshot = snapshot_from_row(row)
+    if snapshot is None:
+        # The record exists but does not retain what a re-check needs: reported as
+        # not-checkable, never as a pass and never as a verdict.
+        payload_data = {
+            "snapshot_id": snapshot_id,
+            "organization_id": access.organization_id,
+            "checkable": False,
+            "reproducible": None,
+            "conditions": [
+                ReproducibilityCondition(
+                    CONDITION_SNAPSHOT_RETAINED, True, "the stored snapshot row exists"
+                ).as_dict(),
+                ReproducibilityCondition(
+                    CONDITION_INPUTS_RETAINED,
+                    False,
+                    "the stored row does not retain the inputs a re-check requires",
+                ).as_dict(),
+            ],
+            "satisfied_conditions": [CONDITION_SNAPSHOT_RETAINED],
+            "unsatisfied_conditions": [CONDITION_INPUTS_RETAINED],
+            "verification": None,
+            "finding_codes": [],
+            "evidence": None,
+            "basis": REPRODUCIBILITY_BASIS,
+            "provenance_tool": TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+        }
+        return _result(
+            TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+            ToolStatus.SUCCESS,
+            reason="snapshot_not_checkable",
+            data=payload_data,
+            references=refs,
+        )
+
+    verification = CalculationEngine(repos.logs).verify(snapshot)
+    engine = _quality_engine(repos)
+    factor = None
+    if snapshot.factor_kind == "emission_factor" and snapshot.factor_id:
+        factor = await repos.factors.get(snapshot.factor_id)
+    report = engine.validate_snapshot(
+        snapshot,
+        factor,
+        factor_source=row.get("factor_source"),
+        factor_set=row.get("factor_set"),
+        import_batch_id=row.get("import_batch_id"),
+    )
+    codes = {str(issue.code) for issue in report.issues}
+    evidence_count = 0
+    if snapshot.source_item_id:
+        evidence_count = int(
+            await repos.evidence_line_items.count_for_item(snapshot.source_item_id)
+        )
+    data = _reproducibility_data(
+        snapshot=snapshot,
+        access=access,
+        row=row,
+        verification=verification,
+        codes=codes,
+        evidence_count=evidence_count,
+    )
+    if data["unsatisfied_conditions"]:
+        # A technical limitation of the retained data — never an accounting
+        # judgement and never an audit outcome.
+        return _result(
+            TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+            ToolStatus.SUCCESS,
+            reason="reproducibility_limitation",
+            data=data,
+            references=refs,
+        )
+    return _result(
+        TOOL_INSIGHT_CALCULATION_REPRODUCIBILITY,
+        ToolStatus.SUCCESS,
+        data=data,
+        references=refs,
+    )
+
+
+
+def _reproducibility_data(
+    *,
+    snapshot: Any,
+    access: InsightAccess,
+    row: dict[str, Any],
+    verification: Any,
+    codes: set[str],
+    evidence_count: int,
+) -> dict[str, Any]:
+    """Build the bounded reproducibility payload from the deterministic checks.
+
+    Every condition is a structural presence question or an existing engine
+    result — none is a new quality rule.
+    """
+    inputs_retained = bool(snapshot.quantity_unit) and snapshot.quantity is not None
+    factor_reference_retained = bool(
+        (snapshot.factor_kind == "emission_factor" and snapshot.factor_id)
+        or (snapshot.factor_kind == "customer_factor" and snapshot.customer_factor_id)
+    )
+    methodology_retained = bool(snapshot.methodology) and bool(snapshot.algorithm_version)
+    lineage_retained = bool(snapshot.source_item_id or snapshot.source_line_item_id)
+    provenance_codes = codes & _PROVENANCE_CODES
+    conditions = [
+        ReproducibilityCondition(
+            CONDITION_SNAPSHOT_RETAINED, True, "the stored snapshot row exists"
+        ),
+        ReproducibilityCondition(
+            CONDITION_RESULT_RETAINED, True, "the stored calculation result is present"
+        ),
+        ReproducibilityCondition(
+            CONDITION_INPUTS_RETAINED,
+            inputs_retained,
+            None if inputs_retained else "the stored record has no quantity unit",
+        ),
+        ReproducibilityCondition(
+            CONDITION_FACTOR_REFERENCE,
+            factor_reference_retained,
+            None
+            if factor_reference_retained
+            else "no factor reference retained on the stored calculation",
+        ),
+        ReproducibilityCondition(
+            CONDITION_METHODOLOGY_RETAINED,
+            methodology_retained,
+            None
+            if methodology_retained
+            else "methodology and algorithm version are not both retained",
+        ),
+        ReproducibilityCondition(
+            CONDITION_SOURCE_LINEAGE,
+            lineage_retained,
+            None
+            if lineage_retained
+            else "no source item or source line reference retained",
+        ),
+        ReproducibilityCondition(
+            CONDITION_EVIDENCE_RESOLVABLE,
+            evidence_count > 0,
+            f"{evidence_count} evidence line item(s) resolve for the retained source item"
+            if evidence_count
+            else "no evidence line item resolves for this calculation",
+        ),
+        ReproducibilityCondition(
+            CONDITION_RECOMPUTATION_MATCHES,
+            bool(verification.match),
+            None
+            if verification.match
+            else "the stored result differs from the recomputation by "
+            f"{verification.discrepancy}",
+        ),
+        ReproducibilityCondition(
+            CONDITION_CONTENT_HASH_MATCHES,
+            not bool(verification.tampered),
+            None
+            if not verification.tampered
+            else "the stored content hash does not match a fresh hash of the inputs",
+        ),
+        ReproducibilityCondition(
+            CONDITION_PROVENANCE_CONSISTENT,
+            not provenance_codes,
+            None
+            if not provenance_codes
+            else "factor provenance findings: " + ", ".join(sorted(provenance_codes)),
+        ),
+    ]
+    return {
+        "snapshot_id": snapshot.id,
+        "organization_id": access.organization_id,
+        "activity_type": _json_safe(row.get("activity_type")),
+        "scope": _json_safe(row.get("scope")),
+        "date": _json_safe(row.get("date")),
+        "co2e_kg": _json_safe(row.get("co2e_kg")),
+        "factor_kind": snapshot.factor_kind,
+        "factor_id": snapshot.factor_id,
+        "customer_factor_id": snapshot.customer_factor_id,
+        "methodology": snapshot.methodology,
+        "algorithm_version": snapshot.algorithm_version,
+        "checkable": True,
+        "reproducible": bool(verification.match) and not bool(verification.tampered),
+        "conditions": [c.as_dict() for c in conditions],
+        "satisfied_conditions": [c.name for c in conditions if c.satisfied],
+        "unsatisfied_conditions": [c.name for c in conditions if not c.satisfied],
+        "verification": {
+            "match": bool(verification.match),
+            "tampered": bool(verification.tampered),
+            "discrepancy": (
+                str(verification.discrepancy)
+                if verification.discrepancy is not None
+                else None
+            ),
+        },
+        "finding_codes": sorted(codes),
+        "evidence": {
+            "source_item_id": snapshot.source_item_id,
+            "source_line_item_id": snapshot.source_line_item_id,
+            "evidence_line_item_count": evidence_count,
+        },
+        "basis": REPRODUCIBILITY_BASIS,
+        "provenance_tool": TOOL_INSIGHT_AGGREGATE_PROVENANCE,
+    }
+
