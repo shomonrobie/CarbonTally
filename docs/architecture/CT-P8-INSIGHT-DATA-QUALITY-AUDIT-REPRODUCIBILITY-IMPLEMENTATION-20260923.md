@@ -269,9 +269,17 @@ store, no data change, no destructive statement.
 
 ## 22. Git/push/alignment state
 
-Recorded after the P3 commit: final SHA, push result, and
-`git rev-list --left-right --count HEAD...github/p8-release-reconciled` (expected
-`0 0`).
+* Implementation commit: **`466c159`** — `feat(p8): bounded Insight data quality +
+  audit/reproducibility (P3, families 14 and 16)`, 9 files changed,
+  2,031 insertions / 3 deletions (the 3 deletions are the shared I3 catalogue
+  pin's three replaced lines). No pre-existing untracked PO/ChatGPT document was
+  staged or committed (verified: 0 such paths in the commit).
+* Pushed to `github/p8-release-reconciled`: `4cd358d..466c159` (no force).
+* Alignment after push:
+  `git rev-list --left-right --count HEAD...github/p8-release-reconciled` → `0 0`
+  (`HEAD` == `github/p8-release-reconciled` == `466c159`).
+* `backend/services/insight_tools.py`: 514 insertions, **0 deletions** — P2 code
+  is byte-identical (see §20).
 
 ## 23. Verification status
 
