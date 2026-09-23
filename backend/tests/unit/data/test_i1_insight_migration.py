@@ -78,6 +78,13 @@ def test_i1_migration_is_the_latest_migration() -> None:
             "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
             "20261006000000_p8_insight_temporal_comparison.sql",
         ],
+        [
+            "20261002000000_p8_i2_insight_authorization.sql",
+            "20261003000000_p8_i4_insight_interactions.sql",
+            "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
+            "20261006000000_p8_insight_temporal_comparison.sql",
+            "20261007000000_p8_insight_data_quality_reproducibility.sql",
+        ],
     ), later
 
 

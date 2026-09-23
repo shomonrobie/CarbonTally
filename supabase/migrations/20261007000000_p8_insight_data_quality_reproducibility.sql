@@ -1,6 +1,15 @@
 -- ============================================================================
 -- CarbonTally Phase 8 — Insight data quality + audit/reproducibility (P3).
--- File: 20260923000000_p8_insight_data_quality_reproducibility.sql
+-- File: 20261007000000_p8_insight_data_quality_reproducibility.sql
+--
+-- ORDERING (MIG-1 remediation, 2026-09-23): this file was originally named
+--   20260923000000_... and therefore sorted BEFORE 20261003000000 (which creates
+--   public.carbontally_insight_tool_calls) and before 20261006000000 (the P2
+--   widening it builds on). On a genuinely fresh chain it failed on a missing
+--   relation, and the later-sorting migrations narrowed the constraint back to
+--   eight names. The 20261007000000 prefix places it after every migration it
+--   depends on and after the last migration in the repository
+--   (20261006000000_p8_insight_temporal_comparison.sql). No statement changed.
 --
 -- AUTHORITY
 --   * PO P3 implementation authorization (2026-09-23): bounded data-quality and

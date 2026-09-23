@@ -853,7 +853,7 @@ def test_migration_widens_the_tool_check_and_adds_no_table():
         Path(__file__).resolve().parents[4]
         / "supabase"
         / "migrations"
-        / "20260923000000_p8_insight_data_quality_reproducibility.sql"
+        / "20261007000000_p8_insight_data_quality_reproducibility.sql"
     )
     sql = path.read_text()
     assert "ci_tool_calls_tool_name_check" in sql

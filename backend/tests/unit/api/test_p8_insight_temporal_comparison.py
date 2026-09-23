@@ -699,7 +699,16 @@ def test_the_tool_uses_the_closed_status_and_answer_vocabularies() -> None:
 
 
 def test_the_catalogue_gained_exactly_one_tool() -> None:
-    assert len(TOOL_REGISTRY) == 8
+    """The catalogue is exactly the authorized I3 set (an exact count, not a subset).
+
+    Ten tools: the four PO-ratified read-only tools, the three Phase 8 analytics
+    tools, the P2 temporal-comparison tool and the two P3 quality/reproducibility
+    tools. P2 added exactly one tool; the later PO P3 implementation authorization
+    (2026-09-23) added exactly two more, which is why this pin is ten rather than
+    eight (MIG-1 + catalogue-pin remediation). The assertion stays an *exact*
+    count so an accidental addition or removal still fails.
+    """
+    assert len(TOOL_REGISTRY) == 10
     assert TOOL_INSIGHT_TEMPORAL_COMPARISON in TOOL_REGISTRY
 
 

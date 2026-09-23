@@ -70,10 +70,13 @@ def test_save_statement_casts_every_parameter_explicitly() -> None:
 # --------------------------------------------------------------------------
 def test_i2_migration_is_the_latest_and_scoped_to_one_policy() -> None:
     names = sorted(p.name for p in _MIGRATIONS.glob("*.sql"))
-    # The P2 Insight temporal-comparison catalogue migration (PO authorization
-    # 2026-09-22) is the latest; I2 remains the latest *authorization* migration,
-    # unchanged in scope.
-    assert names[-1] == "20261006000000_p8_insight_temporal_comparison.sql", names[-3:]
+    # The P3 Insight data-quality/reproducibility catalogue migration (PO P3
+    # authorization 2026-09-23) is the latest, at its corrected prefix: the
+    # MIG-1 remediation (2026-09-23) moved it from 20260923000000_... (which
+    # sorted before the I4 migration that creates its target table) to
+    # 20261007000000_..., after every migration it depends on. I2 remains the
+    # latest *authorization* migration, unchanged in scope.
+    assert names[-1] == "20261007000000_p8_insight_data_quality_reproducibility.sql", names[-3:]
     assert _I2_MIGRATION.name in names
 
     ddl = _ddl(_read(_I2_MIGRATION))
