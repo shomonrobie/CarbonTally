@@ -183,9 +183,17 @@ unchanged, and no P3 test or implementation file appears in the diff.
 
 ## 13. Final Git SHA/alignment
 
-Recorded after committing this reconciliation: commit SHA, push range and
-`git rev-list --left-right --count HEAD...github/p8-release-reconciled` = `0 0`
-(values recorded in the commit-record follow-up).
+* Starting HEAD: `1fb2a84` (aligned `0 0`).
+* Reconciliation commit: **`52307a6`** - `docs(p8): reconcile the P2 test inventory
+  (43, not 79) - Path A, documentation-only correction`. Staged set: the two
+  corrected reports plus this new report; **docs only** (no test, backend,
+  migration, frontend or configuration file).
+* Push target: `github/p8-release-reconciled`; result `1fb2a84..52307a6` (no force).
+* Final local HEAD == remote HEAD == `52307a662246cb8a80e5df0a91c675ebee909da3`, with
+  `git rev-list --left-right --count HEAD...github/p8-release-reconciled` = `0 0`.
+* Working tree still carries the **pre-existing** verifier/environment artifacts
+  (` M .gitignore`, `.costrict/`, `8`, `=`), which this task neither created nor
+  staged.
 
 ## 14. Remaining unrelated failures/issues — OBSERVED, not touched
 
