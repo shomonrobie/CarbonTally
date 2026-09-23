@@ -235,8 +235,14 @@ catalogue-pin cleanup`); SHA recorded in §18 with the push result.
 ## 18. Push / alignment status
 
 * Starting HEAD: `804bda2` (aligned `0 0`).
-* Push target: `github/p8-release-reconciled`.
-* Final local HEAD and remote HEAD verified identical, with
+* Remediation commit: **`6605475`** - `fix(p8): MIG-1 migration sequencing remediation +
+  P2 catalogue-pin cleanup`. Staged set: 4 test files (modified), the remediation
+  report (added), and the migration as a **rename**
+  (`20260923000000_p8_insight_data_quality_reproducibility.sql` ->
+  `20261007000000_p8_insight_data_quality_reproducibility.sql`), so the file history
+  is preserved.
+* Push target: `github/p8-release-reconciled`; result `804bda2..6605475` (no force).
+* Final local HEAD == remote HEAD == `6605475d5d9a41f3b8ae1e6a5db3cbe5d45abc8d`, with
   `git rev-list --left-right --count HEAD...github/p8-release-reconciled` = `0 0`.
 * Working tree clean except the known pre-existing untracked PO/ChatGPT reference
   documents (never staged).
