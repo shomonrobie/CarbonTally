@@ -756,7 +756,13 @@ async def test_no_composite_score_is_invented():
 
 
 async def test_not_checked_is_never_reported_as_passed():
-    """§21. A record the engine could not check is counted separately."""
+    """§21. A record the engine could not check is counted separately — and the
+    answer contract it produces says so, rather than reading as an all-clear.
+
+    P3-IV-01 regression pin: the counts alone are not the contract. With rows
+    present, ``records_checked == 0`` and ``uncheckable_records > 0``, the
+    returned reason must never be ``all_checks_passed``.
+    """
     logs = _P3Logs()
     logs.add_row(_row())  # lacks the fields a re-check needs -> not checkable
     row = logs.by_id[SNAP]
@@ -765,6 +771,13 @@ async def test_not_checked_is_never_reported_as_passed():
     assert result.data["records_checked"] == 0
     assert result.data["uncheckable_records"] == 1
     assert result.data["records_passing"] == 0
+    # Nothing was checked, so nothing can have passed: no finding is reported, and
+    # the reason states the not-checkable answer instead of ``all_checks_passed``.
+    assert result.data["records_with_findings"] == 0
+    assert result.data["findings"] == []
+    assert result.reason != "all_checks_passed"
+    assert result.reason == "no_checkable_records"
+    assert result.status.value == "success"
 
 
 # ---------------------------------------------------------------------------

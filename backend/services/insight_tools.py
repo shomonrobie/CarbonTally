@@ -1136,6 +1136,18 @@ async def _data_quality(
         return _result(
             TOOL_INSIGHT_DATA_QUALITY, ToolStatus.NO_DATA, reason="no_rows_in_period"
         )
+    if checked == 0 and uncheckable > 0:
+        # Rows exist in the period but not one of them could be checked, so no
+        # check ran and therefore nothing passed. "Not checked" must never read as
+        # "checked and fine": the scan reports that nothing was checkable instead
+        # of an all-clear, while the counts stay exactly as the scan computed them.
+        return _result(
+            TOOL_INSIGHT_DATA_QUALITY,
+            ToolStatus.SUCCESS,
+            reason="no_checkable_records",
+            data=data,
+            truncated=truncated,
+        )
     if with_findings == 0:
         return _result(
             TOOL_INSIGHT_DATA_QUALITY,
