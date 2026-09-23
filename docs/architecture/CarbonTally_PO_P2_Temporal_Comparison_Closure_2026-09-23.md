@@ -169,7 +169,9 @@ This document closes **P2 only**. It does **not**:
 ## 9. Git / Publication Record
 
 * Starting HEAD while preparing this record: `c24e0803…` (aligned `0 0`).
-* Closure-document commit: recorded below with its SHA.
+* Closure-document commit: **`1b33f22`** - `docs(p8): permanent PO closure record for P2
+  Temporal Comparison`. Staged set: this document only (verified with
+  `git diff --cached --name-only`).
 * Push target: `github/p8-release-reconciled` (no force).
 * Alignment after push:
   `git rev-list --left-right --count HEAD...github/p8-release-reconciled` = `0 0`.
