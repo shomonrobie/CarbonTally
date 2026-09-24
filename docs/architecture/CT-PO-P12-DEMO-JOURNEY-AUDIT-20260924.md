@@ -216,6 +216,7 @@ demo convenience.
 | Report totals | FY2025 Scope 1 = **4175.903780 kg CO2e**, 2 rows = 2469.169780 + 1706.734000 (equals the snapshot sum) |
 | Report export | JSON `200` 5,108 bytes · **PDF `200` `application/pdf` 11,665 bytes `%PDF-1.4`**, `report-eabfc75c-…-carbon_tally.pdf` |
 | Report types offered | `annual` only - "Annual emissions report (structured 12-section V3 report)" |
+| Fresh evidence files | `$HOME/ct_local_env/demo_lab/evidence/p12_step2_demo_journey_audit.json` · `p12_step2_report_export.json` · `p12_step2_report_pdf_export.json` |
 
 ---
 
@@ -325,4 +326,3 @@ supplier-extraction-and-reuse pillar of the intended narrative is
 Clearing the gate still requires (1) idempotent migration application or a frozen
 policy name-set assertion, including resolution of the `210 vs 218` mechanism, and
 (2) a green or explicitly waived disposable integration run.
-| Fresh evidence files | `$HOME/ct_local_env/demo_lab/evidence/p12_step2_demo_journey_audit.json` · `p12_step2_report_export.json` · `p12_step2_report_pdf_export.json` |
