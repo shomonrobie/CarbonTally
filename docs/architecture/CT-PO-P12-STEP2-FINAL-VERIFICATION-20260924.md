@@ -231,3 +231,44 @@ STEP 2 INCOMPLETE
 ```text
 STEP 3 NOT STARTED
 ```
+
+---
+
+## Addendum — Investor Demo Data Journey Audit (2026-09-24, commit `cbadc23`)
+
+An additional Step-2 investigation was performed to determine whether the existing
+implementation can support a convincing investor demonstration end-to-end. It made
+**no product or harness code change** and did **not** alter any count or conclusion in
+the body of this record.
+
+Reference: `docs/architecture/CT-PO-P12-DEMO-JOURNEY-AUDIT-20260924.md`
+
+Outcome (measured on `carbontally_demo_local` @ `127.0.0.1:54426`):
+
+| Pillar | Verdict | Basis |
+| --- | --- | --- |
+| CSV workflow | **PASS** | upload → `line_items[]` → mapping (`aef1f0bb`, 0.2027) → 2 calculations → 2 evidence lines (`source_line_item_id` 2/2) → FY2025 report |
+| Reporting | **PASS** | 4 `completed` reports; real aggregate **4175.903780 kg CO₂e**; DRAFT→APPROVED; JSON export 200 (5,108 B) and **branded PDF export 200 (11,665 B, `%PDF-1.4`)** |
+| PDF workflow | **PARTIAL** | ingestion/extraction/validation-surfacing work, but `line_items[]` ABSENT 10/10; 0/10 carry a supplier; the one PDF that mapped was then blocked by `EXTRACTION_MISSING_FIELD (supplier)` |
+| Supplier extraction from PDF | **NOT IMPLEMENTED** | 0/10 `extracted_data ? 'supplier'` |
+| Supplier reuse across years | **NOT IMPLEMENTED** | `mapped_supplier_id` 0/11, `emissions_logs.supplier_id` 0/2, no supplier-match routine in the repo; `backend/domain/insight_query.py` itself records that "the emission write path never populates `emissions_logs.supplier_id` (PO C-06 / D-09 unresolved)" |
+| Multi-year | **PARTIAL** | period model + per-year reports (FY2024/FY2025) work; supplier/entity continuity across years does not |
+
+New findings were registered as **G-01…G-08** in that document, classified as
+`PRODUCT_CAPABILITY` (G-01…G-06), `DEMO_LAB_HARNESS` (G-07: `t3_scenarios.api()`
+cannot decode a binary `%PDF-1.4` response — a test-client limitation, **never** to be
+reported as a product failure) and `DOCUMENTATION_CONTRACT` (G-08, the `uk-water`
+`no_match` vs `EXPECTED_MATCHED` expectation).
+
+**Effect on this record's gate verdict: none.** Step 2 remains
+
+```text
+STEP 2 GATE: INCOMPLETE
+STEP 3: NOT STARTED
+```
+
+and the two blockers (repeatability; disposable integration not green) are unchanged.
+The audit's repeatability note re-confirms that `298` policies is caused by
+**non-idempotent migration re-application**, while the **`210` vs `218`** single-pass
+variance remains **UNKNOWN** and still requires a policy **name-set** (not count-only)
+comparison.
