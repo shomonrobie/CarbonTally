@@ -116,8 +116,20 @@ def ensure_staff_roles(manifest: dict, failures: list) -> dict[str, str]:
         # did not grant it, so the support counterparty answered 409. Granting it
         # to the lab's `admin` role mirrors the production staff-admin intent and
         # exercises the real authorization path (no RLS change, no bypass).
+        # P16-REMEDIATION-02 RD-1: `can_review` is the release's own review gate
+        # (api/v3_processing_workflow.py / ops validate route require it). The
+        # Demo Lab's `admin` role is the internal staff-admin/QC authority
+        # (it already holds can_qc + is_staff_admin) but was never granted
+        # can_review, so no internal actor could execute `mapped -> validated`
+        # and the reviewer half of the state machine was unreachable. Granting it
+        # to `admin` only preserves the intended separation:
+        #     operator -> map        (can_process)
+        #     admin    -> validate   (can_review)   <-- this grant
+        #     operator -> calculate  (can_process)
+        # No new permission name is invented and no other role is broadened.
         "admin": {"is_superuser": True, "is_staff_admin": True,
                   "can_manage_organizations": True, "can_manage_staff": True,
+                  "can_review": True,
                   "demo_lab": True},
         "operator": {"can_process": True, "demo_lab": True},
         "pe_manager": {"can_process": True, "can_manage_team": True, "demo_lab": True},
