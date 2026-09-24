@@ -30,6 +30,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+# P16-REMEDIATION-01 D-2 — reuse the existing authoritative classifiers rather than
+# inventing a second gas/scope notion:
+#   * engines.factor_selection_policy.is_component  — D-FS-1 single-gas component class
+#   * domain.factor.gas_coverage                    — CO2 (SEAI) vs CO2e (DEFRA) provenance
+from engines.factor_selection_policy import is_component
 from pydantic import BaseModel, field_validator
 
 from api.contracts import calculation_out
@@ -121,6 +127,9 @@ class CalculateIn(BaseModel):
     source_file: Optional[str] = None
     source_page: Optional[int] = None
     source_item_id: Optional[str] = None
+    # P16-REMEDIATION-01 D-3 — explicit supplier attribution; when omitted the
+    # source item's ``mapped_supplier_id`` (Decision-01 source of truth) is used.
+    supplier_id: Optional[str] = None
 
     @field_validator("scope")
     @classmethod
@@ -684,6 +693,41 @@ async def calculate(
             status_code=422,
             detail="factor_id and customer_factor_id are mutually exclusive",
         )
+
+    # ---------------------------------------------------------------------
+    # P16-REMEDIATION-01 D-1 / D-3 — the operator's auditable decision wins.
+    #
+    # When the calculation is tied to an extraction item, the item carries the
+    # operator's persisted selection (``emission_factor_used`` / ``mapped_data.
+    # factor_id``) and the supplier resolved during mapping (``mapped_supplier_id``,
+    # the Decision-01 sole source of truth). Precedence is therefore:
+    #
+    #   1. explicit ``payload.factor_id`` (caller is authoritative)
+    #   2. explicit ``payload.customer_factor_id``
+    #   3. the item's persisted operator selection          <-- D-1 fix
+    #   4. automatic matching from activity text
+    #
+    # and the item's ``mapped_supplier_id`` is carried into the emission unless
+    # the caller states one explicitly                              <-- D-3 fix
+    # ---------------------------------------------------------------------
+    source_item = None
+    operator_factor_id: Optional[str] = None
+    item_supplier_id: Optional[str] = None
+    if payload.source_item_id:
+        source_item = await repos.manual_extraction.get_item(payload.source_item_id)
+        if source_item is not None:
+            # tenant safety: the item's batch must belong to the requested organisation
+            source_batch = await repos.manual_extraction.get_batch(source_item.batch_id)
+            if source_batch is None or source_batch.organization_id != payload.organization_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="extraction item does not belong to this organisation",
+                )
+            operator_factor_id = source_item.emission_factor_used or (
+                (source_item.mapped_data or {}).get("factor_id")
+            )
+            item_supplier_id = source_item.mapped_supplier_id
+
     if payload.factor_id:
         factor = await repos.factors.get(payload.factor_id)
         if factor is None:
@@ -695,6 +739,20 @@ async def calculate(
         if customer_factor.status != "active":
             raise HTTPException(status_code=422, detail="customer factor is not active")
         ensure_org_access(current_user, customer_factor.organization_id)
+    elif operator_factor_id:
+        # D-1: use the operator's persisted selection; never re-resolve it.
+        factor = await repos.factors.get(operator_factor_id)
+        if factor is None:
+            customer_factor = await repos.customer_factors.get(operator_factor_id)
+            if customer_factor is None:
+                raise HTTPException(
+                    status_code=404, detail="operator-selected factor not found"
+                )
+            if customer_factor.status != "active":
+                raise HTTPException(
+                    status_code=422, detail="operator-selected customer factor is not active"
+                )
+            ensure_org_access(current_user, customer_factor.organization_id)
     else:
         match_result = await matching.match(
             MatchRequest(
@@ -725,6 +783,43 @@ async def calculate(
     if factor is None and customer_factor is None:
         raise HTTPException(status_code=422, detail="no factor resolved for calculation")
 
+    # ---------------------------------------------------------------------
+    # P16-REMEDIATION-01 D-2 / FY-policy — fail closed on unsafe factor use.
+    #
+    # D-2.1  a single-gas component factor must never become a total CO2e result
+    #        (reuses the existing D-FS-1 component classifier).
+    # D-2.2  factor scope must agree with the requested calculation scope.
+    # FY     no silent reporting-year substitution: a factor whose
+    #        ``reporting_year`` differs from the requested reporting year is
+    #        refused rather than silently applied.
+    # ---------------------------------------------------------------------
+    if factor is not None:
+        if is_component(factor):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"factor {factor.id} is a single-gas component "
+                    f"('{factor.activity_type}'), not a total CO2e factor"
+                ),
+            )
+        if payload.scope and factor.scope and factor.scope != payload.scope:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"factor scope {factor.scope!r} does not match requested scope "
+                    f"{payload.scope!r}"
+                ),
+            )
+        if factor.reporting_year and factor.reporting_year != payload.reporting_year:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"no {payload.reporting_year} factor available for this activity: "
+                    f"selected factor is {factor.reporting_year} "
+                    f"(reporting-year substitution is not permitted)"
+                ),
+            )
+
     request = CalculationRequest(
         match_request_id=match_request_id,
         organization_id=payload.organization_id,
@@ -742,6 +837,8 @@ async def calculate(
         source_item_id=payload.source_item_id,
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
+        # P16-REMEDIATION-01 D-3: the operator's mapped supplier reaches the emission.
+        supplier_id=payload.supplier_id or item_supplier_id,
         factor=factor,
         customer_factor=customer_factor,
     )
