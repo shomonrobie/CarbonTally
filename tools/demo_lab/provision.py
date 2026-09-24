@@ -108,8 +108,17 @@ def ensure_staff_roles(manifest: dict, failures: list) -> dict[str, str]:
     defaults = {
         # `can_manage_organizations` is the release's own admin permission key
         # (api/manual_processing_admin.py: ADMIN_PERMISSION).
+        # P12 Step-2 completion: `can_manage_staff` is the release's own
+        # staff-admin key used by the N1 support-messaging counterparty
+        # (api/v3_messaging.py + migrations/20260902040000_phase5_pe_operational_messaging.sql
+        # §88-102: "INTERNAL staff (entity_id NULL) whose staff role grants
+        # can_manage_staff"). It is NOT a new permission — the Demo Lab simply
+        # did not grant it, so the support counterparty answered 409. Granting it
+        # to the lab's `admin` role mirrors the production staff-admin intent and
+        # exercises the real authorization path (no RLS change, no bypass).
         "admin": {"is_superuser": True, "is_staff_admin": True,
-                  "can_manage_organizations": True, "demo_lab": True},
+                  "can_manage_organizations": True, "can_manage_staff": True,
+                  "demo_lab": True},
         "operator": {"can_process": True, "demo_lab": True},
         "pe_manager": {"can_process": True, "can_manage_team": True, "demo_lab": True},
     }

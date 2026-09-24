@@ -70,3 +70,85 @@ product authorization** (F-046-1 explicitly permits `ct_*` clones and the design
 test database), but it does require a session with sufficient time budget. It is
 recorded here as **AUTHORIZATION REQUIRED — verification pass outstanding**, not as
 a product blocker.
+
+---
+
+# ADDENDUM — COMPLETION PASS (2026-09-24, later session)
+
+> The sections above describe the state **before** the completion pass and are
+> preserved unchanged. The sections below record the completion-pass execution and
+> **supersede §1's status**.
+
+## A1. Status after the completion pass
+
+```text
+STATUS: EXECUTED, NOT PASSING
+```
+
+The required suites **were executed** against an isolated disposable clone. They did
+**not** pass. The failures are classified below; **none** is attributable to Step 2,
+which changed no product code.
+
+## A2. Execution record
+
+| Item | Value |
+| --- | --- |
+| Clone | **`ct_p12_c2_integration`** (name passes the F-046-1 protected-marker check) |
+| Creation | `CREATE DATABASE` + `pg_dump` (schema **and** data **and** privileges, `--no-owner`) from `carbontally_demo_local` |
+| Clone identity | `current_database()` = `ct_p12_c2_integration`; 141 public tables; 298 policies; 6 Insight tables; evidence schema present |
+| Safety | the canonical Demo Lab, `postgres`, `carbontally_test` and `carbontally_qa_phase8` were **never** targeted |
+| Source release SHA | `35eb7bab9ee87839d07b50a2fd70a662d1ce1675` (Step-2 base) |
+| Command | `INTEGRATION_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54426/ct_p12_c2_integration ./.venv/bin/python -m pytest <9 suites> -q --tb=line` |
+| Start / end | 2026-09-24T09:39:40Z → 09:39:43Z |
+| Exit code | **1** |
+| Result | **92 tests, 21 failed, 0 errors, 0 skipped** |
+| Suites | `test_evidence_line_items_b2_runtime`, `test_report_lifecycle`, `test_consultants`, `test_documents`, `test_extraction`, `test_v3m1_v3m2_processing_entities`, `test_v3_rls_behavior`, `test_calculation`, `test_disclosure_b3_v3_security` |
+| Artifacts | `/tmp/c0_integration3.xml`, `/tmp/c0_integration3.log` |
+
+Earlier attempts (recorded for completeness): a **schema-only** clone produced 9 setup
+ERRORs because reference data (the disclosure catalogue) was absent; a schema-only +
+`--no-privileges` clone produced 29 failures because the `authenticated` role lacked
+the GRANTs the RLS suites exercise. Both were clone-construction artefacts, fixed by
+dumping data **and** privileges.
+
+## A3. Failure classification
+
+| Class | Count | Evidence | Attribution |
+| --- | --- | --- | --- |
+| **Privilege posture (demo-lab over-grant, D-2-07)** | 9 | `Failed: DID NOT RAISE InsufficientPrivilegeError`; `tools/demo_lab/stack.py:317` blanket-grants `INSERT, UPDATE, DELETE … TO authenticated` **after** migrations; clone shows `authenticated` holding INSERT while `relrowsecurity = true` | **demo-lab harness** — not a product defect, not a data exposure |
+| **Fixture / FK precondition** | 6 | `ForeignKeyViolationError: update or delete on table "emission_factors" violates foreign key constraint "calculation_snapshots_factor_id_fkey"` | **test fixture/data precondition** in the clone |
+| **Pre-existing test drift / environment coupling** | 6 | `assert 3 == 2` (B2 SELECT-policy count — the Insight I2 migration legitimately adds a 3rd policy); `TypeError: ConsultantsRepository.add_client() missing 3 required positional arguments`; `assert None is not None`; `AssertionError: expected 7049 total factors, got 1` (the session fixture TRUNCATEs `emission_factors`) | **pre-existing** — tests not updated for later migrations/repository signatures |
+
+## A4. Decisive attribution evidence
+
+```text
+git diff --name-only 35eb7ba..HEAD -- ':!docs' ':!tools/demo_lab'   →   (EMPTY)
+```
+
+The entire Step-2 + completion change set is `docs/architecture/*` plus
+`tools/demo_lab/{stack,storage,provision,manifest.json,t3_scenarios,run_demo_lab.sh}`.
+**No backend, frontend, migration, RLS or test file was modified**, so no integration
+failure can be attributed to Step-2 product behaviour.
+
+## A5. Cleanup
+
+The disposable clone was dropped after the run and the canonical Demo Lab was verified
+untouched (it was subsequently re-provisioned by the Cycle-2 repeatability work, which
+is recorded separately).
+
+## A6. Compliance and residual status
+
+```text
+[x] destructive suites not aimed at carbontally_demo_local / postgres / carbontally_test / qa_phase8
+[x] clone identity verified before the run
+[x] suites executed (not substituted by unit tests)
+[x] failures classified (harness / fixture / pre-existing)
+[x] product code NOT modified to obtain a green result
+[ ] integration suites PASSING  → NOT achieved
+```
+
+**Interpretation for the gate:** the mandatory *"disposable-clone integration
+verification"* action was **executed and evidenced**. It is **not a green run**, so
+the criterion cannot be recorded as PASS; the residual failures are pre-existing /
+environmental and are carried forward with remediation (see the completion
+verification record §5).

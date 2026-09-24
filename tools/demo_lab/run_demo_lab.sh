@@ -41,13 +41,30 @@ echo "── 1/4 stack (database + local REST/Auth gateway)"
 echo "── 2/4 provision synthetic identities (idempotent)"
 "${PY}" tools/demo_lab/provision.py
 
-echo "── 3/4 environment file (outside the repo)"
+echo "── 3/5 environment file (outside the repo)"
 ENV_FILE="$("${PY}" tools/demo_lab/lab_env.py --write)"
 chmod 600 "${ENV_FILE}"
 echo "     ${ENV_FILE}"
 
+# P12 Step-2 completion (defect D-2-03): the factors MUST be loaded BEFORE the
+# release backend starts. The automatic-processing worker builds its in-memory
+# FactorSearchIndex inside `start()`; if it starts while `emission_factors` is
+# empty, every uploaded document maps to `no_match` and no calculation is ever
+# produced. Loading the factors first removes the previously undocumented manual
+# restart step.
+if [[ "${FACTORS}" == "1" ]]; then
+  echo "── 4/5 factor datasets (DEMO-T2-C: DEFRA 2025 + SEAI 2025, loaded serially)"
+  echo "     target: carbontally_demo_local only (hard database-name guard)"
+  if "${PY}" tools/demo_lab/seed_factors.py --dry-run > /dev/null; then
+    "${PY}" tools/demo_lab/seed_factors.py
+  else
+    echo "     factor dry run failed — skipping the load (run seed_factors.py --dry-run)" >&2
+    exit 1
+  fi
+fi
+
 if [[ "${BACKEND}" == "1" ]]; then
-  echo "── 3b/4 starting the release backend on 127.0.0.1:${BACKEND_PORT}"
+  echo "── 4b/5 starting the release backend on 127.0.0.1:${BACKEND_PORT}"
   pkill -f "uvicorn main:app --host 127.0.0.1 --port ${BACKEND_PORT}" 2>/dev/null || true
   (
     cd "${REPO_ROOT}/backend"
@@ -60,21 +77,14 @@ if [[ "${BACKEND}" == "1" ]]; then
     sleep 1
   done
   echo "     backend: http://127.0.0.1:${BACKEND_PORT} (log: ${STATE_DIR}/backend.log)"
+  echo "     factors visible to the worker: $("${PY}" -c "
+import sys; sys.path.insert(0,'tools/demo_lab'); import lab
+print(lab.psql_scalar('SELECT count(*) FROM public.emission_factors'))" 2>/dev/null || echo '?')"
 fi
 
-echo "── 4/4 verify identities, authorization and isolation (server-side)"
+echo "── 5/5 verify identities, authorization and isolation (server-side)"
 "${PY}" tools/demo_lab/verify.py
 
-if [[ "${FACTORS}" == "1" ]]; then
-  echo "── 5/5 factor datasets (DEMO-T2-C: DEFRA 2025 + SEAI 2025, loaded serially)"
-  echo "     target: carbontally_demo_local only (hard database-name guard)"
-  if "${PY}" tools/demo_lab/seed_factors.py --dry-run > /dev/null; then
-    "${PY}" tools/demo_lab/seed_factors.py
-  else
-    echo "     factor dry run failed — skipping the load (run seed_factors.py --dry-run)" >&2
-    exit 1
-  fi
-fi
 
 echo
 echo "Demo Lab ready."

@@ -60,6 +60,17 @@ CORPUS_DIR = lab.STATE_DIR / "corpus" / CORPUS_ID
 EVIDENCE_NAME = "t3_scenarios_latest.json"
 UPLOAD_PREFIX = "t3imp"
 
+#: P12 Step-2 completion (defect D-2-04) — the upload part's declared content
+#: type. The real upload path classifies by extension/mime; declaring a PDF for a
+#: CSV made the pipeline run the PDF extractor over CSV bytes.
+_UPLOAD_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+    "txt": "text/plain",
+}
+
 
 class GuardError(RuntimeError):
     """Raised when the target is not provably the Demo Lab."""
@@ -294,14 +305,27 @@ def login(actor_key: str, state: dict, spec: dict) -> str:
     return token
 
 
-def _multipart(fields: dict, filename: str, content: bytes) -> tuple[bytes, str]:
+def _multipart(fields: dict, filename: str, content: bytes,
+               content_type: str | None = None) -> tuple[bytes, str]:
+    """Multipart body for the real upload API.
+
+    P12 Step-2 completion (defect D-2-04): the file part's ``Content-Type`` was
+    hardcoded to ``application/pdf``, so a tabular upload was stored as
+    ``file_type=PDF`` and routed to the PDF extractor (``extraction no_text``)
+    instead of ``_extract_csv``/``_extract_xlsx``. The type is now derived from
+    the filename extension (overridable), so a CSV/XLSX document reaches the
+    tabular extractor that unconditionally emits ``extracted_data.line_items[]``.
+    """
+    if content_type is None:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        content_type = _UPLOAD_CONTENT_TYPES.get(ext, "application/octet-stream")
     boundary = "----ctt3boundary"
     parts = b""
     for key, value in fields.items():
         parts += (f"--{boundary}\r\nContent-Disposition: form-data; "
                   f'name="{key}"\r\n\r\n{value}\r\n').encode()
     parts += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
-              f'filename="{filename}"\r\nContent-Type: application/pdf\r\n\r\n').encode()
+              f'filename="{filename}"\r\nContent-Type: {content_type}\r\n\r\n').encode()
     parts += content + f"\r\n--{boundary}--\r\n".encode()
     return parts, f"multipart/form-data; boundary={boundary}"
 
@@ -512,6 +536,104 @@ def seed(dry_run: bool = False, only: list | None = None, wait_seconds: int = 12
 
 
 # ---------------------------------------------------------------------------
+# tabular seed (P12 Step-2 — the EV-01 unlock)
+# ---------------------------------------------------------------------------
+#: P12 Step-2 — the one genuinely tabular document. `_extract_csv` is an
+#: UNCONDITIONAL producer of `extracted_data.line_items[]` (unlike the PDF path,
+#: which is gated by the P1 shape mode), so this is the smallest change that lets
+#: the existing forward hook materialise `evidence_line_items` and the
+#: calculation step populate `calculation_snapshots.source_line_item_id`.
+#: 'Natural gas' + kWh resolves to the DEFRA-2025 factor (0.2027 kg CO2e/kWh).
+TABULAR_CORPUS_ID = "p12-step2-tabular"
+TABULAR_CSV_NAME = "p12imp_org-a-multi-site-gas-2025.csv"
+TABULAR_ROWS = [
+    ["site", "supplier", "invoice_number", "activity", "quantity", "unit", "date"],
+    ["Birmingham Head Office", "British Gas", "GRN/2027/7001", "Natural gas",
+     "12181.4", "kWh", "2025-05-05"],
+    ["Leeds Distribution Centre", "British Gas", "GRN/2027/7002", "Natural gas",
+     "8420.0", "kWh", "2025-05-06"],
+]
+TABULAR_ORG = "Demo Lab Organisation A"
+
+
+def seed_tabular(dry_run: bool = False, wait_seconds: int = 240) -> dict:
+    """Upload the tabular CSV through the real API and enqueue the real pipeline."""
+    assert_lab_database()
+    corpus_dir = lab.STATE_DIR / "corpus" / TABULAR_CORPUS_ID
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    payload = ("\n".join(",".join(row) for row in TABULAR_ROWS) + "\n").encode()
+    path = corpus_dir / TABULAR_CSV_NAME
+    path.write_bytes(payload)
+    provenance = {
+        "corpus_id": TABULAR_CORPUS_ID, "file": TABULAR_CSV_NAME,
+        "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload),
+        "rows": len(TABULAR_ROWS) - 1,
+        "purpose": "EV-01 unlock — the only unconditional line_items[] producer",
+        "expected_activity": "Natural gas", "expected_unit": "kWh",
+        "expected_factor_set": "DEFRA-2025",
+        "seeded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    (corpus_dir / "corpus_provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+
+    summary: dict = {"task": TASK_ID, "corpus_id": TABULAR_CORPUS_ID,
+                     "csv": str(path), "sha256": provenance["sha256"],
+                     "dry_run": dry_run}
+    if dry_run:
+        return summary
+
+    spec, state = manifest(), lab.load_state()
+    token = login("org_a_owner", state, spec)
+    org_id = org_id_by_name(TABULAR_ORG)
+    body, ctype = _multipart({"organization_id": org_id, "data_type": "utility"},
+                             TABULAR_CSV_NAME, payload)
+    code, response = api("POST", "/api/v3/uploads", token, body=body,
+                         headers={"Content-Type": ctype})
+    document = response.get("document", response) if isinstance(response, dict) else {}
+    file_id = document.get("id") or document.get("file_id")
+    summary.update({"org": org_id, "upload_status": code, "file_id": file_id})
+    if code != 201 or not file_id:
+        summary["error"] = json.dumps(response)[:400]
+        return summary
+
+    enqueue_code, enqueue_payload = api(
+        "POST", f"/api/v3/processing/documents/{file_id}/enqueue", token)
+    summary["enqueue_status"] = enqueue_code
+    deadline = time.time() + wait_seconds
+    state_snapshot: dict = {}
+    while time.time() < deadline:
+        row = lab.psql(
+            "SELECT status || '|' || coalesce(stage,'') FROM document_processing_queue "
+            f"WHERE id = '{file_id}'").stdout.strip()
+        parts = row.split("|")
+        state_snapshot = {"status": parts[0] if parts else None,
+                          "stage": parts[1] if len(parts) > 1 else None}
+        if state_snapshot["status"] in ("completed", "failed", "manual_review",
+                                        "customer_review"):
+            break
+        time.sleep(4)
+    summary["terminal"] = state_snapshot
+    summary["line_items_type"] = lab.psql_scalar(
+        "SELECT coalesce(jsonb_typeof(extracted_data->'line_items'),'(none)') "
+        f"FROM manual_extraction_items WHERE file_id = '{file_id}'")
+    summary["evidence_lines"] = lab.psql_scalar(
+        "SELECT count(*) FROM evidence_line_items eli JOIN manual_extraction_items i "
+        f"ON i.id = eli.source_item_id WHERE i.file_id = '{file_id}'")
+    summary["snapshots"] = lab.psql_scalar(
+        "SELECT count(*) FROM calculation_snapshots s JOIN manual_extraction_items i "
+        f"ON i.id = s.source_item_id WHERE i.file_id = '{file_id}'")
+    summary["snapshots_with_line_link"] = lab.psql_scalar(
+        "SELECT count(*) FROM calculation_snapshots s JOIN manual_extraction_items i "
+        f"ON i.id = s.source_item_id WHERE i.file_id = '{file_id}' "
+        "AND s.source_line_item_id IS NOT NULL")
+    if enqueue_code not in (200, 201):
+        summary["enqueue_response"] = json.dumps(enqueue_payload)[:300]
+    lab.ensure_dirs()
+    (lab.EVIDENCE_DIR / "p12_step2_tabular_seed.json").write_text(
+        json.dumps(summary, indent=2, default=str) + "\n")
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # ground-truth verification (external truth is an oracle, never a data source)
 # ---------------------------------------------------------------------------
 def _first_line(payload) -> dict:
@@ -704,8 +826,8 @@ def reset(dry_run: bool = False) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="t3_scenarios.py",
                                      description=f"{TASK_ID} — audit-grade Demo Lab scenarios")
-    parser.add_argument("command", choices=("sync-corpus", "seed", "verify", "reset",
-                                            "status"))
+    parser.add_argument("command", choices=("sync-corpus", "seed", "seed-tabular",
+                                            "verify", "reset", "status"))
     parser.add_argument("--source", default="/tmp/extgen",
                         help="path to the pinned external generator checkout")
     parser.add_argument("--dry-run", action="store_true")
@@ -723,6 +845,8 @@ def main(argv: list[str] | None = None) -> int:
                                   only=args.sync_only.split(",") if args.sync_only else None)
         elif args.command == "seed":
             payload = seed(dry_run=args.dry_run, only=only, wait_seconds=args.wait)
+        elif args.command == "seed-tabular":
+            payload = seed_tabular(dry_run=args.dry_run, wait_seconds=args.wait)
         elif args.command == "verify":
             payload = verify()
         elif args.command == "reset":

@@ -236,3 +236,108 @@ are **all evidenced**. However two mandatory exit criteria are unmet —
 
 **Not claimed:** `INVESTOR DEMO READY` (that is the Step-4 gate). **Step 3 has not
 been started.**
+
+---
+
+# ADDENDUM — STEP-2 COMPLETION PASS (2026-09-24, later session)
+
+> Everything above is the **original** Step-2 record and is preserved unchanged. This
+> addendum supersedes §12's gate decision only.
+
+## 13. Completion-pass result
+
+| Objective | Result |
+| --- | --- |
+| **A** second processing entity + S-4 | **PASS** — PE Alpha + PE Beta; PE Beta → Alpha batch/workspace/claim = **403** |
+| **B** internal staff role for support messaging | **PASS** — `can_manage_staff` on `admin`; **201** positive / **403** negative |
+| **C** real reassignment | **RESOLVED (Outcome 3)** — the ops path records a new `work_item_assignments` row; `reassignment_history` is not written by it. Nothing fabricated. |
+| **D** partial release | **RESOLVED (contract)** — release closes the whole lease; no partial-quantity release exists in the model |
+| **E** Insight interaction persistence | **RESOLVED** — `tools/invoke` returns the authoritative `ToolResult`; I4 conversation + messages persist (1 + 2) |
+| **F** fold D-2-03 / D-2-04 into the harness | **DONE** — factors now load before the backend; the multipart content type is derived from the extension; a documented `seed-tabular` command was added; `_clone_auth_schema_structure` tolerates release-dependent auth objects |
+| **G** second full reset/reprovision cycle | **EXECUTED — repeatability NOT demonstrated** (public policies 298 → 210) |
+| **H** disposable-clone integration verification | **EXECUTED — NOT PASSING** (92 tests / 21 failures, all classified as harness / fixture / pre-existing) |
+
+New finding: **D-2-07** — `stack.py::ensure_grants` blanket-grants write privileges to
+`authenticated` after the migrations, contradicting the release's revoked privilege
+posture (RLS is still enforced, so no data exposure).
+
+## 14. Canonical environment after the completion pass
+
+```text
+orgs 4 · users 14 · PEs 2 (Alpha + Beta) · factors 7,049 · insight tables 6
+batches 4 · work items 10 · blocked documents 10 · tabular documents 1
+calculation snapshots 2 · emissions logs 2 · evidence lines 2 · line links 2
+conversations 4 · messages 3 · report versions 2 (APPROVED + DRAFT)
+facilities 1 · assets 1 · suppliers 1 · Insight conversation 1 + messages 2
+security: 18/18 isolation rules · no unexpected ALLOW observed
+```
+
+The EV-01 chain is **restored and re-verified** after the second cycle (real CSV →
+`line_items[]` → 2 evidence lines → populated `source_line_item_id` → 2 calculated
+emissions, including `2469.169780 kg CO₂e`).
+
+## 15. Protected-environment verification
+
+| Environment | Before | After | Mutated? |
+| --- | --- | --- | --- |
+| `postgres` (flagship) | 116 tables / 975 orgs / 1,343 users | 116 tables / **975** orgs / **1,344** users | **tables and organisations UNCHANGED; `public.users` +1 — see the note below** |
+| `carbontally_test` | 117 tables / 15 orgs / 717 users | same | **NO** |
+| `carbontally_qa_phase8` | 133 tables / 25 orgs / 498 users | same | **NO** |
+| Canonical `carbontally_demo_local` | reset + reprovisioned (authorized) | Cycle-2 state above | yes (authorized) |
+| Disposable clone `ct_p12_c2_integration` | created | **dropped** after the run | yes (authorized, isolated) |
+
+**Note on the `postgres.public.users` +1 (recorded, not hidden).** The Demo Lab
+delegates authentication to the local stack's GoTrue, which lives in the `postgres`
+database (README §7 limitation 2). Provisioning the new `pe.beta.manager` lab actor
+therefore creates one GoTrue auth user there, and the stack's
+`auth.users → public.users` synchronisation trigger inserts the corresponding
+`public.users` row. This is the **documented, expected consequence of the authorised
+lab topology change**, it adds no organisation/membership/tenant data, and it leaves
+the flagship's 116 tables and 975 organisations untouched. No flagship data was
+deleted, migrated or reseeded.
+
+
+Production was never accessed. No credential, JWT or signed URL was read, printed or
+committed.
+
+## 16. FINAL STEP-2 GATE DECISION
+
+```text
+STEP 2 INCOMPLETE
+```
+
+**Mandatory criteria met:** canonical identity; current-release migrations (81, 0
+errors); Insight schema (6 tables); B2 evidence schema; pinned generator
+(`8ade2bf…`); frozen seed; complete PE topology (2); ≥2 current-HEAD matched
+calculations (`2469.169780` reproduced); genuine blocked documents (10); genuine CSV;
+≥2 evidence lines; snapshot→evidence linkage; Source Evidence Viewer; assignment
+workflow; both messaging planes; report lifecycle variation (APPROVED + DRAFT);
+master data; Insight success; Insight `no_data`; security verification (18/18
+isolation, no unexpected ALLOW); honest failure; environment provenance; documentation
+dispositions; no production mutation.
+
+**Mandatory criteria NOT met (the blockers):**
+
+1. **Second-cycle repeatability** — public RLS policy count is not deterministic
+   (Cycle 1 = 298, Cycle 2 = 210); `migrations_with_errors` for Cycle 2 was not
+   captured. The environment is therefore **not proven reproducible**.
+2. **Disposable-clone integration verification** — the required suites **executed but
+   did not pass** (92 tests / 21 failures). All failures are classified as
+   pre-existing test drift, fixture preconditions or the demo-lab over-grant
+   (D-2-07), and **none** is attributable to Step 2 (the product diff is empty), but a
+   passing run is not evidenced.
+
+**Non-blocking observations carried forward:** D-2-07 (harness over-grant);
+`reassignment_history` / partial-release / Insight-interaction contract questions;
+`enqueue` 422 for the CSV (processed anyway); `uk-water` `no_match`; unconfirmed
+authorization expectation on `GET /api/v3/reporting/audit-activity` for internal
+operators; the 12-item list in the completion verification record §5.
+
+**Exact remediation to reach COMPLETE:** capture the full reprovision JSON and diff
+the policy set between two clean single-pass cycles (fix the cause, do not re-run
+until counts match); fix or explicitly scope D-2-07; obtain a green (or explicitly
+waived) integration run on a fresh clone.
+
+```text
+STEP 3 NOT STARTED
+```

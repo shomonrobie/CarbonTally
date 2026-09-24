@@ -255,12 +255,22 @@ def _clone_auth_schema_structure() -> dict:
     if dump.returncode != 0 or len(dump.stdout) < 1000:
         raise RuntimeError(f"could not clone the auth schema: {dump.stderr[:300]}")
     applied = psql_stdin(dump.stdout)
+    # P12 Step-2 completion: the stack's ``auth`` schema carries objects that
+    # depend on the RELEASE schema (e.g. a trigger calling
+    # ``public.sync_auth_user_to_public_users()``), which the migrations create
+    # *after* this bootstrap. Such errors are irrelevant to this step's only
+    # purpose — making ``auth.users`` exist for the id mirror — so they are
+    # recorded and tolerated. The step still fails loudly if ``auth.users`` was
+    # not created, or if the dump could not be produced at all.
     errors = [line for line in applied.stderr.splitlines()
               if "ERROR" in line and "already exists" not in line]
-    if errors:
-        raise RuntimeError(f"auth schema clone errors: {errors[:3]}")
-    return {"cloned": True, "tables_after": int(lab.psql_scalar(
-        "SELECT count(*) FROM information_schema.tables WHERE table_schema='auth'") or 0)}
+    if lab.psql_scalar("SELECT to_regclass('auth.users') IS NOT NULL") != "t":
+        raise RuntimeError(
+            f"auth schema clone did not create auth.users: {errors[:3]}")
+    return {"cloned": True,
+            "tolerated_errors": errors[:6],
+            "tables_after": int(lab.psql_scalar(
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema='auth'") or 0)}
 
 
 def ensure_auth_bootstrap() -> dict:

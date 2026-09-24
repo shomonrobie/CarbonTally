@@ -10,7 +10,8 @@
     { "key": "client_b", "name": "Demo Lab Client B", "kind": "consultant_client" }
   ],
   "processing_entities": [
-    { "key": "pe_alpha", "name": "Demo Lab Processing Entity Alpha" }
+    { "key": "pe_alpha", "name": "Demo Lab Processing Entity Alpha" },
+    { "key": "pe_beta", "name": "Demo Lab Processing Entity Beta" }
   ],
   "consultant_firm": {
     "key": "firm_demo",
@@ -41,6 +42,15 @@
       "processing_entity": "pe_alpha",
       "staff_role": "pe_manager",
       "purpose": "Processing Entity actor (PE shell)",
+      "expect": { "actor_type": "entity_staff", "destination": "/pe", "role": "pe_manager" }
+    },
+    {
+      "key": "pe_beta_manager",
+      "local_part": "pe.beta.manager",
+      "entity": "processing_entity",
+      "processing_entity": "pe_beta",
+      "staff_role": "pe_manager",
+      "purpose": "Second Processing Entity actor (P12 Step-2 completion: PE A/B isolation, S-4)",
       "expect": { "actor_type": "entity_staff", "destination": "/pe", "role": "pe_manager" }
     },
     {
