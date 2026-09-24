@@ -392,6 +392,21 @@ identified in this run. **No test was modified.**
 **No secret, credential, JWT or signed URL was captured, printed or committed.** The
 Demo Lab credential file was never read.
 
+### 16.1 Git record for this Step-1 delivery
+
+| Item | Value |
+| --- | --- |
+| Branch | `p8-release-reconciled` |
+| Step-1 artifacts commit | `7962162eafa0046d7b7fffa9d3d296035555c553` — `docs: complete P12 investor demo step 1 forensics` |
+| Parent (pre-Step-1 HEAD) | `3c38cbc59c95c04ea434ae128f86c94fd4b69190` |
+| Files in the commit | exactly **6** (the six artifacts above) — `6 files changed, 2201 insertions(+)` |
+| Push target | `github` → `https://github.com/shomonrobie/CarbonTally.git` (`3c38cbc..7962162  p8-release-reconciled -> p8-release-reconciled`) |
+| Post-push alignment | `github/p8-release-reconciled == HEAD` — **ALIGNED** |
+| Unrelated work absorbed | **none** — the pre-existing `.gitignore` modification and all 13 pre-existing untracked PO/ChatGPT artifacts remain uncommitted and untouched |
+| Production / Demo Lab mutation | **none** |
+| `git diff --check` | **CLEAN** |
+
+
 ---
 
 ## 17. Step-1 Exit Assessment

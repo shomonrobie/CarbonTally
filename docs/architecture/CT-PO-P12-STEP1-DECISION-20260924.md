@@ -17,6 +17,13 @@ evidence-backed answers and by stating the exact PO decision now required. It
 deliberately does **not** declare investor-demo readiness and does **not** authorize
 Step 2.
 
+> **Step-1 delivery commit:** `7962162eafa0046d7b7fffa9d3d296035555c553`
+> (`docs: complete P12 investor demo step 1 forensics`), pushed to
+> `github/p8-release-reconciled` and verified aligned. Parent (pre-Step-1 HEAD):
+> `3c38cbc59c95c04ea434ae128f86c94fd4b69190`. The commit contains **exactly the six
+> Step-1 artifacts and nothing else**.
+
+
 Companion Step-1 artifacts:
 
 - `CT-PO-P12-STEP1-DOCUMENTATION-RECONCILIATION-20260924.md`
