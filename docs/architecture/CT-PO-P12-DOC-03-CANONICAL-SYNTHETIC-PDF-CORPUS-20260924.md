@@ -489,7 +489,7 @@ documents; the EV-01 evidence chain.
 | | |
 | --- | --- |
 | Before SHA | `25873f6` (`docs(p12): fix displaced evidence-manifest table row in demo-journey audit`) |
-| After SHA | `92a1fff` (this task's commit) |
+| After SHA | `3134a59` (`docs(p12-doc-03): canonical synthetic PDF corpus for investor demo …`) |
 | Branch | `p8-release-reconciled` |
 | Generator repo SHA (unchanged) | `8ade2bf778d518d59924905849ab114ab2d0820a` |
 | Product-code diff | `git diff 25873f6..HEAD -- ':!docs' ':!tools/demo_lab'` → **empty** |
