@@ -148,7 +148,7 @@ narrative (§S item 5).
 
 ## 10. Supplier resolution implementation
 
-New pure engine: `backend/engines/supplier_resolution.py` (310 lines — no I/O, no DB, no AI, no
+New pure engine: `backend/engines/supplier_resolution.py` (309 lines — no I/O, no DB, no AI, no
 randomness). Candidate discovery stays with the existing org-scoped repository
 (`repos.suppliers.search_for_org`); the engine only normalises, scores and classifies, so it is
 deterministic and directly unit-testable.
@@ -406,7 +406,7 @@ No failure was left unclassified.
 ## 29. Files changed
 
 **Added (product code):** `backend/engines/supplier_resolution.py` — new deterministic, org-scoped
-resolution engine (310 lines).
+resolution engine (309 lines).
 
 **Modified (product code):**
 
@@ -479,7 +479,7 @@ remaining calculation sites, and execute the six-document journey.
 
 | Criterion (§) | Status | Evidence |
 |---|---|---|
-| Supplier resolution engine implemented (§B) | **PASS** | `supplier_resolution.py` + 30 unit tests |
+| Supplier resolution engine implemented (§B) | **PASS** | `supplier_resolution.py` + 28 unit tests |
 | Org-scoped / cross-tenant denial (§B, §D, §O) | **PASS** | 4 negative tests + rejection list |
 | Never silently choose / create / fabricate (§B) | **PASS** | verdict/action contract + tests |
 | Supplier propagation to `emissions_logs.supplier_id` (§E) | **IMPLEMENTED, NOT EXERCISED** | 5-file change, 3 sites wired, compile OK |
@@ -500,9 +500,14 @@ remaining calculation sites, and execute the six-document journey.
 
 ## 35. Commit hash
 
-Recorded after the commit made at the end of this task (§V discipline); commit message:
+Baseline (before this task): `6462f4712b3c13249ccf8778ef684340941eea1a`
+Implementation commit: **`6c98d8fc65c14a1548564684a577be9b417922bb`**
+Branch: `p8-release-reconciled`
+Message: `feat(p12): implement auditable waste and supplier resolution`
 
-    feat(p12): implement auditable waste and supplier resolution
+Post-commit working tree contains only pre-existing noise that this task did not create and did not
+commit: modified `.gitignore`, untracked `.costrict/`, a file named `8`, a file named `=`,
+`costrict-p3-ov-01-independent-re-verification.txt`, and `docs/ChatGPT/CarbonTally_Incremental_ChatGPT_PO_History_2026-09-22.md`.
 
 ## 36. Stop condition
 

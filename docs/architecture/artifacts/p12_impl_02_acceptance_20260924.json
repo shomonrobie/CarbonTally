@@ -4,6 +4,7 @@
   "repository": "/home/shomonrobie/ct_93d5cdd",
   "branch": "p8-release-reconciled",
   "baseline_commit": "6462f4712b3c13249ccf8778ef684340941eea1a",
+  "commit_hash": "6c98d8fc65c14a1548564684a577be9b417922bb",
   "environment": "carbontally_demo_local (local demo lab, 127.0.0.1:54426)",
   "production_touched": false,
   "schema_changes": [],
