@@ -416,6 +416,30 @@ class ManualExtractionRepository(AbstractRepository[dict]):
         )
         return _row_to_item(row) if row is not None else None
 
+    async def find_item_by_file_id(
+        self, org_id: str, file_id: str
+    ) -> Optional[ManualExtractionItem]:
+        """P16-REMEDIATION-03 — resolve the extraction item for an exact document.
+
+        The automatic-processing enqueue must reuse the item that belongs to the
+        document actually being enqueued. Matching on ``file_name`` alone (see
+        :meth:`find_item_by_file`) returns the *oldest* same-named item, so a
+        re-upload of a corrected/replaced document silently reuses a stale
+        extraction (its old ``extracted_data`` and its terminal job) and the
+        improved extraction is never applied. This lookup matches the document
+        identity instead, so the fallback ``file_name`` path is only used for
+        legacy items that carry no ``file_id``.
+        """
+        row = await self._fetch_one(
+            f"SELECT {self._ITEM_COLUMNS_I} FROM public.manual_extraction_items i "
+            "JOIN public.manual_extraction_batches b ON b.id = i.batch_id "
+            "WHERE b.organization_id = $1 AND i.file_id = $2 "
+            "ORDER BY i.created_at DESC LIMIT 1",
+            org_id,
+            file_id,
+        )
+        return _row_to_item(row) if row is not None else None
+
     async def update_item(
         self,
         item_id: str,

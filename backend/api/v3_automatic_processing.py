@@ -589,9 +589,20 @@ async def enqueue_document(
             price_per_page=None,
             created_by=current_user.user_id,
         )
-    item = await repos.manual_extraction.find_item_by_file(
-        doc.organization_id, doc.name
+    # P16-REMEDIATION-03 — reuse the item for THIS document, not merely the oldest
+    # item that happens to share its file name. Name-only matching silently reused
+    # a stale extraction (and its terminal job) on re-upload, so an improved or
+    # corrected document could never be re-processed. The name lookup remains only
+    # as a fallback for legacy items that carry no ``file_id``.
+    item = await repos.manual_extraction.find_item_by_file_id(
+        doc.organization_id, doc.id
     )
+    if item is None:
+        legacy = await repos.manual_extraction.find_item_by_file(
+            doc.organization_id, doc.name
+        )
+        if legacy is not None and not legacy.file_id:
+            item = legacy
     if item is None:
         item = await repos.manual_extraction.create_item(
             batch.id,
