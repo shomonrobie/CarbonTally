@@ -73,6 +73,29 @@ def ensure_database() -> dict:
         'CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions; '
         'CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA extensions;')
 
+    # P12 Step-2 final pass (fix for D-2-07): the Supabase baseline privileges must
+    # be established through DEFAULT PRIVILEGES *before* the release migrations, so
+    # that the migrations' own REVOKEs win. The release deliberately hardens the
+    # `authenticated` posture — e.g.
+    #   20260922000000_p8_rls_4a2_authenticated_grant_hardening.sql
+    #   20260925000000_p8_rls_4b_group1_enablement.sql
+    #   REVOKE INSERT, UPDATE, DELETE ON public.usage_tracking   FROM authenticated;
+    #   REVOKE INSERT, UPDATE, DELETE ON public.customer_subscriptions FROM authenticated;
+    #   REVOKE UPDATE ON public.organizations / public.users FROM authenticated;
+    # Previously the baseline was applied by a blanket post-migration GRANT (the old
+    # `ensure_grants`), which silently re-granted exactly what the release revoked.
+    # Default privileges keep the same PostgREST usability for non-hardened tables
+    # while preserving the release's revoked posture.
+    lab.psql(
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+        "GRANT SELECT ON TABLES TO anon; "
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated; "
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+        "GRANT ALL ON TABLES TO service_role; "
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+        "GRANT ALL ON SEQUENCES TO service_role;")
+
     # P12 Step-2 — the auth bootstrap MUST precede the release migrations.
     summary["auth_bootstrap"] = ensure_auth_bootstrap()
 
@@ -80,19 +103,41 @@ def ensure_database() -> dict:
     started = time.monotonic()
     files = sorted(lab.MIGRATIONS_DIR.glob("*.sql"))
     summary["migration_files"] = len(files)
-    for path in files:
-        result = psql_stdin(path.read_text())
-        # A migration that hits an existing object is tolerated (idempotent DDL);
-        # any other error is recorded for the report rather than silently ignored.
-        if "ERROR" in result.stderr:
-            real = [line for line in result.stderr.splitlines()
-                    if "ERROR" in line and "already exists" not in line
-                    and "must be owner" not in line]
-            if real:
-                summary["migrations_with_errors"].append(
-                    {"file": path.name, "errors": real[:2]})
+
+    # P12 Step-2 final pass — PHASED ordering. The storage substrate (platform
+    # `storage` schema + the four approved D32 policies + the two private buckets)
+    # must exist BEFORE `20260823000000_d32_private_documents_storage.sql`, which
+    # validates those approved policy definitions as a precondition. But the
+    # policies reference `public.organization_members`, which only exists once the
+    # release table migrations have run. Applying the substrate between the two
+    # phases satisfies both constraints in ONE deterministic pass and removes the
+    # previously *tolerated* D32 migration error
+    # ("relation \"storage.buckets\" does not exist").
+    d32 = "20260823000000_d32_private_documents_storage.sql"
+    phase1 = [f for f in files if f.name < d32]
+    phase2 = [f for f in files if f.name >= d32]
+    summary["phase1_files"] = len(phase1)
+    summary["phase2_files"] = len(phase2)
+
+    def _apply(paths: list, phase: str) -> None:
+        for path in paths:
+            result = psql_stdin(path.read_text())
+            # A migration that hits an existing object is tolerated (idempotent DDL);
+            # any other error is recorded for the report rather than silently ignored.
+            if "ERROR" in result.stderr:
+                real = [line for line in result.stderr.splitlines()
+                        if "ERROR" in line and "already exists" not in line
+                        and "must be owner" not in line]
+                if real:
+                    summary["migrations_with_errors"].append(
+                        {"file": path.name, "phase": phase, "errors": real[:2]})
+
+    _apply(phase1, "phase1")
+    summary["storage_substrate"] = lab_storage.provision(include_container=False)
+    _apply(phase2, "phase2")
     summary["migration_seconds"] = round(time.monotonic() - started, 1)
     return summary
+
 
 
 
@@ -318,18 +363,24 @@ def ensure_grants() -> dict:
     (RLS still applies to ``anon``/``authenticated``; ``service_role`` bypasses RLS
     by attribute, exactly as on Supabase).
     """
+    # P12 Step-2 final pass (D-2-07): the blanket
+    #   GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated
+    # and the anon SELECT baseline were REMOVED. They re-granted privileges the
+    # release migrations deliberately revoke (RLS-4A2 / RLS-4B / D-4 — see the
+    # ALTER DEFAULT PRIVILEGES block in `ensure_database`), which is exactly the
+    # over-grant the privilege-posture integration tests detect. The Supabase
+    # baseline for `authenticated` now comes from DEFAULT PRIVILEGES established
+    # before the migrations, so non-hardened tables stay usable through PostgREST
+    # while the release's revoked posture is preserved. Only read access is
+    # re-asserted here (idempotent, and RLS still governs it).
     lab.psql(
         "GRANT USAGE ON SCHEMA public, extensions TO anon, authenticated, service_role; "
         "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; "
         "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role; "
         "GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role; "
-        "GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated; "
-        "GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public "
-        "TO authenticated; "
+        "GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated; "
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role; "
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role; "
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "GRANT SELECT ON TABLES TO anon, authenticated;")
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role;")
     granted = int(lab.psql_scalar(
         "SELECT count(DISTINCT grantee) FROM information_schema.role_table_grants "
         "WHERE table_schema='public' "
@@ -353,14 +404,9 @@ def main() -> int:
     summary: dict = {"database": lab.LAB_DB,
                      "tables_before": lab.table_count() if lab.database_exists() else 0}
     summary["database_step"] = ensure_database()
-    # P12 Step-2 ordering correction (2026-09-24) — the storage substrate (the
-    # platform ``storage`` schema, the four approved D32 policies and the two
-    # private buckets) is applied AFTER the release migrations: the D32 policies
-    # reference ``public.organization_members``, which the migrations create, and
-    # ``ensure_d32_policies`` requires all four to exist. The substrate still
-    # precedes the containers, and the D32 migration validates the approved policy
-    # definitions because they are already present.
-    summary["storage_substrate"] = lab_storage.provision(include_container=False)
+    # P12 Step-2 final pass: the storage substrate is now applied INSIDE
+    # `ensure_database`, between migration phase 1 and phase 2 (see the phased
+    # ordering rationale there), so it is no longer re-applied here.
     summary["tables_after"] = lab.table_count()
     summary["grants"] = ensure_grants()
 
