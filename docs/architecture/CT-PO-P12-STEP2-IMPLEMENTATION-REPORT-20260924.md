@@ -210,6 +210,18 @@ Runtime evidence (outside the repository, never committed):
 
 ## 12. Final status
 
+### 12.1 Git record
+
+| Item | Value |
+| --- | --- |
+| Branch | `p8-release-reconciled` |
+| Step-2 commit | **`a9a218f683f802e9bd90579e497e7a7689a72231`** — `feat(p12): step 2 canonical demo lab …` |
+| Parent (Step-1 final) | `35eb7bab9ee87839d07b50a2fd70a662d1ce1675` |
+| Files in the commit | **9** (7 Step-2 documents + `tools/demo_lab/stack.py` + `tools/demo_lab/storage.py`) — `854 insertions(+), 9 deletions(-)` |
+| Push | `35eb7ba..a9a218f  p8-release-reconciled -> p8-release-reconciled` (github remote) |
+| Post-push alignment | `github/p8-release-reconciled == HEAD` — **ALIGNED** |
+| Untouched | `.gitignore` (pre-existing modification) and all 13 pre-existing untracked PO/ChatGPT artifacts |
+
 ```text
 STEP 2 INCOMPLETE
 ```
@@ -224,6 +236,3 @@ are **all evidenced**. However two mandatory exit criteria are unmet —
 
 **Not claimed:** `INVESTOR DEMO READY` (that is the Step-4 gate). **Step 3 has not
 been started.**
-
-
-

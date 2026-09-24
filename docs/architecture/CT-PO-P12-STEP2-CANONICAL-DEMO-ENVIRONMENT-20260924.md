@@ -94,4 +94,3 @@ evidence              : <state>/evidence/verify_20260924T085608Z.json
 | `reassignment_history` is empty | the reassignment is recorded as a new `work_item_assignments` row (7 rows: 4 `open`, 3 `closed`); the dedicated history table is not written by the ops path |
 | `carbontally_insight_interactions` = 0 | Insight execution is demonstrated via `POST /api/v3/insight/tools/invoke` and persisted as a conversation + 2 messages; that route does not write the interaction table |
 | `uk-water` scenario maps to `no_match` | the corpus contract expects it `EXPECTED_MATCHED`; the factor vocabulary has no `Water`/`litres` match (honest, recorded) |
-
