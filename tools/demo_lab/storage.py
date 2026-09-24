@@ -203,7 +203,13 @@ def ensure_buckets() -> dict:
 #: "storage upload failed: Expecting value: line 1 column 1 (char 0)").
 JWKS_SOURCES = (
     f"http://127.0.0.1:{lab.GATEWAY_PORT}/auth/v1/.well-known/jwks.json",
-    f"http://127.0.0.1:{lab.STACK_DB_PORT - 1}/.well-known/jwks.json",
+    # P12 Step-2 correction (2026-09-24): the local stack's auth runtime serves the
+    # JWKS under the GoTrue API prefix. The previous bare path
+    # (`:{STACK_DB_PORT-1}/.well-known/jwks.json`) always answered 404, so this
+    # fallback never worked — which made a cold start impossible whenever the lab
+    # gateway was not already running (the storage container is started before the
+    # gateway, so the first source is unreachable at that moment).
+    f"http://127.0.0.1:{lab.STACK_DB_PORT - 1}/auth/v1/.well-known/jwks.json",
 )
 
 

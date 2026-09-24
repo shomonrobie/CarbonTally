@@ -40,7 +40,25 @@ def psql_stdin(sql_text: str, *, timeout: int = 900):
 
 
 def ensure_database() -> dict:
-    """Create the lab database and build the release schema in it."""
+    """Create the lab database and build the release schema in it.
+
+    DEMO-T1 ordering (P12 Step-2 correction, 2026-09-24):
+    ``auth`` bootstrap → release migrations. The Supabase ``auth`` schema and its
+    enums/RLS helpers (``auth.uid()`` …) are a *prerequisite* of the release
+    migrations: ``20260803000000_rc2_rls.sql`` and every later RLS migration call
+    ``auth.uid()``, so without ``auth`` the first RLS migration aborts its
+    transaction and the whole migration chain cascades (every downstream
+    ``public.is_org_member(uuid)`` RLS migration then fails). Previously
+    ``ensure_auth_bootstrap`` ran *after* ``ensure_database``, which only worked
+    because an already-provisioned database had ``auth`` from a prior pass.
+
+    The storage substrate is now applied by :func:`main` AFTER the migrations:
+    the four approved D32 policies reference ``public.organization_members``
+    (created by the migrations) and ``ensure_d32_policies`` requires all four to
+    exist, so on a fresh database the substrate cannot be created first. The
+    D32 migration ``20260823000000_d32_private_documents_storage.sql`` validates
+    the approved policy definitions when they are already present.
+    """
     summary = {"created": False, "migration_files": 0, "migrations_with_errors": [],
                "migration_seconds": 0.0}
     if not lab.database_exists():
@@ -55,11 +73,8 @@ def ensure_database() -> dict:
         'CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions; '
         'CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA extensions;')
 
-    # DEMO-T3-IMP-001 (Scope A) — the storage substrate (platform storage schema,
-    # the four approved D32 policies and the two private buckets) must exist BEFORE
-    # the release migrations run so `20260823000000_d32_private_documents_storage.sql`
-    # can validate its approved policy definitions instead of being tolerated.
-    summary["storage_substrate"] = lab_storage.provision(include_container=False)
+    # P12 Step-2 — the auth bootstrap MUST precede the release migrations.
+    summary["auth_bootstrap"] = ensure_auth_bootstrap()
 
     import time
     started = time.monotonic()
@@ -78,6 +93,7 @@ def ensure_database() -> dict:
                     {"file": path.name, "errors": real[:2]})
     summary["migration_seconds"] = round(time.monotonic() - started, 1)
     return summary
+
 
 
 # DR-003 — the lab's canonical browser origin: the CRA dev server the release frontend
@@ -214,6 +230,39 @@ def ensure_containers() -> dict:
     return state
 
 
+def _clone_auth_schema_structure() -> dict:
+    """Clone the stack's ``auth`` schema **structure** into the lab database.
+
+    P12 Step-2 correction (2026-09-24). ``provision.py`` mirrors the lab users'
+    ids and e-mails into the lab database's ``auth.users`` to satisfy the release
+    foreign keys (README §7 limitation 2), but nothing created that relation on a
+    freshly created lab database: GoTrue owns ``auth`` and, as the README records,
+    a fresh isolated ``auth`` schema cannot be bootstrapped by GoTrue itself. The
+    previous lab database only had ``auth.users`` because an earlier provisioning
+    attempt had run a lab-owned GoTrue which migrated the schema part-way.
+
+    The stack's ``auth`` schema is therefore used as the structural source of
+    truth — the same mechanism :mod:`storage` already uses for ``storage`` — and
+    only structure is copied (``--schema-only``; no rows, no hashes, no sessions,
+    no secrets). Idempotent: it does nothing when ``auth.users`` already exists.
+    """
+    if lab.psql_scalar("SELECT to_regclass('auth.users') IS NOT NULL") == "t":
+        return {"cloned": False, "reason": "auth.users already present"}
+    dump = lab.run(
+        ["docker", "exec", lab.STACK_DB_CONTAINER, "pg_dump", "-U", lab.STACK_DB_USER,
+         "-d", "postgres", "--schema-only", "--schema=auth", "--no-owner",
+         "--no-privileges"], timeout=600)
+    if dump.returncode != 0 or len(dump.stdout) < 1000:
+        raise RuntimeError(f"could not clone the auth schema: {dump.stderr[:300]}")
+    applied = psql_stdin(dump.stdout)
+    errors = [line for line in applied.stderr.splitlines()
+              if "ERROR" in line and "already exists" not in line]
+    if errors:
+        raise RuntimeError(f"auth schema clone errors: {errors[:3]}")
+    return {"cloned": True, "tables_after": int(lab.psql_scalar(
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema='auth'") or 0)}
+
+
 def ensure_auth_bootstrap() -> dict:
     """Copy the Supabase auth-bootstrap base objects the lab needs (LOCAL only).
 
@@ -224,7 +273,9 @@ def ensure_auth_bootstrap() -> dict:
     lab database; the source stack is never modified.
     """
     lab.psql("CREATE SCHEMA IF NOT EXISTS auth")
-    applied = {"enums": 0, "functions": 0, "enum_errors": [], "function_errors": []}
+    applied = {"structure": _clone_auth_schema_structure(),
+               "enums": 0, "functions": 0, "enum_errors": [], "function_errors": []}
+
 
     for statement in lab.stack_auth_enum_ddl():
         guarded = ("DO $$ BEGIN " + statement + "; EXCEPTION WHEN duplicate_object "
@@ -292,9 +343,17 @@ def main() -> int:
     summary: dict = {"database": lab.LAB_DB,
                      "tables_before": lab.table_count() if lab.database_exists() else 0}
     summary["database_step"] = ensure_database()
+    # P12 Step-2 ordering correction (2026-09-24) — the storage substrate (the
+    # platform ``storage`` schema, the four approved D32 policies and the two
+    # private buckets) is applied AFTER the release migrations: the D32 policies
+    # reference ``public.organization_members``, which the migrations create, and
+    # ``ensure_d32_policies`` requires all four to exist. The substrate still
+    # precedes the containers, and the D32 migration validates the approved policy
+    # definitions because they are already present.
+    summary["storage_substrate"] = lab_storage.provision(include_container=False)
     summary["tables_after"] = lab.table_count()
-    summary["auth_bootstrap"] = ensure_auth_bootstrap()
     summary["grants"] = ensure_grants()
+
     if not args.skip_containers:
         summary["containers"] = ensure_containers()
         summary["health"] = wait_healthy()
