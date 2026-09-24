@@ -527,7 +527,7 @@ never printed by these tools.
 | Item | Value |
 |---|---|
 | Baseline | `0fe349f244147061bb8d332de54bd48f66f212ca` |
-| Final | commit created immediately after this report (`fix(p16r): operator factor precedence, factor safety, supplier propagation, FY year governance`) plus a docs-only hash-record commit |
+| Final | `a12d156633e6c8dc45c1628976dccd47f40f7259` (`fix(p16r): operator factor precedence, factor safety, supplier propagation, FY year governance`) plus a docs-only hash-record commit |
 | Branch | `p8-release-reconciled` |
 | Product code changed | `backend/api/v3_emissions.py` only |
 | Schema / migrations changed | **none** |
