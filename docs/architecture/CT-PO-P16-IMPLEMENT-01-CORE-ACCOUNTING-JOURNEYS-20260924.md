@@ -38,7 +38,8 @@ Live baseline at start (read-only counts, `carbontally_demo_local`):
 
 ## 3. Final commit
 
-`d5c41d5` — see §30 for the full commit record.
+`00c0397313d4f9f5d4862ded685580bc81fa9c1c` — `docs(p16): core accounting journeys - live-path evidence and defect findings`
+(the hash-record update that follows this report is a second, docs-only commit).
 
 ## 4. Scope
 
@@ -574,7 +575,7 @@ are never printed by these tools. Journey evidence is written to
 | Item | Value |
 |---|---|
 | Baseline | `b1a313d5383fb30ee09d307be5800f5bfd2364ef` |
-| Final | commit created immediately after this report (message: `docs(p16): core accounting journeys — live-path evidence and defect findings`) |
+| Final | `00c0397313d4f9f5d4862ded685580bc81fa9c1c` + this hash-record follow-up (docs only) |
 | Branch | `p8-release-reconciled` |
 | Product code changed | **none** |
 | Schema / migrations changed | **none** |
