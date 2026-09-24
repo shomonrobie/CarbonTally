@@ -71,7 +71,7 @@ ITEM_STATUS_FLOW: dict[str, tuple[str, ...]] = {
     "mapping": ("mapped", "extracted", "extracting"),
     "mapped": ("validating", "validated", "mapping"),
     "validating": ("validated", "mapping"),
-    "validated": ("calculating", "mapping"),
+    "validated": ("calculating", "calculated", "mapping"),
     "calculating": ("calculated", "validated"),
     "calculated": (
         "customer_review", "approved", "rejected", "mapping",

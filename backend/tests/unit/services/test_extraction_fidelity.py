@@ -57,9 +57,19 @@ def test_shape_mode_fails_safe_to_shadow(raw: str) -> None:
 
 
 def test_pipeline_version_was_bumped() -> None:
+    """P16-REMEDIATION-04 (RD-6) — the automatic pipeline and the P1 shadow are
+    *different* versions and must not be asserted equal.
+
+    ``v3-auto-1.2`` is the live automatic-processing pipeline (P12-IMPL-01 added
+    the deterministic PDF invoice-header + item-table shaping); ``v3-auto-1.1``
+    remains the P1 shadow-fidelity version. The runtime constants are
+    authoritative and were deliberately NOT changed to satisfy this test.
+    """
     from domain.automatic_processing import PIPELINE_VERSION
 
-    assert PIPELINE_VERSION == p1.PIPELINE_VERSION_P1
+    assert PIPELINE_VERSION == "v3-auto-1.2"
+    assert p1.PIPELINE_VERSION_P1 == "v3-auto-1.1"
+    assert PIPELINE_VERSION != p1.PIPELINE_VERSION_P1
 
 
 # -- P1-D5 / P1-D7: page semantics ------------------------------------------

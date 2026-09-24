@@ -929,6 +929,12 @@ async def calculate_item(
         source_file=item.file_name,
         source_page=payload.source_page,
         source_item_id=item.id,  # D33: authoritative snapshot → extraction-item link
+        # P16-REMEDIATION-04 (RD-5) — supplier attribution. The mapped supplier is
+        # already resolved on the extraction item (the operator mapping decision);
+        # propagating it keeps ``mapped_supplier_id -> CalculationRequest.supplier_id
+        # -> calculation result -> emissions_logs.supplier_id`` unbroken. Absent
+        # supplier stays NULL (the engine never invents one).
+        supplier_id=item.mapped_supplier_id,
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
         factor=factor,
