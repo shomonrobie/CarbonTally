@@ -1,0 +1,248 @@
+{
+  "task_id": "P14-AUDIT-01-20260924-CARBON-ACCOUNTING-COMPETITIVE-SCOPE-COVERAGE",
+  "date": "2026-09-24",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "baseline_commit": "b52635bf9ea0ca2c4d0804f4db9859c67b612f30",
+  "audit_type": "READ_ONLY",
+  "production_touched": false,
+  "product_code_modified": false,
+  "schema_modified": false,
+  "corpus_modified": false,
+  "oracle_modified": false,
+  "test_data_manufactured": false,
+  "environment": "carbontally_demo_local (127.0.0.1:54426)",
+  "external_sources": [
+    {"platform": "Watershed", "url": "https://watershed.com/platform", "accessed": "2026-09-24", "retrieved": true, "scope_statement": "All scopes and required ESG metrics covered; purpose-built methodologies for all 15 Scope 3 emissions categories (FAQ)", "factor_library": "2.3 million built-in emissions factors, covering 95% of the global GDP", "auditability": "Full calculation transparency and lineage; Clear audit trail and AI-output sourcing; Verification support and a guaranteed assurance program", "automation": "Automated PDF ingestion and processing; AI agents to clean, transform, and analyze your data; built-in human review", "classification": "baseline + differentiating (scale, assurance programme)"},
+    {"platform": "Persefoni", "url": "https://www.persefoni.com/", "accessed": "2026-09-24", "retrieved": true, "scope_statement": "Scope 1, 2, and 3 carbon footprints; Complete scope 3 footprints with the data you have - spend-based estimates to actuals", "auditability": "Assurance-grade GHG emissions reporting for every major climate disclosure regulation; Every calculation method aligned to the world's most trusted carbon accounting standards", "supplier": "Scope 3 Supplier Engagement", "automation": "PersefoniAI Copilot; Anomaly Detection for datasets such as electricity consumption; Natural Language based Emission Factor Mapping (Coming Soon)", "other": "financed emissions accounting; California SB 253 / SB 261", "classification": "baseline (spend+activity, engagement) + differentiating (anomaly detection, financed emissions)"},
+    {"platform": "Climatiq", "url": "https://www.climatiq.io/", "accessed": "2026-09-24", "retrieved": true, "scope_statement": "SCOPE 3 CALCULATIONS: Purchased Goods & Services, Product Carbon Footprint, Freight & Shipping", "factor_library": "1.7M+ scientifically-vetted emission factors covering spend- and activity-based emission calculations; 140+ trusted datasets including ecoinvent, EXIOBASE, and IEA; 300+ global regions", "gwp": "All of Climatiq's emission factors are compliant with the GHG Protocol and expressed in CO2e, taking into account Global Warming Potential in 100 years (GWP 100)", "auditability": "Each result provides a full breakdown into lifecycle stages, assumptions, and used emission factors", "automation": "Custom AI for fast mapping - Mapping Agent", "classification": "differentiating (data/API layer, GWP disclosure); baseline (factor breadth)"},
+    {"platform": "Sweep", "url": "https://www.sweep.net/platform", "accessed": "2026-09-24", "retrieved": true, "scope_statement": "Carbon Accounting across Scope 1, 2, and 3; follows GHG Protocol standards; corporate carbon footprints, product-level emissions, financed emissions", "multi_entity": "Flexible data model fits multiple entities, business units, and geographies", "supplier": "Supplier portals and automated data collection tools; scales to thousands of suppliers", "auditability": "Complete traceability and immutable audit trails for external assurance; Complete data lineage, immutable audit trails, and governance controls", "frameworks": "Multi-framework support: CSRD, ISSB, GRI, CDP, SB253, TCFD", "automation": "AI-assisted mapping works with your data as it is; AI-powered automation handles mapping, validation, and workflows", "classification": "baseline + differentiating (immutable audit trail for assurance, supplier portal)"},
+    {"platform": "Normative", "url": "https://normative.io/ (and /carbon-accounting/)", "accessed": "2026-09-24", "retrieved": false, "failure": "HTTP 403 Forbidden on both attempts (bot-blocked)", "note": "No Normative capability is asserted anywhere in this audit"}
+  ],
+  "standards_sources": [
+    {"standard": "GHG Protocol Corporate Standard", "url": "https://ghgprotocol.org/corporate-standard", "accessed": "2026-09-24", "key_requirements": ["seven Kyoto gases: CO2, CH4, N2O, HFCs, PFCs, SF6, NF3", "designed to develop a verifiable inventory", "Required gases and GWP values supporting document", "base year adjustments", "programme/policy neutral: focuses on accounting and reporting of emissions"]},
+    {"standard": "GHG Protocol Scope 2 Guidance", "url": "https://ghgprotocol.org/scope-2-guidance", "accessed": "2026-09-24", "key_requirements": ["purchased or acquired electricity, steam, heat and cooling", "new requirements for accounting for emissions from energy contracts and instruments such as renewable energy credits", "Eight Scope 2 Quality Criteria that all contractual instruments must meet to be a reliable data source for the scope 2 market-based method", "recommendations for transparent disclosure of energy purchases"]},
+    {"standard": "GHG Protocol Scope 3 Standard", "url": "https://ghgprotocol.org/standards/scope-3-standard", "accessed": "2026-09-24", "key_requirements": ["Corporate Value Chain (Scope 3) Accounting and Reporting Standard", "assess their entire value chain emissions impact", "supplier engagement guidance", "GWP values", "sample GHG inventory reporting template", "note: retrieved extract did not enumerate the 15 category names"]}
+  ],
+  "live_data_baseline": {
+    "emission_factors": {"rows": 7049, "reporting_years": [2025], "countries": {"GB": 7029, "IE": 20}, "by_scope": {"Scope 3": 4090, "Scope 1": 2549, "Scope 2": 354, "Outside of Scopes": 56}, "by_factor_set": {"DEFRA-2025": {"Scope 1": 2531, "Scope 2": 352, "Scope 3": 4090, "Outside of Scopes": 56}, "SEAI-2025": {"Scope 1": 18, "Scope 2": 2}}},
+    "customer_factors": 0,
+    "emissions_logs": {"rows": 2, "by_scope": {"Scope 1": 2}, "with_supplier_id": 0, "with_data_source": 0, "with_confidence_score": 0},
+    "calculation_snapshots": {"rows": 2, "by_scope": {"Scope 1": 2}, "factor_source": "DEFRA-DESNZ", "factor_set": "DEFRA-2025", "methodology": "direct_multiply", "factor_kind": "emission_factor"},
+    "suppliers": 1,
+    "evidence_line_items": 23,
+    "manual_extraction_items": {"rows": 23, "by_status": {"extracted": 21, "mapped": 1, "calculated": 1}},
+    "manual_review_queue": 0,
+    "activity_clarifications": 0,
+    "audit_trail": 95,
+    "processing_audit_trail": 0,
+    "review_audit_trail": 0,
+    "report_versions": 4,
+    "report_version_artifacts": 0,
+    "disclosure_frameworks": 3,
+    "disclosure_report_purposes": 4,
+    "disclosure_values": 0,
+    "disclosure_requirement_versions": 0,
+    "activity_categories": 0,
+    "product_categories": 0,
+    "supplier_categories": 0,
+    "organizations": 4,
+    "facilities": 1,
+    "assets": 1,
+    "organization_members": 8,
+    "customer_documents": 0,
+    "public_base_tables": 141
+  },
+  "scope1": {
+    "verdict": "CREDIBLE_NARROWLY_VERIFIED",
+    "factors": {"total": 2549, "defra": 2531, "seai": 18},
+    "families": {"Fuels": 486, "Delivery vehicles": 648, "Passenger vehicles": 624, "SECR kWh pass & delivery vehs": 383, "Refrigerant & other": 359, "Bioenergy": 49},
+    "stationary_combustion": "FACTORS + CODE + ROUTE + VERIFIED",
+    "mobile_combustion": "FACTORS + CODE + ROUTE, not verified",
+    "fugitive_emissions": "FACTORS (Refrigerant & other 359), not verified",
+    "process_emissions": "NOT_IMPLEMENTED (no factor family, no code)",
+    "verified_results": {"snapshots": 2, "emissions_logs": 2, "result_1": {"quantity": 12181.4, "unit": "kWh (Net CV)", "co2e_kg": 2469.169780, "factor_id": "aef1f0bb-4e48-4e4b-a079-c1e827964d07", "snapshot_id": "f452ee2c-1212-431b-9250-61cc0ddbf4a3", "log_id": "b96b19f6-26aa-4d96-95e8-e8680a7f4b10", "activity": "Natural gas"}, "result_2": {"quantity": 8420.0, "unit": "kWh (Net CV)", "co2e_kg": 1706.734000, "snapshot_id": "47b346f5-0a1f-42b2-a28f-32911de2ec96", "log_id": "647218e4-3e48-4941-8c22-83ad87576edd"}, "reconciliation": {"sum_of_logs": 4175.903780, "item_calculated_emissions_kg_co2e": 4175.9037799999996423139236867427825927734375, "matches": true}}
+  },
+  "scope2": {
+    "verdict": "PARTIAL_DUAL_METHOD_NOT_IMPLEMENTED",
+    "factors": {"total": 354, "UK electricity": 4, "UK electricity for EVs": 272, "SECR kWh UK electricity for EVs": 68, "Heat and steam": 8, "Fuels_scope2": 2},
+    "keyword_coverage": {"electricity": 346, "heat": 8, "steam": 8, "cooling": 0},
+    "location_based": "NOT_IMPLEMENTED",
+    "market_based": "NOT_IMPLEMENTED",
+    "contractual_instruments": "NOT_IMPLEMENTED",
+    "scope2_method_label": {"file": "backend/domain/disclosure.py", "line": 145, "value": "SCOPE2_METHODS = (\"LOCATION_BASED\",\"MARKET_BASED\")", "validator": "validate_scope2_method"},
+    "dual_method_reporting": "NOT_IMPLEMENTED",
+    "e2e_fixture": {"result": "SCOPE 2 E2E TEST FIXTURE MISSING", "evidence": ["emissions_logs scope distribution is Scope 1 only", "calculation_snapshots scope distribution is Scope 1 only", "tests/integration/test_emissions_logs.py builds kWh/Scope 2 entities (repository-level only)", "tests/integration/test_calculation.py uses the Scope 1 activity 'Fuels > Gas fuels > Natural gas P5 (kg CO2e) [kWh]'"]}
+  },
+  "scope3": {
+    "verdict": "FACTOR_RICH_STRUCTURALLY_WEAK",
+    "total_factors": 4090,
+    "category_model": {"in_code": "NOT_IMPLEMENTED", "grep_scope3_category_ghg_category": "no matches in production code", "activity_categories_rows": 0, "product_categories_rows": 0},
+    "tally": {"end_to_end_verified": 0, "partial": 7, "documented_only": 0, "not_implemented": 8, "not_verified": 15},
+    "categories": [
+      {"cat": 1, "name": "Purchased goods and services", "status": "PARTIAL", "factors": "Material use 70", "category_attribution": false, "e2e": false},
+      {"cat": 2, "name": "Capital goods", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 3, "name": "Fuel- and energy-related activities not in S1/S2", "status": "PARTIAL", "factors": "WTT-* 796, Transmission and distribution 8, UK electricity T&D for EVs 272", "category_attribution": false, "e2e": false},
+      {"cat": 4, "name": "Upstream transportation and distribution", "status": "PARTIAL", "factors": "Freighting goods 1156", "category_attribution": false, "e2e": false},
+      {"cat": 5, "name": "Waste generated in operations", "status": "PARTIAL", "factors": "Waste disposal 134", "category_attribution": false, "e2e": false},
+      {"cat": 6, "name": "Business travel", "status": "PARTIAL", "factors": "air 112, land 672, sea 12, Hotel stay 39", "category_attribution": false, "e2e": false},
+      {"cat": 7, "name": "Employee commuting", "status": "PARTIAL_THIN", "factors": "Homeworking 3", "category_attribution": false, "e2e": false},
+      {"cat": 8, "name": "Upstream leased assets", "status": "PARTIAL_AMBIGUOUS", "factors": "Managed assets- vehicles 948, Managed assets- electricity 4 (may be cat 13)", "category_attribution": false, "e2e": false},
+      {"cat": 9, "name": "Downstream transportation and distribution", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 10, "name": "Processing of sold products", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 11, "name": "Use of sold products", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 12, "name": "End-of-life treatment of sold products", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 13, "name": "Downstream leased assets", "status": "NOT_IMPLEMENTED", "factors": "ambiguous with Managed assets", "category_attribution": false, "e2e": false},
+      {"cat": 14, "name": "Franchises", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false},
+      {"cat": 15, "name": "Investments (financed emissions)", "status": "NOT_IMPLEMENTED", "factors": "none found", "category_attribution": false, "e2e": false}
+    ],
+    "negative_categories": {"capital_goods": true, "downstream_transport": true, "processing_sold_products": true, "use_of_sold_products": true, "end_of_life_sold_products": true, "downstream_leased_assets": true, "franchises": true, "investments": true}
+  },
+  "waste_category5": {
+    "factors": 134,
+    "source": "DEFRA-DESNZ / DEFRA-2025 / GB / tonnes",
+    "routes_supported": ["Landfill", "Composting", "Incineration with Energy Recovery (waste-to-energy)", "Closed-loop (recycling)", "Open-loop (recycling)"],
+    "routes_not_supported": ["Reuse (no explicit route)", "General waste (no generic route)", "Hazardous waste (specific materials only, e.g. construction asbestos)", "Mixed waste (specific mixed material streams only)"],
+    "bare_waste_sufficient": false,
+    "ambiguity_evidence": {"spread_ratio": 4.647, "example": "4.68568 (Incineration with Energy Recovery) / 1.00835 (Open-loop) for one material"},
+    "policy": {"file": "backend/engines/factor_selection_policy.py", "rule": "D-FS-4 shared-token refusal", "behaviour": "BLOCK and route to clarification; never guess"},
+    "p12_impl_02_status": {"supplier_resolution_engine": "IMPLEMENTED", "emissions_supplier_id_write_path": "IMPLEMENTED at 3 of 8 CalculationRequest sites", "waste_auto_match": "deliberately NOT implemented", "journey_executed": false, "clarification_rows": 0, "category_attribution": false, "verified_calculation": false}
+  },
+  "supplier_data": {
+    "master": "CODE + 1 ROW",
+    "identity": "CODE (name/postcode/VAT/company_number)",
+    "supplier_specific_emissions": "MODELLED_UNUSED (annual_emissions_scope1/2/3)",
+    "supplier_provided_factors": "MODELLED_UNUSED (emission_factor_scope1/2/3)",
+    "questionnaires_or_portal": "NOT_IMPLEMENTED",
+    "primary_data": "NOT_DISTINGUISHABLE (data_source NULL on all rows)",
+    "estimated_data": "NOT_DISTINGUISHABLE (no PRIMARY/SECONDARY/ESTIMATED vocabulary)",
+    "spend_based_estimate": "NOT_IMPLEMENTED (no currency factors; is_currency_unit guard)",
+    "activity_based_estimate": "PARTIAL (factors exist; estimate nature not recorded)",
+    "manually_corrected_data": "YES (extracted_data vs mapped_data; ops_map:applied audit; activity_clarifications)",
+    "attribution": "PARTIAL (mapped_supplier_id + emissions_logs.supplier_id writable; 0 populated)",
+    "supplier_quality_fields": "MODELLED_UNUSED (risk_score, compliance_status, supplier_rating)"
+  },
+  "data_quality": {
+    "design": "STATE_BASED_NOT_SCORE_BASED",
+    "flags": "MODELLED (data_source, confidence_score), 0 populated",
+    "confidence": "MODELLED (confidence_score, ai_confidence_score, ai_mapping_confidence; mapped_data.mapping_confidence observed = 1.0)",
+    "completeness": "CODE (EVIDENCE_COMPLETENESS_STATES = COMPLETE/PARTIAL/UNAVAILABLE)",
+    "review_status": "CODE (manual_extraction_items status/qc_by/quality_score/customer_approved; manual_review_queue status/priority/sla_*)",
+    "audit_readiness": "CODE (audit_readiness, audit_readiness_from_counts, audit_package)",
+    "temporal_representativeness": "NOT_FOUND",
+    "geographic_representativeness": "NOT_FOUND",
+    "technological_representativeness": "NOT_FOUND",
+    "uncertainty": "NOT_FOUND",
+    "anomaly_detection": "NOT_IMPLEMENTED",
+    "outlier_detection": "NOT_FOUND"
+  },
+  "factor_management": {
+    "columns": ["id", "reporting_year", "activity_type", "co2e_multiplier", "created_at", "updated_at", "unit", "scope", "factor_source", "factor_set", "country", "region_deprecated", "import_batch_id"],
+    "factor_source": "YES (DEFRA-DESNZ, SEAI-2025)",
+    "factor_version": "PARTIAL (factor_set edition; no version integer)",
+    "validity_year": "PARTIAL (reporting_year 2025 only)",
+    "country": "YES (GB 7029 / IE 20)",
+    "region": "DEPRECATED (region_deprecated)",
+    "gwp": "IMPLICIT_ONLY (pre-computed CO2e; no per-gas column)",
+    "uncertainty": "NOT_FOUND",
+    "custom_factors": {"model": "customer_factors (status, version, effective_from/to, source_reference, methodology, category, country, reporting_year, factor_source, scope)", "rows": 0},
+    "factor_updates": "CODE (api/admin_imports.py provider=defra|seai; import_batch_id)",
+    "provenance": "YES (factor_id, factor_source, factor_set, import_batch_id, content_hash)",
+    "provider_catalogue": {"file": "backend/api/admin_providers.py", "implemented": ["defra", "seai"], "gas_coverage_note": "backend/api/contracts.py: CO2 for SEAI CO2-only factors, CO2e for DEFRA"},
+    "customer_factor_precedence": {"verdict": "code-verified, not data-verified", "mechanism": "explicit customer_factor path; factor_kind + customer_factor_id; emission_factor_id NULL (O1)", "limitation": "customer_factors empty; integration test not run (F-046-1)"}
+  },
+  "factor_selection": {
+    "determinism": "YES (match_request_id + content_hash + algorithm_version)",
+    "activity": "YES", "scope": "YES", "unit": "YES", "factor_source": "YES", "customer_config": "YES",
+    "country_filtering": "NOT_VERIFIED", "reporting_year_filtering": "NOT_VERIFIED",
+    "ambiguity_behaviour": "BLOCK_AND_REQUEST_REVIEW",
+    "clarification_rows": 0
+  },
+  "units": {
+    "distinct_units": 15,
+    "unit_list": {"km": 2515, "miles": 2181, "tonne.km": 754, "kg": 405, "tonnes": 379, "passenger.km": 205, "kWh_Gross_CV": 155, "kWh_Net_CV": 155, "litres": 152, "kWh": 52, "Room_per_night": 39, "GJ": 39, "cubic_metres": 13, "per_FTE_Working_Hour": 3, "million_litres": 2},
+    "normalisation": "core/units.resolve_unit_for_factor + alias table (L, t, m3, kWh)",
+    "currency": "guard only (is_currency_unit); no spend factors",
+    "mwh": "NOT_PRESENT", "gallons": "NOT_PRESENT",
+    "raw_unit_preserved": "YES", "normalized_unit_preserved": "YES",
+    "silent_conversion_of_incompatible_units": "NOT FOUND (fails closed)"
+  },
+  "geography": {"country": "YES", "region": "DEPRECATED", "facility": "MODELLED", "grid_region": "NOT_IMPLEMENTED", "supplier_location": "PARTIAL", "customer_location": "PARTIAL"},
+  "temporal": {"activity_date": "YES", "billing_period": "YES", "reporting_year": "YES", "factor_year": "2025 ONLY", "factor_validity_period": "customer factors only", "activity_year_neq_factor_year_behaviour": "NOT_VERIFIED"},
+  "boundaries": {"organizations": "YES", "facilities": "YES", "assets": "YES", "suppliers": "YES", "business_units": "NOT_FOUND", "reporting_entities": "PARTIAL", "control_approaches": "NOT_IMPLEMENTED", "consolidation": "NOT_FOUND", "consultants": "YES", "processing_entities": "YES", "portfolio_or_fund": "NOT_SUPPORTED"},
+  "attribution": {"organization": "yes", "facility": "partial", "asset": "partial", "supplier": "writable, 0 populated", "business_unit": "no", "scope3_category": "no", "scope": "yes", "reporting_period": "yes", "country": "partial", "activity": "yes"},
+  "audit_trail": {
+    "snapshot_columns": ["activity", "activity_type", "quantity", "quantity_unit", "co2e_multiplier", "co2e_kg", "scope", "date", "factor_id", "factor_source", "factor_set", "import_batch_id", "reporting_year", "methodology", "algorithm_version", "content_hash", "calculated_at", "calculated_by", "request_id", "factor_kind", "customer_factor_id", "source_item_id", "source_file", "source_page", "performed_by", "source_line_item_id"],
+    "original_input": "YES", "extracted_value": "YES", "normalized_value": "YES", "manual_correction": "YES",
+    "calculation_formula": "PARTIAL", "factor": "YES", "factor_version": "PARTIAL", "user": "YES", "timestamp": "YES",
+    "approval": "PARTIAL", "report_version": "YES (D15)", "data_change": "PARTIAL", "recalculation": "PARTIAL",
+    "can_explain_a_number": "YES for a calculated row, verified from data",
+    "tables": {"audit_trail": 95, "processing_audit_trail": 0, "review_audit_trail": 0}
+  },
+  "manual_review": {
+    "routing": "YES (policy block -> clarification; validation findings; extraction status)",
+    "queue": "MODELLED, 0 rows", "reason": "YES", "original_value": "YES", "source_evidence": "YES",
+    "corrected_value": "YES", "actor": "YES (+ actor_scope)", "timestamp": "YES",
+    "downstream_recalculation": "PARTIAL", "audit_history": "PARTIAL",
+    "verdict": "designed_and_wired_but_unexercised"
+  },
+  "calculation_transparency": {
+    "formula_exposable": "YES",
+    "elements": {"activity_data": "YES", "unit_conversion": "YES", "emission_factor": "YES", "result": "YES", "factor_source": "YES", "factor_year": "YES", "scope": "YES", "methodology": "YES", "geography": "PARTIAL (factor only)", "calculation_version": "YES", "source_evidence": "YES (page NULL)"},
+    "example_snapshot_id": "f452ee2c-1212-431b-9250-61cc0ddbf4a3",
+    "example_hash_prefix": "ef6d19f14f"
+  },
+  "evidence": {
+    "line_items": 23,
+    "preserves": ["raw_description", "raw_quantity", "raw_unit", "line_number", "source_page", "row_reference", "payload_hash", "extraction_method", "materialisation_kind"],
+    "observed_methods": ["csv", "det:pdf_table"],
+    "gaps": {"source_page": "NULL", "row_reference": "NULL", "supplier_link": "NULL", "report_artefact": 0}
+  },
+  "reporting": {
+    "scope_summaries": "YES", "total_emissions": "YES", "tco2e": "PARTIAL (kg stored)", "period": "YES",
+    "comparative_years": "PARTIAL", "categories": "NO", "entities": "PARTIAL", "facilities": "PARTIAL",
+    "suppliers": "CODE_ONLY (0 rows)", "methodology": "PARTIAL", "factor_provenance": "PARTIAL",
+    "data_quality": "PARTIAL", "manual_adjustments": "PARTIAL", "approvals": "YES (routes)",
+    "versioning": "YES (4 versions)", "artefacts": 0, "audit_support": "PARTIAL", "export": "CODE",
+    "verdict": "audit_ready_architecture_exists_no_audit_ready_report_yet"
+  },
+  "frameworks": {
+    "seeded": ["GHG_PROTOCOL (primary foundation)", "UK_SECR (jurisdiction statute)", "ESRS_E1 (EU standard)"],
+    "report_purposes": ["Annual Carbon Report", "Management Report", "UK SECR Report", "ESRS E1 Quantitative Report"],
+    "requirement_content_rows": 0,
+    "ladder": {"ghg_protocol": "DOCUMENTED+MAPPED", "uk_secr": "MAPPED_ONLY", "esrs_e1": "MAPPED_ONLY", "issb_ifrs_s2": "COLUMN_ONLY", "cdp": "NOT_FOUND", "sbti": "NOT_FOUND", "pcaf": "NOT_FOUND", "tcfd_gri_sb253": "NOT_FOUND"},
+    "compliance_claimed": false
+  },
+  "multi_year": {"multiple_years": "PARTIAL", "historical_calculations": "YES (design)", "factor_update_without_silent_change": "PARTIAL", "rerun": "PARTIAL", "report_versions": "YES", "methodology_change_tracking": "PARTIAL", "factor_change_tracking": "PARTIAL", "year_comparison": "PARTIAL", "factor_data_years": [2025]},
+  "lineage_verified_chain": {
+    "source_document": "p12imp_org-a-multi-site-gas-2025.csv",
+    "extraction_item": "0193ba83-ae82-4b08-a03f-4241005fe8e0",
+    "evidence_line": {"item": "0193ba83-ae82-4b08-a03f-4241005fe8e0", "line": 1, "raw_description": "Natural gas", "raw_quantity": 12181.4, "raw_unit": "kwh", "extraction_method": "csv", "materialisation_kind": "FORWARD"},
+    "source_line_item_id": "9252ca02-1a5a-452d-8943-047f8ff35045",
+    "factor_id": "aef1f0bb-4e48-4e4b-a079-c1e827964d07",
+    "snapshot_id": "f452ee2c-1212-431b-9250-61cc0ddbf4a3",
+    "emissions_log_id": "b96b19f6-26aa-4d96-95e8-e8680a7f4b10",
+    "arrows_unproven": ["SUPPLIER (NULL on this record)", "MANUAL_REVIEW (0 rows)", "REPORT (0 artefacts)", "source_page detail"]
+  },
+  "ai_governance": {
+    "posture": "automation proposes -> policy decides -> ambiguity blocks -> human resolves with an auditable record",
+    "governed": true,
+    "evidence": ["factor_selection_policy.py D-FS-4 refusal on shared tokens", "activity_clarifications record shape", "P12-IMPL-01 deterministic parser v3-auto-1.2", "P1 shadow and unpromoted", "mapped_data.mapping_confidence recorded (=1.0)"],
+    "gaps": ["ai_confidence_score/ai_mapping_confidence nullable and unpopulated", "no verified confidence-threshold policy forcing review", "no anomaly detection"]
+  },
+  "gaps_count": 23,
+  "prioritisation": {
+    "investor_blockers": ["G-04", "G-05", "G-09", "G-10", "G-12"],
+    "pilot_blockers": ["G-01", "G-07", "G-08", "G-11", "G-17", "G-20"],
+    "production_assurance_blockers": ["G-02", "G-12", "G-14", "G-15", "G-23"],
+    "post_demo_enhancements": ["G-03", "G-06", "G-16", "G-18", "G-19", "G-21", "G-22"],
+    "documentation_shortfall": ["G-13"]
+  },
+  "status": {
+    "investor_ready": false,
+    "investor_ready_basis": "Scope 1 demonstrable; Scope 2/3 not; 0 clarifications, 0 report artefacts, 0 supplier attribution",
+    "step3_started": false,
+    "implementation_performed": false,
+    "audit_complete": true
+  }
+}
