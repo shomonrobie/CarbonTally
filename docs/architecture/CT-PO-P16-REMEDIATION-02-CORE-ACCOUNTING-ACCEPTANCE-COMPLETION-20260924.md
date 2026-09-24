@@ -496,7 +496,7 @@ never printed by these tools.
 | Item | Value |
 |---|---|
 | Baseline | `2b5f46f5ad127d90e05ef4280d219d4004695f64` |
-| Final | commit created immediately after this report (`chore(p16r2): grant can_review to internal admin reviewer; RD-1/RD-3 live acceptance`) plus a docs-only hash-record commit |
+| Final | `5cb234def046e5b800f5a1cd090516f855e67138` (`chore(p16r2): grant can_review to internal admin reviewer; RD-1/RD-3 live acceptance`) plus a docs-only hash-record commit |
 | Branch | `p8-release-reconciled` |
 | Product code changed | **none** |
 | Demo Lab changed | `tools/demo_lab/provision.py` (role seed), `tools/demo_lab/p16r2_verify.py` (new) |
