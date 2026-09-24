@@ -133,6 +133,7 @@ class CalculationSink(Protocol):
         asset_id: Optional[str],
         facility_id: Optional[str],
         snapshot_id: str,
+        supplier_id: Optional[str] = None,
     ) -> EmissionLog: ...
 
     async def save(self, entity: EmissionLog) -> EmissionLog: ...
@@ -182,6 +183,13 @@ class CalculationRequest:
     log_id: Optional[str] = None
     asset_id: Optional[str] = None
     facility_id: Optional[str] = None
+    #: P12-IMPL-02 §E — the operator-resolved supplier carried from
+    #: ``manual_extraction_items.mapped_supplier_id`` (Decision-01 sole source of
+    #: truth) into ``emissions_logs.supplier_id`` so downstream evidence/Insight
+    #: attribution survives to the emissions record. Insert-time only and never a
+    #: content-hash input: ``None`` stays NULL, so an unresolved supplier is
+    #: never invented and existing snapshot hashes are unchanged.
+    supplier_id: Optional[str] = None
     factor: Optional[EmissionFactor] = None
     customer_factor: Optional[CustomerFactor] = None
 
@@ -551,6 +559,7 @@ class CalculationEngine:
             asset_id=request.asset_id,
             facility_id=request.facility_id,
             snapshot_id=snapshot.id,
+            supplier_id=request.supplier_id,
         )
         updated = dataclasses.replace(
             created, calculated_kg_co2e=co2e_kg, snapshot_id=snapshot.id

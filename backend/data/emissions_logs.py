@@ -245,6 +245,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         asset_id: Optional[str],
         facility_id: Optional[str],
         snapshot_id: str,
+        supplier_id: Optional[str] = None,
     ) -> EmissionLog:
         """Insert one emissions record and return it.
 
@@ -252,14 +253,19 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         column is nullable; provenance lives on the snapshot).
         ``calculated_kg_co2e`` is stored as ``0``; the Calculation Engine writes
         the computed figure through :meth:`save` (repositories never compute).
+        ``supplier_id`` (P12-IMPL-02 §E) carries the operator-resolved supplier
+        from ``manual_extraction_items.mapped_supplier_id`` — the Decision-01
+        source of truth. ``None`` stays NULL rather than being back-filled with a
+        guessed supplier: an unresolved supplier is never invented.
         """
         row = await self._fetch_one(
             f"""
             INSERT INTO public.emissions_logs (
                 organization_id, asset_id, emission_factor_id, start_date,
                 end_date, raw_quantity, calculated_kg_co2e, created_by_user_id,
-                created_at, updated_at, unit, scope, snapshot_id, metadata
-            ) VALUES ($1, $2, $3, $4, $4, $5, 0, $6, NOW(), NOW(), $7, $8, $9, $10::jsonb)
+                created_at, updated_at, unit, scope, snapshot_id, metadata,
+                supplier_id
+            ) VALUES ($1, $2, $3, $4, $4, $5, 0, $6, NOW(), NOW(), $7, $8, $9, $10::jsonb, $11)
             RETURNING {_LOG_COLUMNS}
             """,
             org_id,
@@ -272,6 +278,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             scope,
             snapshot_id,
             _log_metadata(facility_id),
+            supplier_id,
         )
         if row is None:
             raise RuntimeError("emissions log insert returned no row")

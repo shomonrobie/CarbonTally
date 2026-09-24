@@ -118,6 +118,7 @@ class _MemorySink:
         asset_id: Optional[str],
         facility_id: Optional[str],
         snapshot_id: str,
+        supplier_id: Optional[str] = None,  # P12-IMPL-02
     ) -> EmissionLog:
         log = EmissionLog(
             id=f"log-{snapshot_id}",

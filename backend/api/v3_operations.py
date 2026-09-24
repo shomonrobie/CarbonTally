@@ -575,6 +575,7 @@ async def _run_line_calculation(
             asset_id=payload.asset_id,
             facility_id=payload.facility_id,
             performed_by=performed_by,
+            supplier_id=item.mapped_supplier_id,  # P12-IMPL-02 §E
             factor=factor,
             customer_factor=customer_factor,
         )
@@ -1279,6 +1280,7 @@ async def entity_extraction_calculate(
         facility_id=payload.facility_id,
         source_item_id=item.id,  # Gate-4 remediation F2: item → snapshot link
         performed_by=context.profile.user_id,
+        supplier_id=item.mapped_supplier_id,  # P12-IMPL-02 §E
         factor=factor,
         customer_factor=customer_factor,
     )
@@ -1912,6 +1914,7 @@ async def calculate_item(
         asset_id=payload.asset_id,
         facility_id=payload.facility_id,
         performed_by=context.profile.user_id,
+        supplier_id=item.mapped_supplier_id,  # P12-IMPL-02 §E
         factor=factor,
         customer_factor=customer_factor,
     )

@@ -1,0 +1,199 @@
+{
+  "task_id": "P12-IMPL-02-20260924-WASTE-SEMANTICS-SUPPLIER-RESOLUTION-AUDITABLE-REVIEW",
+  "date": "2026-09-24",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "baseline_commit": "6462f4712b3c13249ccf8778ef684340941eea1a",
+  "environment": "carbontally_demo_local (local demo lab, 127.0.0.1:54426)",
+  "production_touched": false,
+  "schema_changes": [],
+  "migrations_added": [],
+  "corpus_modified": false,
+  "oracle_modified": false,
+  "verdict": "PARTIALLY_IMPLEMENTED",
+  "implementation": {
+    "new_module": "backend/engines/supplier_resolution.py",
+    "new_tests": "backend/tests/unit/engines/test_p12_impl_02_supplier_resolution.py",
+    "supplier_propagation": {
+      "source_of_truth": "manual_extraction_items.mapped_supplier_id",
+      "path": [
+        "engine.CalculationRequest.supplier_id",
+        "engine.CalculationSink.create(supplier_id=...)",
+        "data.EmissionsLogsRepository.create(supplier_id=...)",
+        "emissions_logs.supplier_id (INSERT $11)"
+      ],
+      "wired_call_sites": [
+        "backend/api/v3_operations.py:578 (multi-line operator/PE)",
+        "backend/api/v3_operations.py:1283 (PE single-line)",
+        "backend/api/v3_operations.py:1917 (internal single-line)"
+      ],
+      "unwired_call_sites": [
+        "backend/services/automatic_processing.py:1913",
+        "backend/engines/workflow.py:620",
+        "backend/api/v3_processing_workflow.py:918",
+        "backend/api/business.py:130",
+        "backend/api/v3_emissions.py:728"
+      ],
+      "schema_change_required": false,
+      "schema_evidence": "information_schema: emissions_logs.supplier_id uuid nullable=YES",
+      "read_back_limitation": "_LOG_COLUMNS and domain EmissionLog omit supplier_id; verify by SQL"
+    }
+  },
+  "waste_semantics": {
+    "auto_match_implemented": false,
+    "auto_match_justification": "DEFRA waste taxonomy is family>material>treatment-route; canonical corpus names a stream but never a route, so multiple valid factors exist (measured spread 4.68568/1.00835 = 4.647x). Auto-selecting would be guessing, which the auditability invariant forbids.",
+    "guard_preserved": "backend/engines/factor_selection_policy.py shared-token rule (D-FS-4)",
+    "correct_behaviour": "route to clarification; operator selects the factor through the existing auditable mapping workflow",
+    "factor_set_evidence": {
+      "emission_factors_total_rows": 7049,
+      "rows_matching_waste_or_recycl": 155,
+      "example_factors": [
+        {"activity_type": "Waste disposal > Construction > Aggregates - Open-loop (kg CO2e)", "co2e_multiplier": 1.00835, "unit": "tonnes", "scope": "Scope 3"},
+        {"activity_type": "Waste disposal > Construction > Aggregates - Landfill (kg CO2e)", "co2e_multiplier": 1.26338, "unit": "tonnes", "scope": "Scope 3"},
+        {"activity_type": "Waste disposal > Construction > Average construction - Incineration with Energy Recovery (kg CO2e)", "co2e_multiplier": 4.68568, "unit": "tonnes", "scope": "Scope 3"},
+        {"activity_type": "Material use > Organic > Compost derived from garden waste - Primary material production (kg CO2e)", "co2e_multiplier": 112.08811, "unit": "tonnes", "scope": "Scope 3"},
+        {"activity_type": "Fuels > Liquid fuels > Waste oils (kg CO2e) [tonnes]", "co2e_multiplier": 3219.37916, "unit": "tonnes", "scope": "Scope 1"}
+      ]
+    }
+  },
+  "supplier_resolution": {
+    "engine": "backend/engines/supplier_resolution.py",
+    "pure_deterministic": true,
+    "organisation_scoped": true,
+    "operation": "normalise -> score org-scoped candidates -> classify -> required action",
+    "verdicts": ["exact", "strong", "probable", "ambiguous", "none", "unresolved"],
+    "auto_persist_verdicts": ["exact"],
+    "ambiguity_margin": 10,
+    "scoring": {
+      "vat_number": 100, "company_number": 100, "name_exact": 40,
+      "postcode": 30, "name_similarity_ge_0.5": 20,
+      "address_line1": 15, "city": 10, "email_domain": 5
+    },
+    "hard_rules": [
+      "cross-organisation candidates rejected as cross_tenant_candidate",
+      "never silently choose between plausible candidates (selected=None on ambiguity)",
+      "never silently create (engine has no creation capability; none -> confirm_creation)",
+      "never fabricate a supplier from missing text (unresolved -> manual_review)",
+      "deterministic tie-break by supplier_id, not input order"
+    ],
+    "engine_level_results": {
+      "exact_name_plus_postcode": {"verdict": "exact", "action": "reuse", "auto_persist": true},
+      "vat_number_match": {"verdict": "exact", "action": "reuse", "auto_persist": true},
+      "company_number_match": {"verdict": "exact", "action": "reuse", "auto_persist": true},
+      "exact_name_only": {"verdict": "strong", "action": "confirm_match", "auto_persist": false},
+      "similar_name_only": {"verdict": "probable", "action": "confirm_match", "auto_persist": false},
+      "two_plausible_candidates": {"verdict": "ambiguous", "action": "select_candidate", "auto_persist": false},
+      "no_candidate": {"verdict": "none", "action": "confirm_creation", "auto_persist": false},
+      "blank_supplier_text": {"verdict": "unresolved", "action": "manual_review", "auto_persist": false}
+    },
+    "actual_supplier_ids_resolved": [],
+    "actual_supplier_ids_reason": "No supplier was created and no mapped_supplier_id was written: doing so requires an operator session through the real API, and manufacturing rows with SQL is forbidden (Section R)."
+  },
+  "multi_year_reuse": {
+    "engine_level_verified": true,
+    "test": "test_multi_year_reuse_resolves_to_single_supplier_id",
+    "fy2025_signals": "Robinsons Recycling Services Ltd / QI14 5ZD",
+    "fy2026_signals": "ROBINSONS RECYCLING SERVICES LIMITED / QI145ZD",
+    "result": "both exact/reuse against the same candidate and the same supplier_id",
+    "database_level_verified": false
+  },
+  "six_canonical_documents": [
+    {"document": "p12canon_waste_001", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 3, "display_precision_dp": 2, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor (treatment route not printed)", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"},
+    {"document": "p12canon_waste_002", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 4, "display_precision_dp": 0, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor; P12-DATA-01 also recorded conflicting truncated Qty: fragments on this document", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"},
+    {"document": "p12canon_waste_003", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 2, "display_precision_dp": 2, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor (treatment route not printed)", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"},
+    {"document": "p12canon_waste_004", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 5, "display_precision_dp": 0, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor; the document literally prints 5 and 43 (GAP-02 finding explained by P12-DATA-01)", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"},
+    {"document": "p12canon_waste_005", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 3, "display_precision_dp": 3, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor; P12-DATA-01 also recorded a mixed-precision GBP 0.31 total on this document", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"},
+    {"document": "p12canon_waste_006", "status": "not_run", "supplier_extracted": "yes (P12-IMPL-01: 6/6)", "line_items": 4, "display_precision_dp": 4, "manual_review_required": true, "manual_review_reason": "waste activity has no unique factor (treatment route not printed)", "supplier_id": null, "calculation_status": "not_run", "evidence_status": "not_run", "reporting_status": "not_run"}
+  ],
+  "extraction": {
+    "status": "previously_verified_P12_IMPL_01_not_re_executed",
+    "supplier": "6/6", "customer": "6/6", "invoice_reference": "6/6",
+    "invoice_date": "6/6", "billing_period": "6/6", "line_structure": "6/6",
+    "line_item_counts": [3, 4, 2, 5, 3, 4], "line_items_total": 21,
+    "units": "21/21", "false_positives": 0,
+    "evidence_line_items": 23,
+    "evidence_line_items_source": "det:pdf_table, FORWARD"
+  },
+  "manual_review": {
+    "existing_mechanism_reused": true,
+    "persistence": "data/manual_extraction.py::save_mapped_data(item_id, mapped_data, mapped_facility_id, mapped_asset_id, mapped_supplier_id, emission_factor_used)",
+    "status_transition": "-> mapped",
+    "audit_action": "ops_map:applied",
+    "audit_fields": ["actor (auth.users id)", "status_from", "status_to", "job_id", "ip_address", "updated_at"],
+    "authorisation": "require_staff + require_internal_staff + ensure_staff_permission('can_process') (internal); require_staff + _entity_workspace_guard (PE)",
+    "original_value_preserved": "manual_extraction_items.extracted_data is never overwritten by mapping",
+    "new_review_system_created": false
+  },
+  "manual_corrections": [],
+  "manual_corrections_reason": "No operator correction was performed because the six-document journey was not executed in this session.",
+  "mapping": {"status": "not_run", "blocked_at": "clarification (shared-token 'Waste' policy D-FS-4)"},
+  "calculations": {"status": "not_run", "values": []},
+  "emissions_logs_supplier_id": {
+    "status": "implemented_not_exercised",
+    "column_exists": true,
+    "insert_now_populates": true,
+    "rows_written_this_session": 0,
+    "read_back_via": "SQL (see read_back_limitation)"
+  },
+  "evidence": {
+    "status": "structure_verified_journey_not_run",
+    "unchanged_this_session": true,
+    "mapped_supplier_id_exposed_in_evidence_payload": true,
+    "expected_chain": "document -> extraction item -> mapped_supplier_id -> calculation snapshot(source_item_id) -> emissions_logs.supplier_id -> evidence line -> Source Evidence Viewer"
+  },
+  "reporting": {
+    "status": "write_side_gap_closed_read_side_not_exercised",
+    "insight_query_already_reads_supplier_id": true,
+    "reporting_filters_on_mapped_supplier_id": true,
+    "verified_with_real_data": false
+  },
+  "security": {
+    "engine_level": {
+      "cross_tenant_candidate_rejected": "PASS",
+      "cross_tenant_candidate_never_outranks_own_org": "PASS",
+      "blank_supplier_never_falls_back_cross_tenant": "PASS",
+      "only_exact_auto_persists": "PASS"
+    },
+    "database_rls_level": "not_re_run_this_session",
+    "unexpected_allows": 0
+  },
+  "ev01_csv_regression": {
+    "status": "not_run",
+    "expected_no_effect": true,
+    "reason": "supplier_resolution.py is new and unreferenced by the CSV path; supplier_id defaults to None and inserts SQL NULL; _LOG_COLUMNS, CSV extraction, factor mapping and evidence were not modified",
+    "must_verify_before_step2_closure": true
+  },
+  "tests": {
+    "new_unit_tests": {"file": "backend/tests/unit/engines/test_p12_impl_02_supplier_resolution.py", "status": "PASS"},
+    "calculation_contract_regression": {
+      "files": [
+        "backend/tests/unit/engines/test_calculation.py",
+        "backend/tests/unit/engines/test_customer_factor_integration.py"
+      ],
+      "status": "PASS_after_test_double_update",
+      "classification": "A (introduced by this implementation, fixed)"
+    },
+    "full_unit_suite": {
+      "status": "5 failures, all classified pre-existing (class B)",
+      "detail": "test_extraction_suggestions.py x3 (stale date-format/empty-payload expectations from P12-IMPL-01), test_extraction_fidelity.py::test_pipeline_version_was_bumped (asserts v3-auto-1.1), test_d17_provider_ownership_migration_revision.py::test_migration_ordering_is_unchanged (expects 71 migration names, found 81)"
+    },
+    "failures_introduced_by_this_task_remaining": 0
+  },
+  "remaining_gaps": [
+    "No server-side caller invokes supplier_resolution during automatic processing (no pipeline wiring).",
+    "Five CalculationRequest sites remain unthreaded for supplier_id (automatic_processing.py:1913 highest priority).",
+    "Resolution decision (verdict/reason/candidates) is not persisted to the database.",
+    "Six-PDF operator journey not executed; no supplier IDs, calculations, evidence rows or reporting output produced.",
+    "emissions_logs.supplier_id write path is not exercised by any test or journey yet.",
+    "EV-01 CSV regression not re-run this session.",
+    "extraction_suggestions' 3 failing tests are stale from P12-IMPL-01 and remain unfixed.",
+    "P12-D1 waste clarification policy remains a PO decision; P12-D2/D3/D4 approved policies are implemented only at engine level."
+  ],
+  "step2_status": "INCOMPLETE",
+  "step2_blockers_untouched": [
+    "repeatability: migration application not idempotent",
+    "210 vs 218 single-pass variance unresolved",
+    "disposable-integration 12/92 failures"
+  ],
+  "step3_started": false
+}
