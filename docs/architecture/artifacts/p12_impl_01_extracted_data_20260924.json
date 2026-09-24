@@ -1,0 +1,1441 @@
+{
+  "task_id": "P12-IMPL-01-20260924-PDF-EXTRACTION-FOUNDATION",
+  "corpus": "p12-canonical-demo-v1",
+  "commit_sha": "7594e61f6586b5cb4481034ca6e36d1226367628",
+  "extracted_at": "2026-09-24T12:20:20Z",
+  "target_organization": "Demo Lab Organisation A",
+  "target_organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+  "observation_method": "real product upload (POST /api/v3/uploads) then read of the product-owned persisted extraction item (manual_extraction_items.extracted_data); no SQL writes",
+  "documents": [
+    {
+      "document_id": "p12canon_waste_001",
+      "source_filename": "p12canon_waste_001.pdf",
+      "pdf_sha256": "6142fd3d43156c467860802614d03b14895976af58be65b229a6c58feb01dc7f",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "4237925b-dec8-4b3b-8296-c350c650fa38",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_001.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/f02a0ec71c444376874ead4842b8f6f0_p12canon_waste_001.pdf",
+        "size_bytes": 4289,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:20.340179+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/f02a0ec71c444376874ead4842b8f6f0_p12canon_waste_001.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC9mMDJhMGVjNzFjNDQ0Mzc2ODc0ZWFkNDg0MmI4ZjZmMF9wMTJjYW5vbl93YXN0ZV8wMDEucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMCwiZXhwIjoxNzkwMjU2MDIwfQ.HW8mMfK-oxZobWkAtpHp37QIFqdfzxfZkvVmS1CrK6c",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "38d6a76f-56c7-4fca-8b8a-e8af4bbddb18",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 3: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2025-04-02",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "2025-04-02",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 90.0,
+            "unit_raw": "tonnes",
+            "net_amount": 9687.51,
+            "unit_price": 107.64,
+            "description": "Recycling services - Mixed",
+            "line_number": 1,
+            "source_line": "Recycling services - Mixed 90 tonnes \u00a3107.64 \u00a39,687.51",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 15,
+            "arithmetic_deviation": 0.09
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 64.0,
+            "unit_raw": "tonnes",
+            "net_amount": 12174.21,
+            "unit_price": 190.22,
+            "description": "Waste disposal - General",
+            "line_number": 2,
+            "source_line": "Waste disposal - General 64 tonnes \u00a3190.22 \u00a312,174.21",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 16,
+            "arithmetic_deviation": 0.13
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 58.0,
+            "unit_raw": "tonnes",
+            "net_amount": 5812.76,
+            "unit_price": 100.22,
+            "description": "Waste disposal - Mixed",
+            "line_number": 3,
+            "source_line": "Waste disposal - Mixed 58 tonnes \u00a3100.22 \u00a35,812.76",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 17,
+            "arithmetic_deviation": 0.0
+          }
+        ],
+        "net_amount": "\u00a327,674.48",
+        "vat_amount": "\u00a35,534.89",
+        "gross_amount": "\u00a333,209.37",
+        "invoice_number": "SVC2025008717",
+        "billing_period_end": "2025-03-31",
+        "billing_period_raw": "2025-03-01 \u2013 2025-03-31",
+        "extraction_evidence": {
+          "line_item_count": 3,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "850 Green Lane",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header"
+        },
+        "billing_period_start": "2025-03-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "SVC2025008717",
+          "extracted": "SVC2025008717",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2025-04-02",
+          "extracted": "2025-04-02",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2025-03-01",
+          "extracted": "2025-03-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2025-03-31",
+          "extracted": "2025-03-31",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 27674.48,
+          "extracted": "\u00a327,674.48",
+          "result": "PASS"
+        },
+        "vat": {
+          "oracle": 5534.89,
+          "extracted": "\u00a35,534.89",
+          "result": "PASS"
+        },
+        "total": {
+          "oracle": 33209.37,
+          "extracted": "\u00a333,209.37",
+          "result": "PASS"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 3,
+        "actual_line_count": 3,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Recycling services - Mixed",
+            "actual_description": "Recycling services - Mixed",
+            "expected_qty": 90.0,
+            "actual_qty": 90.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 107.639,
+            "actual_rate": 107.64,
+            "expected_net": 9687.51,
+            "actual_net": 9687.51,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services - Mixed 90 tonnes \u00a3107.64 \u00a39,687.51"
+          },
+          {
+            "line": 2,
+            "expected_description": "Waste disposal - General",
+            "actual_description": "Waste disposal - General",
+            "expected_qty": 64.0,
+            "actual_qty": 64.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 190.222,
+            "actual_rate": 190.22,
+            "expected_net": 12174.21,
+            "actual_net": 12174.21,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - General 64 tonnes \u00a3190.22 \u00a312,174.21"
+          },
+          {
+            "line": 3,
+            "expected_description": "Waste disposal - Mixed",
+            "actual_description": "Waste disposal - Mixed",
+            "expected_qty": 58.0,
+            "actual_qty": 58.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 100.22,
+            "actual_rate": 100.22,
+            "expected_net": 5812.76,
+            "actual_net": 5812.76,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "PASS",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Mixed 58 tonnes \u00a3100.22 \u00a35,812.76"
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "p12canon_waste_002",
+      "source_filename": "p12canon_waste_002.pdf",
+      "pdf_sha256": "b384148016dd4ac3c270c1572ac2ce3d7a9e17035baf8fa4502181311ff506fa",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "73541a1d-721e-4a8c-92f6-bab593fecdc0",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_002.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/6dcab7948ebc493abc6464f750514682_p12canon_waste_002.pdf",
+        "size_bytes": 3717,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:20.497900+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/6dcab7948ebc493abc6464f750514682_p12canon_waste_002.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC82ZGNhYjc5NDhlYmM0OTNhYmM2NDY0Zjc1MDUxNDY4Ml9wMTJjYW5vbl93YXN0ZV8wMDIucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMCwiZXhwIjoxNzkwMjU2MDIwfQ._AcXhpJzYXFHAhWOoA5DstzZXyq8-Div_eoMJCYHS34",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "52784553-2338-4d8a-9658-1a9e628344ea",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 3: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 4: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2025-03-05",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "2025-03-05",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 112.0,
+            "unit_raw": "t",
+            "net_amount": 20010.0,
+            "unit_price": 179.0,
+            "description": "Waste collection - Recycling - Qty: 112.0 ...",
+            "line_number": 1,
+            "source_line": "Waste collection - Recycling - Qty: 112.0 ... 112 t \u00a3179 \u00a320,010",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 15,
+            "arithmetic_deviation": 38.0
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 26.0,
+            "unit_raw": "t",
+            "net_amount": 4902.0,
+            "unit_price": 190.0,
+            "description": "Waste collection - Recycling - Qty: 25.8 t...",
+            "line_number": 2,
+            "source_line": "Waste collection - Recycling - Qty: 25.8 t... 26 t \u00a3190 \u00a34,902",
+            "arithmetic_ok": false,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 16,
+            "arithmetic_deviation": 38.0
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 64.0,
+            "unit_raw": "t",
+            "net_amount": 6256.0,
+            "unit_price": 99.0,
+            "description": "Waste disposal - Hazardous - Qty: 63.5 tonnes",
+            "line_number": 3,
+            "source_line": "Waste disposal - Hazardous - Qty: 63.5 tonnes 64 t \u00a399 \u00a36,256",
+            "arithmetic_ok": false,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 17,
+            "arithmetic_deviation": 80.0
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 48.0,
+            "unit_raw": "t",
+            "net_amount": 3843.0,
+            "unit_price": 81.0,
+            "description": "Waste disposal - Recycling - Qty: 47.6 tonnes",
+            "line_number": 4,
+            "source_line": "Waste disposal - Recycling - Qty: 47.6 tonnes 48 t \u00a381 \u00a33,843",
+            "arithmetic_ok": false,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 18,
+            "arithmetic_deviation": 45.0
+          }
+        ],
+        "net_amount": "\u00a335,011",
+        "vat_amount": "\u00a37,002",
+        "gross_amount": "\u00a342,013",
+        "invoice_number": "SVC2024-8258",
+        "billing_period_end": "2025-02-28",
+        "billing_period_raw": "2025-02-01 \u2013 2025-02-28",
+        "extraction_evidence": {
+          "line_item_count": 4,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "472 Green Lane",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header",
+          "invoice_number_source": "reference_label"
+        },
+        "billing_period_start": "2025-02-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "SVC2024-8258",
+          "extracted": "SVC2024-8258",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2025-03-05",
+          "extracted": "2025-03-05",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2025-02-01",
+          "extracted": "2025-02-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2025-02-28",
+          "extracted": "2025-02-28",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 35011.09,
+          "extracted": "\u00a335,011",
+          "result": "FAIL"
+        },
+        "vat": {
+          "oracle": 7002.22,
+          "extracted": "\u00a37,002",
+          "result": "FAIL"
+        },
+        "total": {
+          "oracle": 42013.31,
+          "extracted": "\u00a342,013",
+          "result": "FAIL"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 4,
+        "actual_line_count": 4,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Waste collection - Recycling",
+            "actual_description": "Waste collection - Recycling - Qty: 112.0 ...",
+            "expected_qty": 112.0,
+            "actual_qty": 112.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 178.665,
+            "actual_rate": 179.0,
+            "expected_net": 20010.48,
+            "actual_net": 20010.0,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": true,
+            "source_line": "Waste collection - Recycling - Qty: 112.0 ... 112 t \u00a3179 \u00a320,010"
+          },
+          {
+            "line": 2,
+            "expected_description": "Waste collection - Recycling",
+            "actual_description": "Waste collection - Recycling - Qty: 25.8 t...",
+            "expected_qty": 25.8,
+            "actual_qty": 26.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 189.996,
+            "actual_rate": 190.0,
+            "expected_net": 4901.9,
+            "actual_net": 4902.0,
+            "qty_result": "FAIL",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": false,
+            "source_line": "Waste collection - Recycling - Qty: 25.8 t... 26 t \u00a3190 \u00a34,902"
+          },
+          {
+            "line": 3,
+            "expected_description": "Waste disposal - Hazardous",
+            "actual_description": "Waste disposal - Hazardous - Qty: 63.5 tonnes",
+            "expected_qty": 63.5,
+            "actual_qty": 64.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 98.522,
+            "actual_rate": 99.0,
+            "expected_net": 6256.15,
+            "actual_net": 6256.0,
+            "qty_result": "FAIL",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": false,
+            "source_line": "Waste disposal - Hazardous - Qty: 63.5 tonnes 64 t \u00a399 \u00a36,256"
+          },
+          {
+            "line": 4,
+            "expected_description": "Waste disposal - Recycling",
+            "actual_description": "Waste disposal - Recycling - Qty: 47.6 tonnes",
+            "expected_qty": 47.6,
+            "actual_qty": 48.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 80.726,
+            "actual_rate": 81.0,
+            "expected_net": 3842.56,
+            "actual_net": 3843.0,
+            "qty_result": "FAIL",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": false,
+            "source_line": "Waste disposal - Recycling - Qty: 47.6 tonnes 48 t \u00a381 \u00a33,843"
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "p12canon_waste_004",
+      "source_filename": "p12canon_waste_004.pdf",
+      "pdf_sha256": "c659fb2eaad6322a394bf6b586dffc83da6021aacfa884b439ac6ca9bb28fd0f",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "846c50e5-e197-44a2-9852-0fedaa20f42d",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_004.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/86c55c6642b849c9b382821f620628b5_p12canon_waste_004.pdf",
+        "size_bytes": 4636,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:20.673180+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/86c55c6642b849c9b382821f620628b5_p12canon_waste_004.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC84NmM1NWM2NjQyYjg0OWM5YjM4MjgyMWY2MjA2MjhiNV9wMTJjYW5vbl93YXN0ZV8wMDQucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMCwiZXhwIjoxNzkwMjU2MDIwfQ.E2tj2ji1kFMK5P15JnUcO9XmoskrQ_HSCXfpGewxT5I",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "7f72e6b3-d08f-48df-82d2-63530beac50e",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2025-07-03",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "03-07-2025",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 5.0,
+            "unit_raw": "tonnes",
+            "net_amount": 297.0,
+            "unit_price": 65.0,
+            "description": "Waste collection - General (ID: None)",
+            "line_number": 1,
+            "source_line": "Waste collection - General (ID: None) 5 tonnes \u00a365 \u00a3297",
+            "arithmetic_ok": false,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 14,
+            "arithmetic_deviation": 28.0
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 43.0,
+            "unit_raw": "tonnes",
+            "net_amount": 5021.0,
+            "unit_price": 117.0,
+            "description": "Waste disposal - Organic (ID: None)",
+            "line_number": 2,
+            "source_line": "Waste disposal - Organic (ID: None) 43 tonnes \u00a3117 \u00a35,021",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 15,
+            "arithmetic_deviation": 10.0
+          }
+        ],
+        "net_amount": "\u00a35,318",
+        "vat_amount": "\u00a31,064",
+        "gross_amount": "\u00a36,382",
+        "invoice_number": "INV2026004869",
+        "billing_period_end": "2025-06-30",
+        "billing_period_raw": "01-06-2025 \u2013 30-06-2025",
+        "extraction_evidence": {
+          "line_item_count": 2,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "193 Renewable Road",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header",
+          "invoice_number_source": "reference_label"
+        },
+        "billing_period_start": "2025-06-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "INV2026004869",
+          "extracted": "INV2026004869",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2025-07-03",
+          "extracted": "2025-07-03",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2025-06-01",
+          "extracted": "2025-06-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2025-06-30",
+          "extracted": "2025-06-30",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 5318.44,
+          "extracted": "\u00a35,318",
+          "result": "FAIL"
+        },
+        "vat": {
+          "oracle": 1063.69,
+          "extracted": "\u00a31,064",
+          "result": "FAIL"
+        },
+        "total": {
+          "oracle": 6382.13,
+          "extracted": "\u00a36,382",
+          "result": "FAIL"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 2,
+        "actual_line_count": 2,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Waste collection - General",
+            "actual_description": "Waste collection - General (ID: None)",
+            "expected_qty": 4.6,
+            "actual_qty": 5.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 64.643,
+            "actual_rate": 65.0,
+            "expected_net": 297.36,
+            "actual_net": 297.0,
+            "qty_result": "FAIL",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": false,
+            "source_line": "Waste collection - General (ID: None) 5 tonnes \u00a365 \u00a3297"
+          },
+          {
+            "line": 2,
+            "expected_description": "Waste disposal - Organic",
+            "actual_description": "Waste disposal - Organic (ID: None)",
+            "expected_qty": 42.8,
+            "actual_qty": 43.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 117.315,
+            "actual_rate": 117.0,
+            "expected_net": 5021.08,
+            "actual_net": 5021.0,
+            "qty_result": "FAIL",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Organic (ID: None) 43 tonnes \u00a3117 \u00a35,021"
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "p12canon_waste_003",
+      "source_filename": "p12canon_waste_003.pdf",
+      "pdf_sha256": "f915c9a71a35d275882675743149759e13902a1f5201c5f5e613477758070361",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "eca7ff3b-672f-4805-bcab-44e17d6e910d",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_003.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/e385b5ff8b5a4839896314c8f0518768_p12canon_waste_003.pdf",
+        "size_bytes": 4963,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:20.792441+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/e385b5ff8b5a4839896314c8f0518768_p12canon_waste_003.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC9lMzg1YjVmZjhiNWE0ODM5ODk2MzE0YzhmMDUxODc2OF9wMTJjYW5vbl93YXN0ZV8wMDMucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMCwiZXhwIjoxNzkwMjU2MDIwfQ.n1tOflKywschbglAN_EI83CEMt2gBblOQjDbm6uZ8Sw",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "83a2a292-e562-40e3-b0dd-dba743d0d4e1",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 3: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 4: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 5: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2026-07-02",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "2026-07-02",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 16.0,
+            "unit_raw": "tonnes",
+            "net_amount": 2979.33,
+            "unit_price": 186.21,
+            "description": "Waste disposal - Mixed",
+            "line_number": 1,
+            "source_line": "Waste disposal - Mixed 16 tonnes \u00a3186.21 \u00a32,979.33",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 16,
+            "arithmetic_deviation": 0.03
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 29.0,
+            "unit_raw": "tonnes",
+            "net_amount": 2428.49,
+            "unit_price": 83.74,
+            "description": "Waste disposal - Mixed",
+            "line_number": 2,
+            "source_line": "Waste disposal - Mixed 29 tonnes \u00a383.74 \u00a32,428.49",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 17,
+            "arithmetic_deviation": 0.03
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 18.0,
+            "unit_raw": "tonnes",
+            "net_amount": 1708.83,
+            "unit_price": 94.94,
+            "description": "Recycling services - Organic",
+            "line_number": 3,
+            "source_line": "Recycling services - Organic 18 tonnes \u00a394.94 \u00a31,708.83",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 18,
+            "arithmetic_deviation": 0.09
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 26.0,
+            "unit_raw": "tonnes",
+            "net_amount": 1348.46,
+            "unit_price": 51.86,
+            "description": "Waste disposal - Mixed",
+            "line_number": 4,
+            "source_line": "Waste disposal - Mixed 26 tonnes \u00a351.86 \u00a31,348.46",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 19,
+            "arithmetic_deviation": 0.1
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 19.0,
+            "unit_raw": "tonnes",
+            "net_amount": 3163.65,
+            "unit_price": 166.51,
+            "description": "Waste disposal - Hazardous",
+            "line_number": 5,
+            "source_line": "Waste disposal - Hazardous 19 tonnes \u00a3166.51 \u00a33,163.65",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 20,
+            "arithmetic_deviation": 0.04
+          }
+        ],
+        "net_amount": "\u00a311,628.76",
+        "vat_amount": "\u00a32,325.76",
+        "gross_amount": "\u00a313,954.52",
+        "invoice_number": "UTL2025-1409",
+        "billing_period_end": "2026-06-30",
+        "billing_period_raw": "2026-06-01 \u2013 2026-06-30",
+        "extraction_evidence": {
+          "line_item_count": 5,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "953 Green Lane",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header"
+        },
+        "billing_period_start": "2026-06-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "UTL2025-1409",
+          "extracted": "UTL2025-1409",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2026-07-02",
+          "extracted": "2026-07-02",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2026-06-01",
+          "extracted": "2026-06-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2026-06-30",
+          "extracted": "2026-06-30",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 11628.76,
+          "extracted": "\u00a311,628.76",
+          "result": "PASS"
+        },
+        "vat": {
+          "oracle": 2325.76,
+          "extracted": "\u00a32,325.76",
+          "result": "PASS"
+        },
+        "total": {
+          "oracle": 13954.52,
+          "extracted": "\u00a313,954.52",
+          "result": "PASS"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 5,
+        "actual_line_count": 5,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Waste disposal - Mixed",
+            "actual_description": "Waste disposal - Mixed",
+            "expected_qty": 16.0,
+            "actual_qty": 16.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 186.208,
+            "actual_rate": 186.21,
+            "expected_net": 2979.33,
+            "actual_net": 2979.33,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Mixed 16 tonnes \u00a3186.21 \u00a32,979.33"
+          },
+          {
+            "line": 2,
+            "expected_description": "Waste disposal - Mixed",
+            "actual_description": "Waste disposal - Mixed",
+            "expected_qty": 29.0,
+            "actual_qty": 29.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 83.741,
+            "actual_rate": 83.74,
+            "expected_net": 2428.49,
+            "actual_net": 2428.49,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Mixed 29 tonnes \u00a383.74 \u00a32,428.49"
+          },
+          {
+            "line": 3,
+            "expected_description": "Recycling services - Organic",
+            "actual_description": "Recycling services - Organic",
+            "expected_qty": 18.0,
+            "actual_qty": 18.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 94.935,
+            "actual_rate": 94.94,
+            "expected_net": 1708.83,
+            "actual_net": 1708.83,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services - Organic 18 tonnes \u00a394.94 \u00a31,708.83"
+          },
+          {
+            "line": 4,
+            "expected_description": "Waste disposal - Mixed",
+            "actual_description": "Waste disposal - Mixed",
+            "expected_qty": 26.0,
+            "actual_qty": 26.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 51.864,
+            "actual_rate": 51.86,
+            "expected_net": 1348.46,
+            "actual_net": 1348.46,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Mixed 26 tonnes \u00a351.86 \u00a31,348.46"
+          },
+          {
+            "line": 5,
+            "expected_description": "Waste disposal - Hazardous",
+            "actual_description": "Waste disposal - Hazardous",
+            "expected_qty": 19.0,
+            "actual_qty": 19.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 166.508,
+            "actual_rate": 166.51,
+            "expected_net": 3163.65,
+            "actual_net": 3163.65,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal - Hazardous 19 tonnes \u00a3166.51 \u00a33,163.65"
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "p12canon_waste_005",
+      "source_filename": "p12canon_waste_005.pdf",
+      "pdf_sha256": "9b2753cf2147beb3f5c45a718b9a30d55e2b5e30720a0b35ccc6f31bfcfa7dde",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "f140ea68-b997-45fb-91cc-d1a55b67a12c",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_005.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/32dc0c263a954bd4b0f8ef2633c2eeab_p12canon_waste_005.pdf",
+        "size_bytes": 4993,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:20.920437+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/32dc0c263a954bd4b0f8ef2633c2eeab_p12canon_waste_005.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC8zMmRjMGMyNjNhOTU0YmQ0YjBmOGVmMjYzM2MyZWVhYl9wMTJjYW5vbl93YXN0ZV8wMDUucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMCwiZXhwIjoxNzkwMjU2MDIwfQ.X9hwqK--_k6MtcTDQJeZElGMq_J28sl9DIFdx6WFjoY",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "db53813d-71e6-4f12-9f5f-13d5584ce427",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 3: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2026-07-07",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "2026-07-07",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 36.7,
+            "unit_raw": "t",
+            "net_amount": 4664.0,
+            "unit_price": 127.0,
+            "description": "Waste disposal",
+            "line_number": 1,
+            "source_line": "Waste disposal 36.700 t \u00a3127 \u00a34,664",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 16,
+            "arithmetic_deviation": 3.1
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 17.2,
+            "unit_raw": "t",
+            "net_amount": 2846.0,
+            "unit_price": 165.0,
+            "description": "Waste disposal",
+            "line_number": 2,
+            "source_line": "Waste disposal 17.200 t \u00a3165 \u00a32,846",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 17,
+            "arithmetic_deviation": 8.0
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 8.0,
+            "unit_raw": "t",
+            "net_amount": 1440.0,
+            "unit_price": 180.0,
+            "description": "Recycling services",
+            "line_number": 3,
+            "source_line": "Recycling services 8 t \u00a3180 \u00a31,440",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 18,
+            "arithmetic_deviation": 0.0
+          }
+        ],
+        "net_amount": "\u00a38,949.690",
+        "vat_amount": "\u00a31,789.930",
+        "gross_amount": "\u00a310,739.620",
+        "invoice_number": "ECO2024006142",
+        "billing_period_end": "2026-06-30",
+        "billing_period_raw": "2026-06-01 \u2013 2026-06-30",
+        "extraction_evidence": {
+          "line_item_count": 3,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "685 Eco Drive",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header"
+        },
+        "billing_period_start": "2026-06-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "ECO2024006142",
+          "extracted": "ECO2024006142",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2026-07-07",
+          "extracted": "2026-07-07",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2026-06-01",
+          "extracted": "2026-06-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2026-06-30",
+          "extracted": "2026-06-30",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 8949.69,
+          "extracted": "\u00a38,949.690",
+          "result": "PASS"
+        },
+        "vat": {
+          "oracle": 1789.93,
+          "extracted": "\u00a31,789.930",
+          "result": "PASS"
+        },
+        "total": {
+          "oracle": 10739.62,
+          "extracted": "\u00a310,739.620",
+          "result": "PASS"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 3,
+        "actual_line_count": 3,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Waste disposal - Recycling",
+            "actual_description": "Waste disposal",
+            "expected_qty": 36.7,
+            "actual_qty": 36.7,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 127.074,
+            "actual_rate": 127.0,
+            "expected_net": 4663.62,
+            "actual_net": 4664.0,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal 36.700 t \u00a3127 \u00a34,664"
+          },
+          {
+            "line": 2,
+            "expected_description": "Waste disposal - General",
+            "actual_description": "Waste disposal",
+            "expected_qty": 17.2,
+            "actual_qty": 17.2,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 165.465,
+            "actual_rate": 165.0,
+            "expected_net": 2846.0,
+            "actual_net": 2846.0,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste disposal 17.200 t \u00a3165 \u00a32,846"
+          },
+          {
+            "line": 3,
+            "expected_description": "Recycling services - Organic",
+            "actual_description": "Recycling services",
+            "expected_qty": 8.0,
+            "actual_qty": 8.0,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 180.009,
+            "actual_rate": 180.0,
+            "expected_net": 1440.07,
+            "actual_net": 1440.0,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "FAIL",
+            "net_result": "FAIL",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services 8 t \u00a3180 \u00a31,440"
+          }
+        ]
+      }
+    },
+    {
+      "document_id": "p12canon_waste_006",
+      "source_filename": "p12canon_waste_006.pdf",
+      "pdf_sha256": "efcc1b223e3cb8473abfc0e3a1349283b14b8c792ed941a293b7a6d215b1777e",
+      "pdf_sha256_matches_oracle": true,
+      "upload_status": 201,
+      "upload_response": {
+        "id": "5628674d-72d1-4577-90d4-217135f0a8f4",
+        "organization_id": "3fd0f325-16a1-5b53-8fb8-27929cf218fa",
+        "name": "p12canon_waste_006.pdf",
+        "path": "uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/1d5f1fb144eb4dbe97647c5238799c06_p12canon_waste_006.pdf",
+        "size_bytes": 5613,
+        "file_type": "PDF",
+        "mime_type": "application/pdf",
+        "bucket": "documents",
+        "status": "uploaded",
+        "uploaded_by": "52a55937-d0fd-4b4a-aa07-a8843ed6a5fa",
+        "uploaded_at": "2026-09-24T12:20:21.147701+00:00",
+        "is_active": true,
+        "metadata": {
+          "file_url": "http://127.0.0.1:54430/storage/v1/object/sign/documents/uploads/3fd0f325-16a1-5b53-8fb8-27929cf218fa/2026/09/24/1d5f1fb144eb4dbe97647c5238799c06_p12canon_waste_006.pdf?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJkb2N1bWVudHMvdXBsb2Fkcy8zZmQwZjMyNS0xNmExLTViNTMtOGZiOC0yNzkyOWNmMjE4ZmEvMjAyNi8wOS8yNC8xZDVmMWZiMTQ0ZWI0ZGJlOTc2NDdjNTIzODc5OWMwNl9wMTJjYW5vbl93YXN0ZV8wMDYucGRmIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc5MDI1MjQyMSwiZXhwIjoxNzkwMjU2MDIxfQ._jcjPInTte4txeCZOY7QEk-xPZFD8yzkDgSCxl1Vkyg",
+          "data_type": "utility"
+        }
+      },
+      "extraction_item_id": "a8dc5428-b86c-4e22-a1b6-4da1dcd413f3",
+      "extraction_item_status": "extracted",
+      "queue_status": "manual_review",
+      "queue_stage": "blocked",
+      "queue_pipeline_version": "v3-auto-1.2",
+      "manual_review_reason": "mapping could not auto-resolve: line 1: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 2: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 3: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning); line 4: clarification required for 'Waste' (the activity can mean either a treatment/material handling of the substance or a combustion of it as fuel, and those families share no accounting meaning)",
+      "actual_extracted_data": {
+        "date": "2026-02-02",
+        "customer": "Sustainable Direct Group",
+        "date_raw": "Feb 02, 2026",
+        "supplier": "Robinsons Recycling Services Ltd",
+        "line_items": [
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 41.98,
+            "unit_raw": "tonnes",
+            "net_amount": 3938.61,
+            "unit_price": 93.821,
+            "description": "Recycling services - Organic",
+            "line_number": 1,
+            "source_line": "Recycling services - Organic 41.9800 tonnes \u00a393.8210 \u00a33,938.6100",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 15,
+            "arithmetic_deviation": 0.0044
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 91.6,
+            "unit_raw": "tonnes",
+            "net_amount": 12927.87,
+            "unit_price": 141.134,
+            "description": "Recycling services - Mixed",
+            "line_number": 2,
+            "source_line": "Recycling services - Mixed 91.6000 tonnes \u00a3141.1340 \u00a312,927.8700",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 16,
+            "arithmetic_deviation": 0.0044
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 41.42,
+            "unit_raw": "tonnes",
+            "net_amount": 3509.81,
+            "unit_price": 84.737,
+            "description": "Waste collection - Recycling",
+            "line_number": 3,
+            "source_line": "Waste collection - Recycling 41.4200 tonnes \u00a384.7370 \u00a33,509.8100",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 17,
+            "arithmetic_deviation": 0.0035
+          },
+          {
+            "unit": "tonnes",
+            "activity": "Waste",
+            "quantity": 94.7,
+            "unit_raw": "tonnes",
+            "net_amount": 16108.28,
+            "unit_price": 170.098,
+            "description": "Recycling services - Mixed",
+            "line_number": 4,
+            "source_line": "Recycling services - Mixed 94.7000 tonnes \u00a3170.0980 \u00a316,108.2800",
+            "arithmetic_ok": true,
+            "extraction_method": "det:pdf_table",
+            "source_line_number": 18,
+            "arithmetic_deviation": 0.0006
+          }
+        ],
+        "net_amount": "\u00a336,484.5700",
+        "vat_amount": "\u00a37,296.9100",
+        "gross_amount": "\u00a343,781.4800",
+        "invoice_number": "GRN/2027/1879",
+        "billing_period_end": "2026-01-31",
+        "billing_period_raw": "Jan 01, 2026 \u2013 Jan 31, 2026",
+        "extraction_evidence": {
+          "line_item_count": 4,
+          "supplier_header": {
+            "selected": "Robinsons Recycling Services Ltd",
+            "strategy": "header_block",
+            "candidates": [
+              {
+                "line": "Robinsons Recycling Services Ltd",
+                "score": 2
+              },
+              {
+                "line": "39 Eco Drive",
+                "score": 1
+              }
+            ],
+            "marker_line": "WASTE INVOICE"
+          },
+          "supplier_source": "document_header"
+        },
+        "billing_period_start": "2026-01-01"
+      },
+      "application_read_status": 404,
+      "document_comparison": {
+        "supplier": {
+          "oracle": "Robinsons Recycling Services Ltd",
+          "extracted": "Robinsons Recycling Services Ltd",
+          "result": "PASS"
+        },
+        "customer": {
+          "oracle": "Sustainable Direct Group",
+          "extracted": "Sustainable Direct Group",
+          "result": "PASS"
+        },
+        "invoice_ref": {
+          "oracle": "GRN/2027/1879",
+          "extracted": "GRN/2027/1879",
+          "result": "PASS"
+        },
+        "invoice_date": {
+          "oracle": "2026-02-02",
+          "extracted": "2026-02-02",
+          "result": "PASS"
+        },
+        "period_start": {
+          "oracle": "2026-01-01",
+          "extracted": "2026-01-01",
+          "result": "PASS"
+        },
+        "period_end": {
+          "oracle": "2026-01-31",
+          "extracted": "2026-01-31",
+          "result": "PASS"
+        },
+        "subtotal": {
+          "oracle": 36484.57,
+          "extracted": "\u00a336,484.5700",
+          "result": "PASS"
+        },
+        "vat": {
+          "oracle": 7296.91,
+          "extracted": "\u00a37,296.9100",
+          "result": "PASS"
+        },
+        "total": {
+          "oracle": 43781.48,
+          "extracted": "\u00a343,781.4800",
+          "result": "PASS"
+        }
+      },
+      "line_comparison": {
+        "expected_line_count": 4,
+        "actual_line_count": 4,
+        "rows": [
+          {
+            "line": 1,
+            "expected_description": "Recycling services - Organic",
+            "actual_description": "Recycling services - Organic",
+            "expected_qty": 41.98,
+            "actual_qty": 41.98,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 93.821,
+            "actual_rate": 93.821,
+            "expected_net": 3938.61,
+            "actual_net": 3938.61,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "PASS",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services - Organic 41.9800 tonnes \u00a393.8210 \u00a33,938.6100"
+          },
+          {
+            "line": 2,
+            "expected_description": "Recycling services - Mixed",
+            "actual_description": "Recycling services - Mixed",
+            "expected_qty": 91.6,
+            "actual_qty": 91.6,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 141.134,
+            "actual_rate": 141.134,
+            "expected_net": 12927.87,
+            "actual_net": 12927.87,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "PASS",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services - Mixed 91.6000 tonnes \u00a3141.1340 \u00a312,927.8700"
+          },
+          {
+            "line": 3,
+            "expected_description": "Waste collection - Recycling",
+            "actual_description": "Waste collection - Recycling",
+            "expected_qty": 41.42,
+            "actual_qty": 41.42,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 84.737,
+            "actual_rate": 84.737,
+            "expected_net": 3509.81,
+            "actual_net": 3509.81,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "PASS",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Waste collection - Recycling 41.4200 tonnes \u00a384.7370 \u00a33,509.8100"
+          },
+          {
+            "line": 4,
+            "expected_description": "Recycling services - Mixed",
+            "actual_description": "Recycling services - Mixed",
+            "expected_qty": 94.7,
+            "actual_qty": 94.7,
+            "expected_unit": "tonnes",
+            "actual_unit": "tonnes",
+            "expected_rate": 170.098,
+            "actual_rate": 170.098,
+            "expected_net": 16108.28,
+            "actual_net": 16108.28,
+            "qty_result": "PASS",
+            "unit_result": "PASS",
+            "rate_result": "PASS",
+            "net_result": "PASS",
+            "arithmetic_ok": true,
+            "source_line": "Recycling services - Mixed 94.7000 tonnes \u00a3170.0980 \u00a316,108.2800"
+          }
+        ]
+      }
+    }
+  ]
+}

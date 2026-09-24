@@ -23,6 +23,7 @@ import re
 from typing import Any
 
 from engines.extraction import DocumentExtractionEngine
+from engines import invoice_extraction
 
 
 #: The engine needs a document sink for construction only; suggestions never
@@ -41,7 +42,7 @@ _ACTIVITY_KEYWORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Electricity", re.compile(r"\belectricity\b|\belectrical\b|\bmpan\b", re.IGNORECASE)),
     ("Diesel", re.compile(r"\bdiesel\b", re.IGNORECASE)),
     ("Petrol", re.compile(r"\bpetrol\b|\bgasoline\b|\bunleaded\b", re.IGNORECASE)),
-    ("Waste", re.compile(r"\bwaste\b", re.IGNORECASE)),
+    ("Waste", re.compile(r"\bwaste\b|\brecycl|\brefuse\b|\blandfill\b|\bcompost", re.IGNORECASE)),
     ("Water", re.compile(r"\bwater\b", re.IGNORECASE)),
     ("Travel", re.compile(r"\btravel\b|\bhotel\b|\brail\b|\bflight\b", re.IGNORECASE)),
 )
@@ -57,13 +58,19 @@ _NUMBER_UNIT_RE = re.compile(r"(?P<qty>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>[a-zA-Z³0
 
 #: Mapping of engine field names → V3 extracted_data keys (subset of the
 #: schema used by the processing workflow; nothing new is invented).
+#: P12-IMPL-01 adds the header/period/tax vocabulary the canonical invoice class
+#: requires (customer, billing period, document VAT) — all JSONB keys in the
+#: existing ``extracted_data`` contract, so no schema change is involved.
 _FIELD_ALIASES: dict[str, str] = {
     "supplier": "supplier",
     "invoice_number": "invoice_number",
     "date": "date",
     "invoice_date": "date",
+    "customer": "customer",
+    "billing_period": "billing_period",
     "net_amount": "net_amount",
     "net_total": "net_amount",
+    "vat_amount": "vat_amount",
     "gross_amount": "gross_amount",
     "total_amount": "gross_amount",
     "gross_total": "gross_amount",
@@ -125,33 +132,107 @@ def suggest(text: str) -> dict[str, Any]:
     fields = _ENGINE.suggest_fields(text)
     suggested: dict[str, Any] = {}
     unresolved: list[str] = []
+    evidence: dict[str, Any] = {}
 
     for engine_field, target in _FIELD_ALIASES.items():
         value = fields.get(engine_field)
         if value and value.strip():
             suggested.setdefault(target, value.strip())
+
+    # P12-IMPL-01: reference-labelled invoices (``Ref:``) supply the invoice
+    # number only when no explicit invoice label was printed.
+    if "invoice_number" not in suggested:
+        reference = (fields.get("invoice_ref") or "").strip()
+        if reference:
+            suggested["invoice_number"] = reference
+            evidence["invoice_number_source"] = "reference_label"
+
+    # P12-IMPL-01: supplier — labelled pattern first, then the guarded
+    # document-header strategy. Uncertain headers stay unresolved.
+    if "supplier" in suggested:
+        evidence["supplier_source"] = "labelled"
+    else:
+        supplier_name, supplier_evidence = invoice_extraction.extract_supplier_header(text)
+        evidence["supplier_header"] = supplier_evidence
+        if supplier_name:
+            suggested["supplier"] = supplier_name
+            evidence["supplier_source"] = "document_header"
+
+    # P12-IMPL-01: normalise the printed date to ISO, preserving the raw value.
+    printed_date = (suggested.get("date") or "").strip()
+    if printed_date:
+        iso_date = invoice_extraction.parse_date(printed_date)
+        suggested["date_raw"] = printed_date
+        if iso_date:
+            suggested["date"] = iso_date
+        else:
+            suggested.pop("date", None)
+
+    # P12-IMPL-01: billing period → explicit start/end; an end date is never
+    # invented (both ends must parse).
+    printed_period = (suggested.get("billing_period") or "").strip()
+    suggested.pop("billing_period", None)
+    if printed_period:
+        period_start, period_end = invoice_extraction.parse_period(printed_period)
+        if period_start and period_end:
+            suggested["billing_period_start"] = period_start
+            suggested["billing_period_end"] = period_end
+            suggested["billing_period_raw"] = printed_period
+
+    # P12-IMPL-01: item-table rows (deterministic, fail-closed).
+    line_items = invoice_extraction.extract_invoice_lines(text)
+    document_activity = next(
+        (label for label, pattern in _ACTIVITY_KEYWORDS if pattern.search(text)), None
+    )
+    lines_cover_required = False
+    if line_items:
+        for item in line_items:
+            item["activity"] = next(
+                (
+                    label
+                    for label, pattern in _ACTIVITY_KEYWORDS
+                    if pattern.search(item["description"])
+                ),
+                document_activity,
+            )
+        suggested["line_items"] = line_items
+        evidence["line_item_count"] = len(line_items)
+        lines_cover_required = all(
+            str(item.get(field) or "").strip()
+            for item in line_items
+            for field in ("activity", "quantity", "unit")
+        )
+
     if "supplier" not in suggested:
         unresolved.append("supplier")
     if "invoice_number" not in suggested:
         unresolved.append("invoice_number")
     if "date" not in suggested:
         unresolved.append("date")
+    if "billing_period_start" not in suggested:
+        unresolved.append("billing_period")
 
     quantity, unit, q_unresolved = _suggest_quantity_unit(fields)
-    if q_unresolved:
-        unresolved.extend(q_unresolved)
+    if lines_cover_required:
+        # activity/quantity/unit are resolved per line: reporting them as
+        # document-level ``unresolved`` would misstate the extraction, and
+        # inventing a single document-level quantity from multi-line data would
+        # fabricate a value.
+        suggested.pop("quantity", None)
+        suggested.pop("unit", None)
     else:
-        suggested["quantity"] = quantity
-        suggested["unit"] = unit
+        if q_unresolved:
+            unresolved.extend(q_unresolved)
+        else:
+            suggested["quantity"] = quantity
+            suggested["unit"] = unit
+        if document_activity:
+            suggested["activity"] = document_activity
+        else:
+            unresolved.append("activity")
 
-    activity = next(
-        (label for label, pattern in _ACTIVITY_KEYWORDS if pattern.search(text)),
-        None,
-    )
-    if activity:
-        suggested["activity"] = activity
-    else:
-        unresolved.append("activity")
+    if evidence:
+        suggested["extraction_evidence"] = evidence
 
     return {
         "suggested": True,

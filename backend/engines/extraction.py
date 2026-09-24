@@ -52,12 +52,35 @@ _DEFAULT_FIELD_PATTERNS: Mapping[str, re.Pattern[str]] = {
     "invoice_number": re.compile(
         r"(?im)^\s*invoice\s*(?:number|no\.?|#)?\s*[:：]\s*(.+?)\s*$"
     ),
-    "date": re.compile(r"(?im)^\s*(?:invoice\s+)?date\s*[:：]\s*(.+?)\s*$"),
+    # P12-IMPL-01: reference-labelled invoices (``Ref:``) — used only as a
+    # fallback for a missing ``invoice_number`` (see extraction_suggestions).
+    "invoice_ref": re.compile(
+        r"(?im)^\s*(?:our\s+)?(?:invoice\s+)?ref(?:erence)?\b[^:：\n]*[:：]\s*(.+?)\s*$"
+    ),
+    "date": re.compile(
+        r"(?im)^\s*(?:invoice\s+)?(?:date|issued|issue\s+date)\b[^:：\n]*[:：]\s*(.+?)\s*$"
+    ),
+    # P12-IMPL-01: the buyer printed on the document is DOCUMENT CONTENT only —
+    # never a tenant/organization identity (P12-D5).
+    "customer": re.compile(
+        r"(?im)^\s*(?:customer|buyer|client|recipient|bill\s*to|sold\s*to|"
+        r"invoice\s*to)\b[^:：\n]*[:：]\s*(.+?)\s*$"
+    ),
+    # P12-IMPL-01: printed billing/reporting period (split into start/end later).
+    "billing_period": re.compile(
+        r"(?im)^\s*(?:billing|period|reporting\s*period|service\s*period)\b"
+        r"[^:：\n]*[:：]\s*(.+?)\s*$"
+    ),
     "net_amount": re.compile(
-        r"(?im)^\s*net\s*(?:amount|total)?\s*[:：]\s*(.+?)\s*$"
+        r"(?im)^\s*(?:net\s*(?:amount|total)|sub\s*total)\b[^:：\n]*[:：]\s*(.+?)\s*$"
+    ),
+    "vat_amount": re.compile(
+        r"(?im)^\s*(?:vat|gst|tax)\b"
+        r"(?![^:：\n]*\b(?:no|number|reg|registration)\b)[^:：\n]*[:：]\s*(.+?)\s*$"
     ),
     "gross_amount": re.compile(
-        r"(?im)^\s*gross\s*(?:amount|total)?\s*[:：]\s*(.+?)\s*$"
+        r"(?im)^\s*(?:gross\s*(?:amount|total)|total\s*(?:due)?|net\s*payable)\b"
+        r"[^:：\n]*[:：]\s*(.+?)\s*$"
     ),
 }
 

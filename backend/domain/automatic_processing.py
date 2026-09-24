@@ -42,7 +42,7 @@ from typing import Optional
 from domain.workflow import WorkflowDefinition
 
 #: Pipeline version stamped into every job created by this implementation.
-PIPELINE_VERSION = "v3-auto-1.1"  # P1-D1: P1 extraction-shape generation
+PIPELINE_VERSION = "v3-auto-1.2"  # P12-IMPL-01: deterministic PDF invoice-header + item-table shaping
 
 #: Default retry cap per job (dead-letter after this many attempts).
 DEFAULT_MAX_ATTEMPTS = 3
