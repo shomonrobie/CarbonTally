@@ -1,0 +1,207 @@
+/* ==========================================================================
+   frontend/src/v3/capabilities/capabilities.css
+   P17-L — layout for the governed capability truth surface.
+
+   Presentation only. It consumes the D21 `ct-*` design tokens (no new visual
+   identity) and carries no product fact: the governed capability values,
+   explanations and provenance all arrive from `/api/v3/capabilities`.
+   ========================================================================== */
+
+.ct-capability {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-4, 16px);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--ct-space-4, 16px);
+  color: var(--ct-color-text);
+}
+
+.ct-capability__title {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.ct-capability__subtitle,
+.ct-capability__framework-source {
+  margin: 0 0 6px;
+  color: var(--ct-color-text-secondary);
+  line-height: 1.5;
+}
+
+.ct-capability__where {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--ct-color-accent);
+  background: var(--ct-color-bg);
+  border-radius: var(--ct-radius-sm, 4px);
+  color: var(--ct-color-text-secondary);
+  line-height: 1.5;
+}
+
+.ct-capability__section-title {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+
+.ct-capability__subsection-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.ct-capability__rollup-note {
+  margin: 0 0 10px;
+  color: var(--ct-color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.ct-capability__rollup-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-space-3, 12px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ct-capability__rollup-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-md, 8px);
+  background: var(--ct-color-surface);
+}
+
+.ct-capability__rollup-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-capability__scope2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--ct-space-3, 12px);
+}
+
+.ct-capability__scope2-grid > article,
+.ct-capability__scope1 > article {
+  padding: 12px;
+  border: 1px solid var(--ct-color-border);
+  border-radius: var(--ct-radius-md, 8px);
+  background: var(--ct-color-surface);
+}
+
+.ct-capability__claim {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.ct-capability__explanation {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ct-capability__detail {
+  margin: 0;
+  color: var(--ct-color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.ct-capability__provenance {
+  font-size: 0.8rem;
+  color: var(--ct-color-text-muted);
+  line-height: 1.45;
+}
+
+.ct-capability__unresolved {
+  margin-top: 4px;
+  color: var(--ct-color-warning-text);
+}
+
+.ct-capability__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ct-color-surface);
+  border: 1px solid var(--ct-color-border);
+}
+
+.ct-capability__table caption {
+  caption-side: top;
+  text-align: left;
+  padding: 6px 0 10px;
+  color: var(--ct-color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.ct-capability__table th,
+.ct-capability__table td {
+  border-top: 1px solid var(--ct-color-border);
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ct-capability__table thead th {
+  background: var(--ct-color-bg);
+  white-space: nowrap;
+}
+
+.ct-capability__absence {
+  margin: 8px 0 0;
+  color: var(--ct-color-text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.ct-capability__glossary-list {
+  margin: 0;
+}
+
+.ct-capability__glossary-entry {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--ct-color-border);
+}
+
+.ct-capability__glossary-entry dd {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ct-capability__footnote {
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--ct-color-border);
+  color: var(--ct-color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Narrow viewports (AGENTS.md §49): the matrix must stay readable rather than
+   being clipped. */
+@media (max-width: 768px) {
+  .ct-capability__table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .ct-capability__glossary-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .ct-capability__table th,
+  .ct-capability__table td {
+    padding: 8px;
+    font-size: 0.9rem;
+  }
+}

@@ -38,6 +38,11 @@ const CUSTOMER_LINKS = [
   // the existing D18 customer model, not a navigation redesign.
   { to: '/insight', label: 'Insight', icon: 'insight' },
   { to: '/existing-data', label: 'Existing data', icon: 'search' },
+  // P17-L — the governed capability truth surface. One added entry in the
+  // existing D18 customer model (no navigation redesign): the customer asks
+  // "what does CarbonTally support?" here, and "what does my data say?" on
+  // Emissions and Reports (`DECISION-03 §8`).
+  { to: '/capabilities', label: 'Capabilities', icon: 'list' },
 ];
 
 export default function V3Layout({ children }) {

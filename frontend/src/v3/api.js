@@ -167,6 +167,15 @@ export const getReportVersions = (reportId) =>
 
 export const getReportTypes = () => v3Fetch('/api/v3/reports/types');
 
+// ---------------------------------------------------------------------------
+// P17-L — the governed capability truth surface
+// ---------------------------------------------------------------------------
+// Product-level, tenant-free truth (`CT-PO-P17-DECISION-03 §5`–`§9`). The
+// request deliberately carries NO tenant parameter: capability is a property of
+// the product, not of a workspace, so no caller can change what it says
+// (`AG-5`, `SEC-1`). The backend is the only source of every value.
+export const getCapabilityCatalogue = () => v3Fetch('/api/v3/capabilities');
+
 // --- S6 — report lifecycle (visibility-first) -------------------------------
 // Thin wrappers over the existing, already-authorised lifecycle endpoints. The
 // server owns the state machine and re-checks authority on every transition;

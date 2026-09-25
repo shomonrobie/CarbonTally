@@ -71,6 +71,10 @@ import ProcessingItemPage from './v3/customer/ProcessingItemPage';
 import ReviewPage from './v3/customer/ReviewPage';
 import ReviewDetailPage from './v3/customer/ReviewDetailPage';
 import IssuesPage from './v3/customer/IssuesPage';
+// P17-L — the governed capability truth surface (product-level, tenant-free):
+// one canonical projection, two presentations (`DECISION-03 §6`).
+import CapabilitiesPage from './v3/capabilities/CapabilitiesPage';
+import InvestorCapabilityPage from './v3/capabilities/InvestorCapabilityPage';
 import ExistingDataDiscoveryPage from './v3/customer/ExistingDataDiscoveryPage';
 import MessagingPage from './v3/customer/MessagingPage';
 import InsightPage from './v3/insight/InsightPage';
@@ -2098,6 +2102,32 @@ export default function App() {
                     <IssuesPage />
                   </V3Layout>
                 </RoleRoute>
+              </ProtectedRoute>
+            } />
+            {/* P17-L — the governed capability truth surface (`DECISION-03 §8`).
+                The customer presentation sits inside the org-scoped shell, but
+                the page itself makes no tenant-scoped request: capability is a
+                product fact, and the customer's own results live on Emissions
+                and Reports (§8). */}
+            <Route path="/capabilities" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <CapabilitiesPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
+            {/* P17-L — the same governed statement, presented for a product /
+                due-diligence read (`DECISION-03 §9`, §14.3). Authenticated but
+                deliberately NOT org-scoped: it resolves no organisation, issues
+                no tenant query, and shows no tenant data (`CS-1`, `SEC-1`,
+                `AG-5`, §19.4 row 8). */}
+            <Route path="/capabilities/product" element={
+              <ProtectedRoute>
+                <V3Layout>
+                  <InvestorCapabilityPage />
+                </V3Layout>
               </ProtectedRoute>
             } />
             <Route path="/notifications" element={
