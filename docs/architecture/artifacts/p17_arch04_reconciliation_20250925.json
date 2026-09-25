@@ -231,7 +231,29 @@
   "arch_01_preserved": true,
   "arch_03_preserved": true,
   "p16_verification_preserved": true,
-  "independent_re_verification_required": true
+  "independent_re_verification_required": true,
+  "arch_05_re_verification": {
+    "verifier": "P17-ARCH-05-20250925-INDEPENDENT-RE-VERIFICATION-FREEZE",
+    "verified_commit": "4bd87a36048bb1c4427f1607432f5109584b3801",
+    "report": "docs/architecture/CT-PO-P17-ARCH-05-INDEPENDENT-REVERIFICATION-FREEZE-20250925.md",
+    "verdict": "P17_ARCH_FREEZE_PARTIAL",
+    "confirmed_reconciled": ["HIGH-01", "MEDIUM-01", "LOW-01", "LOW-02", "LOW-03", "LOW-04", "EXTRA-01", "EXTRA-02"],
+    "open_findings_raised_against_arch_04": ["ARCH05-01", "ARCH05-02", "ARCH05-03", "ARCH05-04", "ARCH05-05"],
+    "info_observations": ["ARCH05-06", "ARCH05-07", "ARCH05-08"],
+    "significance": "ARCH-05 independently confirmed that this report's substantive corrections are genuine, and found one additional instance of the same contradiction class inside a gate ARCH-04 had not re-read (P17-F bullet 1 vs NOT_IMPLEMENTED category 10), plus an inaccurate completeness claim in ARCH-04 s7. ARCH-04's verdict P17_ARCH_RECONCILIATION_COMPLETE was accurate as a reconciliation-completeness statement for the seven ARCH-03 findings; it was NOT a false completion claim, but its s7 'no further contradiction' sentence was over-broad."
+  },
+  "arch_06_addendum": {
+    "authority": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+    "report": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+    "baseline_commit": "4bd87a36048bb1c4427f1607432f5109584b3801",
+    "corrections_to_this_report": [
+      "s7 'Elsewhere in the acceptance matrix' — the historical sentence is PRESERVED VERBATIM and now carries a HISTORICAL / KNOWN INACCURATE annotation plus an explicit, dated, superseding ARCH-06 reconciliation note. The sentence was not deleted or rewritten, so this report remains a truthful historical record of what ARCH-04 asserted."
+    ],
+    "findings_closed_by_arch_06": ["ARCH05-01", "ARCH05-02", "ARCH05-03", "ARCH05-04", "ARCH05-05"],
+    "category_statuses_changed": [],
+    "verdict_changed": false,
+    "verdict_note": "The ARCH-04 verdict P17_ARCH_RECONCILIATION_COMPLETE stands as the historical ARCH-04 verdict and is not retroactively altered. It did not mean, and is not to be read as, P17_ARCH_FREEZE_PASS."
+  }
 }
 
 

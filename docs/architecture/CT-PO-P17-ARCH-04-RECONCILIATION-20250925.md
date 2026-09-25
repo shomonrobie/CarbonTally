@@ -197,10 +197,25 @@ Bullet counts: P17-E 4 → 6; P17-F 4 → 5; P17-G 3 → 4.
 **Not done.** Category 2 was **not** changed to `SUPPORTED`; no Category 2 methodology was invented; Category 2 was
 **not** implemented; no other category status was altered.
 
+> **⚠ HISTORICAL STATEMENT — PRESERVED, KNOWN INACCURATE (annotated by ARCH-06, 2025-09-25).** The paragraph below was
+> written by ARCH-04 and is retained **verbatim** for the audit trail. It is **inaccurate**: the re-check covered other
+> gates but did **not** check P17-F's own bullet 1 against its own `NOT_IMPLEMENTED` category 10, so a further
+> contradiction of this class **did** exist. It is superseded by the "ARCH-06 reconciliation note" immediately below it.
+
 **Elsewhere in the acceptance matrix.** The remaining gates were re-checked for the same class of contradiction:
 P17-A…P17-D, P17-H, P17-I, P17-J contain no category-status assertions, so no further contradiction of this class
 exists. (P17-D's "every new Scope 3 result MUST carry a category" plus "the 25 historical rows are untouched" is
 consistent, not contradictory.)
+
+**ARCH-06 reconciliation note (2025-09-25) — this statement is SUPERSEDED.** Independently identified by
+`P17-ARCH-05` as finding **ARCH05-02**. The claim directly above was incorrect in one respect: **P17-F bullet 1** read
+*"one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED"*. Category 10 is
+**`NOT_IMPLEMENTED`**, not `DEFERRED`, so that bullet still demanded an implementation E2E result of a
+non-implemented category — **exactly the contradiction class this section claimed no longer existed** (ARCH-03
+MEDIUM-02, re-raised as ARCH05-01). ARCH-06 has now made P17-F bullet 1 status-conditional, aligned P17-G bullet 1,
+and added the canonical `status_conditional_acceptance_rule` so that P17-E/F/G share a single rule rather than three
+similar ones. The paragraph above is retained as historical and is **superseded** by this note.
+See `docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md` §3 (ARCH05-01/ARCH05-02).
 
 ---
 

@@ -295,7 +295,9 @@ Sources incorporated: `CT-PO-P17-UIUX-01-UNIFIED-CARBON-ACCOUNTING-UX-STANDARD` 
 | A9 | **No new consultant-client relationship or organisation model** is introduced: `consultant_clients` already exists and is the ratified relationship (ARCH-02 discovery). P17-0 must confirm and reuse it. | P17-0, B, C |
 | **A10** | **Consultant ↔ organization identity/linkage is an OPEN GAP, not a satisfied capability** (ARCH-04 // ARCH-03 HIGH-01). `consultant_profiles` is keyed by `user_id` and carries **no `organization_id`**; `organizations` has no `organization_type`; no `organization_relationship` table exists. P17-0 must resolve the authoritative organization identity model for the consultant firm, its users/members, its client organizations and the consultant's own Scope 1/2/3 ownership. **No implementation in P17-0.** | P17-0 (decision); later phases inherit the decision |
 | **A11** | **Acting-for propagation is per-path and broader than ARCH-02 stated** (ARCH-04 // ARCH-03 MEDIUM-01). Persistence is required on the audit writer **and** on source/activity documents, suppliers, review/approval decisions and report artefacts; option-B derivation from the audit record is permitted only where the audit writer persists actor/acting-for organization and a reliable object→audit linkage exists. P17-0 produces the per-path map. **No implementation in P17-0.** | P17-0 (map); B/C/E/F/G (data paths), H (review/approval), I (report artefacts) |
-| **A12** | **P17-E/F/G acceptance is status-conditional** (ARCH-04 // ARCH-03 MEDIUM-02): a category whose authoritative status is `NOT_IMPLEMENTED` or `DEFERRED` is reported as a documented BLOCKED/DEFERRED outcome naming its prerequisite — never omitted, never counted as delivered, and never silently made an implementation requirement. | E, F, G |
+| **A12** | **P17-E/F/G acceptance is status-conditional** (ARCH-04 // ARCH-03 MEDIUM-02): a category whose authoritative status is `NOT_IMPLEMENTED` or `DEFERRED` is reported as a documented BLOCKED/DEFERRED outcome naming its prerequisite — never omitted, never counted as delivered, and never silently made an implementation requirement. Since ARCH-06 this is expressed as the **single canonical `status_conditional_acceptance_rule`** shared by all three gates (see A14). | E, F, G |
+| **A13** | **The P17-0 gate is explicitly enumerated (12 items)** (ARCH-06 // ARCH-05 ARCH05-05). Two obligations that were previously only implicit are now separate, individually visible gate items: **item 11 = the delegated-user / acting-for AUTHORIZATION model** (which acting-for contexts exist, which organization each operation is attributed to, and where each is enforced **server-side** rather than in the UI — satisfying `AC-DELEG-01`, `AC-AUDIT-01` and UIUX-01 §5/§6/§35/§63); **item 12 = Scope 2 / Scope 3 accounting-model consistency** (the 15 Scope 3 categories, the Scope 2 location-based/market-based paths and DC-01..DC-11 proved mutually consistent, and `AC-CAMS-01` confirmed to cover it). Both are **discovery/architecture gates only — no implementation in P17-0**. | P17-0 (discovery only) |
+| **A14** | **One canonical status-conditional acceptance rule governs P17-E, P17-F and P17-G** (ARCH-06 // ARCH-05 ARCH05-01, ARCH05-03). `status_conditional_acceptance_rule` defines: `SUPPORTED` → the full defined acceptance path must pass (END-TO-END VERIFIED); `PARTIAL` → only the explicitly bounded in-scope acceptance path must pass and the report must name what remains outside scope (**bounded acceptance — NOT a full E2E claim, and NOT upgraded to SUPPORTED**); `NOT_IMPLEMENTED` → **no** implementation E2E required, the category must be explicitly recorded as not implemented with a documented blocked record; `DEFERRED` → **no** implementation E2E required, the deferral and its dependency must be explicit. **No gate may demand an implementation E2E result of a `NOT_IMPLEMENTED` or `DEFERRED` category**, no gate may treat a documented blocked/deferred outcome as a failure, and no gate may redefine the vocabulary locally. | E, F, G |
 
 ### 16.2 Reconciled phase order
 
@@ -308,12 +310,24 @@ P17-A  Dimensions + factor governance  (unchanged scope, + actor/acting-for colu
   |
   +--> P17-D (Scope 3 category model) --> P17-E / P17-F / P17-G (with UI/UX per phase)
                                                  |
-                            P17-H (lifecycle, capabilities, integrity, provenance, acting-for)
+                            P17-H  (lifecycle, capabilities, integrity, provenance, acting-for)
+                                   ^ PREREQUISITE, not merely a later phase: P17-H's estimation_records
+                                     must be established BEFORE the estimated categories 7 / 11 / 12
+                                     are attempted in P17-F / P17-G (see §7 and the ordering note below)
                                                  |
                             P17-I (reporting/disclosure, with UI/UX)
                                                  |
                             P17-J (independent acceptance)
 ```
+
+**Ordering note (ARCH-06 // ARCH-05 ARCH05-04).** The vertical sequence above is **not** a claim that
+P17-E/F/G complete before P17-H. P17-H's `estimation_records` are a **prerequisite** for the estimated
+categories — 7 (P17-F) and 11 / 12 (P17-G) — exactly as §7 already states. Read literally, the diagram could
+imply that those categories are completed before their prerequisite is established; this note removes that
+reading. In practice the **estimation-record workstream of P17-H must exist before those specific categories
+are attempted**, even though the P17-H phase is listed below E/F/G. An estimation-dependent category must not
+be reported as complete while its prerequisite is unestablished. **The order itself is unchanged** — only this
+clarification is added; no phase was moved, merged or redesigned. Recorded as risk **R11** (ARCH-04 §14, §21).
 
 ### 16.3 Unchanged elements
 
@@ -326,8 +340,11 @@ P17-A  Dimensions + factor governance  (unchanged scope, + actor/acting-for colu
 ### 16.4 Implementation prohibition
 
 No P17 implementation is authorised by this plan revision. P17-A remains gated behind separately authorised
-implementation, which may only follow independent verification of the ARCH-02 baseline (P17-J-style independence, not
-Cline self-verification).
+implementation, which may only follow independent verification of the **ARCH-06 corrected baseline**
+(P17-J-style independence, not Cline self-verification). Independent verification of ARCH-02 returned
+`P17_ARCH_FREEZE_PARTIAL`; ARCH-04 reconciled those findings; independent re-verification (ARCH-05) returned
+`P17_ARCH_FREEZE_PARTIAL` again; ARCH-06 has reconciled those remaining findings. The corrected baseline has
+**not yet** been independently re-verified, so nothing here authorises implementation.
 
 ---
 
@@ -352,6 +369,34 @@ the prerequisite. ARCH-03 flagged the tightness; ARCH-04 records it as risk R11 
 
 **Gate state after ARCH-04.** P17-0 remains a **future discovery task** not executed here; P17-A remains
 **NOT AUTHORIZED**. Independent re-verification of the ARCH-04 corrected baseline is the next required action.
+
+---
+
+## 18. ARCH-06 corrections (independent ARCH-05 findings)
+
+**Authority:** `docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md`
+**Independent source:** `docs/architecture/CT-PO-P17-ARCH-05-INDEPENDENT-REVERIFICATION-FREEZE-20250925.md` →
+**`P17_ARCH_FREEZE_PARTIAL`** (verified commit `4bd87a36048bb1c4427f1607432f5109584b3801`)
+
+ARCH-05 was an **independent re-verification** of the ARCH-04 corrections. It **confirmed** HIGH-01, MEDIUM-01,
+LOW-01…LOW-04, EXTRA-01 and EXTRA-02 as genuinely reconciled, and raised **five further findings** (ARCH05-01…05)
+plus three informational observations (ARCH05-06…08, all preserved-as-is).
+
+| # | ARCH-05 finding | Effect on this plan |
+|---|---|---|
+| ARCH05-01 | P17-F bullet 1 still demanded an E2E result for `NOT_IMPLEMENTED` category 10 (category 10 is `NOT_IMPLEMENTED`, not `DEFERRED`) | **A14** added; §7 already defers category acceptance to the P17-E/F/G gates, so the corrected gate wording governs this plan |
+| ARCH05-02 | ARCH-04 §7's claim that "no further contradiction of this class exists" was inaccurate | ARCH-04 §7 carries an explicit, dated, **superseding** reconciliation note; the historical sentence is preserved and labelled historical |
+| ARCH05-03 | `PARTIAL` / bounded acceptance / E2E VERIFIED terminology tension | **A14** added — one canonical `status_conditional_acceptance_rule`; `PARTIAL` is **not** upgraded to `SUPPORTED` |
+| ARCH05-04 | §16.2 ordering diagram could be read as allowing estimation-dependent categories (7/11/12) to complete before their P17-H prerequisite | §16.2 annotated with an in-diagram prerequisite marker and an explicit **ordering note**; **order unchanged** (risk **R11**) |
+| ARCH05-05 | P17-0 `must_pass` did not separately enumerate delegation authorization or Scope 2 / Scope 3 consistency | **A13** added; the P17-0 gate is now **12** items (was 10) |
+
+**Not done.** No category status was changed (category 2 and category 10 remain `NOT_IMPLEMENTED`; no `PARTIAL`
+category was promoted); no methodology was invented; no phase was reordered, merged or redesigned; no
+implementation, migration, schema, RLS, seed or UI change.
+
+**Gate state after ARCH-06.** P17-0 remains a **future discovery task** — not executed here and **not authorised**;
+P17-A remains **NOT AUTHORIZED**. The next required action is the **final independent re-verification** of the
+ARCH-06 corrected baseline. Cline reconciliation is not independent acceptance.
 
 
 

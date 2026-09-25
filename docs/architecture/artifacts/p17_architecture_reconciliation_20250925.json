@@ -102,11 +102,24 @@
     "arch_04_reconciliation": "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md",
     "arch_04_reconciliation_status": "COMPLETE"
   },
-  "reconciled_status": "P17_ARCH_RECONCILED_READY_FOR_VERIFICATION_CORRECTED_BY_ARCH_04",
+  "arch_05_independent_re_verification": {
+    "verifier": "P17-ARCH-05-20250925-INDEPENDENT-RE-VERIFICATION-FREEZE",
+    "verified_commit": "4bd87a36048bb1c4427f1607432f5109584b3801",
+    "report": "docs/architecture/CT-PO-P17-ARCH-05-INDEPENDENT-REVERIFICATION-FREEZE-20250925.md",
+    "verdict": "P17_ARCH_FREEZE_PARTIAL",
+    "confirmed_reconciled": ["HIGH-01", "MEDIUM-01", "LOW-01", "LOW-02", "LOW-03", "LOW-04", "EXTRA-01", "EXTRA-02"],
+    "findings": ["ARCH05-01", "ARCH05-02", "ARCH05-03", "ARCH05-04", "ARCH05-05"],
+    "info_observations": ["ARCH05-06", "ARCH05-07", "ARCH05-08"],
+    "arch_06_reconciliation": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+    "arch_06_reconciliation_status": "COMPLETE"
+  },
+  "reconciled_status": "P17_ARCH_RECONCILED_READY_FOR_FINAL_VERIFICATION_CORRECTED_BY_ARCH_04_AND_ARCH_06",
   "corrected_by": "P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS",
+  "further_corrected_by": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+  "arch_06_report": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
   "implementation_authorised": false,
   "independent_verification_required": true,
-  "independent_verification_note": "Cline reconciliation is not independent acceptance. ARCH-02 was verified by ARCH-03 and returned P17_ARCH_FREEZE_PARTIAL; ARCH-04 has reconciled the seven findings but ARCH-04 itself must now be INDEPENDENTLY RE-VERIFIED and frozen before any P17 implementation, including P17-0 and P17-A, is authorised.",
+  "independent_verification_note": "Cline reconciliation is not independent acceptance. ARCH-02 was verified by ARCH-03 and returned P17_ARCH_FREEZE_PARTIAL; ARCH-04 reconciled those seven findings; ARCH-04 was then INDEPENDENTLY RE-VERIFIED by ARCH-05, which confirmed the substantive corrections as genuine but returned P17_ARCH_FREEZE_PARTIAL again with five further findings (ARCH05-01..05). ARCH-06 has reconciled those five. The ARCH-06 corrected baseline must now be INDEPENDENTLY RE-VERIFIED and frozen before any P17 implementation, including P17-0 and P17-A, is authorised.",
   "production_authorised": false,
   "arch_01_preserved": true,
   "arch_01_note": "P17-ARCH-01 and its artifacts remain byte-identical and historically identifiable; ARCH-02 supersedes the unreconciled implementation baseline only."

@@ -439,6 +439,15 @@
       "UI/UX requirements are a cross-cutting requirement, not a per-category matrix field",
       "per-category acceptance remains governed by the P17-E/F/G gates and the category status vocabulary"
     ]
+  },
+  "status_semantics_authority": {
+    "added_by": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+    "source_finding": "P17-ARCH-05 ARCH05-03",
+    "rule": "this matrix declares each category's authoritative STATUS in status_rollup; it does not declare the required acceptance LEVEL for that status",
+    "acceptance_level_defined_once_in": "p17_acceptance_matrix_20250925.json -> status_conditional_acceptance_rule",
+    "application": "SUPPORTED -> the full defined acceptance path must pass (END-TO-END VERIFIED); PARTIAL -> only the explicitly bounded in-scope acceptance path must pass and what remains outside scope must be named (bounded acceptance, NOT a full E2E claim, and NOT upgraded to SUPPORTED); NOT_IMPLEMENTED -> NO implementation E2E required, the category must be explicitly recorded as not implemented with a documented blocked record; DEFERRED -> NO implementation E2E required, the deferral and its dependency must be explicit",
+    "note": "Added so the status vocabulary has one definition and cannot drift between this matrix and the P17-E/F/G phase gates. No category status was changed by this addition.",
+    "category_statuses_unchanged": true
   }
 }
 

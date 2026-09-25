@@ -83,9 +83,9 @@
       "title": "Scope 3 Categories 1-5",
       "gate": "SCOPE3_CAT_1_5",
       "must_pass": [
-        "one END-TO-END VERIFIED result for each category among (1,2,3,4,5) whose authoritative architecture status is SUPPORTED or PARTIAL",
-        "each category in (1,2,3,4,5) whose status is NOT_IMPLEMENTED or DEFERRED is reported as an explicit BLOCKED/DEFERRED outcome with its blocking prerequisite named - never omitted and never counted as delivered",
-        "category status vocabulary applied per category: SUPPORTED -> E2E verification required; PARTIAL -> applicable bounded acceptance for the supported portion; NOT_IMPLEMENTED -> documented BLOCKED outcome naming the missing methodology/input contract; DEFERRED -> documented DEFERRED outcome naming the PO decision that blocks it; PO-methodology-decision-required -> remains outside implementation authorization",
+        "the acceptance level for each category among (1,2,3,4,5) is governed by that category's authoritative architecture status (never by the phase), exactly as defined by the canonical status-conditional acceptance rule (status_conditional_acceptance_rule): SUPPORTED -> the full defined acceptance path must pass (END-TO-END VERIFIED); PARTIAL -> only the explicitly bounded in-scope acceptance path must pass and the report MUST name what remains outside scope (this is bounded acceptance and is NOT a full E2E claim); NOT_IMPLEMENTED -> NO implementation E2E is required; DEFERRED -> NO implementation E2E is required",
+        "each category in (1,2,3,4,5) whose status is NOT_IMPLEMENTED or DEFERRED is reported as an explicit BLOCKED/DEFERRED outcome with its blocking prerequisite named - never omitted, never counted as delivered, and never converted into an implementation E2E requirement",
+        "category status vocabulary applied per category exactly as defined in status_conditional_acceptance_rule (one canonical rule, not redefined per gate), with the required evidence for non-delivered categories: NOT_IMPLEMENTED -> NO implementation E2E; an explicit documented blocked/not-implemented record naming the missing methodology/input contract; DEFERRED -> NO implementation E2E; an explicit documented deferral record naming the PO decision that blocks it; PO-methodology-decision-required -> remains outside implementation authorization",
         "category 3 derivation links to a source Scope 1/2 snapshot with a uniqueness constraint proven",
         "category 5 retains the P16 fail-closed clarification path",
         "no category-1/category-2 double count (DC-03 detector test)"
@@ -97,11 +97,11 @@
       "title": "Scope 3 Categories 6-10",
       "gate": "SCOPE3_CAT_6_10",
       "must_pass": [
-        "one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED",
-        "category status vocabulary applied per category exactly as defined in the P17-E gate (SUPPORTED -> E2E; PARTIAL -> bounded acceptance; NOT_IMPLEMENTED -> documented BLOCKED with the missing prerequisite named; DEFERRED -> documented DEFERRED naming the blocking PO decision)",
+        "the acceptance level for each category (6,7,8,9,10) is governed by that category's authoritative architecture status (never by the phase), exactly as defined by the canonical status-conditional acceptance rule (status_conditional_acceptance_rule): SUPPORTED -> the full defined acceptance path must pass (END-TO-END VERIFIED); PARTIAL -> only the explicitly bounded in-scope acceptance path must pass, with what remains outside scope named; NOT_IMPLEMENTED (category 10) -> NO implementation E2E is required and no E2E result may be demanded of it; DEFERRED -> NO implementation E2E is required",
+        "category status vocabulary applied per category exactly as defined in status_conditional_acceptance_rule (one canonical rule, not redefined per gate), with the required evidence for non-delivered categories: NOT_IMPLEMENTED -> an explicit documented blocked/not-implemented record naming the missing prerequisite; DEFERRED -> an explicit documented deferral record naming the blocking PO decision",
         "category 7 carries an explicit estimation record marked secondary/estimated",
         "category 9 carries an explicit downstream boundary and is provably absent from category 4 totals (DC-04)",
-        "category 10 either delivered with an evidenced processor declaration or formally recorded as BLOCKED with the prerequisite stated"
+        "category 10 either delivered with an evidenced processor declaration or formally recorded as BLOCKED with the prerequisite stated - for a NOT_IMPLEMENTED category the documented BLOCKED branch alone satisfies this gate, and no implementation E2E result is required of it"
       ],
       "evidence_required": ["per-category live run", "DC-04 negative test", "estimation-record read-back"]
     },
@@ -110,8 +110,8 @@
       "title": "Scope 3 Categories 11-15",
       "gate": "SCOPE3_CAT_11_15",
       "must_pass": [
-        "one END-TO-END VERIFIED result per category (11,12,13,14,15) where the category is not DEFERRED",
-        "category status vocabulary applied per category exactly as defined in the P17-E gate (SUPPORTED -> E2E; PARTIAL -> bounded acceptance; NOT_IMPLEMENTED -> documented BLOCKED with the missing prerequisite named; DEFERRED -> documented DEFERRED naming the blocking PO decision)",
+        "the acceptance level for each category (11,12,13,14,15) is governed by that category's authoritative architecture status (never by the phase), exactly as defined by the canonical status-conditional acceptance rule (status_conditional_acceptance_rule): SUPPORTED -> the full defined acceptance path must pass (END-TO-END VERIFIED); PARTIAL -> only the explicitly bounded in-scope acceptance path must pass, with what remains outside scope named; NOT_IMPLEMENTED -> NO implementation E2E is required; DEFERRED -> NO implementation E2E is required",
+        "category status vocabulary applied per category exactly as defined in status_conditional_acceptance_rule (one canonical rule, not redefined per gate), with the required evidence for non-delivered categories: NOT_IMPLEMENTED -> an explicit documented blocked/not-implemented record naming the missing prerequisite; DEFERRED -> an explicit documented deferral record naming the blocking PO decision",
         "every assumption-driven or attributed result persists its assumption/attribution set",
         "categories 11, 14, 15 either delivered under an explicitly ratified bounded methodology or recorded as DEFERRED with the decision that blocks them"
       ],
@@ -233,6 +233,44 @@
     {"id": "T-INV-12", "invariant": "an estimated value carries a persisted estimation record (method, inputs, assumptions, factor, source, actor, timestamp)", "type": "no-silent-estimation"}
   ],
   "acceptance_language_rule": "IMPLEMENTED, TESTED, VERIFIED and ACCEPTED are not synonyms. Only independent verification (P17-J) may use ACCEPTED. Cline-authored verification is IMPLEMENTED/TESTED, never independent verification.",
+  "status_conditional_acceptance_rule": {
+    "authority": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+    "report": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+    "source_findings": ["P17-ARCH-05 ARCH05-01", "P17-ARCH-05 ARCH05-02", "P17-ARCH-05 ARCH05-03"],
+    "applies_to": ["P17-E", "P17-F", "P17-G"],
+    "statement": "The acceptance level required of a category or feature is a function of its authoritative architecture status, NOT of the phase gate that happens to contain it. P17-E, P17-F and P17-G apply this one rule; no gate redefines it. NO gate may demand implementation E2E verification of a category whose status is NOT_IMPLEMENTED or DEFERRED.",
+    "statuses": {
+      "SUPPORTED": {
+        "e2e_required": true,
+        "rule": "the full defined acceptance path must pass (END-TO-END VERIFIED)",
+        "report_must_contain": "the E2E result for that category"
+      },
+      "PARTIAL": {
+        "e2e_required": "bounded",
+        "rule": "only the explicitly bounded/in-scope acceptance path must pass; this is bounded acceptance and is NOT a full E2E claim",
+        "report_must_contain": "the bounded in-scope result AND an explicit statement of what remains outside scope",
+        "not_an_upgrade": true
+      },
+      "NOT_IMPLEMENTED": {
+        "e2e_required": false,
+        "rule": "no implementation E2E is required; the feature/category must be explicitly recorded as not implemented",
+        "report_must_contain": "an explicit blocked/not-implemented record naming the missing prerequisite (e.g. methodology, input contract or processor declaration)"
+      },
+      "DEFERRED": {
+        "e2e_required": false,
+        "rule": "no implementation E2E is required; the deferral and its dependency must be explicit",
+        "report_must_contain": "an explicit deferral record naming the PO decision or prerequisite that blocks it"
+      }
+    },
+    "non_upgrade_clause": "PARTIAL is NOT upgraded to SUPPORTED by this rule and no category status is changed by it. A PARTIAL category is never required to produce a full E2E claim, and a NOT_IMPLEMENTED or DEFERRED category is never required to produce any implementation E2E result.",
+    "forbidden": [
+      "requiring an E2E implementation result for a NOT_IMPLEMENTED or DEFERRED category",
+      "treating a documented blocked/deferred outcome as a gate failure",
+      "treating a documented blocked/deferred outcome as delivery of the category",
+      "redefining the status vocabulary inside an individual phase gate"
+    ],
+    "historical_note": "Before ARCH-06, P17-E bullet 1 was status-conditional while P17-F bullet 1 read 'one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED' and P17-G bullet 1 read the same for (11,12,13,14,15). Because category 10 is NOT_IMPLEMENTED (not DEFERRED), P17-F bullet 1 still demanded an E2E result for a non-implemented category - the same contradiction class ARCH-03 raised against P17-E. Independently identified by ARCH-05 as ARCH05-01 (and ARCH05-03 for the PARTIAL bucket), corrected by ARCH-06."
+  },
   "post_contract_po_decisions": {
     "registered_by_this_task": true,
     "sources": [
@@ -285,7 +323,9 @@
         "phase acceptance criteria are verified internally consistent with category status, deferred scope, PO methodology decisions and E2E requirements (ARCH-04 // ARCH-03 MEDIUM-02)",
         "the lifecycle mapping table explicitly names CORRECTION REQUIRED, or documents its existing rework-edge representation, rather than leaving the state unnamed (ARCH-04 // ARCH-03 s11 residual)",
         "the customer capability/enablement representation is decided (extend the existing scope-based governance primitive vs a new policy table) with a written rationale",
-        "no UI or backend code changed in this phase (discovery only)"
+        "no UI or backend code changed in this phase (discovery only)",
+        "the delegated-user / acting-for AUTHORIZATION model is determined as an architecture decision: which acting-for contexts exist (consultant operator acting for a client organization; consultant team member acting for the consultant firm; processing-entity operator acting for an assigned entity), which organization context each operation is attributed to, where each is enforced SERVER-SIDE rather than in the UI, and how AC-DELEG-01 / AC-AUDIT-01 and UIUX-01 s5/s6/s35/s63 are satisfied by it. Decision only - no implementation (ARCH-06 // ARCH-05 ARCH05-05 item 11)",
+        "Scope 2 / Scope 3 accounting-model consistency is verified as an architecture obligation: the 15 Scope 3 categories, the Scope 2 location-based and market-based paths and the double-counting controls DC-01..DC-11 are mutually consistent (no Scope 3 category double counts a Scope 1/2 quantity; no Scope 2 result re-adds a Scope 3 quantity), and AC-CAMS-01 is confirmed to cover that consistency. Architecture verification only - no implementation (ARCH-06 // ARCH-05 ARCH05-05 item 12)"
       ]
     },
     "global_acceptance_amendments": [
@@ -319,7 +359,50 @@
       "the P16 reportability lifecycle reuse requirement"
     ]
   },
-  "current_verdict": "P17_ARCHITECTURE_STATUS: RECONCILED_BY_ARCH_02, CORRECTED_BY_ARCH_04, AWAITING_INDEPENDENT_RE_VERIFICATION. The post-contract PO records (UIUX-01, POST-ARCH, PO customer-owned data decision) were reconciled by P17-ARCH-02; the independent P17-ARCH-03 verification then returned P17_ARCH_FREEZE_PARTIAL with seven findings (HIGH-01 consultant organization identity over-claimed, MEDIUM-01 acting-for propagation narrower than AC-AUDIT-01, MEDIUM-02 P17-E acceptance contradiction, LOW-01..LOW-04), all of which have been reconciled by P17-ARCH-04 (docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md). No phase has been implemented; every gate remains UNSTARTED; P17-0 and P17-A are NOT authorized. The only outstanding condition is independent re-verification of the corrected architecture."
+  "independent_verification_history": [
+    {
+      "verifier": "P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE",
+      "verdict": "P17_ARCH_FREEZE_PARTIAL",
+      "report": "docs/architecture/CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md",
+      "reconciled_by": "P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS"
+    },
+    {
+      "verifier": "P17-ARCH-05-20250925-INDEPENDENT-RE-VERIFICATION-FREEZE",
+      "verdict": "P17_ARCH_FREEZE_PARTIAL",
+      "verified_commit": "4bd87a36048bb1c4427f1607432f5109584b3801",
+      "report": "docs/architecture/CT-PO-P17-ARCH-05-INDEPENDENT-REVERIFICATION-FREEZE-20250925.md",
+      "confirmed_reconciled": ["HIGH-01", "MEDIUM-01", "LOW-01", "LOW-02", "LOW-03", "LOW-04", "EXTRA-01", "EXTRA-02"],
+      "open_findings": ["ARCH05-01", "ARCH05-02", "ARCH05-03", "ARCH05-04", "ARCH05-05"],
+      "info_findings": ["ARCH05-06", "ARCH05-07", "ARCH05-08"],
+      "reconciled_by": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS"
+    }
+  ],
+  "arch_06_corrections": {
+    "authority": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+    "report": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+    "baseline_commit": "4bd87a36048bb1c4427f1607432f5109584b3801",
+    "findings_addressed": [
+      "ARCH05-01 - P17-F bullet 1 required 'one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED'; because category 10 is NOT_IMPLEMENTED rather than DEFERRED this still demanded an E2E result of a non-implemented category. Bullet 1 is now status-conditional; P17-G bullet 1 is aligned; the canonical rule status_conditional_acceptance_rule is added and referenced by E/F/G.",
+      "ARCH05-02 - ARCH-04 s7 asserted 'no further contradiction of this class exists', which was inaccurate because it did not check P17-F's own bullet 1 against its own category 10. ARCH-04 s7 now carries an explicit dated reconciliation note; the historical sentence is preserved and labelled historical rather than deleted.",
+      "ARCH05-03 - the PARTIAL / bounded acceptance / E2E VERIFIED terminology tension is resolved by status_conditional_acceptance_rule, which defines the required acceptance level and evidence per status. PARTIAL is explicitly NOT upgraded to SUPPORTED; no category status changed.",
+      "ARCH05-04 - P17-H estimation-record ordering presentation tension: phase plan s16.2 is annotated so the ordering cannot be read as permitting estimation-dependent categories (7/11/12) to complete before the P17-H prerequisite is established. No phase was reordered or redesigned.",
+      "ARCH05-05 - P17-0 must_pass did not separately enumerate the delegated-user/acting-for authorization model or Scope2/Scope3 accounting-model consistency; both are now separate items (11 and 12)."
+    ],
+    "gates_changed": ["P17-E", "P17-F", "P17-G"],
+    "category_statuses_changed": [],
+    "category_statuses_unchanged_confirmed": ["1 PARTIAL", "2 NOT_IMPLEMENTED", "3 SUPPORTED", "4 SUPPORTED", "5 SUPPORTED", "6 SUPPORTED", "7 PARTIAL", "8 PARTIAL", "9 PARTIAL", "10 NOT_IMPLEMENTED", "11 DEFERRED", "12 PARTIAL", "13 PARTIAL", "14 DEFERRED", "15 DEFERRED"],
+    "p17_0_must_pass_count_before": 10,
+    "p17_0_must_pass_count_after": 12,
+    "implementation_performed": false,
+    "production_contacted": false,
+    "migrations_created": false,
+    "info_findings_disposition": {
+      "ARCH05-06": "ARCH-01 still lists the superseded five-value energy_type vocabulary including fuel. ARCH-01 is a frozen historical record required byte-identical; preserved and labelled historical, not corrected.",
+      "ARCH05-07": "The ARCH-03 independent report remains untracked in the working tree. Preserved as-is; not committed, not modified.",
+      "ARCH05-08": "ARCH-02 s7.1 retains the literal EXISTS - VERIFIED beside a CORRECTED BY ARCH-04 blockquote. Accepted annotate-and-addendum pattern; preserved."
+    }
+  },
+  "current_verdict": "P17_ARCHITECTURE_STATUS: RECONCILED_BY_ARCH_02, CORRECTED_BY_ARCH_04, CORRECTED_BY_ARCH_06, AWAITING_FINAL_INDEPENDENT_RE_VERIFICATION. The post-contract PO records (UIUX-01, POST-ARCH, PO customer-owned data decision) were reconciled by P17-ARCH-02; the independent P17-ARCH-03 verification then returned P17_ARCH_FREEZE_PARTIAL with seven findings (HIGH-01 consultant organization identity over-claimed, MEDIUM-01 acting-for propagation narrower than AC-AUDIT-01, MEDIUM-02 P17-E acceptance contradiction, LOW-01..LOW-04), all reconciled by P17-ARCH-04 (docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md). The independent P17-ARCH-05 re-verification confirmed HIGH-01, MEDIUM-01, LOW-01..LOW-04, EXTRA-01 and EXTRA-02 as genuinely reconciled but returned P17_ARCH_FREEZE_PARTIAL again with five open findings (ARCH05-01 P17-F still demanded E2E for NOT_IMPLEMENTED category 10, ARCH05-02 an inaccurate ARCH-04 s7 claim, ARCH05-03 PARTIAL/bounded-acceptance/E2E terminology tension, ARCH05-04 P17-H ordering presentation, ARCH05-05 two P17-0 enumeration gaps), all of which have been reconciled by P17-ARCH-06 (docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md). No phase has been implemented; every gate remains UNSTARTED; no category status was changed; P17-0 and P17-A are NOT authorized. The only outstanding condition is the final independent re-verification of the corrected architecture."
 }
 
 

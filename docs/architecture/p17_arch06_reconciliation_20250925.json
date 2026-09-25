@@ -1,0 +1,165 @@
+{
+  "artifact": "p17_arch06_reconciliation",
+  "task_id": "P17-ARCH-06-20260925-RECONCILE-ARCH-05-FINDINGS",
+  "date": "2025-09-25",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "baseline_sha": "4bd87a36048bb1c4427f1607432f5109584b3801",
+  "arch_04_sha": "172bdd26d1d2fd2c7bf03a05a40532b662117729",
+  "ending_sha": "the documentation-only commit that introduces this artifact; its full SHA is reported in the task's mandatory final report and is deliberately not embedded here, to avoid a self-referential commit hash",
+  "commit_message": "docs(p17): reconcile ARCH-05 freeze findings",
+  "source_report": "docs/architecture/CT-PO-P17-ARCH-05-INDEPENDENT-REVERIFICATION-FREEZE-20250925.md",
+  "source_verifier": "P17-ARCH-05-20250925-INDEPENDENT-RE-VERIFICATION-FREEZE (independent; not Cline)",
+  "source_verdict": "P17_ARCH_FREEZE_PARTIAL",
+  "author_report": "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+  "implementation_performed": false,
+  "production_contacted": false,
+  "migrations_created": false,
+  "pushed": false,
+  "p17_0_authorized": false,
+  "p17_a_authorized": false,
+  "arch_05_confirmed_reconciled": ["HIGH-01", "MEDIUM-01", "LOW-01", "LOW-02", "LOW-03", "LOW-04", "EXTRA-01", "EXTRA-02"],
+  "findings": [
+    {
+      "id": "ARCH05-01",
+      "severity": "MEDIUM",
+      "category": "acceptance contradiction",
+      "issue": "P17-F must_pass bullet 1 required 'one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED'. Category 10 is NOT_IMPLEMENTED, not DEFERRED, so the gate still demanded an implementation E2E result of a non-implemented category - the same contradiction class ARCH-03 raised against P17-E.",
+      "status": "RESOLVED",
+      "before": "phase_gates[P17-F].must_pass[0] = 'one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED'",
+      "after": "phase_gates[P17-F].must_pass[0] is status-conditional via status_conditional_acceptance_rule: SUPPORTED -> full path; PARTIAL -> bounded; NOT_IMPLEMENTED -> NO implementation E2E required or demandable; DEFERRED -> NO implementation E2E required. P17-G bullet 1 aligned. P17-F bullet 5 now states the documented BLOCKED branch alone satisfies the gate for a NOT_IMPLEMENTED category.",
+      "files": ["docs/architecture/artifacts/p17_acceptance_matrix_20250925.json"],
+      "category_status_changed": false
+    },
+    {
+      "id": "ARCH05-02",
+      "severity": "MEDIUM",
+      "category": "inaccurate historical claim",
+      "issue": "ARCH-04 s7 asserted 'the remaining gates were re-checked ... so no further contradiction of this class exists'. Inaccurate: the re-check covered other gates but not P17-F's own bullet 1 against its own NOT_IMPLEMENTED category 10.",
+      "status": "RESOLVED",
+      "before": "an unqualified claim of no remaining contradiction, with no correction note",
+      "after": "the sentence is PRESERVED VERBATIM for the audit trail, now preceded by a 'HISTORICAL STATEMENT - PRESERVED, KNOWN INACCURATE' annotation and followed by an explicit dated 'ARCH-06 reconciliation note' declaring it SUPERSEDED. ARCH-04's verdict was NOT retroactively altered.",
+      "files": [
+        "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md",
+        "docs/architecture/artifacts/p17_arch04_reconciliation_20250925.json"
+      ],
+      "history_rewritten": false
+    },
+    {
+      "id": "ARCH05-03",
+      "severity": "LOW",
+      "category": "terminology tension",
+      "issue": "P17-E bullet 1 and P17-F/G bullet 1 bucketed PARTIAL with SUPPORTED in an 'E2E required' bucket while the vocabulary bullet defined PARTIAL -> bounded acceptance, implying differing strictness for category 1.",
+      "status": "RESOLVED",
+      "resolution": "one canonical top-level status_conditional_acceptance_rule added to the acceptance matrix, referenced by P17-E, P17-F and P17-G. It defines SUPPORTED (full defined acceptance path must pass), PARTIAL (bounded in-scope acceptance only, out-of-scope items must be named; NOT a full E2E claim), NOT_IMPLEMENTED (no implementation E2E required; explicit not-implemented/blocked record), DEFERRED (no implementation E2E required; explicit deferral and dependency). Contains a non_upgrade_clause and a forbidden list. Partially-deferred semantics pointer added to the Scope 3 matrix as status_semantics_authority.",
+      "partial_upgraded_to_supported": false,
+      "category_status_changed": false,
+      "files": [
+        "docs/architecture/artifacts/p17_acceptance_matrix_20250925.json",
+        "docs/architecture/artifacts/p17_scope3_category_matrix_20250925.json"
+      ]
+    },
+    {
+      "id": "ARCH05-04",
+      "severity": "LOW",
+      "category": "presentation tension",
+      "issue": "Phase plan s16.2 placed P17-H after P17-E/F/G while s7 states P17-H estimation records are a prerequisite for categories 7/11/12, so the diagram could be read as allowing estimation-dependent categories to complete before their prerequisite.",
+      "status": "RESOLVED",
+      "resolution": "minimum presentation correction only: (1) an in-diagram prerequisite marker on the P17-H line; (2) an explicit 'Ordering note (ARCH-06 // ARCH-05 ARCH05-04)' below the diagram stating the vertical sequence is not a completion claim, that the estimation-record workstream must exist before categories 7/11/12 are attempted, and that an estimation-dependent category must not be reported complete while its prerequisite is unestablished.",
+      "phase_order_changed": false,
+      "phases_moved_merged_or_redesigned": false,
+      "risk": "R11",
+      "files": ["docs/architecture/CT-PO-P17-IMPLEMENTATION-PHASE-PLAN-20250925.md"]
+    },
+    {
+      "id": "ARCH05-05",
+      "severity": "LOW",
+      "category": "gate enumeration",
+      "issue": "P17-0 must_pass did not separately enumerate the delegated-user/acting-for authorization model or Scope 2/Scope 3 accounting-model consistency.",
+      "status": "RESOLVED",
+      "resolution": "two new discovery/architecture-only must_pass items added: item 11 (delegated-user / acting-for AUTHORIZATION model - which acting-for contexts exist, which organization each operation is attributed to, enforced server-side, satisfying AC-DELEG-01 / AC-AUDIT-01 and UIUX-01 s5/s6/s35/s63) and item 12 (Scope 2 / Scope 3 accounting-model consistency - the 15 categories, both Scope 2 paths and DC-01..DC-11 mutually consistent; AC-CAMS-01 confirmed to cover it).",
+      "must_pass_count_before": 10,
+      "must_pass_count_after": 12,
+      "discovery_and_architecture_only": true,
+      "implementation_in_p17_0": false,
+      "files": [
+        "docs/architecture/artifacts/p17_acceptance_matrix_20250925.json",
+        "docs/architecture/CT-PO-P17-IMPLEMENTATION-PHASE-PLAN-20250925.md"
+      ]
+    }
+  ],
+  "info_findings_disposition": {
+    "ARCH05-06": "ARCH-01 still lists the superseded five-value energy_type vocabulary including fuel. ARCH-01 is a frozen historical record required byte-identical; preserved and labelled historical, not corrected. NOT an open defect.",
+    "ARCH05-07": "The independent ARCH-03 report remains untracked in the working tree. Preserved as-is; not committed, not modified, not deleted.",
+    "ARCH05-08": "ARCH-02 s7.1 retains the literal 'EXISTS - VERIFIED' beside a 'CORRECTED BY ARCH-04' blockquote. Accepted annotate-and-addendum pattern; preserved."
+  },
+  "acceptance_status_semantics": {
+    "defined_once_in": "docs/architecture/artifacts/p17_acceptance_matrix_20250925.json -> status_conditional_acceptance_rule",
+    "applies_to": ["P17-E", "P17-F", "P17-G"],
+    "SUPPORTED": "implementation E2E required: the full defined acceptance path must pass",
+    "PARTIAL": "bounded acceptance only: the explicitly bounded/in-scope path must pass and the report must name what remains outside scope; NOT a full E2E claim; NOT upgraded to SUPPORTED",
+    "NOT_IMPLEMENTED": "NO implementation E2E required; the feature/category must be explicitly recorded as not implemented, with a documented blocked record naming the missing prerequisite",
+    "DEFERRED": "NO implementation E2E required; the deferral and its dependency must be explicit",
+    "forbidden": [
+      "requiring an E2E implementation result for a NOT_IMPLEMENTED or DEFERRED category",
+      "treating a documented blocked/deferred outcome as a gate failure",
+      "treating a documented blocked/deferred outcome as delivery of the category",
+      "redefining the status vocabulary inside an individual phase gate"
+    ]
+  },
+  "gate_consistency": {
+    "P17-E": {"bullets": 6, "status_conditional": true, "cites_canonical_rule": true},
+    "P17-F": {"bullets": 5, "status_conditional": true, "cites_canonical_rule": true, "fixed_by": "ARCH05-01"},
+    "P17-G": {"bullets": 4, "status_conditional": true, "cites_canonical_rule": true},
+    "bullet_counts_changed_at_arch_06": false,
+    "evidence_required_changed": false
+  },
+  "p17_h_ordering_confirmed": true,
+  "preservation": {
+    "arch_01": "PRESERVED - tracked, byte-identical to HEAD (blob d2a35438af9f1ff5483fec15e6005f93f0f5ad3d)",
+    "arch_02": "UNTOUCHED by ARCH-06 - byte-identical to HEAD (blob 51cfd1a9236835314a948a1ee0cc79c9c4ab67f8)",
+    "arch_03": "PRESERVED - untracked, unmodified (blob 4d97b5b9abc97a6196af1e815289198091d80dae)",
+    "arch_04": "MODIFIED IN ONE PLACE ONLY (s7), by an explicit dated reconciliation note; the historical sentence is preserved verbatim; the verdict was not retroactively altered",
+    "arch_05": "PRESERVED - tracked, byte-identical to HEAD (blob e8ff682576528f9dd346eabb5dacb9fdd5c1891f); read only",
+    "p16_final_verification": "PRESERVED - byte-identical to HEAD (blob 661386784a7798a607a7c3fc3f7f30c02298529d)",
+    "uiux_01": "PRESERVED - byte-identical to HEAD (blob 51ff70bdba4e3f4910b81bb6ff6f794443768ca8)",
+    "post_arch_decisions": "PRESERVED - byte-identical to HEAD (blob 3060bcb02305d14a052d7b67c5ef600859009ea3)",
+    "po_cams_decision": "PRESERVED - byte-identical to HEAD (blob 22566021037e76e007f788d465349cac2b5eb055)",
+    "history_rewritten": false
+  },
+  "p17_0_must_pass_count": 12,
+  "p17_0_authorized": false,
+  "p17_a_authorized": false,
+  "files_changed": {
+    "modified": [
+      "docs/architecture/artifacts/p17_acceptance_matrix_20250925.json",
+      "docs/architecture/CT-PO-P17-IMPLEMENTATION-PHASE-PLAN-20250925.md",
+      "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md",
+      "docs/architecture/artifacts/p17_arch04_reconciliation_20250925.json",
+      "docs/architecture/artifacts/p17_architecture_reconciliation_20250925.json",
+      "docs/architecture/artifacts/p17_scope3_category_matrix_20250925.json"
+    ],
+    "created": [
+      "docs/architecture/CT-PO-P17-ARCH-06-RECONCILIATION-20250925.md",
+      "docs/architecture/p17_arch06_reconciliation_20250925.json"
+    ],
+    "source_or_test_or_migration_files_changed": false,
+    "total": 8
+  },
+  "remaining_risks": {
+    "carried_forward": ["R1", "R2", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R13"],
+    "updated": [
+      "R3 P17-0 gate is now 12 items; discovery effort not re-estimated - Medium",
+      "R12 ARCH-06 is self-reported by Cline and is not independent verification - Blocking"
+    ],
+    "new": [
+      "R14 the correctness of the corrected wording depends on three gates citing one rule; mitigated but not structurally prevented - Medium",
+      "R15 ARCH05-06/07/08 deliberately preserved as expected informational items; a re-verifier may re-raise them - Low",
+      "R16 ARCH-06 changed acceptance wording only; no capability, category or delegation behaviour was implemented - High (inherent)"
+    ],
+    "blocking": ["R12"]
+  },
+  "verdict": "P17_ARCH_RECONCILIATION_COMPLETE",
+  "verdict_note": "Reconciliation-completeness statement only. This is NOT P17_ARCH_FREEZE_PASS and NOT P17_ARCH_RECONCILIATION_PARTIAL. All of ARCH05-01..ARCH05-05 are resolved; ARCH05-06..08 are dispositioned as expected informational items. Cline reconciliation is not independent acceptance. P17-0 is NOT executed and NOT authorised; P17-A is NOT AUTHORIZED; nothing was pushed; no source, test, migration, schema, seed, RLS, UI or production change was made. The next required action is INDEPENDENT RE-VERIFICATION of the ARCH-06 corrected baseline, after which the Product Owner decides.",
+  "independent_re_verification_required": true
+}
