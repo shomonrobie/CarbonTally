@@ -27,7 +27,8 @@ _SYSTEM_UUID = "00000000-0000-0000-0000-000000000000"
 
 _AUDIT_COLUMNS = """
     id, action_type, table_name, record_id, performed_by, performed_at,
-    old_data, new_data, changes, ip_address, metadata
+    old_data, new_data, changes, ip_address, metadata,
+    actor_organization_id, acting_for_organization_id
 """
 
 _CSV_HEADERS = [
@@ -79,6 +80,13 @@ def _entry_metadata(entry: AuditEntry) -> str:
         payload["organization_id"] = entry.organization_id
     if entry.reason is not None:
         payload["reason"] = entry.reason
+    # P17-IMPLEMENT-02: mirror the acting-for attribution into metadata as well
+    # as into the dedicated columns, so the ledger stays investigable from the
+    # metadata payload alone (the established pattern for this table).
+    if entry.actor_organization_id is not None:
+        payload["actor_organization_id"] = entry.actor_organization_id
+    if entry.acting_for_organization_id is not None:
+        payload["acting_for_organization_id"] = entry.acting_for_organization_id
     return dumps_jsonb(payload)
 
 
@@ -108,6 +116,18 @@ def _row_to_entry(row: Any) -> AuditEntry:
         outcome=metadata.get("outcome"),
         organization_id=metadata.get("organization_id"),
         category=metadata.get("category") or classify_action(action),
+        # P17-IMPLEMENT-02 — acting-for attribution. The dedicated column is
+        # authoritative; fall back to metadata so entries written before the
+        # column existed are still read correctly.
+        actor_organization_id=(
+            str(r["actor_organization_id"]) if r.get("actor_organization_id")
+            else metadata.get("actor_organization_id")
+        ),
+        acting_for_organization_id=(
+            str(r["acting_for_organization_id"])
+            if r.get("acting_for_organization_id")
+            else metadata.get("acting_for_organization_id")
+        ),
     )
 
 
@@ -189,9 +209,10 @@ class AuditRepository(AbstractRepository[AuditEntry]):
             INSERT INTO public.audit_trail (
                 action_type, table_name, record_id, performed_by,
                 performed_at, old_data, new_data, changes, ip_address, metadata,
-                created_at
+                created_at, actor_organization_id, acting_for_organization_id
             ) VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6::jsonb, $7::jsonb,
-                      $8::jsonb, NULLIF($9, '')::inet, $10::jsonb, NOW())
+                      $8::jsonb, NULLIF($9, '')::inet, $10::jsonb, NOW(),
+                      NULLIF($11, '')::uuid, NULLIF($12, '')::uuid)
             RETURNING {_AUDIT_COLUMNS}
             """,
             entry.action,
@@ -204,6 +225,8 @@ class AuditRepository(AbstractRepository[AuditEntry]):
             dumps_jsonb(entry.changed_fields),
             entry.ip_address,
             _entry_metadata(entry),
+            entry.actor_organization_id,
+            entry.acting_for_organization_id,
         )
         if row is None:
             raise RuntimeError("audit insert returned no row")

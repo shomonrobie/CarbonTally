@@ -245,6 +245,15 @@ class AuditEntry:
     organization_id: Optional[str] = None
     #: Canonical category from :data:`CATEGORIES` (optional; derived from action).
     category: Optional[str] = None
+    # --- P17-IMPLEMENT-02 additive acting-for attribution -------------------
+    #: P17/ARCH-04 §10.3 — the organisation the actor BELONGS to. None for
+    #: internal staff and for every pre-existing caller, so all existing
+    #: behaviour is unchanged (the column simply stays NULL).
+    actor_organization_id: Optional[str] = None
+    #: P17/ARCH-04 §10.3 — the organisation the actor was OPERATING FOR. This is
+    #: the authoritative persisted acting-for carrier. CONTEXT ONLY: it never
+    #: grants access; ownership remains ``organization_id``.
+    acting_for_organization_id: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
