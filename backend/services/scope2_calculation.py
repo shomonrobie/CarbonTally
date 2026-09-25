@@ -101,6 +101,11 @@ class Scope2Input:
     geography: Optional[str] = None
     data_quality: Optional[str] = None
     facility_id: Optional[str] = None
+    #: The authorized supplier attribution for this energy activity
+    #: (P17-IMPLEMENT-09) — the utility or energy supplier the consumption came
+    #: from. ``None`` stays NULL: an unresolved supplier is never invented. The
+    #: route proves ownership against the data owner before the value reaches here.
+    supplier_id: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     source_file: Optional[str] = None
@@ -359,6 +364,10 @@ class Scope2CalculationService:
             facility_id=request.facility_id,
             performed_by=request.performed_by,
             accounting_dimensions=dimensions,
+            # P17-IMPLEMENT-09 — supplier attribution on the Scope 2 path, so a
+            # utility/supplier-specific figure is attributable to the supplier it
+            # came from rather than being recorded as an unattributed total.
+            supplier_id=request.supplier_id,
         )
 
 

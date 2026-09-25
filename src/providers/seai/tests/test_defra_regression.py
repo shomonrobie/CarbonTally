@@ -169,7 +169,8 @@ class _FakeSink:
         return snapshot
 
     async def create(self, org_id, factor_id, quantity, unit, scope, date,
-                     asset_id, facility_id, snapshot_id):
+                     asset_id, facility_id, snapshot_id, supplier_id=None,
+                     accounting_dimensions=None):
         log = EmissionLog(
             id="log-1", organization_id=org_id, factor_id=factor_id,
             quantity=quantity, date=date, unit=unit, scope=scope,

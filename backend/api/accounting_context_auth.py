@@ -38,6 +38,7 @@ from fastapi import HTTPException
 from api.dependencies import RepositoryBundle
 from auth import AuthUser
 from api.consultant_auth import resolve_consultant_context
+from core.exceptions import ValidationFailedError
 from domain.acting_for import ActingForKind, EntitlementBasis
 from domain.cams import CamsPersona
 
@@ -51,6 +52,7 @@ __all__ = [
     "list_authorized_organizations",
     "resolve_accounting_context",
     "ensure_record_owner_authorized",
+    "resolve_authorized_supplier",
 ]
 
 RELATIONSHIP_OWN = "OWN"
@@ -405,3 +407,46 @@ async def ensure_record_owner_authorized(
     return await resolve_accounting_context(
         current_user, repos, acting_for_organization_id=owner_organization_id
     )
+
+
+async def resolve_authorized_supplier(
+    repos: RepositoryBundle,
+    supplier_id: Optional[str],
+    data_owner: str,
+) -> Optional[str]:
+    """Resolve a supplier CLAIM against the authorized data-owning organization.
+
+    A ``supplier_id`` in a request body is a claim, never an authority. The row is
+    loaded server-side and accepted only when it belongs to the **resolved**
+    data-owning organization, so a calculation cannot attribute an emission to
+    another tenant's supplier. A supplier that belongs to another organization is
+    deliberately indistinguishable from one that does not exist, so the response
+    confirms nothing about another tenant's master data.
+
+    ``emissions_logs.supplier_id`` carries no foreign key, so an unvalidated id
+    would be stored silently — that is exactly why the check is here and not left
+    to the database.
+
+    Args:
+        repos: The request's repository bundle (``suppliers`` is always bound).
+        supplier_id: The claimed supplier, or ``None`` for "no supplier claimed".
+        data_owner: The RESOLVED data-owning organization (the authorization key).
+
+    Returns:
+        The validated supplier id, or ``None`` when no supplier was claimed.
+
+    Raises:
+        ValidationFailedError 422: the claim cannot be honoured — the supplier does
+            not exist or is not available to this organization. Nothing is
+            persisted, and the supplier is never guessed.
+    """
+    if supplier_id is None:
+        return None
+    supplier = await repos.suppliers.get(supplier_id)
+    if supplier is None or str(supplier.organization_id) != str(data_owner):
+        raise ValidationFailedError(
+            "no supplier with that id is available to this organization",
+            details={"field": "supplier_id", "supplier_id": supplier_id},
+        )
+    return supplier_id
+

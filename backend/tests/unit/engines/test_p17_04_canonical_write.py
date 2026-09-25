@@ -74,6 +74,7 @@ class _RecordingSink:
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,
+        accounting_dimensions: Optional[AccountingDimensions] = None,
     ) -> EmissionLog:
         log = EmissionLog(
             id=f"log-{len(self.created)}",

@@ -23,6 +23,7 @@ from core.exceptions import (
     EstimationRecordRequiredError,
 )
 from domain.calculation import CalculationSnapshot, EmissionLog
+from domain.accounting_dimensions import AccountingDimensions
 from domain.data_quality import ESTIMATED_DATA_QUALITY
 from domain.estimation import EstimationRecord
 from domain.factor import EmissionFactor
@@ -92,6 +93,7 @@ class _RecordingSink:
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,
+        accounting_dimensions: Optional[AccountingDimensions] = None,
     ) -> EmissionLog:
         return EmissionLog(
             id=f"log-{len(self.saved)}",

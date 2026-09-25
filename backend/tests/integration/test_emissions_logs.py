@@ -10,10 +10,18 @@ import pytest
 from core.types import DateRange
 from data.emission_factors import EmissionFactorsRepository
 from data.emissions_logs import EmissionsLogsRepository
+from domain.accounting_dimensions import AccountingDimensions
 from domain.factor import EmissionFactor
 from tests.integration.conftest import make_org, make_snapshot, new_id
 
 pytestmark = pytest.mark.asyncio
+
+#: P17-A adds ``emissions_logs_scope2_method_required`` (NOT VALID — historical
+#: rows are exempt, every NEW row is enforced). A test that writes a Scope 2 log
+#: must therefore state the accounting method, exactly as the application does.
+_SCOPE2_DIMENSIONS = AccountingDimensions(
+    scope2_method="LOCATION_BASED", energy_type="electricity"
+)
 
 
 async def _seed_factor(pool: asyncpg.Pool, activity: str | None = None) -> EmissionFactor:
@@ -51,6 +59,7 @@ async def test_create_and_get_round_trip(pool: asyncpg.Pool) -> None:
         asset_id=None,
         facility_id="facility-abc",
         snapshot_id=snapshot_id,
+        accounting_dimensions=_SCOPE2_DIMENSIONS,
     )
     assert log.id
     assert log.quantity == Decimal("100.00")
@@ -80,10 +89,18 @@ async def test_save_updates_calculated_value(pool: asyncpg.Pool) -> None:
         asset_id=None,
         facility_id=None,
         snapshot_id=snapshot_id,
+        accounting_dimensions=_SCOPE2_DIMENSIONS,
     )
     from dataclasses import replace
 
-    computed = replace(log, calculated_kg_co2e=Decimal("2.000000"))
+    computed = replace(
+        log,
+        calculated_kg_co2e=Decimal("2.000000"),
+        # A read-modify-write of a Scope 2 log must preserve its method: the
+        # UPDATE rewrites the dimension columns, and NULLing them on a Scope 2 row
+        # is refused by ``emissions_logs_scope2_method_required``.
+        accounting_dimensions=_SCOPE2_DIMENSIONS,
+    )
     saved = await repo.save(computed)
     assert saved.calculated_kg_co2e == Decimal("2.000000")
 
@@ -97,11 +114,13 @@ async def test_find_by_org_period_filter(pool: asyncpg.Pool) -> None:
         org_id=org_id, factor_id=factor.id, quantity=Decimal("1"),
         unit="kWh", scope="Scope 2", date=date(2025, 1, 15),
         asset_id=None, facility_id=None, snapshot_id=snapshot_id,
+        accounting_dimensions=_SCOPE2_DIMENSIONS,
     )
     await repo.create(
         org_id=org_id, factor_id=factor.id, quantity=Decimal("2"),
         unit="kWh", scope="Scope 2", date=date(2025, 12, 15),
         asset_id=None, facility_id=None, snapshot_id=snapshot_id,
+        accounting_dimensions=_SCOPE2_DIMENSIONS,
     )
     in_range = await repo.find_by_org(
         org_id, DateRange(date(2025, 6, 1), date(2025, 12, 31))
@@ -124,6 +143,10 @@ async def test_aggregate_and_count_by_scope(pool: asyncpg.Pool) -> None:
             org_id=org_id, factor_id=factor.id, quantity=Decimal(qty),
             unit="kWh", scope=scope, date=date(2025, 2, day),
             asset_id=None, facility_id=None, snapshot_id=snapshot_id,
+            # A Scope 2 row must state its method; Scope 1 carries no method.
+            accounting_dimensions=(
+                _SCOPE2_DIMENSIONS if scope == "Scope 2" else None
+            ),
         )
         # set calculated values via save so aggregation sees non-zero sums
     logs = await repo.find_by_org(
@@ -132,7 +155,15 @@ async def test_aggregate_and_count_by_scope(pool: asyncpg.Pool) -> None:
     from dataclasses import replace
 
     for idx, log in enumerate(logs):
-        await repo.save(replace(log, calculated_kg_co2e=Decimal(f"{idx + 1}.000000")))
+        await repo.save(
+            replace(
+                log,
+                calculated_kg_co2e=Decimal(f"{idx + 1}.000000"),
+                accounting_dimensions=(
+                    _SCOPE2_DIMENSIONS if log.scope == "Scope 2" else None
+                ),
+            )
+        )
 
     agg = await repo.aggregate(
         org_id, DateRange(date(2025, 1, 1), date(2025, 12, 31)), "scope"

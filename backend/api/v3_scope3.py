@@ -23,7 +23,10 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from api.accounting_context_auth import ensure_record_owner_authorized
+from api.accounting_context_auth import (
+    ensure_record_owner_authorized,
+    resolve_authorized_supplier,
+)
 from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, require_org_member
 from core.exceptions import ValidationFailedError
@@ -121,6 +124,16 @@ async def calculate_scope3(
     )
     data_owner = context.data_owning_organization_id
 
+    # ------------------------------------------------------------------
+    # P17-IMPLEMENT-09 — supplier attribution is a CLAIM, not an authority:
+    # resolved server-side against the authorized data owner, so a calculation
+    # can never attribute emissions to another tenant's supplier, and an
+    # unhonourable claim is refused instead of being silently dropped.
+    # ------------------------------------------------------------------
+    supplier_id = await resolve_authorized_supplier(
+        repos, payload.supplier_id, data_owner
+    )
+
     match: Optional[MatchResult] = None
     if payload.factor_id is not None:
         factor = await repos.factors.get(payload.factor_id)
@@ -159,7 +172,7 @@ async def calculate_scope3(
             consolidation_approach=payload.consolidation_approach,
             source_snapshot_id=payload.source_snapshot_id,
             facility_id=payload.facility_id,
-            supplier_id=payload.supplier_id,
+            supplier_id=supplier_id,
             source_item_id=payload.source_item_id,
             source_line_item_id=payload.source_line_item_id,
             performed_by=current_user.user_id,

@@ -24,6 +24,7 @@ from api.v3_scope2 import router as scope2_router
 from auth import AuthUser, get_current_user
 from core.exceptions import ActingForError, CarbonTallyError
 from domain.calculation import CalculationSnapshot, EmissionLog
+from domain.accounting_dimensions import AccountingDimensions
 from domain.contractual_instruments import INSTRUMENT_TYPES, ContractualInstrument
 from domain.factor import EmissionFactor
 
@@ -59,6 +60,7 @@ class _RecordingSink:
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,
+        accounting_dimensions: Optional[AccountingDimensions] = None,
     ) -> EmissionLog:
         return EmissionLog(
             id="99999999-9999-4999-8999-999999999999",

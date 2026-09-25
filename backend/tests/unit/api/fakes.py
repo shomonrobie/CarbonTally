@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from auth import AuthUser
 from domain.audit import AuditEntry, AuditQuery
+from domain.accounting_dimensions import AccountingDimensions
 from tests.unit.api.insight_limit_fakes import InsightLimitsFake
 
 #: Sentinel mirroring ``data.manual_extraction._UNSET`` — distinguishes
@@ -416,6 +417,7 @@ class MemoryLogs:
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,  # P12-IMPL-02
+        accounting_dimensions: Optional[AccountingDimensions] = None,  # P17-IMPLEMENT-09
     ) -> EmissionLog:
         log = EmissionLog(
             id=str(uuid.uuid4()),

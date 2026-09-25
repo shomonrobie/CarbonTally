@@ -93,7 +93,8 @@ class _RecordingSink:
         return snapshot
 
     async def create(self, org_id, factor_id, quantity, unit, scope, date,
-                     asset_id, facility_id, snapshot_id, supplier_id=None):
+                     asset_id, facility_id, snapshot_id, supplier_id=None,
+                     accounting_dimensions=None):
         log = EmissionLog(
             id=f"log-{snapshot_id}",
             organization_id=org_id,

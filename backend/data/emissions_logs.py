@@ -279,6 +279,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,
+        accounting_dimensions: Optional[AccountingDimensions] = None,
     ) -> EmissionLog:
         """Insert one emissions record and return it.
 
@@ -290,15 +291,37 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         from ``manual_extraction_items.mapped_supplier_id`` — the Decision-01
         source of truth. ``None`` stays NULL rather than being back-filled with a
         guessed supplier: an unresolved supplier is never invented.
+
+        ``accounting_dimensions`` (P17-IMPLEMENT-09) writes the ten canonical P17
+        dimension columns in the SAME INSERT as the row. This is not optional
+        decoration: the P17-A migration adds ``…_scope2_method_required`` and
+        ``…_scope3_category_required`` to ``emissions_logs`` as ``NOT VALID``
+        CHECK constraints, which are **not valid** for historical rows but
+        **enforced on every new row**. A Scope 2 or Scope 3 log inserted without
+        its method/category therefore fails at the database. Because the engine
+        previously supplied the dimensions only on the later UPDATE, every
+        Scope 2/Scope 3 write was rejected by PostgreSQL and surfaced as a raw
+        ``CheckViolationError`` (AGENTS.md §46). The dimensions are now present
+        from the first statement, and :meth:`save` still re-writes the identical
+        object, so the snapshot/log pair cannot disagree.
+
+        ``None`` writes ten NULLs, which is exactly pre-P17 behaviour for a
+        Scope 1 (or legacy) caller.
         """
+        dimension_values = _dimension_params(accounting_dimensions)
         row = await self._fetch_one(
             f"""
             INSERT INTO public.emissions_logs (
                 organization_id, asset_id, emission_factor_id, start_date,
                 end_date, raw_quantity, calculated_kg_co2e, created_by_user_id,
                 created_at, updated_at, unit, scope, snapshot_id, metadata,
-                supplier_id
-            ) VALUES ($1, $2, $3, $4, $4, $5, 0, $6, NOW(), NOW(), $7, $8, $9, $10::jsonb, $11)
+                supplier_id,
+                scope2_method, scope3_category, energy_type, data_quality,
+                facility_id, transport_boundary, waste_origin, source_snapshot_id,
+                performed_by_organization_id, acting_for_organization_id
+            ) VALUES ($1, $2, $3, $4, $4, $5, 0, $6, NOW(), NOW(), $7, $8, $9,
+                      $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+                      $20, $21)
             RETURNING {_LOG_COLUMNS}
             """,
             org_id,
@@ -312,6 +335,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             snapshot_id,
             _log_metadata(facility_id),
             supplier_id,
+            *dimension_values,
         )
         if row is None:
             raise RuntimeError("emissions log insert returned no row")

@@ -138,6 +138,7 @@ class CalculationSink(Protocol):
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,
+        accounting_dimensions: Optional[AccountingDimensions] = None,
     ) -> EmissionLog: ...
 
     async def save(self, entity: EmissionLog) -> EmissionLog: ...
@@ -310,8 +311,15 @@ class CalculationRequest:
         accounting_dimensions: Optional[AccountingDimensions] = None,
         source_item_id: Optional[str] = None,
         source_line_item_id: Optional[str] = None,
+        supplier_id: Optional[str] = None,
     ) -> CalculationRequest:
         """Build a calculation request from the Phase 4 matching output.
+
+        ``supplier_id`` (P17-IMPLEMENT-09) carries the already-authorized
+        supplier attribution through to ``emissions_logs.supplier_id``. It is an
+        insert-time only value and is deliberately NOT part of the content hash
+        or the request-id derivation, so the attribution reaches the operational
+        record without changing any existing snapshot's hash or identity.
 
         ``customer_factor`` must be supplied when ``match`` resolved to an
         approved customer factor (D-cf-5). A CarbonTally-managed match requires
@@ -369,6 +377,7 @@ class CalculationRequest:
             accounting_dimensions=accounting_dimensions,
             source_item_id=source_item_id,
             source_line_item_id=source_line_item_id,
+            supplier_id=supplier_id,
         )
 
 
@@ -600,6 +609,12 @@ class CalculationEngine:
             facility_id=request.facility_id,
             snapshot_id=snapshot.id,
             supplier_id=request.supplier_id,
+            # P17-IMPLEMENT-09 — the dimensions must be present on the INSERT, not
+            # only on the later UPDATE: the P17-A CHECK constraints on
+            # ``emissions_logs`` are NOT VALID for historical rows but enforced on
+            # every NEW row, so a Scope 2/3 log inserted without its method or
+            # category is rejected by PostgreSQL before the update can run.
+            accounting_dimensions=request.accounting_dimensions,
         )
         updated = dataclasses.replace(
             created,

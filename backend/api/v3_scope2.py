@@ -25,7 +25,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from api.accounting_context_auth import ensure_record_owner_authorized
+from api.accounting_context_auth import (
+    ensure_record_owner_authorized,
+    resolve_authorized_supplier,
+)
 from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, require_org_member
 from core.exceptions import InstrumentEligibilityError, ValidationFailedError
@@ -67,6 +70,10 @@ class Scope2CalculateRequest(BaseModel):
     geography: Optional[str] = None
     data_quality: Optional[str] = None
     facility_id: Optional[str] = None
+    #: P17-IMPLEMENT-09 — the utility/energy supplier this consumption came from.
+    #: A claim only: it is resolved server-side against the authorized data-owning
+    #: organization before it can reach ``emissions_logs.supplier_id``.
+    supplier_id: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     #: MARKET_BASED only — the contractual instrument to claim. Identified by id;
@@ -125,6 +132,15 @@ async def calculate_scope2(
     # taken from the request body: the payload only names the organization the
     # caller claims, and that claim has just been verified.
     data_owner = context.data_owning_organization_id
+
+    # ------------------------------------------------------------------
+    # P17-IMPLEMENT-09 — the supplier is a CLAIM resolved against the authorized
+    # data owner (the same discipline the contractual instrument follows below):
+    # a supplier the organization cannot see is refused, never attributed.
+    # ------------------------------------------------------------------
+    supplier_id = await resolve_authorized_supplier(
+        repos, payload.supplier_id, data_owner
+    )
 
     if payload.factor_id is None:
         raise ValidationFailedError(
@@ -209,6 +225,7 @@ async def calculate_scope2(
             geography=payload.geography,
             data_quality=payload.data_quality,
             facility_id=payload.facility_id,
+            supplier_id=supplier_id,
             source_item_id=payload.source_item_id,
             source_line_item_id=payload.source_line_item_id,
             performed_by=current_user.user_id,

@@ -103,6 +103,10 @@ class Scope3Input:
     consolidation_approach: Optional[str] = None
     source_snapshot_id: Optional[str] = None
     facility_id: Optional[str] = None
+    #: The authorized supplier attribution for this activity (P17-IMPLEMENT-09).
+    #: ``None`` stays NULL: an unresolved supplier is never invented. The route
+    #: is responsible for proving the supplier belongs to the data owner before
+    #: the value reaches here.
     supplier_id: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
@@ -464,6 +468,12 @@ class Scope3CalculationService:
             accounting_dimensions=dimensions,
             source_item_id=request.source_item_id,
             source_line_item_id=request.source_line_item_id,
+            # P17-IMPLEMENT-09 — supplier attribution. The caller has already
+            # resolved and authorized the supplier against the data owner (the
+            # route refuses a supplier the organization cannot see); the value is
+            # carried through here so the claim reaches
+            # ``emissions_logs.supplier_id`` instead of being silently dropped.
+            supplier_id=request.supplier_id,
         )
 
 

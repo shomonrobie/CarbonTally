@@ -11,6 +11,7 @@ import pytest
 
 from core.exceptions import UnitMismatchError, ValidationFailedError
 from domain.audit import AuditEntry
+from domain.accounting_dimensions import AccountingDimensions
 from domain.calculation import (
     CalculationMethodology,
     CalculationSnapshot,
@@ -119,6 +120,7 @@ class _MemorySink:
         facility_id: Optional[str],
         snapshot_id: str,
         supplier_id: Optional[str] = None,  # P12-IMPL-02
+        accounting_dimensions: Optional[AccountingDimensions] = None,  # P17-IMPLEMENT-09
     ) -> EmissionLog:
         log = EmissionLog(
             id=f"log-{snapshot_id}",
