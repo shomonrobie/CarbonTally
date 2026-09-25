@@ -13,6 +13,7 @@ from enum import StrEnum
 from typing import Optional
 
 from core.types import DateRange
+from domain.accounting_dimensions import AccountingDimensions
 from domain.customer_factor import CustomerFactor
 from domain.factor import EmissionFactor
 
@@ -64,6 +65,12 @@ class CalculationSnapshot:
     #: pre-B2 history have no line identity (§8.2) and history is never
     #: retro-linked (B2-D12).
     source_line_item_id: Optional[str] = None
+    #: P17 canonical accounting dimensions (IMPLEMENT-04). Deliberately NOT part
+    #: of :meth:`_canonical`, so ``content_hash`` — and therefore P16 snapshot
+    #: identity and idempotency — is byte-identical for a calculation whether or
+    #: not dimensions are supplied. The dimensions describe how a result is
+    #: accounted for; they do not change the numerical result.
+    accounting_dimensions: Optional[AccountingDimensions] = None
 
     def _canonical(self) -> str:
         """Canonical serialisation of every input that affects the result.
@@ -159,6 +166,12 @@ class EmissionLog:
     customer_factor_id: Optional[str] = None
     calculated_kg_co2e: Decimal = Decimal("0")
     created_at: Optional[datetime.datetime] = None
+    #: P17 canonical accounting dimensions (IMPLEMENT-04). ``organization_id``
+    #: above remains the ownership authority; these columns are additional
+    #: accounting context and are never used to derive ownership. The engine sets
+    #: the SAME object on the snapshot and the log of one calculation, so a
+    #: snapshot and its emissions log cannot disagree about owner or acting-for.
+    accounting_dimensions: Optional[AccountingDimensions] = None
 
     def __post_init__(self) -> None:
         if self.quantity < 0:

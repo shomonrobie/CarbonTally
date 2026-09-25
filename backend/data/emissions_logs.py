@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 from core.types import DateRange
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
+from domain.accounting_dimensions import AccountingDimensions
 from domain.calculation import (
     CalculationSnapshot,
     EmissionLog,
@@ -52,6 +53,38 @@ _GROUP_EXPRESSIONS: dict[str, str] = {
     "asset": "COALESCE(asset_id::text, 'none')",
     "facility": "COALESCE(metadata->>'facility_id', 'none')",
 }
+
+#: P17-IMPLEMENT-04 — the ten canonical accounting-dimension columns, in the
+#: exact order ``_dimension_params`` supplies them. ``NULL`` (i.e. no dimensions)
+#: is a legitimate value for every one of them: the P17-A migration documents
+#: NULL as "no method / no category recorded", never a fabricated default.
+_DIMENSION_COLUMNS: tuple[str, ...] = (
+    "scope2_method",
+    "scope3_category",
+    "energy_type",
+    "data_quality",
+    "facility_id",
+    "transport_boundary",
+    "waste_origin",
+    "source_snapshot_id",
+    "performed_by_organization_id",
+    "acting_for_organization_id",
+)
+
+
+def _dimension_params(
+    dimensions: Optional[AccountingDimensions],
+) -> list[Optional[object]]:
+    """Return the ten dimension values for an INSERT/UPDATE, in column order.
+
+    ``None`` dimensions yield ten ``None`` values, so a pre-P17 caller writes
+    NULL into every P17 column and its stored row is unchanged in meaning.
+    """
+    if dimensions is None:
+        return [None] * len(_DIMENSION_COLUMNS)
+    columns = dimensions.as_columns()
+    return [columns[name] for name in _DIMENSION_COLUMNS]
+
 
 #: Explicit ``calculation_snapshots`` column list for the Phase 4 read surface
 #: (immutable forensic record — read-only; never ``SELECT *``).
@@ -643,7 +676,17 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
         }
 
     async def save(self, entity: EmissionLog) -> EmissionLog:
-        """Update an existing emissions record and return the stored state."""
+        """Update an existing emissions record and return the stored state.
+
+        P17-IMPLEMENT-04: this is the point at which the emissions log receives
+        its authoritative ``snapshot_id`` and, with it, the canonical accounting
+        dimensions (including the acting-for/performed-by attribution pair).
+        Because both the link and the attribution are written by the *same*
+        statement, a log cannot end up linked to a snapshot while carrying a
+        different owner or acting-for. ``organization_id`` is deliberately NOT
+        updated: ownership is set at creation and is never rewritten here.
+        """
+        dimension_values = _dimension_params(entity.accounting_dimensions)
         row = await self._fetch_one(
             f"""
             UPDATE public.emissions_logs
@@ -657,6 +700,16 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 asset_id = $8,
                 snapshot_id = $9,
                 metadata = $10::jsonb,
+                scope2_method = $11,
+                scope3_category = $12,
+                energy_type = $13,
+                data_quality = $14,
+                facility_id = $15,
+                transport_boundary = $16,
+                waste_origin = $17,
+                source_snapshot_id = $18,
+                performed_by_organization_id = $19,
+                acting_for_organization_id = $20,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING {_LOG_COLUMNS}
@@ -671,6 +724,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             entity.asset_id,
             entity.snapshot_id,
             _log_metadata(entity.facility_id),
+            *dimension_values,
         )
         if row is None:
             raise RuntimeError(
@@ -715,10 +769,13 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 reporting_year, methodology, algorithm_version, content_hash,
                 calculated_by, request_id, factor_kind, customer_factor_id,
                 source_item_id, source_file, source_page, performed_by,
-                source_line_item_id
+                source_line_item_id,
+                scope2_method, scope3_category, energy_type, data_quality,
+                facility_id, transport_boundary, waste_origin, source_snapshot_id,
+                performed_by_organization_id, acting_for_organization_id
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                       $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                      $27)
+                      $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
             RETURNING id
             """,
             snapshot.id,
@@ -748,6 +805,7 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             snapshot.source_page,
             performed_by,
             snapshot.source_line_item_id,
+            *_dimension_params(snapshot.accounting_dimensions),
         )
         if row is None:
             raise RuntimeError("calculation snapshot insert returned no row")

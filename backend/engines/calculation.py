@@ -31,6 +31,10 @@ from typing import Optional, Protocol
 from core.exceptions import UnitMismatchError, ValidationFailedError
 from core.logging import get_logger
 from core.units import is_currency_unit, resolve_unit_for_factor
+from domain.accounting_dimensions import (
+    AccountingDimensions,
+    validate_scope_dimensions,
+)
 from domain.calculation import (
     CalculationMethodology,
     CalculationResult,
@@ -162,6 +166,18 @@ class CalculationRequest:
     activity: str
     activity_type: str
     scope: Optional[str] = None
+    #: P17-IMPLEMENT-04 — the canonical accounting dimensions for this
+    #: calculation (Scope 2 method, Scope 3 category, energy type, data quality,
+    #: facility, boundary discriminators, derivation lineage) plus the
+    #: acting-for/performed-by attribution pair.
+    #:
+    #: ``None`` means "no dimensions supplied": the P17 columns are written NULL,
+    #: which is exactly pre-P17 behaviour. A Scope 2 or Scope 3 calculation must
+    #: supply its required identity — :func:`validate_scope_dimensions` refuses
+    #: it otherwise, before any write, because the database enforces the same
+    #: rule on new rows and a fabricated method/category would be an invented
+    #: accounting claim.
+    accounting_dimensions: Optional[AccountingDimensions] = None
     methodology: str = CalculationMethodology.DIRECT_MULTIPLY.value
     source_file: Optional[str] = None
     source_page: Optional[int] = None
@@ -399,6 +415,17 @@ class CalculationEngine:
                 the factor's unit (from
                 :meth:`EmissionFactor.calculate_emissions`).
         """
+        # P17-IMPLEMENT-04 — validate the accounting identity BEFORE any side
+        # effect: before the ``CalculationRequested`` event, before the snapshot
+        # INSERT and before the emissions log. A refused calculation therefore
+        # leaves nothing behind, which is the only way to guarantee a refused
+        # accounting result cannot become a partially written one.
+        #
+        # This mirrors the P17-A database constraints (NOT VALID, so historical
+        # rows are exempt while every new write is enforced). Refusing here turns
+        # what the database would reject anyway into a clean domain error instead
+        # of a raw constraint violation surfacing to the user (AGENTS.md §46).
+        validate_scope_dimensions(request.scope, request.accounting_dimensions)
         await self._publish_requested(request)
         co2e_kg = self._compute_co2e(request)
         snapshot = self._build_snapshot(request, co2e_kg)
@@ -514,6 +541,11 @@ class CalculationEngine:
             source_page=request.source_page,
             source_item_id=request.source_item_id,
             source_line_item_id=request.source_line_item_id,
+            # P17-IMPLEMENT-04 — the canonical accounting dimensions travel with
+            # the snapshot. They are excluded from content_hash (see
+            # CalculationSnapshot._canonical), so P16 snapshot identity and
+            # idempotency are unchanged.
+            accounting_dimensions=request.accounting_dimensions,
         )
         return dataclasses.replace(
             snapshot, content_hash=snapshot.build_content_hash()
@@ -547,7 +579,9 @@ class CalculationEngine:
                 facility_id=request.facility_id,
                 snapshot_id=snapshot.id,
                 calculated_kg_co2e=co2e_kg,
+                accounting_dimensions=request.accounting_dimensions,
             )
+            self._assert_log_matches_snapshot(snapshot, log)
             return await self._sink.save(log)
         created = await self._sink.create(
             org_id=request.organization_id,
@@ -562,9 +596,57 @@ class CalculationEngine:
             supplier_id=request.supplier_id,
         )
         updated = dataclasses.replace(
-            created, calculated_kg_co2e=co2e_kg, snapshot_id=snapshot.id
+            created,
+            calculated_kg_co2e=co2e_kg,
+            snapshot_id=snapshot.id,
+            # P17-IMPLEMENT-04 — the SAME dimensions object as the snapshot, so
+            # the pair cannot disagree about owner, acting-for or accounting
+            # identity. Both are derived from one ``request``, so consistency is
+            # structural rather than a convention.
+            accounting_dimensions=request.accounting_dimensions,
         )
+        self._assert_log_matches_snapshot(snapshot, updated)
         return await self._sink.save(updated)
+
+    @staticmethod
+    def _assert_log_matches_snapshot(
+        snapshot: CalculationSnapshot, log: EmissionLog
+    ) -> None:
+        """Refuse an emissions log whose ownership disagrees with its snapshot.
+
+        Phase 4 / Phase 11 of P17-IMPLEMENT-04: an emissions log must always
+        correspond to the authoritative calculation snapshot. The engine derives
+        both from one ``CalculationRequest``, so a mismatch indicates a
+        programming error rather than user input — which is exactly why it is a
+        hard failure instead of a warning. Failing here is safe: nothing has been
+        written for this log yet, and the snapshot remains the authoritative
+        record the caller can retry against.
+
+        ``acting_for_organization_id`` is compared only when both sides carry it,
+        so a Scope 1 P16-era calculation with no dimensions is unaffected.
+        """
+        if log.organization_id != snapshot.organization_id:
+            raise ValueError(
+                "emissions log organization "
+                f"{log.organization_id!r} does not match snapshot organization "
+                f"{snapshot.organization_id!r}; refusing to attribute a log to a "
+                "different data owner than its authoritative snapshot"
+            )
+        log_dims = log.accounting_dimensions
+        snapshot_dims = snapshot.accounting_dimensions
+        if log_dims is None or snapshot_dims is None:
+            return
+        if (
+            log_dims.acting_for_organization_id
+            != snapshot_dims.acting_for_organization_id
+        ):
+            raise ValueError(
+                "emissions log acting_for_organization_id "
+                f"{log_dims.acting_for_organization_id!r} does not match snapshot "
+                f"acting_for_organization_id "
+                f"{snapshot_dims.acting_for_organization_id!r}; refusing to write "
+                "an inconsistently attributed accounting result"
+            )
 
     async def _publish_requested(self, request: CalculationRequest) -> None:
         if self._event_bus is None:
