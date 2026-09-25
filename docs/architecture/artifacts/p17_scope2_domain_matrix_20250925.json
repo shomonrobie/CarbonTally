@@ -1,0 +1,339 @@
+{
+  "artifact": "p17_scope2_domain_matrix",
+  "task_id": "P17-ARCH-01-20250925-SCOPE2-SCOPE3-FULL-ACCOUNTING-CONTRACT",
+  "date": "2025-09-25",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "baseline_commit": "9c96cbf11204b1dcebd15d1598653b0e9ba3e5be",
+  "environment": "local Demo Lab (carbontally_demo_local @ 127.0.0.1:54426), read-only inspection",
+  "production_contacted": false,
+  "implementation_state": "ARCHITECTURE ONLY - nothing described here is implemented by this task",
+  "legend": {
+    "decision": ["REQUIRED", "CONDITIONALLY_REQUIRED", "OPTIONAL", "DERIVED"],
+    "current_status": ["EXISTS_COLUMN", "EXISTS_JSONB_ONLY", "IMPLIED_BY_FACTOR", "ABSENT", "REFERENCE_DATA_ABSENT"],
+    "target": "EXISTING (reuse) | EXTEND (column/constraint on an existing table) | NEW (new domain entity required)"
+  },
+  "canonical_result_dimension": {
+    "field": "scope2_method",
+    "decision": "REQUIRED",
+    "rationale": "A Scope 2 emissions number is meaningless without its accounting method. GHG Protocol requires dual reporting: the same electricity activity must be able to carry a location-based AND a market-based result without either overwriting the other. This is the single most important Scope 2 integrity dimension, so it is a REQUIRED dimension on every Scope 2 result rather than a free-text attribute.",
+    "current_status": "IMPLIED_BY_FACTOR",
+    "current_evidence": "Vocabulary exists only in backend/domain/disclosure.py:145 (SCOPE2_METHODS = ('LOCATION_BASED','MARKET_BASED')) and the disclosure CHECK at supabase/migrations/20260914000000_p8_b1_disclosure_model_foundation.sql:132 (scope2_method_hint). No calculation or emissions row carries a method.",
+    "target": "EXTEND",
+    "target_tables": ["calculation_snapshots", "emissions_logs"],
+    "constraint": "CHECK (scope2_method IS NULL OR scope2_method IN ('LOCATION_BASED','MARKET_BASED')) - reuses the frozen B1 vocabulary verbatim; no new vocabulary is introduced",
+    "scope_rule": "CHECK (scope <> 'Scope 2' OR scope2_method IS NOT NULL) added NOT VALID so historical rows are never rewritten while every new Scope 2 write must carry a method"
+  },
+  "fields": [
+    {
+      "field": "organization",
+      "decision": "REQUIRED",
+      "purpose": "Tenant boundary for the activity and every derived result.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.organization_id (NOT NULL, FK organizations), calculation_snapshots.organization_id (NOT NULL, FK organizations)",
+      "target": "EXISTING",
+      "note": "RLS is already enabled on both tables; the Scope 2 entity set must add no un-scoped table."
+    },
+    {
+      "field": "reporting_period",
+      "decision": "REQUIRED",
+      "purpose": "Consumption period, distinct from the factor year.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.start_date/end_date (NOT NULL); calculation_snapshots.date + reporting_year",
+      "target": "EXISTING",
+      "note": "Activity period must never be conflated with factor year (see factor governance)."
+    },
+    {
+      "field": "facility_site",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "Site/meter attribution; required when the organisation operates more than one site, or when the supplier/meter is site-specific, because grid location and MPAN are site properties.",
+      "current_status": "EXISTS_JSONB_ONLY",
+      "current_location": "emissions_logs.metadata->>'facility_id' (backend/data/emissions_logs.py:221 _log_metadata); calculation_snapshots has no facility dimension at all",
+      "reference_data": "facilities exists with country, region, postcode, latitude, longitude, meter_mpan_mprn",
+      "target": "EXTEND",
+      "target_tables": ["emissions_logs", "calculation_snapshots"],
+      "note": "JSONB-only facility attribution is not indexable, not FK-constrained and not RLS-checkable; P17 requires a real column with FK facilities(id) for the Scope 2 site dimension."
+    },
+    {
+      "field": "energy_type",
+      "decision": "REQUIRED",
+      "purpose": "Distinguishes electricity / heat / steam / cooling, which select different factor families and different instrument rules.",
+      "current_status": "IMPLIED_BY_FACTOR",
+      "current_location": "Only inferable from emission_factors.activity_type family ('UK electricity', 'Heat and steam', 'Fuels')",
+      "target": "EXTEND",
+      "note": "Requires a controlled vocabulary (electricity | heat | steam | cooling) carried on the activity; never inferred from free text at calculation time. Live inventory: 346 electricity / 8 heat / 8 steam / 0 cooling factors, so 'cooling' must resolve to controlled review, not a guess."
+    },
+    {
+      "field": "energy_quantity",
+      "decision": "REQUIRED",
+      "purpose": "The activity quantity to which the factor applies.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.raw_quantity, calculation_snapshots.quantity",
+      "target": "EXISTING"
+    },
+    {
+      "field": "energy_unit",
+      "decision": "REQUIRED",
+      "purpose": "Unit of the activity; must match the factor unit exactly (a mismatch is a hard error today).",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.unit (FK units.code), calculation_snapshots.quantity_unit",
+      "target": "EXISTING",
+      "note": "Factor units are qualified, e.g. 'kWh (Net CV)'. Central normalisation lives in backend/core/units.py; P17 must reuse it and must not duplicate alias logic."
+    },
+    {
+      "field": "grid_location",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "The grid region whose location-based factor applies. Required for LOCATION_BASED; not required for MARKET_BASED when a valid contractual instrument supplies the market factor.",
+      "current_status": "ABSENT",
+      "current_location": "No column. The factor carries country only (GB/IE); no region/grid-resolution dimension exists on the activity.",
+      "reference_data": "facilities.region / country / latitude / longitude exist and are the natural resolution source",
+      "target": "EXTEND",
+      "note": "Location-based acceptance requires an explicit resolved grid location, or an explicit recorded reason why national (country) resolution was used. Silent fallback to a national factor when a regional factor is required must be a controlled review state."
+    },
+    {
+      "field": "country_region",
+      "decision": "REQUIRED",
+      "purpose": "Jurisdiction for factor eligibility.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emission_factors.country (GB 7029 / IE 20); facilities.country",
+      "target": "EXISTING"
+    },
+    {
+      "field": "location_factor",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "The grid/location emission factor used by the location-based method.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emission_factors.id, referenced by calculation_snapshots.factor_id (ON DELETE RESTRICT) with factor_kind='emission_factor'",
+      "target": "EXISTING"
+    },
+    {
+      "field": "location_factor_source",
+      "decision": "REQUIRED",
+      "purpose": "Provenance of the location factor (authority and set vintage).",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emission_factors.factor_source ('DEFRA-DESNZ'), factor_set ('DEFRA-2025'); copied onto calculation_snapshots.factor_source/factor_set",
+      "target": "EXISTING"
+    },
+    {
+      "field": "location_factor_year",
+      "decision": "REQUIRED",
+      "purpose": "The factor's reporting year, governed explicitly, never silently substituted.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emission_factors.reporting_year (2025 only in the live inventory); copied into calculation_snapshots.reporting_year",
+      "target": "EXISTING",
+      "known_gap": "Four production call sites present cross-year candidate sets to an operator because they omit the year filter: backend/api/v3_operations.py:1039, backend/api/v3_operations.py:1650, backend/api/v3_processing_workflow.py:1156, backend/services/automatic_processing.py:1615 (all call repos.factors.find_by_activity(...) without year=). data/emission_factors.py:173 then orders by reporting_year DESC. Latent today (7049/7049 factors are 2025); harmful the moment a second factor year is imported. P17-A must close this."
+    },
+    {
+      "field": "market_factor",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "The supplier/contractual emission factor used by the market-based method.",
+      "current_status": "IMPLIED_BY_FACTOR",
+      "current_location": "No distinction exists; any emission_factors row could be used for either method today, which is exactly the confusion the method dimension removes.",
+      "target": "EXTEND",
+      "note": "Market factors must be identifiable as such (governed factor classification, supplier-specific factor, or instrument-derived factor)."
+    },
+    {
+      "field": "market_factor_source",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "Provenance of the market factor (supplier disclosure, supplier-specific factor, or instrument-implied rate).",
+      "current_status": "ABSENT",
+      "target": "EXTEND"
+    },
+    {
+      "field": "market_factor_year",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "Year governance for the market factor; the same no-silent-fallback rule as location factors.",
+      "current_status": "ABSENT",
+      "target": "EXTEND"
+    },
+    {
+      "field": "supplier_provider",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "The energy supplier / instrument issuer / provider, for supplier attribution and supplier-specific factors.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.supplier_id (FK suppliers); 25 of 34 live emissions rows carry it after the P16 wave",
+      "related": "backend/engines/supplier_resolution.py (org-scoped, fail-closed: exact | unresolved | confirm_creation | ambiguous)",
+      "target": "EXISTING",
+      "note": "P17 extends supplier attribution to Scope 2 providers and instrument issuers WITHOUT creating a parallel supplier model and without weakening org scoping."
+    },
+    {
+      "field": "contractual_instrument",
+      "decision": "CONDITIONALLY_REQUIRED",
+      "purpose": "The claimable instrument backing a market-based result. Required when the market-based result relies on an instrument rather than a supplier factor.",
+      "current_status": "ABSENT",
+      "current_location": "No contractual-instrument entity exists anywhere in the schema (verified against 141 public tables: no instrument/claim/allocation table; the only instrument-like columns are disclosure scope2_method_hint)",
+      "target": "NEW",
+      "target_entity": "contractual_instruments",
+      "note": "This is the unavoidable new domain entity for Scope 2 market-based accounting."
+    },
+    {
+      "field": "instrument_type",
+      "decision": "REQUIRED",
+      "purpose": "Controlled vocabulary distinguishing instrument classes that carry different evidentiary and validity rules.",
+      "current_status": "ABSENT",
+      "target": "NEW",
+      "proposed_vocabulary": ["energy_attribute_certificate", "guarantee_of_origin", "supplier_specific_contract", "ppa", "rec", "green_tariff", "other"],
+      "note": "Deliberately generic; jurisdiction-specific classes (e.g. UK REGO, US REC) map onto it and their rule sets are FRAMEWORK-SPECIFIC / DEFERRED."
+    },
+    {
+      "field": "instrument_identifier",
+      "decision": "REQUIRED",
+      "purpose": "The certificate/contract serial or identifier, so a claim is addressable and cannot be duplicated.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_quantity",
+      "decision": "REQUIRED",
+      "purpose": "Quantity of energy the instrument represents, in its own unit.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_unit",
+      "decision": "REQUIRED",
+      "purpose": "Unit of the instrument quantity; must be reconcilable with the consumption unit for allocation.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_period",
+      "decision": "REQUIRED",
+      "purpose": "Generation/validity period of the instrument.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_geography",
+      "decision": "REQUIRED",
+      "purpose": "Market/geography the instrument is valid in. An instrument valid in one market cannot silently back consumption in another.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_vintage",
+      "decision": "REQUIRED",
+      "purpose": "Generation vintage year, which may differ from the reporting year; the difference is a validity input, not a silent substitution.",
+      "current_status": "ABSENT",
+      "target": "NEW"
+    },
+    {
+      "field": "instrument_ownership_claim",
+      "decision": "REQUIRED",
+      "purpose": "Who owns/claims the environmental attribute; needed to prohibit the same attribute being claimed twice, including twice by one organisation.",
+      "current_status": "ABSENT",
+      "target": "NEW",
+      "target_entity": "contractual_instruments.claimant_organization_id + instrument_allocations",
+      "note": "The claimant organisation is the tenant key: a second organisation claiming the same instrument must be structurally impossible, not merely discouraged."
+    },
+    {
+      "field": "instrument_allocation",
+      "decision": "REQUIRED",
+      "purpose": "The binding of (part of) an instrument to a specific activity/period. Market-based accounting is an allocation act and must be recorded as one.",
+      "current_status": "ABSENT",
+      "target": "NEW",
+      "target_entity": "instrument_allocations",
+      "invariants": [
+        "sum(allocations for an instrument) <= instrument_quantity (per unit, normalised)",
+        "an allocation belongs to exactly one organisation and one reporting period",
+        "an allocation references the source activity/snapshot it supports",
+        "allocated quantity cannot exceed the eligible consumption of that activity/period"
+      ]
+    },
+    {
+      "field": "residual_mix",
+      "decision": "OPTIONAL",
+      "purpose": "Residual-mix factor for market-based accounting where the market requires it.",
+      "current_status": "REFERENCE_DATA_ABSENT",
+      "current_location": "No residual-mix factor set exists in emission_factors (factor sources are DEFRA-DESNZ/DEFRA-2025 and SEAI/2025 only)",
+      "target": "DEFERRED",
+      "classification": "FRAMEWORK_SPECIFIC",
+      "note": "Residual mix cannot be implemented by inventing a factor value. Where a market requires residual mix and none is available, the market-based result must be blocked into controlled review rather than silently computed from a location factor."
+    },
+    {
+      "field": "evidence",
+      "decision": "REQUIRED",
+      "purpose": "Source evidence for the activity, the factor selection, the instrument and the allocation.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "evidence_line_items (67 live rows: source_item_id, line_number, source_page, row_reference, raw_description, raw_quantity, raw_unit, payload_hash, extraction_method, materialisation_kind); disclosure_value_evidence links values to snapshots/logs",
+      "target": "EXISTING",
+      "note": "An instrument-based market claim must carry its own evidence document; it may not rely on the activity's evidence alone."
+    },
+    {
+      "field": "provenance",
+      "decision": "REQUIRED",
+      "purpose": "Traceability chain from report value back to source.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "calculation_snapshots.source_item_id, source_line_item_id, source_file, source_page, performed_by, content_hash, algorithm_version; emissions_logs.snapshot_id",
+      "target": "EXISTING"
+    },
+    {
+      "field": "calculation_methodology",
+      "decision": "REQUIRED",
+      "purpose": "The arithmetic used, machine-readable.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "calculation_snapshots.methodology; CalculationMethodology enum in backend/domain/calculation.py (direct_multiply, distance_based, spend_based, area_based, mass_balance)",
+      "target": "EXISTING",
+      "note": "Scope 2 dual-method accounting must NOT be encoded by inventing location/market methodology strings. The method is the scope2_method dimension; the methodology remains the arithmetic."
+    },
+    {
+      "field": "calculation_snapshot",
+      "decision": "REQUIRED",
+      "purpose": "Immutable forensic record of the calculation.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "calculation_snapshots (append-only, content_hash, uq_calc_snapshots_request_id from P16-R7)",
+      "target": "EXISTING"
+    },
+    {
+      "field": "resulting_emissions",
+      "decision": "REQUIRED",
+      "purpose": "The resulting kg CO2e.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "calculation_snapshots.co2e_kg; emissions_logs.calculated_kg_co2e",
+      "target": "EXISTING"
+    },
+    {
+      "field": "reporting_status",
+      "decision": "REQUIRED",
+      "purpose": "Whether the result may enter a report aggregate.",
+      "current_status": "EXISTS_COLUMN",
+      "current_location": "emissions_logs.reportability_status / calculation_snapshots.reportability_status = reportable | not_for_reporting | superseded (P16-RD-4, migration 20261008000000, with the invalidation-described CHECK)",
+      "target": "EXISTING",
+      "note": "P17 REUSES this lifecycle and must not create an independent Scope 2/3 reportability model. Live evidence: Scope 1 6 reportable + 2 superseded; Scope 3 25 reportable + 1 not_for_reporting."
+    },
+    {
+      "field": "dual_method_pairing",
+      "decision": "DERIVED",
+      "purpose": "Link the location-based and market-based results of the same activity so a report presents both and neither can be mistaken for the other.",
+      "derivation": "Both results share the same source activity identity (source_item_id / Scope 2 activity id) and differ by scope2_method; a pairing is therefore a query, not a new stored entity.",
+      "target": "EXISTING",
+      "note": "Storing a 'dual pair' row would duplicate accounting results and is explicitly rejected."
+    }
+  ],
+  "rejected_designs": [
+    {
+      "design": "A single Scope 2 emissions column overwritten when the method changes",
+      "reason": "Violates dual reporting; the P16 reportability lifecycle already exists to supersede a result without destroying it."
+    },
+    {
+      "design": "A separate Scope 2 accounting table parallel to calculation_snapshots/emissions_logs",
+      "reason": "Duplicates the calculation, provenance, evidence and reportability machinery; P14-RECON-01 s19 forbids parallel systems."
+    },
+    {
+      "design": "Encoding the method in the methodology string (e.g. 'location_based_multiply')",
+      "reason": "Conflates arithmetic with accounting method, makes the disclosure scope2_method_hint unreachable, and cannot be enforced by a CHECK constraint."
+    },
+    {
+      "design": "Inferring scope2_method from factor_source or factor activity text",
+      "reason": "Silently reinterprets user data; the method is an operator/accounting decision and must be explicit."
+    }
+  ],
+  "open_questions_requiring_po_decision": [
+    "Whether market-based reporting is delivered at P17-C with contractual instruments (REC/GO-style claims), or first with supplier-specific/residual-mix market factors only.",
+    "Whether location-based geography resolution may default to national (country) level when no regional factor exists, or must always enter controlled review.",
+    "Whether the residual-mix requirement is in scope for the first market-based delivery or deferred as FRAMEWORK_SPECIFIC."
+  ]
+}
+
+
+

@@ -1,0 +1,256 @@
+{
+  "artifact": "p17_acceptance_matrix",
+  "task_id": "P17-ARCH-01-20250925-SCOPE2-SCOPE3-FULL-ACCOUNTING-CONTRACT",
+  "date": "2025-09-25",
+  "baseline_commit": "9c96cbf11204b1dcebd15d1598653b0e9ba3e5be",
+  "production_contacted": false,
+  "evidence_classification": {
+    "rule": "A capability is accepted ONLY at END-TO-END VERIFIED. Every lower level is progress, never acceptance.",
+    "levels": [
+      "DOCUMENTED",
+      "CODE EXISTS",
+      "ROUTE WIRED",
+      "FACTOR AVAILABLE",
+      "PERSISTED",
+      "END-TO-END VERIFIED"
+    ],
+    "e2e_definition": "A persisted chain proving source -> extraction/input -> mapping/category+method resolution -> factor -> calculation -> persistence -> evidence -> reportability -> reporting",
+    "never_acceptable_as_acceptance": [
+      "an enum value or reference row exists",
+      "a table exists",
+      "a factor family exists",
+      "a route is registered",
+      "a unit test of a pure function passes",
+      "a UI control renders"
+    ]
+  },
+  "phase_gates": [
+    {
+      "phase": "P17-A",
+      "title": "Scope 2 canonical model + factor governance",
+      "gate": "SCHEMA_AND_GOVERNANCE",
+      "must_pass": [
+        "scope2_method and scope3_category dimensions exist on calculation_snapshots and emissions_logs with CHECK constraints and NOT VALID scope-rules",
+        "existing 34 snapshots / 34 logs are byte-identical (no value, scope, category or reportability mutated)",
+        "the four cross-year candidate call sites no longer present unqualified cross-year candidates (year is explicit or the candidate set is year-labelled)",
+        "RLS remains enabled on every touched table and no policy/ACL is weakened",
+        "migration is idempotent: re-running it is a no-op",
+        "no fabricated factor, category or method value is inserted"
+      ],
+      "evidence_required": ["migration file", "before/after row hashes", "idempotent re-run output", "RLS verification output", "unit + data tests"]
+    },
+    {
+      "phase": "P17-B",
+      "title": "Scope 2 location-based end-to-end",
+      "gate": "SCOPE2_LOCATION_E2E",
+      "must_pass": [
+        "one real electricity activity calculated by the LOCATION_BASED method",
+        "snapshot + emissions row both carry scope2_method='LOCATION_BASED' and a non-null facility or explicit national-resolution record",
+        "factor provenance (id, source, set, year, country) is persisted and reproducible via the existing verify route",
+        "evidence chain to the source document/line is intact",
+        "result is reportable and appears in an org aggregate filtered by method"
+      ],
+      "evidence_required": ["live Demo Lab run", "SQL read-back", "verification output", "evidence lineage read-back"]
+    },
+    {
+      "phase": "P17-C",
+      "title": "Scope 2 market-based + contractual instruments",
+      "gate": "SCOPE2_MARKET_AND_INSTRUMENTS",
+      "must_pass": [
+        "instrument registration with evidence",
+        "allocation of an instrument to an activity with quantity reconciliation",
+        "double-claim denied: a second organisation cannot claim the same instrument id; the same instrument cannot be allocated beyond its quantity",
+        "an invalid/expired/missing-evidence instrument cannot produce a market-based result; it produces a controlled review state",
+        "both methods coexist for the same activity and neither overwrites the other",
+        "reporting distinguishes the two methods"
+      ],
+      "evidence_required": ["schema delta", "RLS/claim uniqueness output", "positive + negative live runs", "review-state run"]
+    },
+    {
+      "phase": "P17-D",
+      "title": "Scope 3 canonical category model",
+      "gate": "SCOPE3_CATEGORY_MODEL",
+      "must_pass": [
+        "exactly 15 canonical categories seeded with slug + name and a stable identity",
+        "every new Scope 3 result MUST carry a category (NOT VALID CHECK); a missing category becomes a controlled review state, never a silent assignment",
+        "the 25 historical Scope 3 rows are untouched and are explicitly documented as having no category",
+        "category is never inferred from free text alone"
+      ],
+      "evidence_required": ["migration", "category seed read-back", "negative insert proof", "historical-row integrity proof"]
+    },
+    {
+      "phase": "P17-E",
+      "title": "Scope 3 Categories 1-5",
+      "gate": "SCOPE3_CAT_1_5",
+      "must_pass": [
+        "one END-TO-END VERIFIED result per category (1,2,3,4,5) in Demo Lab",
+        "category 3 derivation links to a source Scope 1/2 snapshot with a uniqueness constraint proven",
+        "category 5 retains the P16 fail-closed clarification path",
+        "no category-1/category-2 double count (DC-03 detector test)"
+      ],
+      "evidence_required": ["per-category live run", "read-back per category", "DC-03 negative test"]
+    },
+    {
+      "phase": "P17-F",
+      "title": "Scope 3 Categories 6-10",
+      "gate": "SCOPE3_CAT_6_10",
+      "must_pass": [
+        "one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED",
+        "category 7 carries an explicit estimation record marked secondary/estimated",
+        "category 9 carries an explicit downstream boundary and is provably absent from category 4 totals (DC-04)",
+        "category 10 either delivered with an evidenced processor declaration or formally recorded as BLOCKED with the prerequisite stated"
+      ],
+      "evidence_required": ["per-category live run", "DC-04 negative test", "estimation-record read-back"]
+    },
+    {
+      "phase": "P17-G",
+      "title": "Scope 3 Categories 11-15",
+      "gate": "SCOPE3_CAT_11_15",
+      "must_pass": [
+        "one END-TO-END VERIFIED result per category (11,12,13,14,15) where the category is not DEFERRED",
+        "every assumption-driven or attributed result persists its assumption/attribution set",
+        "categories 11, 14, 15 either delivered under an explicitly ratified bounded methodology or recorded as DEFERRED with the decision that blocks them"
+      ],
+      "evidence_required": ["per-category live run", "assumption-set read-back", "explicit deferral records where applicable"]
+    },
+    {
+      "phase": "P17-H",
+      "title": "Cross-category validation, double-counting controls, provenance",
+      "gate": "INTEGRITY",
+      "must_pass": [
+        "every control DC-01..DC-11 has a deterministic detection mechanism and at least one negative test",
+        "the minimum immutable provenance chain resolves report value -> snapshot -> source activity -> evidence -> factor -> operator decision",
+        "no duplicate reportable result can be produced for the same logical calculation (idempotency preserved for every new path)",
+        "data-quality dimension is populated on every new result"
+      ],
+      "evidence_required": ["control tests", "provenance walk output", "idempotency re-run proof"]
+    },
+    {
+      "phase": "P17-I",
+      "title": "Reporting / disclosure integration",
+      "gate": "REPORTING",
+      "must_pass": [
+        "a real report artefact generated from real persisted Scope 2 (both methods) and Scope 3 (by category) results",
+        "location-based and market-based Scope 2 appear as distinct report lines and neither overwrites the other",
+        "Scope 3 categories are distinguishable in the report and are never collapsed into one internal total",
+        "non-reportable/superseded results are excluded from reportable aggregates but remain inspectable"
+      ],
+      "evidence_required": ["generated artefact", "aggregate SQL reconciliation", "exclusion proof"]
+    },
+    {
+      "phase": "P17-J",
+      "title": "Independent P17 acceptance",
+      "gate": "INDEPENDENT",
+      "must_pass": [
+        "an independent verifier (not the implementer) reproduces the Scope 2 dual-method journey and the Scope 3 category journeys",
+        "tenant isolation negative matrix green",
+        "full regression suite classified with zero Class-A failures",
+        "production never contacted",
+        "limitations stated truthfully"
+      ],
+      "evidence_required": ["independent report", "classification table", "production-safety statement"]
+    }
+  ],
+  "scope2_minimum_acceptance": [
+    {"id": "S2-01", "requirement": "location-based calculation", "architecture_status": "READY_TO_BUILD", "current_state": "NOT IMPLEMENTED"},
+    {"id": "S2-02", "requirement": "market-based calculation", "architecture_status": "READY_TO_BUILD", "current_state": "NOT IMPLEMENTED"},
+    {"id": "S2-03", "requirement": "both methods persisted independently", "architecture_status": "REQUIRES_SCHEMA_DELTA_P17A", "current_state": "NOT IMPLEMENTED"},
+    {"id": "S2-04", "requirement": "factor-year enforcement", "architecture_status": "PARTIAL_GAP_IDENTIFIED", "current_state": "ENFORCED_ON_THE_NATURAL_KEY/PIPELINE PATH; 4 CALL SITES PRESENT CROSS-YEAR CANDIDATES"},
+    {"id": "S2-05", "requirement": "contractual instrument registration", "architecture_status": "REQUIRES_NEW_ENTITY", "current_state": "NOT IMPLEMENTED"},
+    {"id": "S2-06", "requirement": "contractual instrument validation", "architecture_status": "REQUIRES_NEW_ENTITY", "current_state": "NOT IMPLEMENTED"},
+    {"id": "S2-07", "requirement": "evidence/provenance", "architecture_status": "REUSE_EXISTING", "current_state": "MACHINERY EXISTS (evidence_line_items, snapshots, content_hash); UNEXERCISED FOR SCOPE 2"},
+    {"id": "S2-08", "requirement": "manual review path", "architecture_status": "REUSE_EXISTING", "current_state": "IMPLEMENTED (activity_clarifications + adjudication lifecycle; 9 live rows on the waste path)"},
+    {"id": "S2-09", "requirement": "supplier/provider attribution", "architecture_status": "REUSE_AND_EXTEND", "current_state": "IMPLEMENTED (supplier_id propagated on 25 live rows)"},
+    {"id": "S2-10", "requirement": "reportability lifecycle", "architecture_status": "REUSE_EXISTING", "current_state": "IMPLEMENTED (P16-RD-4; 34 live rows classified)"},
+    {"id": "S2-11", "requirement": "idempotent calculation", "architecture_status": "REUSE_EXISTING", "current_state": "IMPLEMENTED (deterministic request id + uq_calc_snapshots_request_id)"},
+    {"id": "S2-12", "requirement": "tenant isolation", "architecture_status": "REUSE_EXISTING", "current_state": "IMPLEMENTED (RLS + ensure_org_access + route guards)"},
+    {"id": "S2-13", "requirement": "reporting distinction between methods", "architecture_status": "REQUIRES_SCHEMA_DELTA_P17A", "current_state": "DISCLOSURE VOCABULARY EXISTS (scope2_method_hint); NO ACCOUNTING DIMENSION"},
+    {"id": "S2-14", "requirement": "no silent fallback", "architecture_status": "PARTIAL_GAP_IDENTIFIED", "current_state": "YEAR GAP AT 4 CALL SITES; NO RESIDUAL-MIX DATA IN THE LIBRARY"},
+    {"id": "S2-15", "requirement": "independent verification", "architecture_status": "PROCESS_REQUIRED", "current_state": "P17-J GATE"}
+  ],
+  "scope3_category_acceptance_matrix": {
+    "columns": ["category", "model", "input", "method", "factor", "evidence", "calculation", "persistence", "reporting", "e2e"],
+    "values_key": ["SUPPORTED", "PARTIAL", "DEFERRED", "NOT_IMPLEMENTED"],
+    "note": "Architecture-stage values. These state whether the ARCHITECTURE for each column is defined and buildable - they are NOT implementation status. No blank may be treated as complete.",
+    "rows": [
+      ["C01 Purchased Goods and Services", "PARTIAL", "PARTIAL", "PARTIAL", "PARTIAL", "SUPPORTED", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C02 Capital Goods", "PARTIAL", "NOT_IMPLEMENTED", "DEFERRED", "NOT_IMPLEMENTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C03 Fuel- and Energy-Related Activities", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "NOT_IMPLEMENTED"],
+      ["C04 Upstream Transportation and Distribution", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "NOT_IMPLEMENTED"],
+      ["C05 Waste Generated in Operations", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "PARTIAL", "PARTIAL"],
+      ["C06 Business Travel", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "NOT_IMPLEMENTED"],
+      ["C07 Employee Commuting", "PARTIAL", "PARTIAL", "PARTIAL", "PARTIAL", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C08 Upstream Leased Assets", "PARTIAL", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C09 Downstream Transportation and Distribution", "PARTIAL", "PARTIAL", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C10 Processing of Sold Products", "PARTIAL", "NOT_IMPLEMENTED", "DEFERRED", "NOT_IMPLEMENTED", "SUPPORTED", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C11 Use of Sold Products", "DEFERRED", "DEFERRED", "DEFERRED", "PARTIAL", "DEFERRED", "SUPPORTED", "SUPPORTED", "DEFERRED", "NOT_IMPLEMENTED"],
+      ["C12 End-of-Life Treatment of Sold Products", "PARTIAL", "PARTIAL", "PARTIAL", "SUPPORTED", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C13 Downstream Leased Assets", "PARTIAL", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "SUPPORTED", "SUPPORTED", "PARTIAL", "NOT_IMPLEMENTED"],
+      ["C14 Franchises", "DEFERRED", "DEFERRED", "DEFERRED", "NOT_IMPLEMENTED", "DEFERRED", "SUPPORTED", "SUPPORTED", "DEFERRED", "NOT_IMPLEMENTED"],
+      ["C15 Investments", "DEFERRED", "DEFERRED", "DEFERRED", "NOT_IMPLEMENTED", "PARTIAL", "SUPPORTED", "SUPPORTED", "DEFERRED", "NOT_IMPLEMENTED"]
+    ],
+    "column_meaning": {
+      "model": "canonical category identity + required dimensions defined",
+      "input": "supported input contract defined and buildable with data the platform can actually obtain",
+      "method": "a ratified, bounded calculation methodology exists",
+      "factor": "eligible factor data exists in the library OR an evidenced non-factor input path is defined",
+      "evidence": "evidence requirement defined and satisfiable by existing evidence machinery",
+      "calculation": "the existing calculation engine performs the arithmetic without new physics",
+      "persistence": "existing snapshot/log persistence carries the result",
+      "reporting": "the reporting dimension is expressible in the existing disclosure/report model",
+      "e2e": "END-TO-END VERIFIED - nothing is E2E at architecture stage"
+    }
+  },
+  "double_counting_controls": [
+    {"id": "DC-01", "risk": "Scope 1 (fuel combusted on site) vs Scope 2 (purchased electricity/heat)", "detection": "energy_type controlled vocabulary on the activity + factor-family exclusion; a source item may produce exactly one of the two", "status": "PARTIALLY_TODAY_BY_SCOPE_INFERENCE", "required": "explicit energy_type + a validation rule + a negative test"},
+    {"id": "DC-02", "risk": "Scope 2 vs Scope 3 category 3 (upstream fuel/energy, T&D)", "detection": "a category-3 result must be DERIVED from a source Scope 1/2 record via source_snapshot_id, with a uniqueness constraint so one source snapshot yields at most one category-3 derivation; WTT-/T&D families are excluded from Scope 1/2 candidate sets", "status": "NOT_IMPLEMENTED", "required": "derivation link + uniqueness constraint + family exclusion test"},
+    {"id": "DC-03", "risk": "Category 1 vs Category 2 (purchased goods vs capital goods)", "detection": "capital-vs-expensed classification property on the activity; the two categories are mutually exclusive per source line, enforced by a validation rule and a report reconciliation", "status": "NOT_IMPLEMENTED", "required": "classification property + exclusion rule + negative test"},
+    {"id": "DC-04", "risk": "Category 4 vs Category 9 (inbound vs outbound transport, SAME factor family)", "detection": "explicit transport_boundary property (upstream|downstream) on the activity; a shipment appears in exactly one boundary; report aggregates group by boundary", "status": "NOT_IMPLEMENTED", "required": "boundary property + exactly-one test"},
+    {"id": "DC-05", "risk": "Category 5 vs Category 12 (operational waste vs sold-product end-of-life, SAME waste factor family)", "detection": "explicit waste_origin property (operations|sold_product_eol)", "status": "NOT_IMPLEMENTED", "required": "origin property + exactly-one test"},
+    {"id": "DC-06", "risk": "Category 8 vs Category 13 (lessee vs lessor leased assets, SAME asset/energy factors)", "detection": "explicit lease_direction property (lessee|lessor) on the lease relationship", "status": "NOT_IMPLEMENTED", "required": "lease-direction property + exactly-one test"},
+    {"id": "DC-07", "risk": "Organisational boundary overlap: the same asset/activity counted in Scope 1/2 AND in a Scope 3 category", "detection": "organisation consolidation approach dimension + a detector query for the same asset/facility + period + activity appearing under more than one scope/category", "status": "NOT_IMPLEMENTED", "required": "consolidation approach + detector + negative test"},
+    {"id": "DC-08", "risk": "Supplier-provided data plus estimated data for the same activity", "detection": "one logical activity may hold one reportable result; a better-data replacement SUPERSEDES through the P16 lifecycle instead of adding a second reportable row", "status": "REUSE_OF_EXISTING_LIFECYCLE", "required": "supersession-by-default rule + idempotency key covering the data source"},
+    {"id": "DC-09", "risk": "A contractual instrument claimed twice (by two organisations, or twice by one)", "detection": "instrument claimed by exactly one organisation (claimant_organization_id is the tenant key) + allocation quantity reconciliation (sum of allocations <= instrument quantity) + unique allocation per (instrument, activity, period)", "status": "NOT_IMPLEMENTED", "required": "new entity + DB-level constraints + cross-tenant negative test"},
+    {"id": "DC-10", "risk": "Repeated calculation creating a second reportable result for the same logical calculation", "detection": "deterministic request id (uuid5 over stable inputs) + partial unique index uq_calc_snapshots_request_id; every NEW calculation path must use the same mechanism and namespace its key with the new dimensions (method, category)", "status": "IMPLEMENTED_FOR_EXISTING_PATHS", "required": "extend the digest to include scope2_method and scope3_category, keeping one mechanism, plus a repeat-calculation test per new path"},
+    {"id": "DC-11", "risk": "The same result appearing twice because multiple reporting views each materialise emissions", "detection": "reporting aggregates are queries/filters over the single authoritative result set; no view may persist its own emissions rows", "status": "DESIGN_CONSTRAINT", "required": "an architectural assertion reviewed at P17-I"}
+  ],
+  "mandatory_invariant_tests": [
+    {"id": "T-INV-01", "invariant": "a Scope 2 result cannot be persisted without scope2_method", "type": "negative DB + route"},
+    {"id": "T-INV-02", "invariant": "a Scope 3 result cannot be persisted without a category", "type": "negative DB + route"},
+    {"id": "T-INV-03", "invariant": "changing the method on existing inputs produces a DIFFERENT request id (no reuse of the other method's snapshot)", "type": "calculation"},
+    {"id": "T-INV-04", "invariant": "a repeat calculation with identical method AND inputs reuses the snapshot and does not change the reportable total", "type": "idempotency, per new path"},
+    {"id": "T-INV-05", "invariant": "location-based and market-based results for the same activity both exist and neither is mutated", "type": "dual-method"},
+    {"id": "T-INV-06", "invariant": "a non-reportable or superseded result is absent from every reportable aggregate while remaining readable by id", "type": "reportability"},
+    {"id": "T-INV-07", "invariant": "every new result resolves report value -> snapshot -> source activity -> evidence -> factor", "type": "provenance walk"},
+    {"id": "T-INV-08", "invariant": "no cross-tenant read or write on any new P17 entity (four-cell matrix: own/other x read/write)", "type": "RLS negative"},
+    {"id": "T-INV-09", "invariant": "an instrument cannot be claimed by a second organisation and cannot be over-allocated", "type": "instrument negative"},
+    {"id": "T-INV-10", "invariant": "a factor-year mismatch never silently substitutes a factor from another year", "type": "factor-year negative, per candidate path"},
+    {"id": "T-INV-11", "invariant": "no category is assigned without an explicit, recorded resolution (operator or deterministic rule), and no category is changed in place", "type": "no-silent-reclassification"},
+    {"id": "T-INV-12", "invariant": "an estimated value carries a persisted estimation record (method, inputs, assumptions, factor, source, actor, timestamp)", "type": "no-silent-estimation"}
+  ],
+  "acceptance_language_rule": "IMPLEMENTED, TESTED, VERIFIED and ACCEPTED are not synonyms. Only independent verification (P17-J) may use ACCEPTED. Cline-authored verification is IMPLEMENTED/TESTED, never independent verification.",
+  "post_contract_po_decisions": {
+    "registered_by_this_task": true,
+    "sources": [
+      "docs/architecture/CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md",
+      "docs/architecture/CT-PO-P17-POST-ARCH-DECISIONS-20260925.md"
+    ],
+    "created_or_committed_by_this_task": false,
+    "status": "APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION",
+    "reconciliation_performed": false,
+    "blocks": "every P17 implementation phase until the reconciliation register (main contract 57) is completed; P17-A is gated first because the reconciliation may add columns to the same migration",
+    "highest_impact_items": [
+      "mandatory UI/UX inside affected phases (no deferral to Step 3)",
+      "governed submission/approval lifecycle before a customer-contributed result may become reportable",
+      "customer-owned data contribution with source-actor and acting-for context provenance",
+      "organization capabilities; permission is not accounting authority; consultant delegated client access",
+      "reporting/evidence ownership belongs to the client organization"
+    ]
+  },
+  "current_verdict": "P17_ARCHITECTURE_STATUS: PARTIAL - PREREQUISITE DECISIONS REQUIRED. The Scope 2 / Scope 3 architecture (dimensions, categories, schema delta, phases, gates) is complete, but post-contract PO decision records D1/D2 must be reconciled into the contract before affected implementation may begin. No phase has been implemented; every P17 gate above is UNSTARTED."
+}
+
+
+
+
+
