@@ -1004,16 +1004,20 @@ are reported as PENDING there — not waived here.
 
 ## 22. Commit list
 
-| # | Scope | Files |
-|---|---|---|
-| 1 | P17-K governed capability catalogue migration | `supabase/migrations/20261020000000_p17k_governed_capability_catalogue.sql` (new) |
-| 2 | P17-K acceptance gates (`AG-1`…`AG-8` + `§19.4` rows 8–9) and migration-series registration | `backend/tests/unit/data/test_p17k_governed_capability_catalogue.py` (new), `backend/tests/integration/test_p17k_governed_capability_catalogue_runtime.py` (new), `backend/tests/unit/data/test_p17_migrations.py` (modified) |
-| 3 | P17-K implementation report | `docs/architecture/CT-PO-P17-K-GOVERNED-CAPABILITY-CATALOGUE-RUNTIME-DIMENSIONS-20260926.md` (new) |
+| # | SHA | Scope | Files |
+|---|---|---|---|
+| 1 | **`4f8853b`** | `feat(p17-k)` — governed capability catalogue migration (18 rows, exact `M-1` image) | `supabase/migrations/20261020000000_p17k_governed_capability_catalogue.sql` (new, 347 lines) |
+| 2 | **`ba19ccd`** | `test(p17-k)` — `AG-1`…`AG-8` acceptance gates + the two load-bearing isolation tests; P17-series registration | `backend/tests/unit/data/test_p17k_governed_capability_catalogue.py` (new), `backend/tests/integration/test_p17k_governed_capability_catalogue_runtime.py` (new), `backend/tests/unit/data/test_p17_migrations.py` (modified) — 3 files, `+992 −1` |
+| 3 | **`9ae275b`** | `docs(p17-k)` — this implementation report | `docs/architecture/CT-PO-P17-K-GOVERNED-CAPABILITY-CATALOGUE-RUNTIME-DIMENSIONS-20260926.md` (new, 1093 lines) |
+| 4 | _this commit_ | `docs(p17-k)` — record the commit SHAs in the report | this file |
 
-Exact SHAs are in the task's final response. **Not staged, not committed, not
-modified:** `.gitignore` (pre-existing modification) and every pre-existing
-untracked file (`8`, `=`, `.costrict/`, `costrict-p3-ov-01-…`, `docs/ChatGPT/*`,
-and the other pre-existing untracked planning documents).
+Baseline: `28ff2c0`. All four commits are **local only** (`origin` is 4 commits
+behind; **nothing was pushed**).
+
+**Not staged, not committed, not modified:** `.gitignore` (pre-existing
+modification) and every pre-existing untracked file (`8`, `=`, `.costrict/`,
+`costrict-p3-ov-01-…`, `docs/ChatGPT/*`, and the other pre-existing untracked
+planning documents).
 
 ---
 
