@@ -925,11 +925,16 @@ never inferred from capability (`§8`).
 | Item | SHA |
 |---|---|
 | Starting SHA (`P17-L` baseline) | `3f3dfa415abc8f8d0767ad4f5339a2cefc9e1e12` |
-| Commit 1 | PENDING — recorded by the follow-up `docs(p17-l)` commit |
-| Commit 2 | PENDING — recorded by the follow-up `docs(p17-l)` commit |
-| Commit 3 | PENDING — recorded by the follow-up `docs(p17-l)` commit |
-| Commit 4 | PENDING — recorded by the follow-up `docs(p17-l)` commit |
-| Ending SHA | PENDING — see the final response accompanying this task |
+| Commit 1 — `feat(p17-l): canonical governed capability projection + capability read endpoint` | `a22b97a` |
+| Commit 2 — `feat(p17-l): customer + product capability truth surfaces (one canonical projection)` | `fb3eba1` |
+| Commit 3 — `docs(p17-l): implementation report` | `410ba14` |
+| Commit 4 — `docs(p17-l): record the implementation-report commit SHAs` | recorded by commit 5 below |
+| Commit 5 — `docs(p17-l): record the ending SHA` | recorded in the task's final response |
+| Ending SHA | the tip of `p8-release-reconciled` after commit 5 |
+
+A commit cannot contain its own hash, so — exactly as `P17-K` did — the SHAs are
+recorded by the commit that follows the artifact they name, and the final tip is
+stated in the task's final response.
 
 ### 24.3 Git discipline
 
