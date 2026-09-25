@@ -7,9 +7,12 @@
 **Baseline SHA (starting):** `4bd87a36048bb1c4427f1607432f5109584b3801` — the ARCH-05 independent re-verification commit
 (its parent `172bdd26d1d2fd2c7bf03a05a40532b662117729` is the ARCH-04 reconciliation commit)
 **Baseline SHA (ARCH-04, as named by the task):** `172bdd26d1d2fd2c7bf03a05a40532b662117729`
-**Ending SHA:** the documentation-only commit that introduces this report. Its full SHA is reported in the task's
-mandatory final report; it is deliberately **not** embedded in the file it introduces, so that this report does not
-need a self-referential (and therefore unwritable) commit hash.
+**Ending SHA (reconciliation commit):** `79e10d2235f008aab2b035b60ca4e997a6db36d6` — the documentation-only commit that
+carries all ARCH-06 corrections and introduces this report.
+**Report finalisation:** the literal ending SHA above was embedded into this report and into
+`p17_arch06_reconciliation_20250925.json` by the immediately following documentation-only commit, whose only changes are
+those two SHA fields. HEAD at task end is that finalisation commit; the reconciliation commit named above is the commit
+that carries the corrected baseline.
 **Commit message:** `docs(p17): reconcile ARCH-05 freeze findings`
 **Author:** Cline — *documentation/governance reconciliation agent*. **Not** an independent verifier.
 **Scope:** DOCUMENTATION ONLY.
