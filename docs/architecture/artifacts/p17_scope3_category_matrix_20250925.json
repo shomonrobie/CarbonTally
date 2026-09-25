@@ -410,6 +410,35 @@
       "Deferred methodologies (categories 11, 14, 15) and NOT_IMPLEMENTED categories (2, 10) remain unchanged; no methodology was invented by ARCH-02.",
       "The DC-04/DC-05/DC-06 boundary/origin controls remain the mechanism separating the shared-factor families 4/9, 5/12 and 8/13."
     ]
+  },
+  "cross_cutting_requirements": {
+    "added_by": "P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS",
+    "reason": "ARCH-03 finding LOW-04: ARCH-02 s11.3 claimed the per-category baseline 'retains customer contribution and UI/UX requirements' for every category, but this matrix carries those only as global reconciliation notes, not as per-category fields. Rather than duplicate 15x2 fields, the requirements are defined ONCE here as cross-cutting, and the ARCH-02 wording is narrowed accordingly (see ARCH-04 report s11 / LOW-04 reconciliation).",
+    "applies_to": "every category 1-15",
+    "customer_and_consultant_contribution": {
+      "requirement": "Where an organisation has the relevant capability enabled, customers and authorized consultants may contribute category-relevant data through category-specific workflows; distributed contributors (procurement, finance, facilities, HR, travel, logistics, waste, suppliers) are supported (POST-ARCH s28; PO-CAMS s4).",
+      "invariants": [
+        "every contribution carries source-actor provenance (who contributed, on whose behalf)",
+        "every contribution passes the SAME governed pipeline (validation -> factor/methodology -> calculation -> review -> reportability)",
+        "no capability or contribution path bypasses validation, review or reportability",
+        "the client/owning organization retains ownership of the resulting data, evidence, calculations and reports"
+      ],
+      "acceptance": ["AC-CUST-01", "AC-CUST-02", "AC-CUST-03", "AC-ORGCTX-01", "AC-AUDIT-01"]
+    },
+    "uiux": {
+      "requirement": "Scope 3 category navigation, a category overview (with status and data-quality context) and a category detail workspace are phase deliverables for the phases that deliver each category (UIUX-01 s25-s27).",
+      "invariants": [
+        "all 15 categories are individually addressable and navigable",
+        "missing data is never represented as zero emissions",
+        "disabled-capability and permission-denied states are truthful and backend-enforced"
+      ],
+      "acceptance": ["AC-S3CAT-01", "AC-UIUX-01"]
+    },
+    "explicitly_not_per_category_fields": [
+      "customer contribution is a cross-cutting requirement, not a per-category matrix field",
+      "UI/UX requirements are a cross-cutting requirement, not a per-category matrix field",
+      "per-category acceptance remains governed by the P17-E/F/G gates and the category status vocabulary"
+    ]
   }
 }
 

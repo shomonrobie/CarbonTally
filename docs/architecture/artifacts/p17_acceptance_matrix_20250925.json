@@ -83,7 +83,9 @@
       "title": "Scope 3 Categories 1-5",
       "gate": "SCOPE3_CAT_1_5",
       "must_pass": [
-        "one END-TO-END VERIFIED result per category (1,2,3,4,5) in Demo Lab",
+        "one END-TO-END VERIFIED result for each category among (1,2,3,4,5) whose authoritative architecture status is SUPPORTED or PARTIAL",
+        "each category in (1,2,3,4,5) whose status is NOT_IMPLEMENTED or DEFERRED is reported as an explicit BLOCKED/DEFERRED outcome with its blocking prerequisite named - never omitted and never counted as delivered",
+        "category status vocabulary applied per category: SUPPORTED -> E2E verification required; PARTIAL -> applicable bounded acceptance for the supported portion; NOT_IMPLEMENTED -> documented BLOCKED outcome naming the missing methodology/input contract; DEFERRED -> documented DEFERRED outcome naming the PO decision that blocks it; PO-methodology-decision-required -> remains outside implementation authorization",
         "category 3 derivation links to a source Scope 1/2 snapshot with a uniqueness constraint proven",
         "category 5 retains the P16 fail-closed clarification path",
         "no category-1/category-2 double count (DC-03 detector test)"
@@ -96,6 +98,7 @@
       "gate": "SCOPE3_CAT_6_10",
       "must_pass": [
         "one END-TO-END VERIFIED result per category (6,7,8,9,10) where the category is not DEFERRED",
+        "category status vocabulary applied per category exactly as defined in the P17-E gate (SUPPORTED -> E2E; PARTIAL -> bounded acceptance; NOT_IMPLEMENTED -> documented BLOCKED with the missing prerequisite named; DEFERRED -> documented DEFERRED naming the blocking PO decision)",
         "category 7 carries an explicit estimation record marked secondary/estimated",
         "category 9 carries an explicit downstream boundary and is provably absent from category 4 totals (DC-04)",
         "category 10 either delivered with an evidenced processor declaration or formally recorded as BLOCKED with the prerequisite stated"
@@ -108,6 +111,7 @@
       "gate": "SCOPE3_CAT_11_15",
       "must_pass": [
         "one END-TO-END VERIFIED result per category (11,12,13,14,15) where the category is not DEFERRED",
+        "category status vocabulary applied per category exactly as defined in the P17-E gate (SUPPORTED -> E2E; PARTIAL -> bounded acceptance; NOT_IMPLEMENTED -> documented BLOCKED with the missing prerequisite named; DEFERRED -> documented DEFERRED naming the blocking PO decision)",
         "every assumption-driven or attributed result persists its assumption/attribution set",
         "categories 11, 14, 15 either delivered under an explicitly ratified bounded methodology or recorded as DEFERRED with the decision that blocks them"
       ],
@@ -236,9 +240,24 @@
       "docs/architecture/CT-PO-P17-POST-ARCH-DECISIONS-20260925.md"
     ],
     "created_or_committed_by_this_task": false,
-    "status": "APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION",
-    "reconciliation_performed": false,
-    "blocks": "every P17 implementation phase until the reconciliation register (main contract 57) is completed; P17-A is gated first because the reconciliation may add columns to the same migration",
+    "status": "RECONCILED_BY_ARCH_02_WITH_ARCH_04_CORRECTIONS",
+    "reconciliation_performed": true,
+    "reconciled_by": "P17-ARCH-02-20260925-RECONCILE-FREEZE",
+    "reconciliation_authority": "docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md",
+    "independent_verification": {
+      "verifier": "P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE",
+      "verdict": "P17_ARCH_FREEZE_PARTIAL",
+      "report": "docs/architecture/CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md",
+      "findings_received": ["HIGH-01", "MEDIUM-01", "MEDIUM-02", "LOW-01", "LOW-02", "LOW-03", "LOW-04"]
+    },
+    "arch_04_corrections": {
+      "task_id": "P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS",
+      "report": "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md",
+      "artifact": "docs/architecture/artifacts/p17_arch04_reconciliation_20250925.json",
+      "status": "COMPLETE"
+    },
+    "blocks": "P17-0 and every later P17 implementation phase remain blocked until the ARCH-04 corrected architecture is INDEPENDENTLY RE-VERIFIED and frozen. P17-A is NOT authorized. PO decisions and ARCH-03 findings are reconciled; the outstanding condition is independent verification, not reconciliation.",
+    "historical_note": "The prior value of this field was APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION with reconciliation_performed=false. That became stale once ARCH-02 reconciled the PO records; ARCH-03 then identified seven additional corrections, which ARCH-04 reconciles. The stale values were replaced by ARCH-04 (finding LOW-03) rather than silently retained.",
     "highest_impact_items": [
       "mandatory UI/UX inside affected phases (no deferral to Step 3)",
       "governed submission/approval lifecycle before a customer-contributed result may become reportable",
@@ -261,6 +280,10 @@
         "UIUX-01 s56 UX acceptance matrix completed (Staff / Direct Org / Consultant Own / Consultant Client / Client User / Disabled State / Audit / Backend Auth / UI Complete)",
         "existing organization model, roles, authorization, RLS, consultant functionality, customer functionality, reportability lifecycle, audit model, evidence model, supplier model, snapshots, logs and reporting model classified EXISTING/PARTIAL/DISCONNECTED/DUPLICATE/MISSING/DEFERRED/BLOCKED",
         "the consultant-client relationship is confirmed as the EXISTING consultant_clients table (no new relationship entity invented)",
+        "the consultant <-> organization identity/linkage gap is resolved as an explicit decision (ARCH-04 // ARCH-03 HIGH-01): consultant_profiles is keyed by user_id and carries NO organization_id, organizations has no organization_type and no organization_relationship table exists - P17-0 must determine the authoritative organization identity model for the consultant firm, its users/members, its client organizations and the consultant's own Scope 1/2/3 ownership, and must state whether existing structures can be extended or additive organization linkage is required (no implementation in P17-0)",
+        "the acting-for propagation map is produced for source/activity documents, suppliers, review/approval decisions, report artefacts, calculations, evidence and the audit trail, recording owner / actor / actor organization / acting-for organization / whether persisted / whether safely derivable / whether additive implementation is required (ARCH-04 // ARCH-03 MEDIUM-01)",
+        "phase acceptance criteria are verified internally consistent with category status, deferred scope, PO methodology decisions and E2E requirements (ARCH-04 // ARCH-03 MEDIUM-02)",
+        "the lifecycle mapping table explicitly names CORRECTION REQUIRED, or documents its existing rework-edge representation, rather than leaving the state unnamed (ARCH-04 // ARCH-03 s11 residual)",
         "the customer capability/enablement representation is decided (extend the existing scope-based governance primitive vs a new policy table) with a written rationale",
         "no UI or backend code changed in this phase (discovery only)"
       ]
@@ -296,7 +319,7 @@
       "the P16 reportability lifecycle reuse requirement"
     ]
   },
-  "current_verdict": "P17_ARCHITECTURE_STATUS: PARTIAL - PREREQUISITE DECISIONS REQUIRED, NOW ADDRESSED BY ARCH-02. The post-contract PO records (UIUX-01, POST-ARCH, the PO customer-owned emissions data decision) have been reconciled into the contract, phase plan, acceptance matrix and schema delta by P17-ARCH-02-20260925-RECONCILE-FREEZE. The reconciled baseline adds the P17-0 discovery gate plus capability, lifecycle, acting-for and UI/UX acceptance criteria. No phase has been implemented; every gate remains UNSTARTED; implementation is NOT authorised pending independent verification of the reconciled architecture."
+  "current_verdict": "P17_ARCHITECTURE_STATUS: RECONCILED_BY_ARCH_02, CORRECTED_BY_ARCH_04, AWAITING_INDEPENDENT_RE_VERIFICATION. The post-contract PO records (UIUX-01, POST-ARCH, PO customer-owned data decision) were reconciled by P17-ARCH-02; the independent P17-ARCH-03 verification then returned P17_ARCH_FREEZE_PARTIAL with seven findings (HIGH-01 consultant organization identity over-claimed, MEDIUM-01 acting-for propagation narrower than AC-AUDIT-01, MEDIUM-02 P17-E acceptance contradiction, LOW-01..LOW-04), all of which have been reconciled by P17-ARCH-04 (docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md). No phase has been implemented; every gate remains UNSTARTED; P17-0 and P17-A are NOT authorized. The only outstanding condition is independent re-verification of the corrected architecture."
 }
 
 

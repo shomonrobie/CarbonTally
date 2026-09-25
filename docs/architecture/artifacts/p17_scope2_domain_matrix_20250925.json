@@ -61,7 +61,7 @@
       "current_status": "IMPLIED_BY_FACTOR",
       "current_location": "Only inferable from emission_factors.activity_type family ('UK electricity', 'Heat and steam', 'Fuels')",
       "target": "EXTEND",
-      "note": "Requires a controlled vocabulary (electricity | heat | steam | cooling) carried on the activity; never inferred from free text at calculation time. Live inventory: 346 electricity / 8 heat / 8 steam / 0 cooling factors, so 'cooling' must resolve to controlled review, not a guess."
+      "note": "AUTHORITATIVE Scope 2 energy-type vocabulary (ARCH-04 // ARCH-03 LOW-02): exactly four values - electricity | heat | steam | cooling. 'fuel' is NOT a Scope 2 energy type and is deliberately absent from this vocabulary; fuel-borne energy is a Scope 1 or Scope 3 activity identified by the activity/factor, and a Scope 1/Scope 3 row carries energy_type = NULL. The vocabulary is carried on the activity and is never inferred from free text at calculation time. Live inventory: 346 electricity / 8 heat / 8 steam / 0 cooling factors, so 'cooling' must resolve to controlled review, not a guess."
     },
     {
       "field": "energy_quantity",
@@ -224,6 +224,7 @@
       "current_status": "ABSENT",
       "target": "NEW",
       "target_entity": "contractual_instruments.claimant_organization_id + instrument_allocations",
+      "canonical_terminology": "claimant_organization_id is the CONCEPTUAL name for the organisation that claims the instrument (ARCH-04 // ARCH-03 LOW-01). Its proposed PHYSICAL column on contractual_instruments is organization_id, kept so the table follows the uniform P17 tenant/RLS convention; the two are one-to-one. See schema delta s10.6.",
       "note": "The claimant organisation is the tenant key: a second organisation claiming the same instrument must be structurally impossible, not merely discouraged."
     },
     {

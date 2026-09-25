@@ -50,7 +50,7 @@ Both are **already failing as Class-E stale expectations** on the P16 baseline (
 |---|---|---|---|---|
 | `scope2_method` | text | yes | `CHECK (scope2_method IS NULL OR scope2_method IN ('LOCATION_BASED','MARKET_BASED'))` | Dual-method identity; reuses the frozen B1 disclosure vocabulary verbatim. |
 | `scope3_category` | smallint | yes | `CHECK (scope3_category IS NULL OR scope3_category BETWEEN 1 AND 15)` | GHG Protocol category identity 1–15. |
-| `energy_type` | text | yes | `CHECK (energy_type IS NULL OR energy_type IN ('electricity','heat','steam','cooling','fuel'))` | Scope 2 energy type (required for Scope 2). |
+| `energy_type` | text | yes | `CHECK (energy_type IS NULL OR energy_type IN ('electricity','heat','steam','cooling'))` — **the authoritative Scope 2 energy-type vocabulary is exactly these four purchased-energy types. `fuel` is NOT a Scope 2 energy type** (ARCH-04, reconciling ARCH-03 LOW-02: this table previously listed five values including `fuel`, while the Scope 2 domain matrix listed four). Fuel-borne energy is a Scope 1 or Scope 3 activity and is identified by the activity/factor, not by `energy_type`; a Scope 1/Scope 3 row carries `energy_type = NULL`. | Scope 2 energy type (required for Scope 2). |
 | `data_quality` | text | yes | `CHECK (data_quality IS NULL OR data_quality IN ('primary_measured','primary_supplier','secondary_estimated','spend_based_estimated','modelled'))` | Data-quality dimension (no numeric uncertainty — deferred). |
 | `facility_id` | uuid | yes | `REFERENCES public.facilities(id)` | Real, indexable, FK-constrained site dimension (today JSONB-only on the log, absent on the snapshot). |
 | `transport_boundary` | text | yes | `CHECK (... IN ('upstream','downstream'))` | DC-04 (category 4 vs 9). |
@@ -120,7 +120,7 @@ Add nullable `consolidation_approach` (`OPERATIONAL_CONTROL` | `FINANCIAL_CONTRO
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | uuid PK | no | |
-| `organization_id` | uuid | no | FK organizations; **the claimant tenant**. The RLS tenant key. |
+| `organization_id` | uuid | no | FK organizations; **the claimant tenant**. The RLS tenant key. **Canonical terminology (ARCH-04 // ARCH-03 LOW-01):** the *conceptual* name for this role is `claimant_organization_id` (used in the Scope 2 domain matrix and DC-09, because it disambiguates the claim owner from the allocation's organisation and from the client organisation). The *proposed physical column name* on this table is `organization_id`, chosen so the table follows the uniform P17 tenant/RLS convention. The two are one-to-one: `contractual_instruments.organization_id` **is** the claimant organisation. See §10.6. |
 | `instrument_type` | text | no | CHECK in the generic vocabulary (energy_attribute_certificate, guarantee_of_origin, supplier_specific_contract, ppa, rec, green_tariff, other). |
 | `identifier` | text | no | certificate/contract serial. |
 | `issuer` | text | yes | issuing/provider entity. |
@@ -260,7 +260,8 @@ customer/consultant operating model. **No migration is created by ARCH-02.**
 | Requirement | Disposition | Evidence |
 |---|---|---|
 | consultant ↔ client relationship | **EXISTS — REUSE** (`public.consultant_clients`) | Columns: `id, consultant_id, organization_id, status, relationship_origin, engagement_requested_at, engagement_decided_by, engagement_decided_at, suspended_at, ended_at, ended_by, lifecycle_updated_at, billing_plan, billing_cycle, notes, tags, created_by`. 2 live rows. Used by `data/consultants.py`, `api/consultant_auth.py`, `api/v3_consultants.py`, `api/dependencies.py`, `data/reporting.py`, `api/insight_authz.py`. |
-| consultant organization identity | **EXISTS — REUSE** (`consultant_profiles`, `consultant_firm_members`) | 1 profile, 2 firm members. |
+| consultant organization identity / linkage | **PARTIAL — MISSING LINKAGE** — reclassified by ARCH-04 from the previous `EXISTS — REUSE` claim (ARCH-03 finding **HIGH-01**, independently reproduced) | `consultant_profiles` (1 row) is keyed by **`user_id`** and has **no `organization_id`** and no FK to `organizations`; `consultant_clients.consultant_id` references `consultant_profiles(id)`, **not** an organization; `organizations` has **no `organization_type`**; **no `organization_relationship` table exists**; `consultant_firm_members` (2 rows) links users to a consultant profile. Therefore the consultant firm's **own accounting organization is not currently represented by a verified organization linkage**. The PO product decision (consultant is a first-class organization with its own Scope 1/2/3) is **unchanged**; what is missing is the linkage. |
+| consultant firm membership | **EXISTS — VERIFIED** (`consultant_firm_members`, 2 rows) | links users to a consultant profile; does not supply an organization identity for the firm |
 | organization membership + role | **EXISTS — REUSE** (`organization_members`: `user_id, role, is_active`) | 8 rows. |
 | global/org defaults and retention | **EXISTS — REUSE** (`system_settings`, `organization_metadata`) | Do not duplicate settings storage. |
 
@@ -307,16 +308,31 @@ acting-for organization dimension**.
 
 Recommended additive columns (nullable; historical rows untouched):
 
-| Table | Column | Purpose |
-|---|---|---|
-| `calculation_snapshots` | `performed_by_organization_id` (FK organizations, nullable) | the organization the operator represented |
-| `calculation_snapshots` | `acting_for_organization_id` (FK organizations, nullable) | the client organization being operated for |
-| `emissions_logs` | the same two | consumption-boundary parity |
-| audit writer / `audit_trail` | `acting_for_organization_id`, `actor_organization_id` | audit context |
-| `evidence_line_items` | `contributed_by_organization_id` (nullable) | who contributed the evidence |
+| Path / object | Owner (already present) | Actor (already present) | Acting-for org today | Disposition required by ARCH-04 |
+|---|---|---|---|---|
+| `calculation_snapshots` | `organization_id` | `performed_by`, `calculated_by` | absent | **(A) persist** `performed_by_organization_id` + `acting_for_organization_id` |
+| `emissions_logs` | `organization_id` | `created_by_user_id`, `verified_by`, `updated_by` | absent | **(A) persist** the same two (consumption-boundary parity) |
+| `evidence_line_items` | `organization_id` | extraction/upload actor | absent | **(A) persist** `contributed_by_organization_id` |
+| audit writer / `audit_trail` | `table_name` + `record_id` | `performed_by` | absent | **(A) persist** `actor_organization_id` + `acting_for_organization_id` — the authoritative carrier for the whole propagation |
+| **source/activity documents** (`customer_documents`) | `organization_id` | `uploaded_by`, `updated_by`, `organization_member_id`, `classification_by` | **absent** | **(A) additive implementation required** in the phase owning the data-entry surface (P17-B/C/E/F/G). A derivation from `uploaded_by` → the user's organisation at read time is **not audit-safe** (membership/consultancy can change after the fact), so it is explicitly rejected as an option-B rule. |
+| **suppliers** (`suppliers`) | `organization_id` | `created_by`, `updated_by` | **absent** | **(A) additive implementation required** (P17-B/C/E) — same non-derivability rationale. |
+| **review/approval decisions** (`review_audit_trail`, `review_assignment_history`) | `review_id` → the owning object | `performed_by`, `assigned_by`, `assigned_to` | **absent** | **(A) additive implementation required** (P17-H). Actor is recorded but the organisation the actor represented is not; approval authority is capability-gated, so acting-for must be recorded. |
+| **report artefacts** (`report_versions`, `report_version_artifacts`) | owning `report_id` → organisation | `created_by` | **absent** | **(A) additive implementation required** (P17-I). PO §24 requires "Prepared by: Green Advisory" — a prepared-by organisation cannot be derived reliably from `created_by` after the fact. |
 
-Ownership must remain `organization_id` (the client organization). The acting-for columns are **context**, never
-ownership.
+**Option-B derivation rule — where it is permitted.** For objects whose *only* mutation path already flows through the
+audit writer, `AC-AUDIT-01` may be satisfied by **reading the authoritative audit record** for that object rather than
+duplicating context onto the object, **provided** (i) the audit writer persists `actor_organization_id` and
+`acting_for_organization_id`, and (ii) a reliable object→audit-record linkage exists for that object. Where either
+condition is not met today — which is the case for every path marked *(A) additive implementation required* above —
+the architecture classifies the path as **additive implementation**, and **no derivation rule is invented** to make the
+schema appear complete.
+
+**Governing rule preserved.** `ACTING FOR` is **context, not an authorization boundary** (POST-ARCH §35; UIUX-01 §6,
+§44). Ownership remains `organization_id`; acting-for/organization columns are additive metadata only.
+
+**P17-0 obligation.** P17-0 must produce the per-path map (owner · actor · actor organization · acting-for organization ·
+persisted? · safely derivable? · additive implementation required?) for all paths above, and record the disposition.
+ARCH-04 does **not** create the columns.
 
 ### 10.4 Governed lifecycle (EXTEND — do not create a parallel state machine)
 
@@ -345,6 +361,20 @@ mapping table. **No new lifecycle table is proposed by ARCH-02.**
 | audit context | **EXTEND** the existing audit model |
 | UI/UX | no schema implication beyond the above; UI is a phase deliverable, not a schema change |
 | migrations created by ARCH-02 | **NONE** |
+
+### 10.6 Canonical terminology (ARCH-04 // ARCH-03 LOW-01)
+
+| Concept (architecture) | Physical name (proposed) | Rule |
+|---|---|---|
+| The organisation that **claims** a contractual instrument (`claimant_organization_id`) | `contractual_instruments.organization_id` | **one-to-one**. The conceptual name is used in the Scope 2 domain matrix and in double-counting control DC-09 because it disambiguates the claim owner from (a) the allocation's organisation and (b) the client organisation. The physical column keeps the uniform `organization_id` tenant key so the table follows the established P17 RLS convention. |
+| The organisation that **receives** an allocation | `instrument_allocations.organization_id` | must equal the parent instrument's `organization_id` (composite-FK constraint) |
+| The organisation that **owns** the accounting activity/result | `organization_id` on every P17 accounting object | unchanged — ownership |
+
+**Naming discipline.** Where the architecture needs to be precise about *which* organisation is meant, it uses the
+qualified conceptual name (`claimant_organization_id`) and states the physical mapping. Where a table simply follows the
+tenant convention, it uses `organization_id`. No physical column is renamed by ARCH-04, and no existing database column
+is touched.
+
 
 
 

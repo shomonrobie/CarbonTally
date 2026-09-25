@@ -293,6 +293,9 @@ Sources incorporated: `CT-PO-P17-UIUX-01-UNIFIED-CARBON-ACCOUNTING-UX-STANDARD` 
 | A7 | **A phase may not pass on backend evidence alone** where UIUX-01 requires UI/UX (UIUX-01 §58: "backend + API without the required user workflow is not accepted"). | all delivery phases |
 | A8 | **Verdict vocabulary** for phase reports adds the UIUX-01 §74 verdict (`UIUX_PASS` / `UIUX_PARTIAL` / `UIUX_FAIL` / `UIUX_BLOCKED`) alongside PASS/PARTIAL/FAIL/BLOCKED/DEFERRED. | all phases |
 | A9 | **No new consultant-client relationship or organisation model** is introduced: `consultant_clients` already exists and is the ratified relationship (ARCH-02 discovery). P17-0 must confirm and reuse it. | P17-0, B, C |
+| **A10** | **Consultant ↔ organization identity/linkage is an OPEN GAP, not a satisfied capability** (ARCH-04 // ARCH-03 HIGH-01). `consultant_profiles` is keyed by `user_id` and carries **no `organization_id`**; `organizations` has no `organization_type`; no `organization_relationship` table exists. P17-0 must resolve the authoritative organization identity model for the consultant firm, its users/members, its client organizations and the consultant's own Scope 1/2/3 ownership. **No implementation in P17-0.** | P17-0 (decision); later phases inherit the decision |
+| **A11** | **Acting-for propagation is per-path and broader than ARCH-02 stated** (ARCH-04 // ARCH-03 MEDIUM-01). Persistence is required on the audit writer **and** on source/activity documents, suppliers, review/approval decisions and report artefacts; option-B derivation from the audit record is permitted only where the audit writer persists actor/acting-for organization and a reliable object→audit linkage exists. P17-0 produces the per-path map. **No implementation in P17-0.** | P17-0 (map); B/C/E/F/G (data paths), H (review/approval), I (report artefacts) |
+| **A12** | **P17-E/F/G acceptance is status-conditional** (ARCH-04 // ARCH-03 MEDIUM-02): a category whose authoritative status is `NOT_IMPLEMENTED` or `DEFERRED` is reported as a documented BLOCKED/DEFERRED outcome naming its prerequisite — never omitted, never counted as delivered, and never silently made an implementation requirement. | E, F, G |
 
 ### 16.2 Reconciled phase order
 
@@ -325,6 +328,31 @@ P17-A  Dimensions + factor governance  (unchanged scope, + actor/acting-for colu
 No P17 implementation is authorised by this plan revision. P17-A remains gated behind separately authorised
 implementation, which may only follow independent verification of the ARCH-02 baseline (P17-J-style independence, not
 Cline self-verification).
+
+---
+
+## 17. ARCH-04 corrections (independent ARCH-03 findings)
+
+**Authority:** `docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md`
+**Independent source:** `CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md` → **`P17_ARCH_FREEZE_PARTIAL`**
+
+| # | ARCH-03 finding | Effect on this plan |
+|---|---|---|
+| HIGH-01 | Consultant organization identity over-claimed | **A10** added; consultant ↔ organization linkage is now a mandatory P17-0 decision and an explicit implementation dependency |
+| MEDIUM-01 | Acting-for propagation narrower than `AC-AUDIT-01` | **A11** added; per-path map is a P17-0 deliverable and additive implementation is owned by phases B/C/E/F/G (data paths), H (review/approval) and I (report artefacts) |
+| MEDIUM-02 | P17-E acceptance contradiction | **A12** added; E/F/G acceptance is status-conditional and §7's "DEFERRED/NOT_IMPLEMENTED categories must be reported as blocked" rule is now encoded in the gates themselves |
+| LOW-01 | tenant-key naming | schema delta §10.6 canonical-terminology glossary (no phase-plan change) |
+| LOW-02 | `energy_type` vocabulary | authoritative 4-value Scope 2 vocabulary (no phase-plan change) |
+| LOW-03 | stale reconciliation metadata | acceptance-matrix `post_contract_po_decisions` corrected (no phase-plan change) |
+| LOW-04 | Scope 3 per-category customer/UIUX representation | Scope 3 matrix `cross_cutting_requirements` block (no phase-plan change) |
+
+**Ordering nuance confirmed (not a defect, recorded as a risk).** Estimation records (P17-H) are prerequisites for the
+estimated categories attempted in P17-F/G (7, 11, 12), so the P17-E/F/G → P17-H ordering is tight; §7 already states
+the prerequisite. ARCH-03 flagged the tightness; ARCH-04 records it as risk R11 rather than changing the order.
+
+**Gate state after ARCH-04.** P17-0 remains a **future discovery task** not executed here; P17-A remains
+**NOT AUTHORIZED**. Independent re-verification of the ARCH-04 corrected baseline is the next required action.
+
 
 
 

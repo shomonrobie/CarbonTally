@@ -1,0 +1,239 @@
+{
+  "task_id": "P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS",
+  "date": "2025-09-25",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "baseline_commit": "906e66c4e2fa8ca02b006c71437bb988c4f53a48",
+  "source_report": "docs/architecture/CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md",
+  "source_verifier": "P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE (independent; not Cline)",
+  "source_verdict": "P17_ARCH_FREEZE_PARTIAL",
+  "author_report": "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md",
+  "implementation_performed": false,
+  "production_contacted": false,
+  "migrations_created": false,
+  "p17_0_executed": false,
+  "p17_a_authorised": false,
+  "findings": [
+    {
+      "id": "HIGH-01",
+      "severity": "HIGH",
+      "issue": "Consultant organization identity was classified EXISTS - VERIFIED in ARCH-02 but is not supported by the schema.",
+      "evidence_reproduced": [
+        "consultant_profiles columns include user_id and NO organization_id, and no FK to organizations",
+        "consultant_clients.consultant_id references consultant_profiles(id), not an organization",
+        "organizations has no organization_type column (0 columns observed)",
+        "no organization_relationship table exists (0 rows in information_schema.tables)",
+        "consultant_firm_members links users to a consultant profile, not to an organization"
+      ],
+      "before_classification": "EXISTS - VERIFIED",
+      "after_classification": "PARTIAL - MISSING LINKAGE",
+      "arch_04_action": "Reclassified in schema delta s10.1, ARCH-02 s7.1 (inline pointer + addendum), and the architecture reconciliation JSON discovery findings; added 'consultant <-> organization identity/linkage' to the implementation-dependency register and to the P17-0 must_pass list.",
+      "po_decision_preserved": true,
+      "po_decision_note": "The consultant-as-first-class-organization product decision is unchanged; what is missing is the organization linkage.",
+      "implementation_in_arch_04": false,
+      "p17_0_impact": "MANDATORY P17-0 decision: authoritative organization identity model for the consultant firm, its users/members, its client organizations, the consultant-client relationship, the consultant's own Scope 1/2/3 ownership, and client-owned Scope 1/2/3 ownership; state whether existing structures can be extended or additive organization linkage is required. No implementation in P17-0.",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "MEDIUM-01",
+      "severity": "MEDIUM",
+      "issue": "Acting-for propagation was narrower than AC-AUDIT-01 requires.",
+      "evidence_reproduced": [
+        "customer_documents has organization_id plus uploaded_by/updated_by/organization_member_id/classification_by but no acting-for organization",
+        "report_versions has created_by but no prepared-by organization",
+        "suppliers has organization_id plus created_by/updated_by but no contributor/acting-for context",
+        "review_audit_trail has performed_by/performed_by_email/assigned_to but no acting-for organization",
+        "review_assignment_history has assigned_by/assigned_to but no acting-for organization"
+      ],
+      "before_coverage": ["calculation_snapshots", "emissions_logs", "evidence_line_items", "audit writer"],
+      "after_coverage": ["calculation_snapshots", "emissions_logs", "evidence_line_items", "audit writer", "customer_documents", "suppliers", "review_audit_trail + review_assignment_history", "report_versions + report_version_artifacts"],
+      "disposition_per_path": "Option (A) persist is required for the audit writer and all four additional paths; option (B) derivation from the authoritative audit record is permitted ONLY where the audit writer persists actor_organization_id + acting_for_organization_id AND a reliable object->audit linkage exists.",
+      "derivation_rule_invented": false,
+      "derivation_rejected_reason": "Deriving the acting-for organization from uploaded_by/created_by -> the user's organization at read time is not audit-safe, because membership and consultancy relationships change after the fact.",
+      "governing_rule_preserved": "ACTING FOR is context, not an authorization boundary (POST-ARCH s35; UIUX-01 s6, s44).",
+      "implementation_in_arch_04": false,
+      "arch_04_action": "Schema delta s10.3 expanded to 8 paths with a per-path (A)/(B) disposition; ARCH-02 s7.3 annotated; reconciliation JSON acting-for finding extended with the propagation evidence and disposition.",
+      "p17_0_impact": "P17-0 must produce the per-path map (owner / actor / actor organization / acting-for organization / persisted? / safely derivable? / additive implementation required?) for source/activity documents, suppliers, review/approval decisions, report artefacts, calculations, evidence and the audit trail.",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "MEDIUM-02",
+      "severity": "MEDIUM",
+      "issue": "The P17-E acceptance gate required one END-TO-END VERIFIED result per category (1,2,3,4,5) with no caveat, contradicting category 2 (Capital Goods) = NOT_IMPLEMENTED and the architecture's deferred-scope rules.",
+      "evidence_reproduced": [
+        "P17-E bullet 1 had no deferral caveat",
+        "P17-F already carried 'where the category is not DEFERRED' plus a category-10 BLOCKED clause",
+        "P17-G already carried 'where the category is not DEFERRED' plus 'recorded as DEFERRED'",
+        "Scope 3 matrix status_rollup: SUPPORTED [3,4,5,6]; PARTIAL [1,7,8,9,12,13]; DEFERRED [11,14,15]; NOT_IMPLEMENTED [2,10]"
+      ],
+      "arch_04_action": "P17-E acceptance made status-conditional (bullet count 4 -> 6); the same status-vocabulary bullet added to P17-F (4 -> 5) and P17-G (3 -> 4) so the three Scope 3 gates cannot drift apart.",
+      "category_status_changed": false,
+      "category_2_promoted": false,
+      "methodology_invented": false,
+      "category_2_implemented": false,
+      "status_vocabulary": {
+        "SUPPORTED": "E2E verification required when the phase claims it",
+        "PARTIAL": "applicable bounded acceptance for the supported portion",
+        "NOT_IMPLEMENTED": "documented BLOCKED outcome naming the missing methodology/input contract",
+        "DEFERRED": "documented DEFERRED outcome naming the blocking PO decision",
+        "PO_METHODOLOGY_DECISION_REQUIRED": "remains outside implementation authorization"
+      },
+      "other_contradictions_checked": "P17-A..P17-D, P17-H, P17-I, P17-J contain no category-status assertions; no further contradiction of this class found.",
+      "p17_0_impact": "P17-0 must verify that phase acceptance criteria are internally consistent with category status, deferred scope, PO methodology decisions and E2E requirements.",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "LOW-01",
+      "severity": "LOW",
+      "issue": "Tenant-key naming: organization_id in schema delta s3.1 vs claimant_organization_id in the Scope 2 matrix and DC-09.",
+      "decision": "One authoritative semantic name with an explicit conceptual-vs-physical distinction.",
+      "canonical_conceptual_name": "claimant_organization_id",
+      "proposed_physical_name": "contractual_instruments.organization_id",
+      "mapping": "one-to-one: contractual_instruments.organization_id IS the claimant organization",
+      "arch_04_action": "Schema delta gained s10.6 Canonical terminology; schema delta s3.1 and the Scope 2 domain matrix record the mapping. No physical column renamed; no database column touched.",
+      "implementation_in_arch_04": false,
+      "p17_0_impact": "none (terminology only)",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "LOW-02",
+      "severity": "LOW",
+      "issue": "energy_type vocabulary: 5 values including fuel in schema delta s2.1 / ARCH-02 s10.2 vs 4 values in the Scope 2 domain matrix.",
+      "decision": "One authoritative Scope 2 vocabulary: electricity | heat | steam | cooling. fuel is NOT a Scope 2 energy type.",
+      "rationale": "Scope 2 is purchased energy; fuel-borne energy is a Scope 1 (combustion) or Scope 3 activity identified by the activity/factor. A Scope 1/Scope 3 row carries energy_type = NULL.",
+      "arch_04_action": "Schema delta s2.1 CHECK reduced to 4 values with rationale; ARCH-02 s10.2 annotated; the Scope 2 matrix energy_type entry states the authoritative vocabulary and the fuel exclusion.",
+      "methodology_invented": false,
+      "p17_0_impact": "none (vocabulary only); cooling still resolves to fail-closed review because the library has zero cooling factors",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "LOW-03",
+      "severity": "LOW",
+      "issue": "Stale metadata in the acceptance JSON: post_contract_po_decisions claimed APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION with reconciliation_performed=false, contradicting reconciliation_arch02 and current_verdict in the same file.",
+      "before_values": {
+        "status": "APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION",
+        "reconciliation_performed": false,
+        "blocks": "every P17 implementation phase until the reconciliation register (main contract 57) is completed; P17-A is gated first because the reconciliation may add columns to the same migration"
+      },
+      "after_values": {
+        "status": "RECONCILED_BY_ARCH_02_WITH_ARCH_04_CORRECTIONS",
+        "reconciliation_performed": true,
+        "independent_verification": "ARCH-03 P17_ARCH_FREEZE_PARTIAL, all seven findings listed",
+        "arch_04_corrections": "task id + report + artifact + status COMPLETE",
+        "blocks": "P17-0 and every later P17 implementation phase remain blocked until the ARCH-04 corrected architecture is INDEPENDENTLY RE-VERIFIED and frozen. P17-A is NOT authorized.",
+        "historical_note": "records the previous stale values and why they were replaced"
+      },
+      "overall_verdict_changed_to_pass": false,
+      "current_verdict_after": "RECONCILED_BY_ARCH_02, CORRECTED_BY_ARCH_04, AWAITING_INDEPENDENT_RE_VERIFICATION",
+      "p17_0_impact": "none (metadata only)",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "LOW-04",
+      "severity": "LOW",
+      "issue": "ARCH-02 s11.3 claimed the per-category baseline 'retains customer contribution and UI/UX requirements', but the Scope 3 matrix carries neither as a per-category field.",
+      "verification": "per-category key set inspected; no customer_contribution and no uiux_requirements key present",
+      "decision": "Option A - narrow the claim (the global requirement is sufficient); do not add 15 x 2 duplicated fields.",
+      "arch_04_action": "Scope 3 matrix gained a cross_cutting_requirements block (customer_and_consultant_contribution + uiux, each with invariants and acceptance criteria, plus explicitly_not_per_category_fields); ARCH-02 s11.3 annotated to read as cross-cutting.",
+      "per_category_fields_added": false,
+      "p17_0_impact": "none",
+      "result": "RECONCILED"
+    },
+    {
+      "id": "EXTRA-01",
+      "severity": "LOW",
+      "source": "ARCH-03 s11 residual (CORRECTION REQUIRED not explicitly named by ARCH-02)",
+      "issue": "The PO lifecycle includes CORRECTION REQUIRED but ARCH-02's mapping did not name the state or its representation.",
+      "arch_04_action": "Recorded as a P17-0 obligation: the lifecycle mapping table must explicitly name CORRECTION REQUIRED, or document its existing rework-edge representation. No lifecycle change, no schema change.",
+      "result": "RECONCILED_AS_P17_0_OBLIGATION"
+    },
+    {
+      "id": "EXTRA-02",
+      "severity": "LOW",
+      "source": "ARCH-03 s21 ordering nuance",
+      "issue": "Estimation records (P17-H) are prerequisites for the estimated categories 7/11/12 attempted in P17-F/G, so the ordering is tight.",
+      "arch_04_action": "Recorded as risk R11 with the ordering unchanged; phase plan s7 already states the prerequisite.",
+      "result": "DOCUMENTED_NOT_A_DEFECT"
+    }
+  ],
+  "p17_0_updates": [
+    "MANDATORY: consultant <-> organization identity/linkage decision - authoritative organization identity model for the consultant firm, its users/members, its client organizations, the consultant-client relationship, the consultant's own Scope 1/2/3 ownership and client-owned Scope 1/2/3 ownership; state whether existing structures can be extended or additive organization linkage is required. No implementation in P17-0.",
+    "MANDATORY: acting-for propagation map across source/activity documents, suppliers, review/approval, reports/report artefacts, calculations, evidence and the audit trail; for each record owner / actor / actor organization / acting-for organization / persisted? / safely derivable? / additive implementation required?",
+    "MANDATORY: acceptance consistency check - verify phase acceptance criteria are internally consistent with category status, deferred scope, PO methodology decisions and E2E requirements.",
+    "MANDATORY: lifecycle mapping must explicitly name CORRECTION REQUIRED, or document its existing rework-edge representation.",
+    "UNCHANGED: existing P17-0 obligations (UIUX-01 s55 existing-vs-missing matrix, s56 UX acceptance matrix, full dependency classification, consultant_clients reuse confirmation, capability representation decision, discovery-only / no code).",
+    "GATE SIZE: P17-0 must_pass grew from 6 to 10 items."
+  ],
+  "acceptance_updates": [
+    "P17-E gate: status-conditional acceptance added - E2E required only for categories whose authoritative status is SUPPORTED or PARTIAL; NOT_IMPLEMENTED/DEFERRED categories are reported as explicit BLOCKED/DEFERRED outcomes with the blocking prerequisite named; explicit per-category status vocabulary added (bullet count 4 -> 6).",
+    "P17-F gate: the same status-vocabulary bullet added (4 -> 5).",
+    "P17-G gate: the same status-vocabulary bullet added (3 -> 4).",
+    "P17-0 gate: four new must_pass items (consultant linkage, acting-for map, acceptance consistency, CORRECTION REQUIRED) - 6 -> 10.",
+    "post_contract_po_decisions: stale status/reconciliation_performed/blocks replaced; independent_verification and arch_04_corrections blocks added; historical_note added. Overall verdict NOT changed to PASS.",
+    "current_verdict: replaced with RECONCILED_BY_ARCH_02, CORRECTED_BY_ARCH_04, AWAITING_INDEPENDENT_RE_VERIFICATION.",
+    "UNCHANGED: the ten phase-gate identities P17-A..P17-J, T-INV-01..12, DC-01..11, the 12 AC-* criteria, the END-TO-END VERIFIED rule, the P16 reportability reuse requirement."
+  ],
+  "phase_plan_updates": [
+    "s16.1 amendment A10 added: consultant <-> organization identity/linkage is an open gap, not a satisfied capability; P17-0 decision required.",
+    "s16.1 amendment A11 added: acting-for propagation is per-path and broader than ARCH-02 stated; P17-0 produces the map; additive implementation owned by B/C/E/F/G, H and I.",
+    "s16.1 amendment A12 added: P17-E/F/G acceptance is status-conditional; NOT_IMPLEMENTED/DEFERRED categories are BLOCKED/DEFERRED-reported, never silently implementation requirements.",
+    "s17 (new) ARCH-04 corrections section added: finding-by-finding effect on the plan, the recorded ordering nuance, and the gate state.",
+    "Risk R11 recorded for the estimation-record ordering tightness (order unchanged).",
+    "UNCHANGED: phase order, P17-0-blocks-P17-A, UI/UX in-phase for B..I, migration slots as proposals only, no-backend-only-PASS."
+  ],
+  "schema_delta_updates": [
+    "s2.1: energy_type CHECK reduced from 5 values to the authoritative 4 (electricity|heat|steam|cooling); fuel explicitly excluded with rationale.",
+    "s3.1: contractual_instruments.organization_id now states the conceptual/physical naming mapping to claimant_organization_id.",
+    "s10.1: consultant organization identity row reclassified EXISTS - REUSE -> PARTIAL - MISSING LINKAGE with full evidence; a separate 'consultant firm membership' row retained as EXISTS - VERIFIED.",
+    "s10.3: acting-for propagation expanded from 4 paths to 8 with a per-path (A)/(B) disposition, the permitted option-B condition, and the rejection of actor->organization read-time derivation as not audit-safe.",
+    "s10.6 (new): Canonical terminology glossary (claimant / allocation recipient / accounting owner).",
+    "NO migration created; the four new entities, the NOT VALID discipline, the no-backfill rule, the RLS convention and the migration slots are unchanged."
+  ],
+  "files_changed": [
+    "docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md (NEW)",
+    "docs/architecture/artifacts/p17_arch04_reconciliation_20250925.json (NEW)",
+    "docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md (4 inline pointers + ARCH-04 addendum A4.1-A4.4)",
+    "docs/architecture/CT-PO-P17-IMPLEMENTATION-PHASE-PLAN-20250925.md (s16.1 A10-A12 + s17)",
+    "docs/architecture/artifacts/p17_acceptance_matrix_20250925.json",
+    "docs/architecture/artifacts/p17_architecture_reconciliation_20250925.json",
+    "docs/architecture/artifacts/p17_schema_delta_20250925.md",
+    "docs/architecture/artifacts/p17_scope2_domain_matrix_20250925.json",
+    "docs/architecture/artifacts/p17_scope3_category_matrix_20250925.json"
+  ],
+  "files_preserved": [
+    "docs/architecture/CT-PO-P17-ARCH-01-SCOPE2-SCOPE3-FULL-ACCOUNTING-CONTRACT-20250925.md (byte-identical; verified)",
+    "docs/architecture/CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md (independent evidence; not modified, not staged)",
+    "docs/architecture/CT-PO-P16-FINAL-VERIFICATION-20250925.md (byte-identical; verified)",
+    "docs/architecture/CT-PO-P17-UIUX-01-UNIFIED-CARBON-ACCOUNTING-UX-STANDARD.md (unchanged)",
+    "docs/architecture/CT-PO-P17-POST-ARCH-DECISIONS-20260925.md (unchanged)",
+    "docs/architecture/CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md (unchanged)",
+    ".gitignore (pre-existing modification; not staged)",
+    "17 pre-existing untracked files (not staged, not deleted)",
+    "all application source, tests, migrations, RLS policies and seed data (untouched)"
+  ],
+  "remaining_risks": [
+    "R1 consultant <-> organization linkage unimplemented (reconciled on paper only) - High",
+    "R2 acting-for persistence across 8 paths unimplemented; affects the idempotency-digest decision - High",
+    "R3 P17-0 gate now 10 items; discovery effort not re-estimated - Medium",
+    "R4 capability representation still undecided - Medium",
+    "R5 lifecycle mapping not yet produced, now including CORRECTION REQUIRED - Medium",
+    "R6 UI inventory incomplete - High (planning)",
+    "R7 four factor-candidate call sites unfixed (latent cross-year candidates) - Medium",
+    "R8 roles table empty; authority lives in staff_roles / organization_members.role - Medium",
+    "R9 thin Scope 2 factor coverage; no region-level factors - Medium",
+    "R10 disclosure/reporting disconnected (disclosure_values 0, report_version_artifacts 0) - Medium",
+    "R11 estimation-record ordering tightness for categories 7/11/12 - Low-Medium",
+    "R12 ARCH-04 is self-reported by Cline and is not independent verification - Blocking",
+    "R13 categories 2/10/11/14/15 remain NOT_IMPLEMENTED/DEFERRED; acceptance is BLOCKED/DEFERRED-reportable - Medium"
+  ],
+  "verdict": "P17_ARCH_RECONCILIATION_COMPLETE",
+  "verdict_note": "Reconciliation-completeness statement only. This is NOT P17_ARCH_FREEZE_PASS and NOT P17_ARCH_RECONCILIATION_FAIL. Cline reconciliation is not independent acceptance. P17-0 is not executed and not authorised; P17-A is NOT AUTHORIZED; independent re-verification of the ARCH-04 corrected baseline is required next.",
+  "arch_01_preserved": true,
+  "arch_03_preserved": true,
+  "p16_verification_preserved": true,
+  "independent_re_verification_required": true
+}
+
+
+
+

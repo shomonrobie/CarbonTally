@@ -183,6 +183,13 @@ not separate products.
 | Delegated capability per client | not yet modelled per capability | **PARTIAL — EXTEND** (P17-0 decision) |
 | Acting-for context | not modelled | **MISSING — NEW** |
 
+> ⚠ **CORRECTED BY ARCH-04** (ARCH-03 finding **HIGH-01**): the row "Consultant organization identity" was classified
+> `EXISTS — VERIFIED`, which **over-claimed**. `consultant_profiles` is keyed by `user_id` and carries **no
+> `organization_id`**, `organizations` has no `organization_type`, and no `organization_relationship` table exists.
+> The correct classification is **PARTIAL — MISSING LINKAGE**. The row is preserved above as the historical ARCH-02
+> record; see the **ARCH-04 Addendum** at the end of this document. `consultant_clients` (the relationship) remains
+> correctly classified `EXISTS — VERIFIED`.
+
 ```
 Green Advisory (organization_id = A)          ← consultant, itself a full CarbonTally org
         |
@@ -220,6 +227,13 @@ database authorization remain mandatory (UIUX-01 §6; POST-ARCH §35).
 
 **Ownership is unaffected:** `organization_id` remains the client organization for data, evidence, calculations and
 reports. Acting-for/organization context is additive metadata (schema delta §10.3).
+
+> ⚠ **EXTENDED BY ARCH-04** (ARCH-03 finding **MEDIUM-01**): the propagation scope stated here (snapshots, logs,
+> evidence, audit writer) was **narrower than `AC-AUDIT-01` requires**. `AC-AUDIT-01` covers **every** material
+> accounting change, so propagation must also cover **source/activity documents** (`customer_documents`),
+> **suppliers**, **review/approval decisions** (`review_audit_trail`, `review_assignment_history`) and **report
+> artefacts** (`report_versions`, `report_version_artifacts`). Schema delta §10.3 now carries a per-path (A)/(B)
+> disposition. The governing rule is unchanged: **acting-for is context, not an authorization boundary.**
 
 ---
 
@@ -338,9 +352,12 @@ be inferred solely from factor metadata.
 
 ### 10.2 Energy types, facility and grid
 
-* **Energy types (required, explicit):** `electricity | heat | steam | cooling | fuel`. `cooling` currently has **zero**
-  factors in the library, so a cooling activity must resolve to a **fail-closed review state** — never a fabricated
-  result (POST-ARCH §27 requires cooling "where applicable").
+* **Energy types (required, explicit):** `electricity | heat | steam | cooling` (ARCH-04 // ARCH-03 LOW-02 — the
+  authoritative Scope 2 vocabulary is these **four** purchased-energy types; this line previously added `fuel`, which
+  is **not** a Scope 2 energy type. Fuel-borne energy is a Scope 1/Scope 3 activity identified by the activity/factor,
+  and a Scope 1/Scope 3 row carries `energy_type = NULL`). `cooling` currently has **zero** factors in the library, so
+  a cooling activity must resolve to a **fail-closed review state** — never a fabricated result (POST-ARCH §27
+  requires cooling "where applicable").
 * **Facility:** a real `facility_id` FK to `facilities` for new writes (replacing JSONB-only attribution);
   `facilities` already carries `country`, `region`, `postcode`, `latitude`, `longitude`, `meter_mpan_mprn`.
 * **Grid/region:** location-based accounting requires an explicitly resolved grid location, or an explicit recorded
@@ -412,6 +429,13 @@ activity, and the separations are enforced by the double-counting controls DC-04
 For every category the reconciled baseline retains: canonical category identity · activity boundary · data
 requirements · supplier involvement · evidence · estimation methodology where applicable · factor requirements ·
 review · reportability · double-counting controls · **customer contribution** · **UI/UX requirements**.
+
+> ⚠ **NARROWED BY ARCH-04** (ARCH-03 finding **LOW-04**): "customer contribution" and "UI/UX requirements" are
+> **cross-cutting global requirements**, not per-category matrix fields. The Scope 3 matrix carries neither as a
+> per-category field. They are now defined once in the matrix's new `cross_cutting_requirements` block, with acceptance
+> via `AC-CUST-01/02/03`, `AC-ORGCTX-01`, `AC-AUDIT-01`, `AC-S3CAT-01` and `AC-UIUX-01`. Read this sentence as
+> "the baseline retains these requirements **for every category, as cross-cutting requirements**" — not as a claim that
+> each category row carries its own copy of those fields.
 
 **Customer/consultant contribution per category (new emphasis):** POST-ARCH §28 requires that customers and
 authorised consultants can contribute relevant data, with category-specific workflows and distributed contributors
@@ -667,6 +691,54 @@ must be independently verified and frozen before any P17 implementation — incl
 **Reconciled status:** `P17_ARCH_RECONCILED_READY_FOR_VERIFICATION`
 **Implementation authorised:** NO · **Migrations created:** NONE · **Production:** NOT CONTACTED
 **Independent verification required:** YES
+
+---
+
+# ARCH-04 ADDENDUM — reconciliation of independent ARCH-03 findings
+
+**Date:** 2025-09-25 (added after independent verification — ARCH-02's original findings above are preserved unchanged)
+**Added by:** `P17-ARCH-04-20260925-RECONCILE-INDEPENDENT-FINDINGS`
+**Independent source:** `CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md` — verdict **`P17_ARCH_FREEZE_PARTIAL`**
+**Correction authority:** `docs/architecture/CT-PO-P17-ARCH-04-RECONCILIATION-20250925.md`
+
+## A4.1 Why this addendum exists
+
+ARCH-02 was independently verified and returned **`P17_ARCH_FREEZE_PARTIAL`** with seven findings. This addendum
+records the **before/after classification** for each, so the historical record remains auditable: the original ARCH-02
+claims stand above as written, and every correction is dated and attributed. ARCH-02's text is **not** rewritten as
+though the findings had been known in advance.
+
+## A4.2 Before / after classification
+
+| # | Area as claimed by ARCH-02 | ARCH-03 finding | Before | After | Reason |
+|---|---|---|---|---|---|
+| HIGH-01 | Consultant organization identity (`consultant_profiles` + `consultant_firm_members`) | Consultant-organization identity over-claimed | `EXISTS — VERIFIED` | **`PARTIAL — MISSING LINKAGE`** | `consultant_profiles` is keyed by `user_id` with no `organization_id`; no FK to `organizations`; `consultant_clients.consultant_id` → `consultant_profiles(id)`; no `organization_type`; no `organization_relationship` table. The consultant's **own** accounting has no verified organization to be recorded under. The PO decision (consultant is a first-class organization) is unchanged; the **linkage** is what is missing. |
+| MEDIUM-01 | Acting-for columns on snapshots, logs, evidence, audit writer | Propagation narrower than `AC-AUDIT-01` | 4 paths | **8 paths** with per-path (A)/(B) disposition | `AC-AUDIT-01` covers every material accounting change; `customer_documents`, `suppliers`, `review_audit_trail`/`review_assignment_history` and `report_versions`/report artefacts also lack acting-for context. |
+| MEDIUM-02 | P17-E gate: "one E2E result per category (1,2,3,4,5)" | Contradiction with category 2 = NOT_IMPLEMENTED | no caveat | **status-conditional acceptance** | P17-F/P17-G already carried "where the category is not DEFERRED" language; P17-E did not, contradicting ARCH-02 §11.1 and the matrix `status_rollup`. |
+| LOW-01 | Tenant key (`organization_id` in the schema delta; `claimant_organization_id` in the matrix/DC-09) | Two names for one role | inconsistent | **canonical conceptual name + explicit physical mapping** | `claimant_organization_id` is the precise conceptual name for the claim owner; the proposed physical column is `organization_id`. One-to-one mapping documented (schema delta §10.6). |
+| LOW-02 | `energy_type` vocabulary | 5 values here, 4 in the matrix | inconsistent | **4 values (authoritative)** | `fuel` is not a Scope 2 energy type; it is a Scope 1/Scope 3 activity. Excluded from the vocabulary. |
+| LOW-03 | `post_contract_po_decisions` fields in the acceptance JSON | Stale metadata | `APPROVED_PO_DECISIONS_REQUIRING_RECONCILIATION`, `reconciliation_performed: false` | **`RECONCILED_BY_ARCH_02_WITH_ARCH_04_CORRECTIONS`** | ARCH-02 had already reconciled the PO records, so the fields contradicted `reconciliation_arch02`/`current_verdict` in the same file. |
+| LOW-04 | §11.3 claim that per-category baseline "retains customer contribution and UI/UX requirements" | Implied per-category fields that do not exist | over-broad wording | **narrowed to cross-cutting requirements** | The Scope 3 matrix carries these globally, not per category. Defined once in the matrix's `cross_cutting_requirements` block. |
+
+## A4.3 Corrections that become P17-0 obligations (not implemented here)
+
+1. **Consultant ↔ organization identity/linkage** — a **mandatory P17-0 decision** (authoritative organization identity
+   model for the consultant firm, its users/members, its client organizations and its own Scope 1/2/3 ownership;
+   extend existing structures vs additive linkage). No implementation in P17-0.
+2. **Acting-for propagation map** — P17-0 must produce the per-path map (owner · actor · actor organization ·
+   acting-for organization · persisted? · safely derivable? · additive implementation required?) for source/activity
+   documents, suppliers, review/approval decisions, report artefacts, calculations, evidence and the audit trail.
+3. **Acceptance consistency check** — P17-0 must verify that phase acceptance criteria are internally consistent with
+   category status, deferred scope, PO methodology decisions and E2E requirements.
+4. **Lifecycle** — the mapping table must explicitly name `CORRECTION REQUIRED` (or document its existing rework-edge
+   representation) rather than leaving the state unnamed (ARCH-03 §11 residual).
+
+## A4.4 Addendum scope statement
+
+This addendum is a **documentation correction only**. It creates no column, no table, no migration, no code and no UI.
+It does not authorise P17-0 or P17-A. `ARCH-01`, the ARCH-03 report and the P16 final verification were **not**
+modified.
+
 
 
 
