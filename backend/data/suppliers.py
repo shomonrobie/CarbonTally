@@ -59,14 +59,33 @@ class SuppliersRepository(AbstractRepository[Supplier]):
         vat_number: Optional[str],
         metadata: Optional[dict],
         created_by: Optional[str],
+        provenance: Optional[dict] = None,
     ) -> Supplier:
+        """Create a supplier, optionally recording acting-for attribution.
+
+        ``provenance`` is the P17-IMPLEMENT-03 acting-for payload
+        (``{"actor_organization_id": ..., "acting_for_organization_id": ...}``)
+        resolved SERVER-SIDE from the accounting context. It is written in the
+        SAME INSERT as the row, so attribution can never be partially applied.
+
+        It defaults to ``None``, which leaves both columns NULL: every
+        pre-existing caller is byte-for-byte unchanged, and a background/system
+        write (no authenticated accounting context) records no attribution rather
+        than a guessed one.
+        """
+        actor_organization_id = (provenance or {}).get("actor_organization_id")
+        acting_for_organization_id = (provenance or {}).get(
+            "acting_for_organization_id"
+        )
         row = await self._fetch_one(
             f"""
             INSERT INTO public.suppliers (
                 organization_id, name, type, supplier_type, contact_name,
                 contact_email, contact_phone, country, vat_number, is_active,
-                created_at, created_by, updated_at, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW(), $10, NOW(), $11)
+                created_at, created_by, updated_at, metadata,
+                actor_organization_id, acting_for_organization_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, NOW(), $10, NOW(), $11,
+                      NULLIF($12, '')::uuid, NULLIF($13, '')::uuid)
             RETURNING {_SUPPLIER_COLUMNS}
             """,
             org_id,
@@ -80,6 +99,8 @@ class SuppliersRepository(AbstractRepository[Supplier]):
             vat_number,
             created_by,
             dumps_jsonb(metadata or {}),
+            actor_organization_id,
+            acting_for_organization_id,
         )
         if row is None:
             raise RuntimeError("suppliers insert returned no row")
