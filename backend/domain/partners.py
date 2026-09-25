@@ -142,6 +142,10 @@ class ConsultantProfile:
     partner_status: Optional[str] = None
     is_active: bool = True
     created_at: Optional[datetime] = None
+    #: P17/ARCH-06 HIGH-01 — the organization that IS this consultant firm
+    #: (``organizations.id`` with ``organization_type = 'CONSULTANT'``). Nullable:
+    #: a profile without a firm organization keeps working exactly as before.
+    organization_id: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

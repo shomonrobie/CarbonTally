@@ -36,6 +36,7 @@ from auth import (
 )
 
 from core.logging import get_logger
+from data.accounting_context import AccountingContextRepository
 from data.activity_clarifications import ActivityClarificationsRepository
 from data.audit import AuditRepository
 from data.customer_factors import CustomerFactorsRepository
@@ -349,6 +350,16 @@ class RepositoryBundle:
     #: shared, atomically-mutated rate-limit and concurrency state. Technical abuse
     #: protection only; it carries no commercial entitlement meaning.
     insight_limits: InsightRateLimitRepository
+    #: P17-IMPLEMENT-02 — the accounting context: organisation summaries, the
+    #: Scope 3 reference vocabulary, CAMS dimension reads and the acting-for
+    #: attribution writer for the nine ARCH-04 §10.3 carriers.
+    #:
+    #: DEFAULTED to ``None`` on purpose. The bundle is constructed by existing
+    #: tests and fixtures that predate this surface; a required field here broke
+    #: every one of them with a ``TypeError`` at construction time. Production
+    #: wiring always supplies the real repository (``get_repositories``), so the
+    #: default only affects callers that do not use P17 routes.
+    accounting_context: Optional[AccountingContextRepository] = None
 
 
 async def get_pool():
@@ -418,6 +429,9 @@ async def get_repositories() -> RepositoryBundle:
         disclosure_projection=DisclosureProjectionRepository(pool),
         # Phase 8 I8-A — shared rate-limit / concurrency state (real wiring).
         insight_limits=InsightRateLimitRepository(pool),
+        # P17-IMPLEMENT-02 — accounting context + acting-for attribution (real
+        # wiring, not a test-only attribute).
+        accounting_context=AccountingContextRepository(pool),
     )
 
 

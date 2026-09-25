@@ -110,6 +110,10 @@ class CamsPersona:
     CONSULTANT = "CONSULTANT"
     CONSULTANT_CLIENT = "CONSULTANT_CLIENT"
     DELEGATED_USER = "DELEGATED_USER"
+    #: Processing Entity staff — a distinct operating domain with its own
+    #: boundary; never treated as internal staff and never given customer
+    #: organization access by default.
+    PROCESSING_ENTITY = "PROCESSING_ENTITY"
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,7 +18,7 @@ from domain.partners import (
 
 _PROFILE_COLUMNS = (
     "id, user_id, company_name, brand_name, email_from, website, phone, "
-    "country, vat_number, partner_status, is_active, created_at"
+    "country, vat_number, partner_status, is_active, created_at, organization_id"
 )
 
 #: D21 branding projection of the profile row (the source of truth).
@@ -103,6 +103,11 @@ def _row_to_profile(row: Any) -> ConsultantProfile:
         partner_status=r.get("partner_status"),
         is_active=bool(r.get("is_active", True)),
         created_at=r.get("created_at"),
+        # P17: the organization that IS this consultant firm (nullable until the
+        # ARCH-06 HIGH-01 linkage is populated). None for every pre-existing row.
+        organization_id=(
+            str(r["organization_id"]) if r.get("organization_id") else None
+        ),
     )
 
 

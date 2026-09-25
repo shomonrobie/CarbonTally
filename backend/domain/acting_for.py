@@ -66,6 +66,10 @@ class EntitlementBasis(StrEnum):
     ACTIVE_CONSULTANT_DELEGATION = "ACTIVE_CONSULTANT_DELEGATION"
     CARBONTALLY_INTERNAL_ROLE = "CARBONTALLY_INTERNAL_ROLE"
     PROCESSING_ENTITY_ASSIGNMENT = "PROCESSING_ENTITY_ASSIGNMENT"
+    #: P17-IMPLEMENT-02 — the actor is a member of their OWN consultant firm,
+    #: whose organization is linked via ``consultant_profiles.organization_id``.
+    #: Distinct from ``ACTIVE_CONSULTANT_DELEGATION``, which is about a CLIENT.
+    CONSULTANT_FIRM_MEMBERSHIP = "CONSULTANT_FIRM_MEMBERSHIP"
 
 
 @dataclass(frozen=True, slots=True)

@@ -90,3 +90,57 @@ async def record_item_extraction_edit(
         logger.exception(
             "item extraction-edit audit (%s) failed for item %s", action, item_id
         )
+
+
+async def record_acting_for_attribution(
+    repos: Any,
+    *,
+    carrier: str,
+    record_id: str,
+    actor: str,
+    actor_organization_id: Optional[str],
+    acting_for_organization_id: str,
+    owner_organization_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    ip_address: Optional[str] = None,
+) -> None:
+    """Best-effort append-only audit of one persisted acting-for attribution.
+
+    P17-IMPLEMENT-02. Records into the EXISTING audit ledger (``audit_trail``,
+    which now carries ``actor_organization_id`` / ``acting_for_organization_id``);
+    no second audit model is introduced.
+
+    The two attribution values come from the SERVER-RESOLVED accounting context,
+    never from the request payload, so the ledger records who the actor actually
+    was entitled to act for rather than what the caller claimed.
+
+    ``owner_organization_id`` is the tenant that owns the attributed record; it is
+    recorded separately so "who owns this data" and "who was acting for it" stay
+    distinguishable in the ledger.
+    """
+    extra: dict[str, Any] = {
+        "carrier": carrier,
+        "owner_organization_id": owner_organization_id,
+        "acting_for_organization_id": acting_for_organization_id,
+        "actor_organization_id": actor_organization_id,
+    }
+    entry = AuditEntry(
+        id=str(uuid.uuid4()),
+        correlation_id=correlation_id or f"{carrier}:{record_id}",
+        entity_type=carrier,
+        entity_id=record_id,
+        action="acting_for_attributed",
+        actor=actor,
+        occurred_at=datetime.now(timezone.utc),
+        changed_fields=extra,
+        organization_id=owner_organization_id,
+        actor_organization_id=actor_organization_id,
+        acting_for_organization_id=acting_for_organization_id,
+        ip_address=ip_address,
+    )
+    try:
+        await repos.audit.record(entry)
+    except Exception:  # noqa: BLE001 — audit must never break the attribution write
+        logger.exception(
+            "acting-for attribution audit failed for %s:%s", carrier, record_id
+        )
