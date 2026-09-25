@@ -41,8 +41,17 @@ P17_10 = (
     _MIGRATIONS_DIR
     / "20261014000000_p17_10_product_contract_reporting_dimensions.sql"
 )
+#: P17-K — the governed capability catalogue (REFERENCE DATA ONLY: it adds no
+#: table, column, constraint or index, and inserts the governed
+#: `disclosure_requirement_versions` rows that P17-DECISION-03 §18.1 Tier 2
+#: item 7 authorises. It is part of the P17 series so the additive-only and
+#: no-destructive-statement guarantees below cover it too.)
+P17_K = (
+    _MIGRATIONS_DIR
+    / "20261020000000_p17k_governed_capability_catalogue.sql"
+)
 
-P17_MIGRATIONS = (P17_A, P17_C, P17_D, P17_H, P17_10)
+P17_MIGRATIONS = (P17_A, P17_C, P17_D, P17_H, P17_10, P17_K)
 
 #: The P16 baseline this series must follow (P16-R7 idempotency migration).
 _P16_BASELINE = "20261009000000"
@@ -91,6 +100,7 @@ def test_p17_migration_timestamps_follow_the_p16_baseline_and_increase() -> None
         "20261012000000",
         "20261013000000",
         "20261014000000",
+        "20261020000000",
     ]
 
 
