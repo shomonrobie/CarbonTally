@@ -39,8 +39,11 @@ from domain.contractual_instruments import (
 from domain.data_quality import (
     DATA_QUALITY_VALUES,
     ESTIMATED_DATA_QUALITY,
+    PRODUCT_DATA_QUALITY_BUCKETS,
     describe_data_quality,
     is_estimated,
+    quality_mix,
+    reporting_bucket,
     validate_data_quality,
 )
 from domain.estimation import (
@@ -170,27 +173,89 @@ def test_unrecorded_dimensions_produce_an_honest_label() -> None:
 
 # ---------------------------------------------------------------------------
 # Data quality
+#
+# P17-IMPLEMENT-10 widened the vocabulary from five values to nine, reconciling
+# it with the authoritative product contract (P17-PRODUCT-01 §7 lists
+# PRIMARY/SUPPLIER_SPECIFIC/ACTIVITY_BASED/AVERAGE_DATA/SPEND_BASED/ESTIMATED/
+# MANUAL/UNRESOLVED, and §29/§30 require the reporting layer to distinguish
+# "activity based", "estimated", "manual review" and "unresolved"). Four of those
+# had no member. These assertions are as strict as before — exact tuple/set
+# equality — against the corrected vocabulary, and the migration test proves the
+# database CHECK was WIDENED rather than narrowed.
 # ---------------------------------------------------------------------------
-def test_data_quality_vocabulary_is_exactly_five_values() -> None:
+def test_data_quality_vocabulary_is_exactly_nine_values() -> None:
     assert DATA_QUALITY_VALUES == (
         "primary_measured",
         "primary_supplier",
         "secondary_estimated",
         "spend_based_estimated",
         "modelled",
+        "activity_based",
+        "estimated",
+        "manual",
+        "unresolved",
     )
 
 
-def test_exactly_three_classifications_are_estimates() -> None:
+def test_exactly_four_classifications_are_estimates() -> None:
     assert ESTIMATED_DATA_QUALITY == frozenset(
-        {"secondary_estimated", "spend_based_estimated", "modelled"}
+        {"secondary_estimated", "spend_based_estimated", "modelled", "estimated"}
     )
+
+
+def test_activity_based_manual_and_unresolved_are_not_estimates() -> None:
+    """Only a value obtained *by estimating* owes an estimation record.
+
+    ``activity_based`` is activity data; ``manual`` says who established the
+    value; ``unresolved`` says no value was established. Treating any of them as
+    an estimate would impose a T-INV-12 obligation the product contract does not.
+    """
+    assert is_estimated("activity_based") is False
+    assert is_estimated("manual") is False
+    assert is_estimated("unresolved") is False
+
+
+def test_every_classification_maps_to_exactly_one_reporting_bucket() -> None:
+    """The §29/§30 projection is total and deterministic."""
+    assert set(reporting_bucket(q) for q in DATA_QUALITY_VALUES) <= set(
+        PRODUCT_DATA_QUALITY_BUCKETS
+    )
+    assert reporting_bucket(None) == "UNCLASSIFIED"
+    # An unrecognised value is surfaced, never silently dropped from a report.
+    assert reporting_bucket("not_a_real_value") == "UNCLASSIFIED"
+
+
+def test_quality_mix_reproduces_the_product_reporting_buckets() -> None:
+    """§30's dashboard mix, derived from authoritative counts only."""
+    mix = quality_mix(
+        {
+            "primary_measured": 31,
+            "activity_based": 42,
+            "secondary_estimated": 18,
+            "spend_based_estimated": 7,
+            "estimated": 2,
+        }
+    )
+    assert mix["total"] == 100
+    assert mix["buckets"]["PRIMARY_DATA"]["count"] == 31
+    assert mix["buckets"]["ACTIVITY_BASED"]["count"] == 42
+    assert mix["buckets"]["PRIMARY_DATA"]["label"] == "Primary data"
+    assert mix["percentages"]["PRIMARY_DATA"] == "31.00"
+
+
+def test_quality_mix_reports_no_percentage_when_there_is_no_data() -> None:
+    """No data must not be reported as 0% of the data."""
+    mix = quality_mix({})
+    assert mix["total"] == 0
+    assert mix["percentages"]["PRIMARY_DATA"] is None
+    assert mix["buckets"]["MANUAL_REVIEW"]["count"] == 0
 
 
 def test_is_estimated_recognises_estimates_and_rejects_primary_data() -> None:
     assert is_estimated("secondary_estimated") is True
     assert is_estimated("spend_based_estimated") is True
     assert is_estimated("modelled") is True
+    assert is_estimated("estimated") is True
     assert is_estimated("primary_measured") is False
     assert is_estimated("primary_supplier") is False
     assert is_estimated(None) is False

@@ -54,10 +54,14 @@ _GROUP_EXPRESSIONS: dict[str, str] = {
     "facility": "COALESCE(metadata->>'facility_id', 'none')",
 }
 
-#: P17-IMPLEMENT-04 — the ten canonical accounting-dimension columns, in the
-#: exact order ``_dimension_params`` supplies them. ``NULL`` (i.e. no dimensions)
-#: is a legitimate value for every one of them: the P17-A migration documents
-#: NULL as "no method / no category recorded", never a fabricated default.
+#: The P17 canonical accounting-dimension columns, in the exact order
+#: ``_dimension_params`` supplies them. ``NULL`` (i.e. no dimensions) is a
+#: legitimate value for every one of them: the P17-A migration documents NULL as
+#: "no method / no category recorded", never a fabricated default.
+#:
+#: ``scope3_method`` and ``transaction_provider`` were added by
+#: P17-IMPLEMENT-10 (P17-PRODUCT-01 §5/§29/§34); they are appended so every
+#: pre-existing position keeps its meaning.
 _DIMENSION_COLUMNS: tuple[str, ...] = (
     "scope2_method",
     "scope3_category",
@@ -69,15 +73,17 @@ _DIMENSION_COLUMNS: tuple[str, ...] = (
     "source_snapshot_id",
     "performed_by_organization_id",
     "acting_for_organization_id",
+    "scope3_method",
+    "transaction_provider",
 )
 
 
 def _dimension_params(
     dimensions: Optional[AccountingDimensions],
 ) -> list[Optional[object]]:
-    """Return the ten dimension values for an INSERT/UPDATE, in column order.
+    """Return the dimension values for an INSERT/UPDATE, in column order.
 
-    ``None`` dimensions yield ten ``None`` values, so a pre-P17 caller writes
+    ``None`` dimensions yield one ``None`` per column, so a pre-P17 caller writes
     NULL into every P17 column and its stored row is unchanged in meaning.
     """
     if dimensions is None:
@@ -93,11 +99,19 @@ _SNAPSHOT_COLUMNS = """
     co2e_multiplier, co2e_kg, scope, date, factor_id, factor_source, factor_set,
     import_batch_id, reporting_year, methodology, algorithm_version, content_hash,
     calculated_at, calculated_by, request_id, factor_kind, customer_factor_id,
-    source_item_id, source_line_item_id, source_file, source_page, performed_by
+    source_item_id, source_line_item_id, source_file, source_page, performed_by,
+    scope2_method, scope3_category, scope3_method, energy_type, data_quality,
+    transaction_provider
 """
 
 #: Allowed analytics grouping dimensions → fixed, allowlisted SQL expressions
 #: (Phase 8 Insight analytics). ``cs.`` expressions require the snapshot join.
+#:
+#: P17-IMPLEMENT-10 added the category-level reporting dimensions P17-09
+#: identified as missing (P17-PRODUCT-01 §29 "Reporting model" requires Scope 2
+#: location/market plus per-category methodology and data quality). They are
+#: projections over the SAME canonical ``emissions_logs`` rows — no second result
+#: table and no duplicated snapshot.
 _ANALYTICS_DIMENSION_EXPRESSIONS: dict[str, str] = {
     "scope": "COALESCE(l.scope, 'unknown')",
     "month": "to_char(l.start_date, 'YYYY-MM')",
@@ -106,6 +120,13 @@ _ANALYTICS_DIMENSION_EXPRESSIONS: dict[str, str] = {
     "supplier": "COALESCE(l.supplier_id::text, 'none')",
     "facility": "COALESCE(l.metadata->>'facility_id', 'none')",
     "asset": "COALESCE(l.asset_id::text, 'none')",
+    # --- P17-IMPLEMENT-10 reporting dimensions ---
+    "scope2_method": "COALESCE(l.scope2_method, 'none')",
+    "scope3_category": "COALESCE(l.scope3_category::text, 'none')",
+    "scope3_method": "COALESCE(l.scope3_method, 'none')",
+    "energy_type": "COALESCE(l.energy_type, 'none')",
+    "data_quality": "COALESCE(l.data_quality, 'none')",
+    "transaction_provider": "COALESCE(l.transaction_provider, 'none')",
 }
 
 #: Dimensions whose group keys are organisation-owned catalogue ids → the
@@ -318,10 +339,11 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 supplier_id,
                 scope2_method, scope3_category, energy_type, data_quality,
                 facility_id, transport_boundary, waste_origin, source_snapshot_id,
-                performed_by_organization_id, acting_for_organization_id
+                performed_by_organization_id, acting_for_organization_id,
+                scope3_method, transaction_provider
             ) VALUES ($1, $2, $3, $4, $4, $5, 0, $6, NOW(), NOW(), $7, $8, $9,
                       $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                      $20, $21)
+                      $20, $21, $22, $23)
             RETURNING {_LOG_COLUMNS}
             """,
             org_id,
@@ -734,6 +756,8 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 source_snapshot_id = $18,
                 performed_by_organization_id = $19,
                 acting_for_organization_id = $20,
+                scope3_method = $21,
+                transaction_provider = $22,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING {_LOG_COLUMNS}
@@ -796,10 +820,11 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
                 source_line_item_id,
                 scope2_method, scope3_category, energy_type, data_quality,
                 facility_id, transport_boundary, waste_origin, source_snapshot_id,
-                performed_by_organization_id, acting_for_organization_id
+                performed_by_organization_id, acting_for_organization_id,
+                scope3_method, transaction_provider
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                       $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                      $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+                      $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
             RETURNING id
             """,
             snapshot.id,

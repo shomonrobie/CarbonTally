@@ -35,8 +35,14 @@ P17_A = _MIGRATIONS_DIR / "20261010000000_p17a_accounting_dimensions_and_factor_
 P17_C = _MIGRATIONS_DIR / "20261011000000_p17c_contractual_instruments_and_allocations.sql"
 P17_D = _MIGRATIONS_DIR / "20261012000000_p17d_scope3_category_taxonomy.sql"
 P17_H = _MIGRATIONS_DIR / "20261013000000_p17h_estimation_and_assumption_records.sql"
+#: P17-IMPLEMENT-10 — the product-contract reporting dimensions (scope3_method,
+#: transaction_provider, the widened data-quality vocabulary).
+P17_10 = (
+    _MIGRATIONS_DIR
+    / "20261014000000_p17_10_product_contract_reporting_dimensions.sql"
+)
 
-P17_MIGRATIONS = (P17_A, P17_C, P17_D, P17_H)
+P17_MIGRATIONS = (P17_A, P17_C, P17_D, P17_H, P17_10)
 
 #: The P16 baseline this series must follow (P16-R7 idempotency migration).
 _P16_BASELINE = "20261009000000"
@@ -70,7 +76,7 @@ def _all_p17() -> str:
 # ---------------------------------------------------------------------------
 # Existence and ordering
 # ---------------------------------------------------------------------------
-def test_all_four_p17_migrations_exist_and_are_in_sequence() -> None:
+def test_all_p17_migrations_exist_and_are_in_sequence() -> None:
     for path in P17_MIGRATIONS:
         assert path.exists(), path
 
@@ -84,6 +90,7 @@ def test_p17_migration_timestamps_follow_the_p16_baseline_and_increase() -> None
         "20261011000000",
         "20261012000000",
         "20261013000000",
+        "20261014000000",
     ]
 
 
@@ -221,6 +228,76 @@ def test_boundary_vocabularies_are_declared() -> None:
 def test_scope2_method_vocabulary_reuses_the_frozen_b1_values() -> None:
     code = _text(P17_A)
     assert "scope2_method IN ('LOCATION_BASED', 'MARKET_BASED')" in code
+
+
+# ---------------------------------------------------------------------------
+# P17-IMPLEMENT-10 — product-contract reporting dimensions
+# ---------------------------------------------------------------------------
+def test_p17_10_adds_scope3_method_and_transaction_provider_narrowly() -> None:
+    """Both columns are ADDITIVE and NULLABLE on both tables (no default)."""
+    code = _code(P17_10)
+    for table in ("public.calculation_snapshots", "public.emissions_logs"):
+        assert f"ALTER TABLE {table}" in code
+    assert code.count("ADD COLUMN IF NOT EXISTS scope3_method        text,") == 2
+    assert code.count("ADD COLUMN IF NOT EXISTS transaction_provider text;") == 2
+    # Nullable with no DEFAULT: history keeps its exact meaning.
+    assert "NOT NULL" not in code.replace(
+        "scope3_method IS NULL OR", ""
+    ).replace("transaction_provider IS NULL", "")
+
+
+def test_p17_10_data_quality_vocabulary_is_a_strict_superset() -> None:
+    """The widened CHECK adds the product classifications and removes none.
+
+    Asserting the superset (rather than an exact list) is what proves the change
+    is non-destructive: every value P17-A allowed is still allowed, so no stored
+    row can be invalidated by re-running the chain.
+    """
+    code = _text(P17_10)
+    match = re.search(
+        r"ADD CONSTRAINT calc_snapshots_data_quality_check\s+CHECK \(([^)]*)\)",
+        code,
+        re.S,
+    )
+    assert match, "widened data_quality CHECK missing"
+    allowed = set(re.findall(r"'([a-z_]+)'", match.group(1)))
+    assert {
+        "primary_measured",
+        "primary_supplier",
+        "secondary_estimated",
+        "spend_based_estimated",
+        "modelled",
+    } <= allowed, "a P17-A value was dropped — that would invalidate stored rows"
+    assert {
+        "activity_based",
+        "estimated",
+        "manual",
+        "unresolved",
+    } <= allowed, "a P17-PRODUCT-01 §29/§30 classification is missing"
+    assert len(allowed) == 9, allowed
+
+
+def test_p17_10_scope3_method_vocabulary_matches_the_domain_contract() -> None:
+    """The DDL vocabulary and the domain vocabulary cannot drift apart."""
+    from domain.scope3_contracts import SCOPE3_METHODS
+
+    code = _text(P17_10)
+    match = re.search(
+        r"ADD CONSTRAINT calc_snapshots_scope3_method_check\s+CHECK "
+        r"\(scope3_method IS NULL OR scope3_method IN\s+\(([^;]*)\)\);",
+        code,
+        re.S,
+    )
+    assert match, "scope3_method vocabulary CHECK missing"
+    assert set(re.findall(r"'([a-z_]+)'", match.group(1))) == set(SCOPE3_METHODS)
+
+
+def test_p17_10_scope3_method_is_scope_guarded_and_not_valid() -> None:
+    code = _text(P17_10)
+    assert "CHECK (scope3_method IS NULL OR scope = 'Scope 3') NOT VALID" in code
+    assert code.count("CHECK (scope3_method IS NULL OR scope = 'Scope 3') NOT VALID") == 2
+    # A blank provider is not a name: the shape guard rejects it.
+    assert "length(btrim(transaction_provider)) BETWEEN 1 AND 200" in code
 
 
 # ---------------------------------------------------------------------------

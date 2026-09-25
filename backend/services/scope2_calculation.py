@@ -106,6 +106,10 @@ class Scope2Input:
     #: from. ``None`` stays NULL: an unresolved supplier is never invented. The
     #: route proves ownership against the data owner before the value reaches here.
     supplier_id: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §5 — the purchase channel (broker or
+    #: intermediary), kept strictly apart from ``supplier_id``. ``None`` stays
+    #: NULL and is never back-filled from the supplier.
+    transaction_provider: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     source_file: Optional[str] = None
@@ -194,6 +198,11 @@ class Scope2CalculationService:
             # never taken from these.
             performed_by_organization_id=request.performed_by_organization_id,
             acting_for_organization_id=request.acting_for_organization_id,
+            # P17-IMPLEMENT-10 — the purchase channel (P17-PRODUCT-01 §5). Carried
+            # through unchanged: it is not a supplier reference and is never
+            # derived from one. No ``scope3_method``: that dimension is
+            # Scope-3-only and the domain refuses it on a Scope 2 result.
+            transaction_provider=request.transaction_provider,
         )
 
     def _factor(self, request: Scope2Input):

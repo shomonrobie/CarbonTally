@@ -23,15 +23,27 @@ from decimal import Decimal
 import pytest
 
 from data import emissions_logs as repo
+from domain.insight_query import AGGREGATION_DIMENSIONS
 
 
 # --------------------------------------------------------------------------
 # Allowlisted dimension map
 # --------------------------------------------------------------------------
 def test_dimension_map_is_the_closed_vocabulary() -> None:
+    """The allowlist is closed, and it is in lockstep with the domain.
+
+    P17-IMPLEMENT-10 widened it with the category-level reporting dimensions
+    P17-PRODUCT-01 §29 requires. The assertion below is the important one: the
+    repository's SQL allowlist must EQUAL the domain's ``AGGREGATION_DIMENSIONS``
+    exactly, so a caller can never name a dimension the domain accepts but the
+    repository cannot resolve (or vice versa).
+    """
     assert set(repo._ANALYTICS_DIMENSION_EXPRESSIONS) == {
         "scope", "month", "year", "activity", "supplier", "facility", "asset",
+        "scope2_method", "scope3_category", "scope3_method", "energy_type",
+        "data_quality", "transaction_provider",
     }
+    assert set(repo._ANALYTICS_DIMENSION_EXPRESSIONS) == set(AGGREGATION_DIMENSIONS)
     for expression in repo._ANALYTICS_DIMENSION_EXPRESSIONS.values():
         # Every expression is a fixed literal: no statement separator, no
         # placeholder and no line break can appear in it.

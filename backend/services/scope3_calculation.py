@@ -8,7 +8,8 @@ provides and never re-implements them.
 * ``domain/scope3_contracts.py`` — the explicit per-category contract.
 * ``domain/estimation.py`` — T-INV-12 estimation records and the
   no-silent-estimation rule.
-* ``domain/data_quality.py`` — the five-value quality vocabulary.
+* ``domain/data_quality.py`` — the data-quality vocabulary and its §29/§30
+  reporting projection.
 * ``CalculationRequest.from_match_result`` — the canonical bridge (factor selection
   is not duplicated).
 * ``CalculationEngine`` — the single canonical write path (snapshot + emissions log).
@@ -58,7 +59,12 @@ from domain.scope3_contracts import (
     Scope3CategoryContract,
     contract_for,
 )
-from engines.calculation import CalculationEngine, CalculationRequest
+from engines.calculation import (
+    CalculationEngine,
+    CalculationMethodology,
+    CalculationRequest,
+    engine_methodology_for,
+)
 
 logger = get_logger(__name__)
 
@@ -108,6 +114,12 @@ class Scope3Input:
     #: is responsible for proving the supplier belongs to the data owner before
     #: the value reaches here.
     supplier_id: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §5 — where the activity was PURCHASED
+    #: (Booking.com, Agoda, Uber, Trainline). Kept strictly apart from
+    #: ``supplier_id``: the provider is the purchase channel, ``supplier_id`` is
+    #: the counterparty whose activity generated the emissions. ``None`` stays
+    #: NULL and is never back-filled from the supplier.
+    transaction_provider: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     source_file: Optional[str] = None
@@ -427,6 +439,15 @@ class Scope3CalculationService:
             source_snapshot_id=request.source_snapshot_id,
             performed_by_organization_id=request.performed_by_organization_id,
             acting_for_organization_id=request.acting_for_organization_id,
+            # P17-IMPLEMENT-10 — the CATEGORY-SPECIFIC methodology. It was
+            # validated against this category's own contract above, so the
+            # persisted method can only ever be one the contract recognises, and
+            # an unstated method stays NULL rather than defaulting to the first
+            # entry of the contract's list.
+            scope3_method=request.methodology,
+            # The purchase channel is carried through unchanged: it is not a
+            # supplier reference and is never derived from one.
+            transaction_provider=request.transaction_provider,
         )
 
     # ------------------------------------------------------------------
@@ -458,7 +479,26 @@ class Scope3CalculationService:
             activity=request.activity,
             activity_type=request.activity_type,
             scope=SCOPE3,
-            methodology=request.methodology or "direct_multiply",
+            # P17-IMPLEMENT-10 — the requested method is the PRODUCT method
+            # (`supplier_specific`, `average_data`, `survey_based`, ...). It is
+            # persisted on the `scope3_method` dimension, NOT here: this field is
+            # the engine's ARITHMETIC label, and the engine vocabulary
+            # (`CalculationMethodology`) deliberately only knows how the number
+            # was multiplied. Passing the product method here is what made eight
+            # of the ten contract methods unp persistable — the engine refused them
+            # as an unknown methodology, so a category could not record which
+            # method it had used (P17-PRODUCT-01 §29/§34).
+            #
+            # The projection is explicit and deterministic
+            # (`engine_methodology_for`) rather than a bare default: `spend_based`
+            # and `distance_based` keep their own arithmetic label, every other
+            # product method is genuinely `quantity x factor`. The distinction
+            # between those methods is preserved in full on `scope3_method` and in
+            # the estimation record.
+            methodology=(
+                engine_methodology_for(request.methodology)
+                or CalculationMethodology.DIRECT_MULTIPLY
+            ).value,
             source_file=request.source_file,
             source_page=request.source_page,
             log_id=request.log_id,

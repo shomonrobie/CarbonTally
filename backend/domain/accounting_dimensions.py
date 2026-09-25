@@ -34,9 +34,13 @@ from core.exceptions import (
     BoundaryAmbiguityError,
     Scope2MethodRequiredError,
     Scope3CategoryRequiredError,
+    Scope3MethodNotSupportedError,
 )
 
-#: ``calc_snapshots_scope2_method_check`` / ``emissions_logs_scope2_method_check``.
+from .data_quality import DATA_QUALITY_VALUES as DATA_QUALITY_VOCABULARY
+from .scope3_contracts import SCOPE3_METHODS
+
+#: ``..._scope2_method_check`` / ``emissions_logs_scope2_method_check``.
 SCOPE2_METHODS: frozenset[str] = frozenset({"LOCATION_BASED", "MARKET_BASED"})
 
 #: ``..._scope3_category_check`` — GHG Protocol categories 1-15.
@@ -48,21 +52,24 @@ SCOPE3_CATEGORY_MAX = 15
 ENERGY_TYPES: frozenset[str] = frozenset({"electricity", "heat", "steam", "cooling"})
 
 #: ``..._data_quality_check``. No numeric uncertainty is implied (deferred).
-DATA_QUALITY_VALUES: frozenset[str] = frozenset(
-    {
-        "primary_measured",
-        "primary_supplier",
-        "secondary_estimated",
-        "spend_based_estimated",
-        "modelled",
-    }
-)
+#:
+#: P17-IMPLEMENT-10 — DERIVED from the single authoritative vocabulary in
+#: ``domain/data_quality.py`` rather than restated. It was previously a second
+#: literal list, which is exactly the drift hazard AGENTS.md §23/§4 warns about:
+#: widening the vocabulary in one module silently left this copy narrow, so a
+#: product classification the database accepts was refused in the domain.
+DATA_QUALITY_VALUES: frozenset[str] = frozenset(DATA_QUALITY_VOCABULARY)
 
 #: ``..._transport_boundary_check`` — DC-04 discriminator.
 TRANSPORT_BOUNDARIES: frozenset[str] = frozenset({"upstream", "downstream"})
 
 #: ``..._waste_origin_check`` — DC-05 discriminator.
 WASTE_ORIGINS: frozenset[str] = frozenset({"operations", "sold_product_eol"})
+
+#: P17-IMPLEMENT-10 — ``..._transaction_provider_check`` upper bound. Bounded so
+#: a provider name cannot be used as a free-text dumping ground; matches the
+#: database CHECK exactly.
+TRANSACTION_PROVIDER_MAX_LENGTH = 200
 
 #: ``..._transport_boundary_scope_check`` — category 4 upstream / 9 downstream.
 TRANSPORT_BOUNDARY_CATEGORIES: frozenset[int] = frozenset({4, 9})
@@ -108,6 +115,20 @@ class AccountingDimensions:
     source_snapshot_id: Optional[str] = None
     performed_by_organization_id: Optional[str] = None
     acting_for_organization_id: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §29/§34 — the CATEGORY-SPECIFIC
+    #: accounting methodology of a Scope 3 result (``supplier_specific``,
+    #: ``average_data``, ...). Deliberately a different fact from
+    #: ``calculation_snapshots.methodology``, which carries the ENGINE arithmetic
+    #: label (``direct_multiply`` / ``distance_based`` / ...). ``None`` means the
+    #: method was not recorded; it is never defaulted to the contract's first
+    #: entry, because a methodology the caller did not state must not be reported
+    #: as though they had.
+    scope3_method: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §5 — where the activity was PURCHASED
+    #: (Booking.com, Agoda, Uber, Trainline), kept strictly distinct from the
+    #: supplier whose activity generated the emissions. A NAME, not a suppliers
+    #: FK; it is never populated from the underlying supplier.
+    transaction_provider: Optional[str] = None
 
     def validate_for_scope(self, scope: Optional[str]) -> None:
         """Raise the appropriate P17 error if these dimensions contradict ``scope``.
@@ -160,6 +181,30 @@ class AccountingDimensions:
                 f"waste_origin must be one of {sorted(WASTE_ORIGINS)} "
                 f"(got {self.waste_origin!r})"
             )
+        if self.scope3_method is not None and self.scope3_method not in SCOPE3_METHODS:
+            raise Scope3MethodNotSupportedError(
+                f"scope3_method must be one of {list(SCOPE3_METHODS)} "
+                f"(got {self.scope3_method!r})"
+            )
+        if self.transaction_provider is not None:
+            provider = self.transaction_provider
+            if not provider.strip():
+                # An empty purchase channel is a record that claims to name a
+                # provider and does not; storing it would read as "known".
+                raise AccountingDimensionError(
+                    "transaction_provider must not be blank when supplied; "
+                    "omit it (None) when the purchase channel is unknown"
+                )
+            if len(provider) > TRANSACTION_PROVIDER_MAX_LENGTH:
+                raise AccountingDimensionError(
+                    "transaction_provider must be at most "
+                    f"{TRANSACTION_PROVIDER_MAX_LENGTH} characters "
+                    f"(got {len(provider)})"
+                )
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in provider):
+                raise AccountingDimensionError(
+                    "transaction_provider must not contain control characters"
+                )
 
     # ------------------------------------------------------------------
     # Scope requirements (the *_required and *_scope_only constraints)
@@ -182,6 +227,12 @@ class AccountingDimensions:
                 raise AccountingDimensionError(
                     "scope3_category must not be set on a Scope 2 calculation"
                 )
+            # ... and therefore not a Scope 3 category method either
+            # (calc_snapshots_scope3_method_scope_check).
+            if self.scope3_method is not None:
+                raise AccountingDimensionError(
+                    "scope3_method must not be set on a Scope 2 calculation"
+                )
         elif normalised == _SCOPE3:
             if self.scope3_category is None:
                 raise Scope3CategoryRequiredError(
@@ -192,6 +243,8 @@ class AccountingDimensions:
                 raise AccountingDimensionError(
                     "scope2_method must not be set on a Scope 3 calculation"
                 )
+            # scope3_method is legitimately set here: this is the Scope 3 branch,
+            # and the category it is validated against is required above.
         else:
             # Scope 1 (and any other scope): neither Scope 2 nor Scope 3 identity
             # may be attached.
@@ -202,6 +255,10 @@ class AccountingDimensions:
             if self.scope3_category is not None:
                 raise AccountingDimensionError(
                     "scope3_category is only valid on a Scope 3 calculation"
+                )
+            if self.scope3_method is not None:
+                raise AccountingDimensionError(
+                    "scope3_method is only valid on a Scope 3 calculation"
                 )
 
     # ------------------------------------------------------------------
@@ -226,7 +283,7 @@ class AccountingDimensions:
             )
 
     def as_columns(self) -> dict[str, Optional[object]]:
-        """Return the ten P17 column values for an INSERT/UPDATE."""
+        """Return the P17 column values for an INSERT/UPDATE."""
         return {
             "scope2_method": self.scope2_method,
             "scope3_category": self.scope3_category,
@@ -238,6 +295,8 @@ class AccountingDimensions:
             "source_snapshot_id": self.source_snapshot_id,
             "performed_by_organization_id": self.performed_by_organization_id,
             "acting_for_organization_id": self.acting_for_organization_id,
+            "scope3_method": self.scope3_method,
+            "transaction_provider": self.transaction_provider,
         }
 
 

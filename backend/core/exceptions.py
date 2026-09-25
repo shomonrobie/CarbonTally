@@ -181,6 +181,22 @@ class Scope3CategoryNotSupportedError(CarbonTallyError):
     http_status: ClassVar[int] = 422
 
 
+class Scope3MethodNotSupportedError(CarbonTallyError):
+    """Raised when a Scope 3 category methodology is not permitted for that
+    category by its contract (422).
+
+    P17-PRODUCT-01 §29 requires the reporting layer to state the methodology a
+    category used, and §34 lists category-specific methodology as a must-have.
+    A method outside the category's own contract vocabulary is refused rather
+    than stored: recording a methodology the contract does not recognise would be
+    an invented accounting claim, and silently substituting another method would
+    be a silent methodology fallback.
+    """
+
+    code: ClassVar[str] = "SCOPE3_METHOD_NOT_SUPPORTED"
+    http_status: ClassVar[int] = 422
+
+
 class BoundaryAmbiguityError(CarbonTallyError):
     """Raised when a category boundary (transport, waste, consolidation) is
     ambiguous and the result must not be counted (422).

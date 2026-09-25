@@ -33,6 +33,7 @@ from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, require_org_member
 from core.exceptions import InstrumentEligibilityError, ValidationFailedError
 from domain.contractual_instruments import InstrumentAllocation
+from domain.data_quality import reporting_bucket
 from domain.matching import MatchResult
 from domain.scope2 import requires_instrument
 from engines.calculation import CalculationEngine
@@ -74,6 +75,12 @@ class Scope2CalculateRequest(BaseModel):
     #: A claim only: it is resolved server-side against the authorized data-owning
     #: organization before it can reach ``emissions_logs.supplier_id``.
     supplier_id: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §5 — the purchase channel (an energy
+    #: broker or intermediary the consumption was bought through), kept strictly
+    #: separate from ``supplier_id``, which names the party that generated/supplied
+    #: the energy. ``None`` means the channel was not recorded; it is never
+    #: inferred from the supplier.
+    transaction_provider: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     #: MARKET_BASED only — the contractual instrument to claim. Identified by id;
@@ -226,6 +233,7 @@ async def calculate_scope2(
             data_quality=payload.data_quality,
             facility_id=payload.facility_id,
             supplier_id=supplier_id,
+            transaction_provider=payload.transaction_provider,
             source_item_id=payload.source_item_id,
             source_line_item_id=payload.source_line_item_id,
             performed_by=current_user.user_id,
@@ -296,6 +304,11 @@ async def calculate_scope2(
         "co2e_kg": str(result.co2e_kg),
         "co2e_tonnes": str(result.co2e_tonnes),
         "methodology": result.snapshot.methodology,
+        "data_quality_bucket": reporting_bucket(
+            result.snapshot.accounting_dimensions.data_quality
+        ),
+        "supplier_id": supplier_id,
+        "transaction_provider": payload.transaction_provider,
         "reporting_year": result.snapshot.reporting_year,
         "content_hash": result.snapshot.content_hash,
     }

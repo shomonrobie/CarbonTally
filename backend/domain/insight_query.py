@@ -124,7 +124,16 @@ DISCOVERY_FILTERS: tuple[str, ...] = (
 )
 
 #: The closed aggregation / provenance group-by vocabulary (PO D-03 initial set
-#: plus supplier, which the same authorization explicitly includes).
+#: plus supplier, which the same authorization explicitly includes, plus the
+#: P17-IMPLEMENT-10 category-level reporting dimensions required by
+#: P17-PRODUCT-01 §29: Scope 2 method, Scope 3 category and method, energy type,
+#: data quality and the purchase channel).
+#:
+#: Widening this tuple is NOT an authorization decision by itself: the service
+#: still resolves the dimension through the repository's allowlisted SQL
+#: expression, every query stays organisation-scoped, and an unknown dimension is
+#: still refused. The addition is the §29 read projection over the SAME canonical
+#: rows, not a new data model.
 AGGREGATION_DIMENSIONS: tuple[str, ...] = (
     "scope",
     "month",
@@ -133,6 +142,12 @@ AGGREGATION_DIMENSIONS: tuple[str, ...] = (
     "supplier",
     "facility",
     "asset",
+    "scope2_method",
+    "scope3_category",
+    "scope3_method",
+    "energy_type",
+    "data_quality",
+    "transaction_provider",
 )
 
 #: Reason codes (machine-readable; never free-form prose).

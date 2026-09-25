@@ -102,6 +102,46 @@ def derive_methodology(
     return CalculationMethodology.DIRECT_MULTIPLY.value
 
 
+#: P17-IMPLEMENT-10 — product category methodology (P17-PRODUCT-01 §29/§34) to
+#: the ENGINE arithmetic label that describes how the number was computed.
+#:
+#: These are two different facts and both are persisted: the product method goes
+#: to ``scope3_method`` (the accounting claim) and the arithmetic label goes to
+#: ``methodology`` (the calculation). The Scope 2 path already works this way —
+#: ``scope2_method`` carries LOCATION_BASED/MARKET_BASED while ``methodology``
+#: stays ``direct_multiply``.
+#:
+#: Only the two product methods that genuinely change the arithmetic have their
+#: own label. Every other product method (``supplier_specific``, ``average_data``,
+#: ``extrapolated``, ``survey_based``, ``asset_specific``, ``industry_average``,
+#: ``modelled``, ``proxy_data``) computes ``quantity x factor``, so the honest
+#: arithmetic label is ``direct_multiply`` — the distinction that matters between
+#: those methods lives in ``scope3_method`` and in the persisted estimation
+#: record, not in the multiplication.
+_ENGINE_METHODOLOGY_BY_PRODUCT_METHOD: dict[str, CalculationMethodology] = {
+    "spend_based": CalculationMethodology.SPEND_BASED,
+    "distance_based": CalculationMethodology.DISTANCE_BASED,
+}
+
+
+def engine_methodology_for(
+    scope3_method: Optional[str],
+) -> Optional[CalculationMethodology]:
+    """Return the ENGINE arithmetic label for a product category methodology.
+
+    ``None`` (no method recorded) returns ``None`` — the caller keeps the
+    existing default rather than this function inventing one. The mapping is
+    total for a supplied value: a product method that does not change the
+    arithmetic is explicitly ``DIRECT_MULTIPLY``, which is the documented,
+    tested projection, not a silent fallback.
+    """
+    if scope3_method is None:
+        return None
+    return _ENGINE_METHODOLOGY_BY_PRODUCT_METHOD.get(
+        scope3_method, CalculationMethodology.DIRECT_MULTIPLY
+    )
+
+
 
 class CalculationSink(Protocol):
     """The repository surface the engine persists through.

@@ -36,6 +36,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Optional
+
+from core.exceptions import Scope3MethodNotSupportedError
 
 from domain.data_quality import (
     DATA_QUALITY_VALUES,
@@ -46,8 +49,11 @@ __all__ = [
     "ClarificationRequirement",
     "Scope3CategoryContract",
     "CONTRACTS",
+    "SCOPE3_METHODS",
     "contract_for",
+    "methods_for",
     "pathway_of",
+    "validate_scope3_method_for_category",
 ]
 
 #: Every classification the vocabulary permits (activity/factor pathways).
@@ -382,6 +388,47 @@ def _build_contracts() -> dict[int, Scope3CategoryContract]:
 
 #: category number -> its explicit contract. All fifteen are present.
 CONTRACTS: dict[int, Scope3CategoryContract] = _build_contracts()
+
+#: P17-IMPLEMENT-10 — the FROZEN union of every category's method vocabulary.
+#:
+#: This is the single source of truth for "which methodology names may be
+#: persisted on a Scope 3 result" (P17-PRODUCT-01 §29 requires the reporting
+#: layer to expose the methodology; §34 lists category-specific methodology as a
+#: must-have). It is DERIVED from the contracts rather than restated, so the
+#: persistence vocabulary can never drift from the contract vocabulary, and the
+#: database CHECK lists exactly these values.
+#:
+#: Membership here is necessary but NOT sufficient: a value is only accepted for
+#: a given category when that category's own contract permits it — that narrower
+#: check lives where the category is known.
+SCOPE3_METHODS: tuple[str, ...] = tuple(
+    sorted({method for contract in CONTRACTS.values() for method in contract.methodologies})
+)
+
+
+def methods_for(category: int) -> tuple[str, ...]:
+    """Return the methods the category's own contract permits."""
+    return contract_for(category).methodologies
+
+
+def validate_scope3_method_for_category(category: int, method: Optional[str]) -> Optional[str]:
+    """Validate ``method`` against the category's OWN contract vocabulary.
+
+    ``None`` means "no method recorded" and is always valid — an unrecorded
+    method stays unrecorded rather than being defaulted to the contract's first
+    entry. A supplied value that the category does not permit is refused, so the
+    platform can never report a methodology the contract does not recognise for
+    that category (no silent methodology fallback).
+    """
+    if method is None:
+        return None
+    contract = contract_for(category)
+    if method not in contract.methodologies:
+        raise Scope3MethodNotSupportedError(
+            f"methodology {method!r} is not supported for Scope 3 category "
+            f"{category} ({contract.name}); permitted: {list(contract.methodologies)}"
+        )
+    return method
 
 
 def contract_for(category: int) -> Scope3CategoryContract:

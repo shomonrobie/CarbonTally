@@ -30,7 +30,7 @@ from api.accounting_context_auth import (
 from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, require_org_member
 from core.exceptions import ValidationFailedError
-from domain.data_quality import is_estimated
+from domain.data_quality import is_estimated, reporting_bucket
 from domain.estimation import EstimationRecord
 from domain.matching import MatchResult
 from engines.calculation import CalculationEngine
@@ -69,6 +69,13 @@ class Scope3CalculateRequest(BaseModel):
     source_snapshot_id: Optional[str] = None
     facility_id: Optional[str] = None
     supplier_id: Optional[str] = None
+    #: P17-IMPLEMENT-10 / P17-PRODUCT-01 §5 — where the activity was PURCHASED
+    #: (Booking.com, Agoda, Expedia, Uber, Trainline). Deliberately separate from
+    #: ``supplier_id``, which names the counterparty whose activity generated the
+    #: emissions: a hotel booking made through Booking.com has provider
+    #: ``Booking.com`` and supplier ``Hotel ABC``. Omitted (``None``) when the
+    #: purchase channel is unknown — it is never inferred from the supplier.
+    transaction_provider: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
     #: T-INV-12 — the estimation basis, required whenever the value is an estimate.
@@ -173,6 +180,7 @@ async def calculate_scope3(
             source_snapshot_id=payload.source_snapshot_id,
             facility_id=payload.facility_id,
             supplier_id=supplier_id,
+            transaction_provider=payload.transaction_provider,
             source_item_id=payload.source_item_id,
             source_line_item_id=payload.source_line_item_id,
             performed_by=current_user.user_id,
@@ -221,14 +229,18 @@ async def calculate_scope3(
         "pathway": contract.pathway.value,
         "architecture_status": contract.architecture_status,
         "methodology": snapshot.methodology,
+        "scope3_method": dimensions.scope3_method,
         "data_quality": dimensions.data_quality,
         "is_estimated": is_estimated(dimensions.data_quality),
+        "data_quality_bucket": reporting_bucket(dimensions.data_quality),
         "organization_id": snapshot.organization_id,
         "acting_for_organization_id": dimensions.acting_for_organization_id,
         "performed_by_organization_id": dimensions.performed_by_organization_id,
         "transport_boundary": dimensions.transport_boundary,
         "waste_origin": dimensions.waste_origin,
         "source_snapshot_id": dimensions.source_snapshot_id,
+        "supplier_id": supplier_id,
+        "transaction_provider": dimensions.transaction_provider,
         "factor_id": snapshot.factor_id,
         "factor_kind": snapshot.factor_kind,
         "estimation_record_id": estimation_id,
