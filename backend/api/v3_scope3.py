@@ -14,6 +14,7 @@ fields — a manual-review path that never persists a fabricated value.
 """
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -175,6 +176,28 @@ async def calculate_scope3(
     contract = outcome.contract
     snapshot = outcome.result.snapshot
     dimensions = snapshot.accounting_dimensions
+
+    # ------------------------------------------------------------------
+    # Estimation persistence (T-INV-12) — written only AFTER the calculation
+    # succeeded, so the record's foreign key always references a real snapshot.
+    # Ownership comes from the resolved data owner and the resolved attribution,
+    # never from the request body.
+    # ------------------------------------------------------------------
+    estimation_id: Optional[str] = None
+    if payload.estimation_method is not None and repos.estimation_records is not None:
+        estimation_id = await repos.estimation_records.record(
+            dataclasses.replace(
+                _build_estimation(payload, data_owner),
+                calculation_snapshot_id=snapshot.id,
+                # The snapshot is the authoritative link; CalculationResult does
+                # not return the log id and the column is nullable.
+                emissions_log_id=None,
+                actor_user_id=current_user.user_id,
+                actor_organization_id=context.actor_organization_id,
+                acting_for_organization_id=context.acting_for_organization_id,
+            )
+        )
+
     return {
         "status": "CALCULATED",
         "snapshot_id": snapshot.id,
@@ -195,6 +218,7 @@ async def calculate_scope3(
         "source_snapshot_id": dimensions.source_snapshot_id,
         "factor_id": snapshot.factor_id,
         "factor_kind": snapshot.factor_kind,
+        "estimation_record_id": estimation_id,
         "co2e_kg": str(outcome.result.co2e_kg),
         "co2e_tonnes": str(outcome.result.co2e_tonnes),
         "reporting_year": snapshot.reporting_year,

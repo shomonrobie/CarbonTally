@@ -41,6 +41,7 @@ from data.activity_clarifications import ActivityClarificationsRepository
 from data.audit import AuditRepository
 from data.customer_factors import CustomerFactorsRepository
 from data.contractual_instruments import ContractualInstrumentsRepository
+from data.estimation_records import EstimationRecordsRepository
 from data.documents import DocumentsRepository
 from data.emission_factors import EmissionFactorsRepository
 from data.emissions_logs import EmissionsLogsRepository
@@ -369,6 +370,11 @@ class RepositoryBundle:
     #: the bundle is constructed by test fixtures that predate this surface, and a
     #: required field here breaks every one of them with a ``TypeError``.
     contractual_instruments: Optional[ContractualInstrumentsRepository] = None
+    #: P17-IMPLEMENT-08 — P17-H estimation records. Persists the basis for an
+    #: estimated value so T-INV-12 is satisfied by a real row rather than by
+    #: validation alone. DEFAULTED to ``None`` for the same reason as the fields
+    #: above: existing test fixtures construct this bundle.
+    estimation_records: Optional[EstimationRecordsRepository] = None
 
 
 async def get_pool():
@@ -392,6 +398,7 @@ async def get_repositories() -> RepositoryBundle:
         aliases=FactorAliasesRepository(pool),
         customer_factors=CustomerFactorsRepository(pool),
         contractual_instruments=ContractualInstrumentsRepository(pool),
+        estimation_records=EstimationRecordsRepository(pool),
         entities=ProcessingEntitiesRepository(pool),
         issues=IssuesRepository(pool),
         tenant=TenantRepository(pool),

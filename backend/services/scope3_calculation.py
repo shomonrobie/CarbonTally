@@ -360,7 +360,36 @@ class Scope3CalculationService:
                     },
                 )
 
-        # 5. Evidence-bearing categories must carry a source reference.
+        # 5. Factor governance — the factor must genuinely be a Scope 3 factor for
+        #    the reported year. Reused in spirit from the Scope 2 service: a factor
+        #    from another scope, or another year, must never be silently accepted
+        #    merely because it is numerically available.
+        factor = None if request.match is None else request.match.factor
+        if factor is not None:
+            if factor.scope != SCOPE3:
+                raise AccountingDimensionError(
+                    f"factor {factor.id} is declared {factor.scope!r}; a Scope 3 "
+                    "calculation must not use a factor from another scope",
+                    details={
+                        "field": "scope",
+                        "factor_id": factor.id,
+                        "factor_scope": factor.scope,
+                    },
+                )
+            if factor.reporting_year != request.reporting_year:
+                raise AccountingDimensionError(
+                    f"factor {factor.id} is a {factor.reporting_year} factor but the "
+                    f"calculation is for {request.reporting_year}; another factor "
+                    "year is never silently substituted",
+                    details={
+                        "field": "reporting_year",
+                        "factor_id": factor.id,
+                        "factor_year": factor.reporting_year,
+                        "requested_year": request.reporting_year,
+                    },
+                )
+
+        # 6. Evidence-bearing categories must carry a source reference.
         if contract.requires_evidence and not any(
             (
                 request.source_item_id,
