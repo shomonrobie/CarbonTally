@@ -363,6 +363,24 @@ class MemoryLogs:
         self._snapshot_actors[snapshot.id] = performed_by
         return snapshot
 
+    async def find_snapshot_by_request_id(self, request_id: str) -> Optional[dict]:
+        """Mirror of the repository — resolve a persisted snapshot by request id.
+
+        P16-R7 made the MANUAL calculation path idempotent by deriving a
+        deterministic request id (``uuid5``) and reusing the snapshot already
+        persisted for it, mirroring the automatic pipeline. The fake must mirror
+        this lookup or every multi-line manual calculation raises
+        ``AttributeError`` and the route returns 500.
+        """
+        for snapshot in self._snapshots.values():
+            if snapshot.match_request_id == request_id:
+                return {
+                    "id": snapshot.id,
+                    "co2e_kg": snapshot.co2e_kg,
+                    "match_request_id": snapshot.match_request_id,
+                }
+        return None
+
     async def count_snapshots(self, org_id: str, period: object) -> int:
         # The in-memory world seeds raw EmissionLog rows, not rich snapshot
         # rows; return 0 (honest) so the evidence contract returns an empty
