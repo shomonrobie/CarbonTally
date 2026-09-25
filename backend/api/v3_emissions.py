@@ -47,7 +47,13 @@ from api.dependencies import (
     get_repositories,
     require_org_member,
 )
-from auth import AuthUser
+from api.operations_auth import (
+    StaffContext,
+    ensure_staff_permission,
+    require_internal_staff,
+    require_staff,
+)
+from auth import AuthUser, require_auth
 from core.types import DateRange
 from domain.factor import RESULT_PRECISION
 from domain.matching import MatchRequest
@@ -594,10 +600,11 @@ class InvalidateCalculationPayload(BaseModel):
 async def invalidate_calculation(
     snapshot_id: str,
     payload: "InvalidateCalculationPayload",
-    current_user: AuthUser = Depends(require_org_member()),
+    current_user: AuthUser = Depends(require_auth()),
+    staff: "StaffContext" = Depends(require_staff),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """P16-REMEDIATION-05 / RD-4 — mark a calculation result not-for-reporting.
+    """P16-REMEDIATION-05/06 / RD-4 — mark a calculation result not-for-reporting.
 
     The minimum auditable lifecycle operation for an invalid accounting result.
     It records an explicit reportability state, a reason, the acting user and a
@@ -605,9 +612,28 @@ async def invalidate_calculation(
     accounting values are never rewritten, and a result that is already
     non-reportable is left untouched.
 
-    Tenant isolation: the snapshot's own ``organization_id`` is checked against
-    the caller's authorised organisations before any state change.
+    Authorization (P16-R6 reconciliation): this is an accounting-integrity
+    action, so it follows the SAME model the reviewer surfaces use
+    (``/api/v3/ops/items/{id}/validate``):
+
+    * ``require_auth()``     — an authenticated principal;
+    * ``require_staff``      — an ACTIVE staff profile (no staff profile → 403);
+    * ``require_internal_staff`` — CarbonTally internal staff only, so Processing
+      Entity staff can never reach a customer accounting result;
+    * ``ensure_staff_permission(..., "can_review")`` — the reviewer permission.
+
+    The previous ``require_org_member()`` gate was wrong for this surface: a pure
+    CarbonTally internal *staff* reviewer has no organisation membership
+    (``is_org_member`` is False), so every legitimate staff reviewer was refused
+    with 403 while every org member was refused by the staff gate. Tenant
+    isolation is still enforced below via ``ensure_org_access`` on the snapshot's
+    own ``organization_id`` (D20 semantics preserved: internal staff have
+    operational any-org access; members are bound to their own organisation and
+    cannot act here at all).
     """
+    require_internal_staff(staff)
+    ensure_staff_permission(staff, "can_review")
+
     row = await repos.logs.get_snapshot(snapshot_id)
     if row is None:
         raise HTTPException(status_code=404, detail="calculation not found")
@@ -630,7 +656,7 @@ async def invalidate_calculation(
             snapshot_id,
             status=payload.status,
             reason=payload.reason,
-            actor_user_id=current_user.user_id,
+            actor_user_id=staff.profile.user_id,
             superseded_by_snapshot_id=payload.superseded_by_snapshot_id,
         )
     except LookupError as exc:
