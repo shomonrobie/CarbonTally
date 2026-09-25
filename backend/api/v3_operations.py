@@ -558,8 +558,63 @@ async def _run_line_calculation(
             if payload.date is not None
             else (factor if factor is not None else customer_factor).reporting_year
         )
+        # ------------------------------------------------------------------
+        # P16-R7 (idempotency) — a repeat calculation of IDENTICAL inputs for
+        # the same source line must never create a SECOND reportable result.
+        #
+        # Contract (mirrors the automatic pipeline exactly — see
+        # services/automatic_processing.py::_calc_payload_digest): the per-line
+        # request id is DETERMINISTIC over (source item, line ordinal, payload
+        # digest). Identical data -> the same request id -> the immutable
+        # snapshot already persisted is REUSED: no duplicate accounting row, no
+        # double count. A human-corrected payload changes the digest -> a new
+        # request id -> a new snapshot is calculated rather than silently
+        # reusing the pre-correction one (G6-D).
+        #
+        # Previously this route used ``str(uuid.uuid4())`` and never checked,
+        # so every repeat inserted a fresh row and doubled the total.
+        # ------------------------------------------------------------------
+        from services.automatic_processing import _calc_payload_digest
+
+        # The digest is taken over the STABLE calculation inputs only: the
+        # extracted payload (which ``save_calculation`` never rewrites) plus the
+        # resolved factor/unit/scope/year. It deliberately does NOT digest
+        # ``mapped_data`` wholesale, because ``save_calculation`` writes the
+        # per-line results back into ``mapped_data.line_items`` as a side effect
+        # of calculating — digesting that would change the idempotency key every
+        # time the item was calculated, defeating the guard. A correction to the
+        # extraction or to the mapping decision still changes the key.
+        calc_inputs = {
+            "factor_id": factor_id,
+            "unit": quantity_unit,
+            "scope": scope,
+            "reporting_year": reporting_year,
+            "date": str(payload.date or ""),
+        }
+        match_request_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_DNS,
+                f"{item.id}::calc::{idx}::c1::"
+                f"{_calc_payload_digest(extracted, calc_inputs)}",
+            )
+        )
+        reused = await repos.logs.find_snapshot_by_request_id(match_request_id)
+        if reused is not None:
+            reused_co2e = Decimal(str(reused["co2e_kg"]))
+            total += reused_co2e
+            line_results.append(
+                {
+                    "activity_type": activity_type,
+                    "factor_id": factor_id,
+                    "unit": quantity_unit,
+                    "quantity": float(quantity),
+                    "emissions_kg": float(reused_co2e),
+                }
+            )
+            continue
+
         request = CalculationRequest(
-            match_request_id=str(uuid.uuid4()),
+            match_request_id=match_request_id,
             organization_id=batch.organization_id,
             quantity=quantity,
             quantity_unit=quantity_unit,
