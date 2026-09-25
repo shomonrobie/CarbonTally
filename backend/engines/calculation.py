@@ -308,6 +308,8 @@ class CalculationRequest:
         customer_factor: Optional[CustomerFactor] = None,
         performed_by: Optional[str] = None,
         accounting_dimensions: Optional[AccountingDimensions] = None,
+        source_item_id: Optional[str] = None,
+        source_line_item_id: Optional[str] = None,
     ) -> CalculationRequest:
         """Build a calculation request from the Phase 4 matching output.
 
@@ -365,6 +367,8 @@ class CalculationRequest:
             customer_factor=customer_factor,
             performed_by=performed_by,
             accounting_dimensions=accounting_dimensions,
+            source_item_id=source_item_id,
+            source_line_item_id=source_line_item_id,
         )
 
 
