@@ -1011,8 +1011,9 @@ are reported as PENDING there — not waived here.
 | 3 | **`9ae275b`** | `docs(p17-k)` — this implementation report | `docs/architecture/CT-PO-P17-K-GOVERNED-CAPABILITY-CATALOGUE-RUNTIME-DIMENSIONS-20260926.md` (new, 1093 lines) |
 | 4 | _this commit_ | `docs(p17-k)` — record the commit SHAs in the report | this file |
 
-Baseline: `28ff2c0`. All four commits are **local only** (`origin` is 4 commits
-behind; **nothing was pushed**).
+Baseline: `28ff2c0`. All four commits are **local only** — the branch is **192
+commits ahead** of `origin/p8-release-reconciled` (`93d5cdd`), and **nothing was
+pushed**.
 
 **Not staged, not committed, not modified:** `.gitignore` (pre-existing
 modification) and every pre-existing untracked file (`8`, `=`, `.costrict/`,
