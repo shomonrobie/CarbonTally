@@ -47,6 +47,7 @@ from api.v3_manual_extraction import router as v3_manual_extraction_router
 from api.v3_operations import router as v3_operations_router
 from api.v3_processing import router as v3_processing_router
 from api.v3_qc import router as v3_qc_router
+from api.v3_accounting_context import router as v3_accounting_context_router
 from api.v3_suppliers import router as v3_suppliers_router
 from api.v3_processing_workflow import router as v3_processing_workflow_router
 from api.v3_automatic_processing import router as v3_automatic_processing_router
@@ -231,6 +232,10 @@ router.include_router(v3_vehicles_router)
 router.include_router(v3_whitelabel_router)
 router.include_router(v3_reporting_router)
 router.include_router(v3_context_router)
+# P17-IMPLEMENT-02 — the accounting context surface (acting-for resolution,
+# persisted attribution, CAMS dimension validation). Registered after the
+# existing context resolver so /me/context behaviour is unchanged.
+router.include_router(v3_accounting_context_router)
 router.include_router(v3_health_router)
 # F-039-1 — authorised activity clarification (F-048-2 / 052).
 router.include_router(v3_activity_clarifications_router)
