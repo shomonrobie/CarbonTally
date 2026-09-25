@@ -332,7 +332,19 @@
     "Whether market-based reporting is delivered at P17-C with contractual instruments (REC/GO-style claims), or first with supplier-specific/residual-mix market factors only.",
     "Whether location-based geography resolution may default to national (country) level when no regional factor exists, or must always enter controlled review.",
     "Whether the residual-mix requirement is in scope for the first market-based delivery or deferred as FRAMEWORK_SPECIFIC."
-  ]
+  ],
+  "reconciliation_arch02": {
+    "reconciled_by": "P17-ARCH-02-20260925-RECONCILE-FREEZE",
+    "authority": "docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md",
+    "material_change_to_scope2_domain_semantics": false,
+    "notes": [
+      "The 33-field Scope 2 domain decisions are UNCHANGED. Method identity remains REQUIRED and must not be inferred from factor metadata.",
+      "POST-ARCH s27 and UIUX-01 s21-s24 add UI/UX acceptance obligations (energy activities, location-based view, market-based view, instrument management with evidence/validation/status, location-vs-market comparison, reportability state) and confirm purchased cooling is required 'where applicable' -> fail-closed review when no factor exists.",
+      "Capability/customer-contribution and acting-for acceptance criteria (AC-CUST-*, AC-ORGCTX-01, AC-S2METHOD-01, AC-S2INST-01) are recorded in the acceptance matrix.",
+      "Ownership remains the client organization; acting-for is additive context only.",
+      "No field in this matrix was added, removed or reclassified by ARCH-02."
+    ]
+  }
 }
 
 

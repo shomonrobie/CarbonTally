@@ -398,7 +398,19 @@
   },
   "structural_finding": "Every Scope 3 category is separated from its neighbour by a BOUNDARY or ORIGIN property, never by the factor family. Categories 4/9 (inbound vs outbound transport), 5/12 (operational waste vs sold-product end-of-life) and 8/13 (lessee vs lessor assets) share factor families outright. Therefore the canonical category model MUST carry an explicit boundary/origin dimension on the activity, and the factor library must never be treated as evidence of category coverage - which is exactly what the P14 reconciliation already concluded about the 4,090 Scope 3 factors.",
   "no_silent_estimation_rule": "Where a category is normally estimated (notably 7, 11, 12 and 14), the estimate is a persisted, first-class artefact carrying method, inputs, assumptions, factor, source, actor and timestamp. A missing activity quantity is never converted into an arbitrary quantity.",
-  "no_silent_reclassification_rule": "Category is never changed automatically on an existing result. A reclassification is a new result plus a supersession link through the existing P16 reportability lifecycle, with an actor, reason and timestamp."
+  "no_silent_reclassification_rule": "Category is never changed automatically on an existing result. A reclassification is a new result plus a supersession link through the existing P16 reportability lifecycle, with an actor, reason and timestamp.",
+  "reconciliation_arch02": {
+    "reconciled_by": "P17-ARCH-02-20260925-RECONCILE-FREEZE",
+    "authority": "docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md",
+    "material_change_to_category_semantics": false,
+    "notes": [
+      "All 15 categories, their boundaries, methodologies, factor requirements, evidence requirements and statuses are UNCHANGED. Category identity remains a first-class activity/result dimension; a factor family is never the category identity.",
+      "POST-ARCH s28 adds customer/consultant contribution per category with distributed contributors (procurement, finance, facilities, HR, travel, logistics, waste, suppliers); every contribution carries source-actor provenance and passes the same governed pipeline.",
+      "UIUX-01 s25-s27 add category navigation, category overview and category detail as phase deliverables, and require that missing data is never represented as zero emissions.",
+      "Deferred methodologies (categories 11, 14, 15) and NOT_IMPLEMENTED categories (2, 10) remain unchanged; no methodology was invented by ARCH-02.",
+      "The DC-04/DC-05/DC-06 boundary/origin controls remain the mechanism separating the shared-factor families 4/9, 5/12 and 8/13."
+    ]
+  }
 }
 
 

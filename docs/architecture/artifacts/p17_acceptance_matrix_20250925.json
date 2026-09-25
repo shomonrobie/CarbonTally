@@ -247,8 +247,58 @@
       "reporting/evidence ownership belongs to the client organization"
     ]
   },
-  "current_verdict": "P17_ARCHITECTURE_STATUS: PARTIAL - PREREQUISITE DECISIONS REQUIRED. The Scope 2 / Scope 3 architecture (dimensions, categories, schema delta, phases, gates) is complete, but post-contract PO decision records D1/D2 must be reconciled into the contract before affected implementation may begin. No phase has been implemented; every P17 gate above is UNSTARTED."
+  "reconciliation_arch02": {
+    "reconciled_by": "P17-ARCH-02-20260925-RECONCILE-FREEZE",
+    "authority": "docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md",
+    "date": "2025-09-25",
+    "new_phase_gate": {
+      "phase": "P17-0",
+      "title": "Discovery, existing-vs-missing mapping and capability model reconciliation",
+      "gate": "DISCOVERY_AND_MAPPING",
+      "blocks": "P17-A and every later phase",
+      "must_pass": [
+        "UIUX-01 s55 existing-vs-missing matrix completed from repository evidence for all 18 listed UX/feature rows",
+        "UIUX-01 s56 UX acceptance matrix completed (Staff / Direct Org / Consultant Own / Consultant Client / Client User / Disabled State / Audit / Backend Auth / UI Complete)",
+        "existing organization model, roles, authorization, RLS, consultant functionality, customer functionality, reportability lifecycle, audit model, evidence model, supplier model, snapshots, logs and reporting model classified EXISTING/PARTIAL/DISCONNECTED/DUPLICATE/MISSING/DEFERRED/BLOCKED",
+        "the consultant-client relationship is confirmed as the EXISTING consultant_clients table (no new relationship entity invented)",
+        "the customer capability/enablement representation is decided (extend the existing scope-based governance primitive vs a new policy table) with a written rationale",
+        "no UI or backend code changed in this phase (discovery only)"
+      ]
+    },
+    "global_acceptance_amendments": [
+      "A capability governed by UIUX-01 may NOT be accepted on backend evidence alone: 'backend + API without the required user workflow is not accepted as complete' (UIUX-01 s58).",
+      "A capability flag without its user experience is not a completed feature (UIUX-01 s59).",
+      "Every delivered phase must report the UIUX-01 s74 verdict (UIUX_PASS / UIUX_PARTIAL / UIUX_FAIL / UIUX_BLOCKED) in addition to PASS/PARTIAL/FAIL/BLOCKED/DEFERRED.",
+      "Organization context and acting-for context must be visible AND independently enforced server-side (UIUX-01 s5, s6, s35, s63).",
+      "Disabled-capability and permission-denied states must exist and be truthful (UIUX-01 s43, s44, s72).",
+      "Client-organization ownership of data, evidence, calculations and reports is an acceptance criterion (POST-ARCH s24, s25; UIUX-01 s64, s65).",
+      "Reporting may only use results whose reportability state permits it (UIUX-01 s38, s72)."
+    ],
+    "new_acceptance_criteria": [
+      {"id": "AC-CAMS-01", "criterion": "One shared accounting core serves staff, direct customers, consultants and consultant clients; no parallel engine, factor system, reportability system, audit system or evidence system exists (POST-ARCH s37)", "type": "architecture + code review"},
+      {"id": "AC-ORGCTX-01", "criterion": "A consultant operating for a client is recorded and displayed as acting-for, and the client organization remains the data/report owner", "type": "E2E + provenance read-back"},
+      {"id": "AC-CUST-01", "criterion": "Customer-contributed activity data traverses the governed lifecycle and does not become reportable automatically", "type": "E2E (negative: submission cannot self-approve)"},
+      {"id": "AC-CUST-02", "criterion": "Customer capability enablement is per organization, CarbonTally-controlled and enforced server-side (a disabled capability denies at the API, not only in the UI)", "type": "positive + negative route/RLS"},
+      {"id": "AC-CUST-03", "criterion": "Customer permission never grants methodology/factor/governance mutation, validation bypass, review bypass, reportability override, history mutation or cross-organization access (POST-ARCH s8)", "type": "negative security matrix"},
+      {"id": "AC-DELEG-01", "criterion": "Consultant delegated access is per client and revocable; revocation takes effect server-side; Client A access never implies Client B access (POST-ARCH s18, s36)", "type": "cross-client negative matrix"},
+      {"id": "AC-LIFECYCLE-01", "criterion": "Every entry path (staff, customer, consultant) exercises the same governed lifecycle with rejection/correction/invalidation/supersession and preserved historical results", "type": "E2E + audit read-back"},
+      {"id": "AC-S2METHOD-01", "criterion": "Scope 2 method identity is persisted and reported as an explicit dimension; a market-based result can never be displayed or aggregated as location-based (and vice versa)", "type": "E2E + negative labelling test"},
+      {"id": "AC-S2INST-01", "criterion": "Instrument exists is distinguished from instrument valid-for-claim; an invalid/unverified instrument cannot produce a market-based result", "type": "negative instrument test"},
+      {"id": "AC-S3CAT-01", "criterion": "All 15 categories are individually addressable, navigable and reportable; no factor family is treated as category identity; missing data is never shown as zero emissions (UIUX-01 s26)", "type": "E2E per category + UI check"},
+      {"id": "AC-UIUX-01", "criterion": "Existing UI components are reused where appropriate; no duplicate navigation or parallel UX system is created (UIUX-01 s4, s57, s60, s61)", "type": "UI review + evidence"},
+      {"id": "AC-AUDIT-01", "criterion": "Actor, actor organization, acting-for organization, data owner, object owner, action, timestamp, reason and downstream accounting effect are recoverable for every material accounting change", "type": "audit/provenance read-back"}
+    ],
+    "unchanged_from_arch01": [
+      "all ten phase gates P17-A..P17-J and their must_pass lists (amended in scope, not removed)",
+      "the 12 invariant tests T-INV-01..T-INV-12",
+      "the 11 double-counting controls DC-01..DC-11",
+      "the END-TO-END VERIFIED acceptance rule",
+      "the P16 reportability lifecycle reuse requirement"
+    ]
+  },
+  "current_verdict": "P17_ARCHITECTURE_STATUS: PARTIAL - PREREQUISITE DECISIONS REQUIRED, NOW ADDRESSED BY ARCH-02. The post-contract PO records (UIUX-01, POST-ARCH, the PO customer-owned emissions data decision) have been reconciled into the contract, phase plan, acceptance matrix and schema delta by P17-ARCH-02-20260925-RECONCILE-FREEZE. The reconciled baseline adds the P17-0 discovery gate plus capability, lifecycle, acting-for and UI/UX acceptance criteria. No phase has been implemented; every gate remains UNSTARTED; implementation is NOT authorised pending independent verification of the reconciled architecture."
 }
+
 
 
 

@@ -1,0 +1,106 @@
+{
+  "artifact": "p17_architecture_reconciliation",
+  "reconciled_by": "P17-ARCH-02-20260925-RECONCILE-FREEZE",
+  "date": "2025-09-25",
+  "repository": "/home/shomonrobie/ct_93d5cdd",
+  "branch": "p8-release-reconciled",
+  "starting_sha": "98a89d0c1ab0e850d4ca44e348a66da0515dc691",
+  "authority_documents": {
+    "p17_arch_01": "docs/architecture/CT-PO-P17-ARCH-01-SCOPE2-SCOPE3-FULL-ACCOUNTING-CONTRACT-20250925.md",
+    "uiux_standard": "docs/architecture/CT-PO-P17-UIUX-01-UNIFIED-CARBON-ACCOUNTING-UX-STANDARD.md",
+    "post_arch_decisions": "docs/architecture/CT-PO-P17-POST-ARCH-DECISIONS-20260925.md",
+    "po_customer_owned_data": "docs/architecture/CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md",
+    "p16_final_verification": "docs/architecture/CT-PO-P16-FINAL-VERIFICATION-20250925.md"
+  },
+  "named_path_discrepancies": [
+    {"task_name": "CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md (root level)", "actual_path": "docs/architecture/CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md", "resolution": "used the actual committed path; no content invented"},
+    {"task_name": "docs/architecture/CT-PO-P17-GIT-PRESERVE-02-20250925.md", "actual_path": "docs/architecture/CT-PO-P17-GIT-PRESERVE-02-20260925.md", "resolution": "date in the task name was wrong; the actual committed file was inspected"},
+    {"task_name": "docs/architecture/CT-PO-P17-GIT-PRESERVE-03-20250925.md", "actual_path": "docs/architecture/CT-PO-P17-GIT-PRESERVE-03-20260925.md", "resolution": "date in the task name was wrong; the actual committed file was inspected"},
+    {"task_name": "P17-ARCH-01 checkpoint string as given in the task header", "actual_path": "n/a", "resolution": "the task-supplied string is 39 hex characters and is not a valid object name; the real commit is d24a5671d536c439414f85bb739181669382c6c (40 chars), confirmed by short SHA, message, parent 9c96cbf and artifact tree"}
+  ],
+  "implementation_performed": false,
+  "production_contacted": false,
+  "migrations_created": false,
+  "reconciliation_table": [
+    {"area": "Unified CAMS", "arch_01": "AD-P17-01 mandated one shared accounting core; AD-P17-13 named the unified CAMS", "po_amendment": "POST-ARCH s2/s37: one CAMS; no separate staff/customer/consultant/client engines, factor systems, reportability systems, audit systems or evidence systems. UIUX-01 s2 identical", "reconciled_decision": "CONFIRMED, now normative and testable: one engine, one factor system, one reportability system, one audit system, one evidence system; differences only by actor/organization/role/capability/delegation", "implementation_impact": "no new engine; P17-0 must inventory existing systems for duplication", "acceptance_impact": "AC-CAMS-01 added"},
+    {"area": "Customer data ownership/contribution", "arch_01": "not modelled; ingestion assumed CarbonTally/staff-operated", "po_amendment": "POST-ARCH s5/s6 + PO-CAMS s2/s4: customers own and contribute their organization's emissions data when enabled; treated as a first-class capability; the pipeline stays governed", "reconciled_decision": "ADOPTED - a customer/consultant contributor entry path feeds the SAME governed pipeline; no bypass of validation/factor/review/reportability", "implementation_impact": "contributor entry surfaces + source-actor provenance in phases B/C/E/F/G; ownership stays organization_id", "acceptance_impact": "AC-CUST-01, AC-CUST-03"},
+    {"area": "Organization capabilities", "arch_01": "not modelled", "po_amendment": "POST-ARCH s7 + UIUX-01 s15: per-organization CarbonTally-controlled capability set (customer_accounting_enabled, per-scope entry, evidence upload, supplier data, editing, review, staff review/approval required, consultant features)", "reconciled_decision": "ADOPTED as an organization-level capability plane; representation deferred to P17-0 with a recommendation to extend the existing ratified three-scope governance primitive rather than duplicate it", "implementation_impact": "P17-0 decision, then a capability dimension + admin surface + server-side enforcement; no global flag", "acceptance_impact": "AC-CUST-02; disabled-capability state is an acceptance requirement (UIUX-01 s43)"},
+    {"area": "Customer authority", "arch_01": "not modelled", "po_amendment": "POST-ARCH s8 + PO-CAMS s9: permission to enter data never grants methodology/factor/governance mutation, validation bypass, review bypass, reportability override, history mutation, snapshot manipulation or cross-org access", "reconciled_decision": "ADOPTED as an explicit prohibition set enforced server-side; DATA CONTRIBUTION and ACCOUNTING GOVERNANCE are separated concepts", "implementation_impact": "authorization boundaries per phase; negative tests mandatory", "acceptance_impact": "AC-CUST-03 negative security matrix"},
+    {"area": "Lifecycle / reportability", "arch_01": "reused the P16 triplet (reportable | not_for_reporting | superseded) for accounting results", "po_amendment": "POST-ARCH s9 + UIUX-01 s42: DRAFT -> SUBMITTED -> VALIDATED -> CALCULATED -> REVIEW -> APPROVED -> REPORTABLE with REJECTED/CORRECTION REQUIRED/INVALIDATED/SUPERSEDED; customer data is not automatically reportable; the UI must not invent a conflicting lifecycle", "reconciled_decision": "the PO lifecycle is MAPPED onto existing state machines (customer_documents.status, ITEM_STATUS_FLOW, report_versions, P16 reportability); additive states only where a real gap exists; approval is a distinct capability from view/edit/submit", "implementation_impact": "P17-H extended; P17-0 must produce the mapping table", "acceptance_impact": "AC-LIFECYCLE-01, AC-CUST-01"},
+    {"area": "Consultant/client relationship", "arch_01": "referenced the consultant-client relationship generically; the schema delta proposed no entity", "po_amendment": "POST-ARCH s13: the client must remain an independent organization and the relationship is explicit", "reconciled_decision": "RESOLVED BY DISCOVERY - public.consultant_clients ALREADY implements it (consultant_id, organization_id, status, relationship_origin, engagement requested/decided, suspended, ended, lifecycle_updated_at). No new relationship entity is created.", "implementation_impact": "REUSE + extend for delegated capabilities; P17-0 confirms", "acceptance_impact": "AC-DELEG-01; client-independence criteria"},
+    {"area": "Acting-for context", "arch_01": "not modelled", "po_amendment": "POST-ARCH s14/s16/s22/s23 + UIUX-01 s6/s64: a consultant operates on behalf of a client; acting-for context must be recorded and unambiguous; source actor and acting context must be auditable", "reconciled_decision": "ADOPTED - acting-for is a persisted context dimension, not merely a UI indicator; ownership remains with the client organization", "implementation_impact": "NEW additive columns on calculation_snapshots, emissions_logs, evidence_line_items and the audit writer; authorization stays server-side", "acceptance_impact": "AC-ORGCTX-01, AC-AUDIT-01"},
+    {"area": "Report/evidence ownership", "arch_01": "evidence and reporting implicitly organization-scoped", "po_amendment": "POST-ARCH s24/s25 + UIUX-01 s64/s65: reports belong to the reporting organization; evidence belongs to the organization whose accounting it supports; a consultant may prepare but ownership does not transfer", "reconciled_decision": "CONFIRMED as an explicit invariant; organization_id is the owner; 'operator / acting for / prepared by' are separate context fields", "implementation_impact": "no ownership column change; contextual fields added (see acting-for)", "acceptance_impact": "AC-ORGCTX-01 + reporting-phase criteria"},
+    {"area": "UI/UX", "arch_01": "UI/UX largely out of scope for P17 phases; Step 3 UI implied later", "po_amendment": "UIUX-01 s58/s59/s74/s76 + POST-ARCH s41/s50 + PO-CAMS s6/s23: complete UI/UX is mandatory for applicable features; backend-only is not completion; a capability flag without its UX is not a feature", "reconciled_decision": "AMENDED - UI/UX is in-phase deliverable scope for every affected phase; no backend-only PASS; the UIUX-01 s74 verdict is required", "implementation_impact": "phase scope and effort significantly increased; P17-0 produces the s55/s56 matrices", "acceptance_impact": "A7 + AC-UIUX-01; every delivery gate gains UI completion"},
+    {"area": "Scope 2 method identity", "arch_01": "method dimension required on every Scope 2 result (vocabulary LOCATION_BASED/MARKET_BASED reused from the disclosure contract)", "po_amendment": "POST-ARCH s27 + UIUX-01 s21-s24: both methods, instrument management, comparison views and unmistakable method distinction", "reconciled_decision": "UNCHANGED and reinforced - method identity must not be inferred from factor metadata; the UI must present both methods distinctly", "implementation_impact": "P17-A schema + P17-B/P17-C paths + UI", "acceptance_impact": "AC-S2METHOD-01"},
+    {"area": "Scope 2 contractual instruments", "arch_01": "instrument exists != valid for claim; validation/allocation/over-allocation/tenant ownership defined; REGO/REC/residual mix deferred", "po_amendment": "POST-ARCH s27 + UIUX-01 s23: instrument evidence, validation status and coverage must be visible and governed; not a free-text field", "reconciled_decision": "UNCHANGED; added a UI surface (instruments/evidence/validation/status) and a pending-validation state", "implementation_impact": "P17-C architecture unchanged; UI added", "acceptance_impact": "AC-S2INST-01"},
+    {"area": "Scope 3 category identity", "arch_01": "category is a required property of the activity/result, never of the factor; all 15 categories; boundary/origin controls DC-04/05/06", "po_amendment": "POST-ARCH s28 + UIUX-01 s25-s27: full 15-category model, category navigation, per-category workflows, and no zero-emission substitution for missing data", "reconciled_decision": "UNCHANGED and reinforced; all 15 categories must be individually addressable in UI and reporting; deferred methodologies remain deferred", "implementation_impact": "P17-D/E/F/G architecture unchanged; per-category UI added", "acceptance_impact": "AC-S3CAT-01"},
+    {"area": "Factor governance", "arch_01": "no silent factor-year fallback on any path; four production call sites identified as a latent remediation requirement", "po_amendment": "no direct PO amendment (POST-ARCH s26 treats factor selection governance as part of Scope 1/2 management)", "reconciled_decision": "UNCHANGED; the four call-site remediation is classified as an implementation remediation dependency for P17-A", "implementation_impact": "P17-A must close it; no code change in ARCH-02", "acceptance_impact": "T-INV-10 unchanged"},
+    {"area": "Security / RLS", "arch_01": "fail closed; RLS + API authorization; the service role must not bypass tenant isolation; ALLOW and DENY tests", "po_amendment": "POST-ARCH s35/s36 + UIUX-01 s44/s63: authorization = actor + organization context + role + capability + delegated relationship; frontend hiding is not authorization; Client A access must not imply Client B", "reconciled_decision": "CONFIRMED and extended with a cross-client negative matrix; the consultant-client relationship is the authorization anchor", "implementation_impact": "authorization/routing work in phases B/C, RLS unchanged unless P17-0 finds a gap", "acceptance_impact": "AC-DELEG-01, AC-CUST-03; DENY tests mandatory"},
+    {"area": "Reporting", "arch_01": "reporting must distinguish scope, method, category and reportability; accounting truth kept separate from framework disclosure", "po_amendment": "POST-ARCH s24 + UIUX-01 s38/s39: reporting workspace, reportable-only results, reporting-period and organization context; framework content stays later work", "reconciled_decision": "UNCHANGED; a reportable-only reporting workspace is a phase deliverable; Insight redesign remains deferred", "implementation_impact": "P17-I architecture unchanged; UI added", "acceptance_impact": "reporting-phase criteria + UIUX verdict"},
+    {"area": "Deferred items", "arch_01": "PCAF/investment beyond attribution_equity_share, residual mix, REGO/REC rules, grid-region factors, spend-based default, categories 2/10/11/14/15 methodologies, sold-product entity, framework content, Insight redesign, Step 3, factor-library expansion, production", "po_amendment": "POST-ARCH s28/s50 + UIUX-01 s76: no production; deferred work must not be silently promoted", "reconciled_decision": "DEFERRED ITEMS PRESERVED UNCHANGED - none promoted by this reconciliation", "implementation_impact": "none", "acceptance_impact": "deferred status must be carried into reports"}
+  ],
+  "existing_first_discovery": {
+    "method": "read-only inspection of the live Demo Lab schema (carbontally_demo_local), migrations, backend modules and the frontend tree",
+    "classification_vocabulary": ["EXISTS — VERIFIED", "PARTIAL — EXTEND", "EXISTS BUT DISCONNECTED — WIRE", "DUPLICATE — CONSOLIDATE", "MISSING — NEW ARCHITECTURAL REQUIREMENT", "DEFERRED", "BLOCKED"],
+    "findings": [
+      {"dependency": "organization model", "classification": "EXISTS — VERIFIED", "evidence": "organizations, organization_members (role, is_active; 8 rows), organization_metadata (reporting_standard, fiscal year, sector, custom_metrics)"},
+      {"dependency": "consultant-client relationship", "classification": "EXISTS — VERIFIED", "evidence": "consultant_clients (2 rows) with full lifecycle; used by data/consultants.py, api/consultant_auth.py, api/v3_consultants.py, api/dependencies.py, data/reporting.py, api/insight_authz.py"},
+      {"dependency": "consultant organization identity", "classification": "EXISTS — VERIFIED", "evidence": "consultant_profiles (1), consultant_firm_members (2)"},
+      {"dependency": "roles", "classification": "PARTIAL — EXTEND", "evidence": "roles table exists but holds 0 rows; staff_roles/staff_profiles are the effective staff authority; organization_members.role carries the customer role"},
+      {"dependency": "authorization / permission vocabulary", "classification": "EXISTS — VERIFIED", "evidence": "require_auth, require_org_member, require_staff, require_internal_staff, ensure_org_access, ensure_staff_permission(can_review/can_process), _entity_workspace_guard, consultant_auth.py"},
+      {"dependency": "RLS", "classification": "EXISTS — VERIFIED", "evidence": "RLS enabled on the ratified table set (P8 RLS-4B: 50 tables, verified idempotent) with is_org_member(uuid) helper policies"},
+      {"dependency": "capability / enablement plane", "classification": "PARTIAL — EXTEND", "evidence": "manual_processing_grants (scope_type IN organization|consultant_firm|consultant_client, scope_id, enabled, reason, set_by; 0 rows) — a ratified three-scope governance primitive; comment: 'no duplicate tenancy concept is invented'"},
+      {"dependency": "acting-for / actor-organization context", "classification": "MISSING — NEW ARCHITECTURAL REQUIREMENT", "evidence": "no acting_for/on_behalf match in backend/** or frontend/src/**; audit_trail has performed_by + metadata; processing_audit_trail has performed_by_staff/performed_by_type (partial actor only)"},
+      {"dependency": "governed submission lifecycle", "classification": "PARTIAL — EXTEND", "evidence": "customer_documents.status, manual_extraction_items/ITEM_STATUS_FLOW (mapped->validated->calculated plus validating/calculating), report_versions lifecycle; no explicit DRAFT/SUBMITTED submission provenance or customer self-approval guard"},
+      {"dependency": "reportability lifecycle", "classification": "EXISTS — VERIFIED", "evidence": "P16-RD-4 reportable | not_for_reporting | superseded on calculation_snapshots and emissions_logs with the invalidation-described CHECK; 34 rows classified"},
+      {"dependency": "calculation snapshots + emissions logs", "classification": "EXISTS — VERIFIED", "evidence": "calculation_snapshots (34) and emissions_logs (34); provenance, content_hash, deterministic request id, uq_calc_snapshots_request_id"},
+      {"dependency": "evidence model", "classification": "EXISTS — VERIFIED", "evidence": "evidence_line_items (67 rows), disclosure_value_evidence"},
+      {"dependency": "supplier model", "classification": "EXISTS — VERIFIED", "evidence": "suppliers (1 row) + engines/supplier_resolution.py (org-scoped, fail-closed); emissions_logs.supplier_id populated on 25 rows"},
+      {"dependency": "audit model", "classification": "PARTIAL — EXTEND", "evidence": "audit_trail (action_type, table_name, record_id, performed_by, old_data/new_data/changes, metadata), processing_audit_trail, review_audit_trail — actor present, acting-for absent"},
+      {"dependency": "reporting / disclosure model", "classification": "EXISTS BUT DISCONNECTED — WIRE", "evidence": "disclosure_* tables and report_versions/report_version_artifacts exist and the projection filters reportability, but disclosure_values = 0 and report_version_artifacts = 0"},
+      {"dependency": "frontend UI", "classification": "PARTIAL — EXTEND", "evidence": "frontend/src is a 48-entry flat legacy JSX tree plus frontend/src/v3 and components/; a full inventory is a P17-0 deliverable per UIUX-01 s54/s55"},
+      {"dependency": "factor governance", "classification": "PARTIAL — EXTEND", "evidence": "engines/factor_selection_policy.py + matching stages enforce exact-year on the natural-key path; four call sites present unlabelled cross-year candidates"},
+      {"dependency": "Scope 2 accounting", "classification": "MISSING — NEW ARCHITECTURAL REQUIREMENT", "evidence": "0 Scope 2 snapshots/logs; method dimension absent; no instrument entity"},
+      {"dependency": "Scope 3 category identity", "classification": "MISSING — NEW ARCHITECTURAL REQUIREMENT", "evidence": "no scope3_category column or code anywhere; 25 Scope 3 rows persisted with no category"},
+      {"dependency": "insight (read side)", "classification": "DEFERRED", "evidence": "domain/insight_query.py reads emissions_logs; no Insight redesign authorised by this reconciliation"}
+    ]
+  },
+  "duplicate_risks_flagged": [
+    "A new consultant-client relationship table would duplicate consultant_clients (PROHIBITED).",
+    "A second capability/policy system would duplicate the ratified three-scope governance primitive (PROHIBITED unless P17-0 justifies it).",
+    "A second lifecycle table would duplicate the existing item/document/reportability state machines (PROHIBITED by UIUX-01 s42).",
+    "A customer/consultant/client/staff calculation engine would duplicate the single accounting core (PROHIBITED by POST-ARCH s37).",
+    "A second reportability model would duplicate the P16 lifecycle (PROHIBITED)."
+  ],
+  "deferred_preserved": [
+    "PCAF / investment methodology beyond attribution_equity_share",
+    "residual mix and REGO/REC framework-specific rules",
+    "grid-region-level location factors",
+    "spend-based estimation as a default",
+    "categories 2, 10, 11, 14, 15 methodologies",
+    "sold-product entity",
+    "framework/disclosure content",
+    "CarbonTally Insight redesign",
+    "Separation of UI as a later workstream (now folded into the phases instead)",
+    "factor-library expansion",
+    "production deployment"
+  ],
+  "implementation_dependencies": [
+    "P17-0 discovery + existing-vs-missing mapping (blocks all implementation)",
+    "capability representation decision (P17-0)",
+    "acting-for / actor-organization schema columns (P17-A or P17-H, per P17-0)",
+    "lifecycle mapping table (P17-0 -> P17-H)",
+    "the four factor-candidate call-site remediation (P17-A)",
+    "UI/UX delivery inside each affected phase (P17-B..P17-I)"
+  ],
+  "reconciled_status": "P17_ARCH_RECONCILED_READY_FOR_VERIFICATION",
+  "implementation_authorised": false,
+  "independent_verification_required": true,
+  "independent_verification_note": "Cline reconciliation is not independent acceptance. This artifact must be independently verified before any P17 implementation is authorised.",
+  "production_authorised": false,
+  "arch_01_preserved": true,
+  "arch_01_note": "P17-ARCH-01 and its artifacts remain byte-identical and historically identifiable; ARCH-02 supersedes the unreconciled implementation baseline only."
+}
+
+
+

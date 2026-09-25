@@ -267,7 +267,65 @@ contract and this plan, and produces the existing-vs-missing classification. **P
 reconciliation is complete**, because the reconciliation may add columns (source actor / acting context) to the same
 P17-A migration, and one amendment is cheaper and safer than two migrations.
 
-**Status of this prerequisite:** **NOT DONE** — registered by this task, not performed by it.
+**Status of this prerequisite:** **DONE** — completed by `P17-ARCH-02-20260925-RECONCILE-FREEZE`
+(see `docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md` and §16 below). The reconciliation is no longer
+outstanding; the implementable scope, UI/UX obligations and gates have been reconciled into this plan.
+
+---
+
+## 16. ARCH-02 reconciliation — amendments to this plan
+
+**Authority:** `CT-PO-P17-ARCH-02-RECONCILIATION-20250925` supersedes §15 as the reconciled prerequisite record.
+Sources incorporated: `CT-PO-P17-UIUX-01-UNIFIED-CARBON-ACCOUNTING-UX-STANDARD` (UIUX-01),
+`CT-PO-P17-POST-ARCH-DECISIONS-20260925` (POST-ARCH), and the PO decision document on customer-owned emissions data
+(`docs/architecture/CarbonTally_PO_Carbon_Accounting_Management_Decision_2026-09-25.md`).
+
+### 16.1 What changed in the phase model
+
+| # | Amendment | Phases affected |
+|---|---|---|
+| A1 | **UI/UX is in-phase scope, not deferred.** Every phase that delivers an accounting capability must deliver its UI/UX in the same phase (UIUX-01 §58, §59, §74, §76). | B, C, D, E, F, G, H, I |
+| A2 | **A new prerequisite phase P17-0 (Discovery & Mapping) precedes P17-A.** It produces the UIUX-01 §55 existing-vs-missing matrix and the §56 UX acceptance matrix, and must complete before P17-A is authorised. | new P17-0 |
+| A3 | **Customer contribution + capability enablement are part of the accounting capability**, not a separate product. Capability-gated states (disabled/enabled/permission-denied) are acceptance requirements. | B, C, E, F, G, H, I |
+| A4 | **The governed submission lifecycle is in scope for every entry path**, not only customer paths. | B, C, E, F, G, H |
+| A5 | **Acting-for / operator-vs-owner context is a required, persisted dimension** for delegation-relevant operations, and is an acceptance criterion. | B, C, E, F, G, H |
+| A6 | **Consultant-delegated (client) operation is an explicit operating context** of every accounting phase; client-org ownership and isolation are acceptance criteria. | B, C, E, F, G, H, I |
+| A7 | **A phase may not pass on backend evidence alone** where UIUX-01 requires UI/UX (UIUX-01 §58: "backend + API without the required user workflow is not accepted"). | all delivery phases |
+| A8 | **Verdict vocabulary** for phase reports adds the UIUX-01 §74 verdict (`UIUX_PASS` / `UIUX_PARTIAL` / `UIUX_FAIL` / `UIUX_BLOCKED`) alongside PASS/PARTIAL/FAIL/BLOCKED/DEFERRED. | all phases |
+| A9 | **No new consultant-client relationship or organisation model** is introduced: `consultant_clients` already exists and is the ratified relationship (ARCH-02 discovery). P17-0 must confirm and reuse it. | P17-0, B, C |
+
+### 16.2 Reconciled phase order
+
+```
+P17-0  Discovery, existing-vs-missing mapping, capability model reconciliation   (NEW, blocks P17-A)
+  |
+P17-A  Dimensions + factor governance  (unchanged scope, + actor/acting-for columns if P17-0 confirms)
+  |
+  +--> P17-B (Scope 2 location-based, with UI/UX)  --> P17-C (market-based + instruments, with UI/UX)
+  |
+  +--> P17-D (Scope 3 category model) --> P17-E / P17-F / P17-G (with UI/UX per phase)
+                                                 |
+                            P17-H (lifecycle, capabilities, integrity, provenance, acting-for)
+                                                 |
+                            P17-I (reporting/disclosure, with UI/UX)
+                                                 |
+                            P17-J (independent acceptance)
+```
+
+### 16.3 Unchanged elements
+
+* The five proposed migration slots (`20261010000000` … `20261014000000`) remain **proposals only**; no migration is
+  created by ARCH-02 and none may be created before P17-A is separately authorised.
+* P17-A's schema scope, the dual-method Scope 2 model, the 15-category Scope 3 model, the DC-01…DC-11 controls, the
+  single idempotency mechanism and the P16 reportability lifecycle all remain as specified.
+* Production remains **not authorised**; Demo Lab / disposable clone only (invariant F-046-1).
+
+### 16.4 Implementation prohibition
+
+No P17 implementation is authorised by this plan revision. P17-A remains gated behind separately authorised
+implementation, which may only follow independent verification of the ARCH-02 baseline (P17-J-style independence, not
+Cline self-verification).
+
 
 
 

@@ -247,5 +247,106 @@ No application path may use the service role to bypass tenant isolation.
 6. Each unique index holds under a duplicate attempt.
 7. No production contact; the migration is applied only to the Demo Lab or a disposable clone, never to a data-bearing environment whose loss matters (invariant F-046-1).
 
+---
+
+## 10. ARCH-02 reconciliation — schema delta amendments
+
+**Authority:** `docs/architecture/CT-PO-P17-ARCH-02-RECONCILIATION-20250925.md`. These amendments incorporate the PO
+decisions on customer-owned data, organization capabilities, the governed lifecycle, acting-for context and the
+customer/consultant operating model. **No migration is created by ARCH-02.**
+
+### 10.1 EXISTING — no new entity (removes a previously assumed requirement)
+
+| Requirement | Disposition | Evidence |
+|---|---|---|
+| consultant ↔ client relationship | **EXISTS — REUSE** (`public.consultant_clients`) | Columns: `id, consultant_id, organization_id, status, relationship_origin, engagement_requested_at, engagement_decided_by, engagement_decided_at, suspended_at, ended_at, ended_by, lifecycle_updated_at, billing_plan, billing_cycle, notes, tags, created_by`. 2 live rows. Used by `data/consultants.py`, `api/consultant_auth.py`, `api/v3_consultants.py`, `api/dependencies.py`, `data/reporting.py`, `api/insight_authz.py`. |
+| consultant organization identity | **EXISTS — REUSE** (`consultant_profiles`, `consultant_firm_members`) | 1 profile, 2 firm members. |
+| organization membership + role | **EXISTS — REUSE** (`organization_members`: `user_id, role, is_active`) | 8 rows. |
+| global/org defaults and retention | **EXISTS — REUSE** (`system_settings`, `organization_metadata`) | Do not duplicate settings storage. |
+
+**Conclusion:** no `consultant_client_relationship` table may be created — it already exists as `consultant_clients`.
+The PO's conceptual model maps onto it, with an extension for delegated capabilities (§10.2).
+
+### 10.2 Capability / organization-policy representation (P17-0 decision; recommendation recorded)
+
+An existing **scope-based governance primitive** was discovered:
+
+```
+public.manual_processing_grants
+  scope_type text CHECK (scope_type IN ('organization','consultant_firm','consultant_client'))
+  scope_id   uuid   -- organizations.id | consultant_profiles.id | consultant_clients.id
+  enabled    boolean NOT NULL
+  reason     text
+  set_by     uuid NOT NULL        set_at, updated_at
+  UNIQUE (scope_type, scope_id)
+```
+
+with the explicit comment: *"The ratified scope vocabulary: no duplicate tenancy concept is invented."*
+
+**Architectural recommendation (not implemented):** represent the PO capability model by adding a **capability-key
+dimension** to this ratified three-scope pattern — a sibling table
+`organization_accounting_capabilities(scope_type, scope_id, capability_key, enabled, reason, set_by, set_at)` reusing
+the same scope vocabulary and the same admin-set + reason semantics — **or**, if P17-0 concludes that
+`manual_processing_grants` is the correct single home, extend that table rather than creating a second policy system.
+Either way the decision must be taken in P17-0 and recorded before P17-A.
+
+**Prohibited:** a global boolean feature flag; a duplicate policy system; new tenancy vocabulary.
+
+**Capability keys to reconcile at P17-0:** `customer_accounting_enabled`, `scope1_customer_entry`,
+`scope2_customer_entry`, `scope3_customer_entry`, `customer_edit_submission`, `customer_upload_evidence`,
+`customer_supplier_data`, `customer_review`, `customer_approval`, `staff_review_required`, `staff_approval_required`,
+plus the consultant delegated-access keys of UIUX-01 §16 (per-scope data entry, evidence upload, supplier data,
+calculations, review, reporting preparation, final reporting approval).
+
+### 10.3 Acting-for / operator-vs-owner context (NEW — implementation dependency)
+
+A `grep` for `acting_for` / `on_behalf` across `backend/**` and `frontend/src/**` returns **no application matches**
+(only third-party library code). `audit_trail` carries `performed_by` + `metadata`, and `processing_audit_trail`
+carries `performed_by`, `performed_by_staff`, `performed_by_type` — partial actor context exists, but there is **no
+acting-for organization dimension**.
+
+Recommended additive columns (nullable; historical rows untouched):
+
+| Table | Column | Purpose |
+|---|---|---|
+| `calculation_snapshots` | `performed_by_organization_id` (FK organizations, nullable) | the organization the operator represented |
+| `calculation_snapshots` | `acting_for_organization_id` (FK organizations, nullable) | the client organization being operated for |
+| `emissions_logs` | the same two | consumption-boundary parity |
+| audit writer / `audit_trail` | `acting_for_organization_id`, `actor_organization_id` | audit context |
+| `evidence_line_items` | `contributed_by_organization_id` (nullable) | who contributed the evidence |
+
+Ownership must remain `organization_id` (the client organization). The acting-for columns are **context**, never
+ownership.
+
+### 10.4 Governed lifecycle (EXTEND — do not create a parallel state machine)
+
+UIUX-01 §42 states: *"The exact state machine must follow the accounting contract and existing P16 lifecycle. The UI
+must not invent a conflicting lifecycle."* The repository already holds: `customer_documents.status`
+(`uploaded|pending|processing|processed|manual_review|verified|approved|rejected|failed`), the
+`manual_extraction_items` status flow (`ITEM_STATUS_FLOW`: `mapped → validated → calculated`, plus the automatic
+pipeline's `validating`/`calculating`), the `report_versions` lifecycle, and the P16 result reportability triplet
+(`reportable | not_for_reporting | superseded`).
+
+**Architectural decision:** the PO lifecycle (`DRAFT → SUBMITTED → VALIDATED → CALCULATED → REVIEW → APPROVED →
+REPORTABLE`, with `REJECTED / CORRECTION REQUIRED / INVALIDATED / SUPERSEDED`) is realised by **mapping onto these
+existing machines**, with at most additive states where a genuine gap exists (notably explicit `DRAFT`/`SUBMITTED`
+submission provenance and an explicit approval gate before a result may become reportable). P17-0 must produce that
+mapping table. **No new lifecycle table is proposed by ARCH-02.**
+
+### 10.5 Summary of the ARCH-02 delta
+
+| Item | Disposition |
+|---|---|
+| consultant-client relationship entity | **EXISTS — REUSE** (`consultant_clients`); no new table |
+| capability / policy representation | **P17-0 DECISION** (recommendation: capability-key dimension on the ratified three-scope pattern) |
+| acting-for / actor-organization context | **NEW** additive columns on existing tables |
+| lifecycle | **EXTEND / MAP** existing state machines; no parallel lifecycle |
+| ownership fields | **NO CHANGE** — `organization_id` remains the owner; acting-for is context only |
+| audit context | **EXTEND** the existing audit model |
+| UI/UX | no schema implication beyond the above; UI is a phase deliverable, not a schema change |
+| migrations created by ARCH-02 | **NONE** |
+
+
+
 
 
