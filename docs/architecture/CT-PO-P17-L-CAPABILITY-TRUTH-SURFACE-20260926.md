@@ -70,7 +70,7 @@ The final section (§25) separates the terms explicitly. In summary:
 | Branch | `p8-release-reconciled` | `p8-release-reconciled` | **MATCH** |
 | `git log -6` | ends `3f3dfa4` (the P17-K commit set) | `3f3dfa4`, `a98315f`, `9ae275b`, `ba19ccd`, `4f8853b`, `28ff2c0` | **MATCH** |
 | Working tree | pre-existing `.gitignore` modification + pre-existing untracked files | unchanged | **PRESERVED, UNSTAGED** |
-| Distance from `origin` | 192 commits ahead of `origin/p8-release-reconciled` (`93d5cdd`) | 192 ahead | **MATCH** |
+| Distance from `origin` | 193 commits ahead of `origin/p8-release-reconciled` (`93d5cdd`) | `git rev-list --count origin/p8-release-reconciled..3f3dfa4` = **193** | **MATCH (corrected by measurement)** |
 
 Artifacts re-verified present before any change:
 
@@ -929,8 +929,13 @@ never inferred from capability (`§8`).
 | Commit 2 — `feat(p17-l): customer + product capability truth surfaces (one canonical projection)` | `fb3eba1` |
 | Commit 3 — `docs(p17-l): implementation report` | `410ba14` |
 | Commit 4 — `docs(p17-l): record the implementation-report commit SHAs` | `7f043ca` |
-| Commit 5 — `docs(p17-l): record the ending SHA` | **the final commit of this task** — a commit cannot contain its own hash, so its SHA is stated as the ending SHA in the task's final response |
-| Ending SHA | commit 5's SHA (stated in the task's final response) |
+| Commit 5 — `docs(p17-l): record the ending SHA convention` | `f215b1f` |
+| Commit 6 — `docs(p17-l): correct the origin distance by measurement` | **the final commit of this task** — a commit cannot contain its own hash, so its SHA is stated as the ending SHA in the task's final response |
+| Ending SHA | commit 6's SHA (stated in the task's final response) |
+
+**Distance from `origin` after `P17-L`:** 198 commits ahead of
+`origin/p8-release-reconciled` (`93d5cdd`) — 193 at the baseline + 5 (then 6 with
+the final correction). Nothing pushed.
 
 A commit cannot contain its own hash, so — exactly as `P17-K` did — the SHAs are
 recorded by the commit that follows the artifact they name, and the final tip is
