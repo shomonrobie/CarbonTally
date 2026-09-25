@@ -127,3 +127,112 @@ class UnknownProviderError(CarbonTallyError):
 
     code: ClassVar[str] = "UNKNOWN_PROVIDER"
     http_status: ClassVar[int] = 404
+
+
+# ===========================================================================
+# P17 unified Carbon Accounting Management System (CAMS)
+#
+# The P17 accounting dimensions are accounting CLAIMS, not formatting choices.
+# A Scope 2 result without a recorded method, a Scope 3 result without a
+# category, an ambiguous transport/waste boundary or an unsubstantiated
+# estimate is not merely incomplete - it is a number that cannot be defended.
+# Each error below therefore fails closed at 422 (or 409 where the failure is a
+# conflict with already-persisted accounting), and the API layer translates it
+# through the existing CarbonTallyError envelope with no special casing.
+# ===========================================================================
+
+
+class AccountingDimensionError(CarbonTallyError):
+    """Raised when an accounting dimension is missing or invalid for new writes (422).
+
+    Historical P16 rows legitimately carry no category or method; that is why
+    the database enforces the requirement with ``NOT VALID`` constraints. This
+    error applies to NEW accounting claims only.
+    """
+
+    code: ClassVar[str] = "ACCOUNTING_DIMENSION_INVALID"
+    http_status: ClassVar[int] = 422
+
+
+class Scope2MethodRequiredError(CarbonTallyError):
+    """Raised when a Scope 2 result has no recorded accounting method (422)."""
+
+    code: ClassVar[str] = "SCOPE2_METHOD_REQUIRED"
+    http_status: ClassVar[int] = 422
+
+
+class Scope3CategoryRequiredError(CarbonTallyError):
+    """Raised when a Scope 3 result has no recorded category (422)."""
+
+    code: ClassVar[str] = "SCOPE3_CATEGORY_REQUIRED"
+    http_status: ClassVar[int] = 422
+
+
+class Scope3CategoryNotSupportedError(CarbonTallyError):
+    """Raised when a category whose architecture status is NOT_IMPLEMENTED or
+    DEFERRED is asked to calculate (422).
+
+    The category taxonomy exists so the boundary is explicit; it does not imply
+    that a methodology exists. Refusing loudly is the correct behaviour: an
+    invented methodology would be a fabricated accounting claim.
+    """
+
+    code: ClassVar[str] = "SCOPE3_CATEGORY_NOT_SUPPORTED"
+    http_status: ClassVar[int] = 422
+
+
+class BoundaryAmbiguityError(CarbonTallyError):
+    """Raised when a category boundary (transport, waste, consolidation) is
+    ambiguous and the result must not be counted (422).
+
+    DC-04 (category 4 vs 9), DC-05 (category 5 vs 12) and DC-07 (categories 8/13
+    without a consolidation approach) all fail closed rather than guessing.
+    """
+
+    code: ClassVar[str] = "BOUNDARY_AMBIGUITY"
+    http_status: ClassVar[int] = 422
+
+
+class InstrumentEligibilityError(CarbonTallyError):
+    """Raised when a contractual instrument may not back a market-based result (422)."""
+
+    code: ClassVar[str] = "INSTRUMENT_NOT_ELIGIBLE"
+    http_status: ClassVar[int] = 422
+
+
+class InstrumentOverAllocatedError(CarbonTallyError):
+    """Raised when allocations would exceed the instrument quantity (409).
+
+    DC-09. The sum-versus-quantity rule cannot be a single-row CHECK, so this is
+    enforced by the allocating service plus the ``p17_instrument_over_allocated``
+    detector; it surfaces as a conflict because it collides with already
+    persisted allocations rather than being malformed input.
+    """
+
+    code: ClassVar[str] = "INSTRUMENT_OVER_ALLOCATED"
+    http_status: ClassVar[int] = 409
+
+
+class EstimationRecordRequiredError(CarbonTallyError):
+    """Raised when an estimated result has no persisted estimation record (422).
+
+    T-INV-12 / no-silent-estimation. An "estimated" flag without method, inputs
+    or assumptions is not auditable and is refused.
+    """
+
+    code: ClassVar[str] = "ESTIMATION_RECORD_REQUIRED"
+    http_status: ClassVar[int] = 422
+
+
+class ActingForError(CarbonTallyError):
+    """Raised when an acting-for context is requested that the actor may not assume (403).
+
+    ACTING FOR is operational context, never an authorization boundary
+    (POST-ARCH §35; UIUX-01 §6, §44). This error exists precisely to keep it that
+    way: the actor must already be entitled to the target organization through
+    membership or an active delegation, and acting-for adds context on top of
+    that entitlement rather than substituting for it.
+    """
+
+    code: ClassVar[str] = "ACTING_FOR_DENIED"
+    http_status: ClassVar[int] = 403
