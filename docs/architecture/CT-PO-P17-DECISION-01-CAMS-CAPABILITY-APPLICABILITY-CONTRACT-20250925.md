@@ -1297,14 +1297,22 @@ artifact only. `production_contacted = false`.
 ### 19.8 Git verification
 
 ```
-git rev-parse HEAD                   -> de4b0cac8cc18f8a60436052783b86f53c06c8f9   (baseline, verified)
+git rev-parse HEAD                    -> de4b0cac8cc18f8a60436052783b86f53c06c8f9   (baseline, verified)
 git status --porcelain | grep -v '^??' -> " M .gitignore" only (pre-existing)
-git diff --name-only <baseline>..HEAD  -> (documentation-only; see §20.3)
 ```
 
-**Documentation-only guarantee:** after this task's commits,
-`git diff --name-only <baseline>..HEAD` must list **only** `.md` files under
-`docs/architecture/`. That check is recorded in §20.3 once the commits exist.
+**Documentation-only proof (executed after commit 1):**
+
+```
+$ git diff --name-only de4b0cac8cc18f8a60436052783b86f53c06c8f9..HEAD
+docs/architecture/CT-PO-P17-DECISION-01-CAMS-CAPABILITY-APPLICABILITY-CONTRACT-20250925.md
+
+$ git diff --name-only de4b0cac8cc18f8a60436052783b86f53c06c8f9..HEAD | grep -v '\.md$' | wc -l
+0
+```
+
+**Result:** exactly **one** file changed across the task's commits, and it is a `.md`. **Zero**
+non-documentation files changed. The guarantee in §2 holds.
 
 ---
 
@@ -1346,8 +1354,8 @@ extends it to **Scope 3 accounting categories** (§4.4, §7.4).
 
 | Order | SHA | Subject |
 |---|---|---|
-| 1 | *(recorded in the companion SHA-record commit)* | `docs(p17): freeze CAMS capability and applicability contract (DECISION-01)` — this document |
-| 2 | *(the SHA-record commit itself)* | `docs(p17): record DECISION-01 commit SHAs` |
+| 1 | `de01cfb790e6604ead14e8c2b893697a9c6ebedc` | `docs(p17): freeze CAMS capability and applicability contract (DECISION-01)` — this document |
+| 2 | *(this SHA-record commit — its own SHA cannot appear inside itself)* | `docs(p17): record DECISION-01 commit SHAs` |
 
 * **Baseline:** `de4b0cac8cc18f8a60436052783b86f53c06c8f9`
 * **Ending HEAD:** recorded in the companion SHA record (a commit's own SHA cannot appear inside
