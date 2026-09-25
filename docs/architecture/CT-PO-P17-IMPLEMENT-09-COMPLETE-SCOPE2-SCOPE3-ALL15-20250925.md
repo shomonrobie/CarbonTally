@@ -21,18 +21,34 @@ unrelated untracked files (§23). The four earlier P17 commits (`73c8b9c`, `e966
 
 ## 3. Ending SHA
 
-`75377cc0cf9efa05a2eb1653b3fcdef9fcd468a5` — the implementation commit. The report commit
-and the SHA-recording commit are listed in §4 and are *later* than this SHA by construction.
+`0c33055719d0337a365c02e156c05db6b5af9f01` — the commit that recorded this report (§4).
 
 ## 4. Every commit SHA
 
 | # | SHA | Message |
 |---|---|---|
-| 1 | `75377cc` | `fix(p17-09): persist Scope 2/3 logs against the real P17 schema, and verify on real PostgreSQL` |
-| 2 | *(report commit)* | `docs(p17): record IMPLEMENT-09 report` |
-| 3 | *(SHA-recording commit)* | `docs(p17): record IMPLEMENT-09 commit SHAs` |
+| 1 | `75377cc0cf9efa05a2eb1653b3fcdef9fcd468a5` | `fix(p17-09): persist Scope 2/3 logs against the real P17 schema, and verify on real PostgreSQL` |
+| 2 | `0c33055719d0337a365c02e156c05db6b5af9f01` | `docs(p17): record IMPLEMENT-09 report (PARTIAL — real-PG verified, applicability model deferred)` |
+| 3 | *(SHA-recording commit)* | `docs(p17): record IMPLEMENT-09 commit SHAs` — created after this report; its own SHA cannot appear inside itself, so it is named rather than numbered (same convention as the IMPLEMENT-08 report) |
 
 **Not pushed.** No amend/rebase/reset/force-push; all prior P17 history preserved.
+Verification commands and their results are in §4.1.
+
+### 4.1 Report/SHA verification
+
+```
+$ git log --oneline -3
+<sha> docs(p17): record IMPLEMENT-09 commit SHAs
+0c33055 docs(p17): record IMPLEMENT-09 report (PARTIAL — real-PG verified, applicability model deferred)
+75377cc fix(p17-09): persist Scope 2/3 logs against the real P17 schema, and verify on real PostgreSQL
+
+$ git log --oneline -1 -- docs/architecture/CT-PO-P17-IMPLEMENT-09-COMPLETE-SCOPE2-SCOPE3-ALL15-20250925.md
+0c33055 docs(p17): record IMPLEMENT-09 report (...)
+
+$ git status --porcelain | grep -v '^??'
+ M .gitignore      # pre-existing, deliberately NOT committed
+```
+
 
 ## 5. Files created
 
