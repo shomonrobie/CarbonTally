@@ -28,7 +28,8 @@ from pydantic import BaseModel, Field
 from api.accounting_context_auth import ensure_record_owner_authorized
 from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, require_org_member
-from core.exceptions import ValidationFailedError
+from core.exceptions import InstrumentEligibilityError, ValidationFailedError
+from domain.contractual_instruments import InstrumentAllocation
 from domain.matching import MatchResult
 from domain.scope2 import requires_instrument
 from engines.calculation import CalculationEngine
@@ -68,6 +69,21 @@ class Scope2CalculateRequest(BaseModel):
     facility_id: Optional[str] = None
     source_item_id: Optional[str] = None
     source_line_item_id: Optional[str] = None
+    #: MARKET_BASED only — the contractual instrument to claim. Identified by id;
+    #: its OWNERSHIP is never taken from this request. The instrument is loaded
+    #: server-side and scoped to the resolved data-owning organization, so an
+    #: instrument belonging to another tenant is simply not found.
+    instrument_id: Optional[str] = None
+    #: MARKET_BASED only — the quantity of the instrument claimed by this
+    #: calculation. Defaults to the consumption quantity: a market-based claim is
+    #: a full claim by definition, and the Scope 2 service independently requires
+    #: the allocation to equal the consumption quantity.
+    allocated_quantity: Optional[Decimal] = None
+    #: The consumption period the allocation applies to. Defaults to the
+    #: calculation date (a single-day period) — that is the activity's own date,
+    #: not an invented window.
+    allocation_period_start: Optional[date] = None
+    allocation_period_end: Optional[date] = None
 
 
 def _deterministic_request_id(payload: Scope2CalculateRequest) -> str:
@@ -105,27 +121,10 @@ async def calculate_scope2(
     context = await ensure_record_owner_authorized(
         current_user, repos, payload.organization_id
     )
-
-    if requires_instrument(payload.scope2_method):
-        # FAIL CLOSED, DELIBERATELY. Market-based accounting requires the claimed
-        # contractual instrument to be loaded and ownership-verified SERVER-SIDE.
-        # The P17-C schema (public.contractual_instruments) exists, but no data
-        # repository for it has been implemented, so the instrument could only be
-        # taken from the request body — and a client-supplied organisation id is
-        # exactly what must never decide an accounting entitlement. Refusing is
-        # the only safe behaviour until that repository exists; silently
-        # computing a location-based figure instead would replace the accounting
-        # claim with a different one.
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "MARKET_BASED Scope 2 calculations are not yet available through "
-                "this API: the contractual instrument must be verified "
-                "server-side and no instrument repository is implemented yet. The "
-                "market-based calculation path itself is implemented and tested at "
-                "the service layer."
-            ),
-        )
+    # The RESOLVED data-owning organization is the authorisation key. It is never
+    # taken from the request body: the payload only names the organization the
+    # caller claims, and that claim has just been verified.
+    data_owner = context.data_owning_organization_id
 
     if payload.factor_id is None:
         raise ValidationFailedError(
@@ -140,6 +139,52 @@ async def calculate_scope2(
             details={"field": "factor_id", "factor_id": payload.factor_id},
         )
 
+    instrument = None
+    existing_allocations: list[InstrumentAllocation] = []
+    period_start = payload.allocation_period_start or payload.date
+    period_end = payload.allocation_period_end or payload.date
+    allocated_quantity: Optional[Decimal] = payload.allocated_quantity
+
+    if requires_instrument(payload.scope2_method):
+        # ---------------------------------------------------------------
+        # MARKET_BASED — the instrument is loaded SERVER-SIDE and scoped to the
+        # authorized data-owning organization. Ownership is decided by the query,
+        # never by the request body, so a client cannot establish accounting
+        # entitlement by naming an instrument or an organization.
+        # ---------------------------------------------------------------
+        if payload.instrument_id is None:
+            raise InstrumentEligibilityError(
+                "a MARKET_BASED Scope 2 calculation requires instrument_id; the "
+                "grid-average figure is a different claim and is never "
+                "substituted automatically",
+                details={"field": "instrument_id"},
+            )
+        if repos.contractual_instruments is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "the contractual instrument repository is not available in "
+                    "this deployment; refusing a market-based claim rather than "
+                    "trusting client-supplied instrument data"
+                ),
+            )
+        instrument = await repos.contractual_instruments.get_for_organization(
+            payload.instrument_id, data_owner
+        )
+        if instrument is None:
+            # Not found OR not this tenant — deliberately indistinguishable, so the
+            # response confirms nothing about another tenant's instruments.
+            raise InstrumentEligibilityError(
+                "no contractual instrument with that id is available to this "
+                "organization",
+                details={"field": "instrument_id"},
+            )
+        if allocated_quantity is None:
+            allocated_quantity = payload.quantity
+        existing_allocations = await repos.contractual_instruments.list_allocations(
+            payload.instrument_id, data_owner
+        )
+
     match = MatchResult(
         status="matched",
         factor=factor,
@@ -151,7 +196,7 @@ async def calculate_scope2(
     service = Scope2CalculationService(CalculationEngine(sink=repos.logs))
     result = await service.calculate(
         Scope2Input(
-            organization_id=payload.organization_id,
+            organization_id=data_owner,
             quantity=payload.quantity,
             quantity_unit=payload.unit,
             date=payload.date,
@@ -169,8 +214,44 @@ async def calculate_scope2(
             performed_by=current_user.user_id,
             performed_by_organization_id=context.actor_organization_id,
             acting_for_organization_id=context.acting_for_organization_id,
+            instrument=instrument,
+            allocated_quantity=allocated_quantity,
+            existing_allocations=existing_allocations,
         )
     )
+    # ------------------------------------------------------------------
+    # Allocation persistence — written only AFTER the calculation succeeded, so
+    # the allocation always references a real, already-persisted snapshot. The
+    # claim is recorded idempotently against the calculation request identity.
+    # ------------------------------------------------------------------
+    allocation_id: Optional[str] = None
+    if instrument is not None and instrument.id is not None:
+        existing = await repos.contractual_instruments.find_allocation_for_request(
+            instrument_id=instrument.id,
+            organization_id=data_owner,
+            period_start=period_start,
+            period_end=period_end,
+            request_id=result.snapshot.match_request_id,
+        )
+        if existing is not None:
+            allocation_id = existing
+        else:
+            allocation_id = await repos.contractual_instruments.record_allocation(
+                InstrumentAllocation(
+                    organization_id=data_owner,
+                    instrument_id=instrument.id,
+                    allocated_quantity=allocated_quantity,
+                    allocated_unit=payload.unit,
+                    allocation_period_start=period_start,
+                    allocation_period_end=period_end,
+                    calculation_snapshot_id=result.snapshot.id,
+                    # The snapshot is the authoritative link; CalculationResult does
+                    # not return the log id and the column is nullable.
+                    emissions_log_id=None,
+                    claim_reference=f"scope2:{result.snapshot.match_request_id}",
+                )
+            )
+
     dimensions = result.snapshot.accounting_dimensions
     return {
         "snapshot_id": result.snapshot.id,
@@ -189,6 +270,12 @@ async def calculate_scope2(
         "factor_id": result.snapshot.factor_id,
         "factor_kind": result.snapshot.factor_kind,
         "factor_year": factor.reporting_year,
+        # P17-IMPLEMENT-06 — market-based provenance: which instrument backed the
+        # claim and which allocation row records it. Both are null for
+        # location-based results, which is what makes the method distinguishable
+        # downstream without inference.
+        "instrument_id": instrument.id if instrument is not None else None,
+        "allocation_id": allocation_id,
         "co2e_kg": str(result.co2e_kg),
         "co2e_tonnes": str(result.co2e_tonnes),
         "methodology": result.snapshot.methodology,

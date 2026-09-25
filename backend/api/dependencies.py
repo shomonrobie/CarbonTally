@@ -40,6 +40,7 @@ from data.accounting_context import AccountingContextRepository
 from data.activity_clarifications import ActivityClarificationsRepository
 from data.audit import AuditRepository
 from data.customer_factors import CustomerFactorsRepository
+from data.contractual_instruments import ContractualInstrumentsRepository
 from data.documents import DocumentsRepository
 from data.emission_factors import EmissionFactorsRepository
 from data.emissions_logs import EmissionsLogsRepository
@@ -360,6 +361,14 @@ class RepositoryBundle:
     #: wiring always supplies the real repository (``get_repositories``), so the
     #: default only affects callers that do not use P17 routes.
     accounting_context: Optional[AccountingContextRepository] = None
+    #: P17-IMPLEMENT-06 — the trusted P17-C contractual instrument / allocation
+    #: repository backing the market-based Scope 2 API path. Every read it exposes
+    #: is scoped by the caller's authorized organization.
+    #:
+    #: DEFAULTED to ``None`` for the same reason as ``accounting_context`` above:
+    #: the bundle is constructed by test fixtures that predate this surface, and a
+    #: required field here breaks every one of them with a ``TypeError``.
+    contractual_instruments: Optional[ContractualInstrumentsRepository] = None
 
 
 async def get_pool():
@@ -382,6 +391,7 @@ async def get_repositories() -> RepositoryBundle:
         events=EventsRepository(pool),
         aliases=FactorAliasesRepository(pool),
         customer_factors=CustomerFactorsRepository(pool),
+        contractual_instruments=ContractualInstrumentsRepository(pool),
         entities=ProcessingEntitiesRepository(pool),
         issues=IssuesRepository(pool),
         tenant=TenantRepository(pool),
