@@ -2090,6 +2090,26 @@ class MemoryManualExtraction:
                 return item
         return None
 
+    async def find_item_by_file_id(
+        self, org_id: str, file_id: str
+    ) -> Optional[ManualExtractionItem]:
+        """Mirror of the repository — resolve an item by document identity.
+
+        P16-REMEDIATION-03 added this lookup so the automatic-processing enqueue
+        reuses the item belonging to the document actually being enqueued rather
+        than the oldest same-named item. The fake must mirror it or every
+        automatic enqueue through the API raises ``AttributeError``.
+        """
+        for item in self._items.values():
+            batch = self._batches.get(item.batch_id)
+            if (
+                batch is not None
+                and batch.organization_id == org_id
+                and getattr(item, "file_id", None) == file_id
+            ):
+                return item
+        return None
+
     async def list_items(self, batch_id: str) -> list[ManualExtractionItem]:
         return [i for i in self._items.values() if i.batch_id == batch_id]
 

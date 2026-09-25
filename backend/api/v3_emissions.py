@@ -582,6 +582,64 @@ async def verify_calculation(
     return verify_snapshot_row(row)
 
 
+class InvalidateCalculationPayload(BaseModel):
+    """P16-RD-4 — inputs for the accounting-result reportability transition."""
+
+    reason: str
+    status: str = "not_for_reporting"
+    superseded_by_snapshot_id: Optional[str] = None
+
+
+@router.post("/calculations/{snapshot_id}/invalidate")
+async def invalidate_calculation(
+    snapshot_id: str,
+    payload: "InvalidateCalculationPayload",
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """P16-REMEDIATION-05 / RD-4 — mark a calculation result not-for-reporting.
+
+    The minimum auditable lifecycle operation for an invalid accounting result.
+    It records an explicit reportability state, a reason, the acting user and a
+    timestamp, and optionally the replacement (supersession) result. Historical
+    accounting values are never rewritten, and a result that is already
+    non-reportable is left untouched.
+
+    Tenant isolation: the snapshot's own ``organization_id`` is checked against
+    the caller's authorised organisations before any state change.
+    """
+    row = await repos.logs.get_snapshot(snapshot_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="calculation not found")
+    ensure_org_access(current_user, row["organization_id"])
+
+    if payload.superseded_by_snapshot_id:
+        replacement = await repos.logs.get_snapshot(payload.superseded_by_snapshot_id)
+        if replacement is None:
+            raise HTTPException(status_code=404, detail="replacement calculation not found")
+        # A replacement may never come from another tenant.
+        ensure_org_access(current_user, replacement["organization_id"])
+        if replacement["organization_id"] != row["organization_id"]:
+            raise HTTPException(
+                status_code=422,
+                detail="replacement calculation belongs to a different organisation",
+            )
+
+    try:
+        outcome = await repos.logs.invalidate_snapshot_result(
+            snapshot_id,
+            status=payload.status,
+            reason=payload.reason,
+            actor_user_id=current_user.user_id,
+            superseded_by_snapshot_id=payload.superseded_by_snapshot_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"success": True, **outcome}
+
+
 # ---------------------------------------------------------------------------
 # Emission-factor interface (managed factors; customer factors stay on
 # /api/v3/customer-factors — org-isolated surface already implemented)

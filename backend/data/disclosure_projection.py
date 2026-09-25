@@ -121,6 +121,9 @@ class DisclosureProjectionRepository(AbstractRepository[dict]):
                 WHERE el.organization_id = $1
                   AND el.start_date >= $2::date AND el.start_date <= $3::date
                   AND ($4::text IS NULL OR el.scope = $4)
+                  -- P16-RD-4: a disclosure is reportable output, so a result that
+                  -- has been invalidated/superseded must never appear in it.
+                  AND el.reportability_status = 'reportable'
                 ORDER BY el.start_date, el.id
                 """,
                 organization_id,

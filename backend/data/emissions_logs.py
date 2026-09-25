@@ -324,6 +324,9 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             WHERE organization_id = $1
               AND start_date >= $2
               AND start_date <= $3
+              -- P16-RD-4: non-reportable results are never aggregated into
+              -- reported totals. They remain individually inspectable.
+              AND reportability_status = 'reportable'
             GROUP BY COALESCE(scope, 'unknown')
             ORDER BY scope_key
             """,
@@ -340,6 +343,8 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             WHERE organization_id = $1
               AND start_date >= $2
               AND start_date <= $3
+              -- P16-RD-4: non-reportable results are never aggregated.
+              AND reportability_status = 'reportable'
             GROUP BY {group_expr}
             ORDER BY group_key
             """,
@@ -554,6 +559,88 @@ class EmissionsLogsRepository(AbstractRepository[EmissionLog]):
             id,
         )
         return _row_to_log(row) if row is not None else None
+
+    async def invalidate_snapshot_result(
+        self,
+        snapshot_id: str,
+        *,
+        status: str,
+        reason: str,
+        actor_user_id: str,
+        superseded_by_snapshot_id: Optional[str] = None,
+    ) -> dict:
+        """P16-REMEDIATION-05 / RD-4 — move a calculation result out of reporting.
+
+        Marks the snapshot *and* its paired emissions log(s) as
+        ``not_for_reporting``/``superseded`` with an explicit reason, actor and
+        timestamp, and records the replacement relationship when supplied.
+
+        The historical accounting values (``co2e_kg``, ``calculated_kg_co2e``,
+        quantities, factor ids, scope) are **never** modified — only the
+        reportability lifecycle state is. Non-reportable results stay fully
+        inspectable; they are excluded from reporting/disclosure aggregation by
+        the consumption boundary.
+
+        Returns ``{"snapshot_id", "log_ids", "status"}``. An already
+        non-reportable result is left untouched (idempotent).
+        """
+        if status not in ("not_for_reporting", "superseded"):
+            raise ValueError(f"unsupported reportability status {status!r}")
+        if not str(reason or "").strip():
+            raise ValueError("an invalidation reason is required")
+
+        superseded_log_id = None
+        if superseded_by_snapshot_id:
+            replacement = await self._fetch_one(
+                "SELECT id FROM public.emissions_logs WHERE snapshot_id = $1 "
+                "ORDER BY created_at LIMIT 1",
+                superseded_by_snapshot_id,
+            )
+            if replacement is not None:
+                superseded_log_id = replacement["id"]
+
+        snapshot_row = await self._fetch_one(
+            """
+            UPDATE public.calculation_snapshots
+            SET reportability_status = $2,
+                invalidated_reason = $3,
+                invalidated_by = $4,
+                invalidated_at = now(),
+                superseded_by_snapshot_id = $5
+            WHERE id = $1 AND reportability_status = 'reportable'
+            RETURNING id
+            """,
+            snapshot_id,
+            status,
+            reason,
+            actor_user_id,
+            superseded_by_snapshot_id,
+        )
+        if snapshot_row is None:
+            raise LookupError(f"snapshot {snapshot_id!r} is missing or already non-reportable")
+
+        log_rows = await self._fetch_all(
+            """
+            UPDATE public.emissions_logs
+            SET reportability_status = $2,
+                invalidated_reason = $3,
+                invalidated_by = $4,
+                invalidated_at = now(),
+                superseded_by_log_id = $5
+            WHERE snapshot_id = $1 AND reportability_status = 'reportable'
+            RETURNING id
+            """,
+            snapshot_id,
+            status,
+            reason,
+            actor_user_id,
+            superseded_log_id,
+        )
+        return {
+            "snapshot_id": snapshot_id,
+            "log_ids": [r["id"] for r in log_rows],
+            "status": status,
+        }
 
     async def save(self, entity: EmissionLog) -> EmissionLog:
         """Update an existing emissions record and return the stored state."""
