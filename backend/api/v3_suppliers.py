@@ -9,6 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.accounting_context_auth import ensure_record_owner_authorized
+from api.audit_helpers import record_acting_for_attribution
 from api.dependencies import (
     RepositoryBundle,
     ensure_org_access,
@@ -69,7 +71,18 @@ async def create_supplier(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     ensure_org_access(current_user, payload.organization_id)
-    return await repos.suppliers.create(
+    # P17-IMPLEMENT-03 — persist acting-for attribution on the supplier write.
+    #
+    # The SUPPLIER'S ORGANIZATION is the authority: resolve_record_owner_authorized
+    # re-authorises the actor against the data-owning organization (not against
+    # anything the client supplied), and the acting-for value is taken from that
+    # server-resolved context. A forged acting_for_organization_id in the payload
+    # is impossible here because SupplierCreate has no such field and nothing from
+    # the request body reaches the attribution.
+    context = await ensure_record_owner_authorized(
+        current_user, repos, payload.organization_id
+    )
+    supplier = await repos.suppliers.create(
         org_id=payload.organization_id,
         name=payload.name,
         type_=payload.type,
@@ -81,7 +94,18 @@ async def create_supplier(
         vat_number=payload.vat_number,
         metadata=payload.metadata,
         created_by=current_user.user_id,
+        provenance=context.provenance_columns(),
     )
+    await record_acting_for_attribution(
+        repos,
+        carrier="supplier",
+        record_id=str(getattr(supplier, "id", "")),
+        actor=current_user.user_id,
+        actor_organization_id=context.actor_organization_id,
+        acting_for_organization_id=context.acting_for_organization_id,
+        owner_organization_id=payload.organization_id,
+    )
+    return supplier
 
 
 @router.get("/{supplier_id}")
