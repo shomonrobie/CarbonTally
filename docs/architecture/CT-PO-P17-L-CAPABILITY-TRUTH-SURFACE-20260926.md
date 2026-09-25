@@ -928,9 +928,9 @@ never inferred from capability (`§8`).
 | Commit 1 — `feat(p17-l): canonical governed capability projection + capability read endpoint` | `a22b97a` |
 | Commit 2 — `feat(p17-l): customer + product capability truth surfaces (one canonical projection)` | `fb3eba1` |
 | Commit 3 — `docs(p17-l): implementation report` | `410ba14` |
-| Commit 4 — `docs(p17-l): record the implementation-report commit SHAs` | recorded by commit 5 below |
-| Commit 5 — `docs(p17-l): record the ending SHA` | recorded in the task's final response |
-| Ending SHA | the tip of `p8-release-reconciled` after commit 5 |
+| Commit 4 — `docs(p17-l): record the implementation-report commit SHAs` | `7f043ca` |
+| Commit 5 — `docs(p17-l): record the ending SHA` | **the final commit of this task** — a commit cannot contain its own hash, so its SHA is stated as the ending SHA in the task's final response |
+| Ending SHA | commit 5's SHA (stated in the task's final response) |
 
 A commit cannot contain its own hash, so — exactly as `P17-K` did — the SHAs are
 recorded by the commit that follows the artifact they name, and the final tip is
