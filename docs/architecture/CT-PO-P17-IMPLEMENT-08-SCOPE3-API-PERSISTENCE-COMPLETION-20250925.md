@@ -21,14 +21,15 @@ and unrelated untracked files (see §15).
 
 ## 3. Ending SHA
 
-`PENDING` — recorded in the final commit for this report (§4).
+`e96635791ca1d86fd7d6e5ef6abcec0be6145c03` — the commit that recorded this report (§4).
 
 ## 4. Exact commit SHA(s)
 
 | # | SHA | Message |
 |---|---|---|
-| 1 | *(this change)* | `feat(p17-08): persist Scope 3 estimation records and complete the API path` |
-| 2 | *(this report)* | `docs(p17): record IMPLEMENT-08 report and the stale test-database finding` |
+| 1 | `73c8b9c` | `feat(p17-08): persist Scope 3 estimation records and complete the API path` |
+| 2 | `e966357` | `docs(p17): record IMPLEMENT-08 report and the stale test-database finding` |
+| 3 | *(SHA-recording commit)* | `docs(p17): record IMPLEMENT-08 commit SHAs` |
 
 **Not pushed.** No amend/rebase/reset/force-push; all prior P17 history preserved.
 
