@@ -69,6 +69,23 @@ _REQUIREMENT_COLUMNS = (
     "title, requirement_class, is_quantitative, value_kind, carbontally_capability, display_order"
 )
 
+#: P17-L — the columns the governed capability projection requires. A superset of
+#: ``_REQUIREMENT_COLUMNS``: a capability surface must render provenance
+#: (``source_locator`` / ``authoritative_text_ref`` / ``source_tier`` / identifier
+#: state — `AG-8`) and the requirement's own bounded-scope / named-prerequisite
+#: text (``description`` — `M-6`, `IT-3`, `IT-5`).
+#:
+#: Deliberately *additive*: ``_REQUIREMENT_COLUMNS`` and ``list_requirements`` are
+#: unchanged, so every existing consumer keeps its exact row shape.
+_CAPABILITY_REQUIREMENT_COLUMNS = (
+    "rv.id, rv.requirement_code, rv.title, rv.description, rv.requirement_class, "
+    "rv.carbontally_capability, rv.is_quantitative, rv.value_kind, rv.unit_hint, "
+    "rv.scope_hint, rv.scope2_method_hint, rv.display_order, rv.source_locator, "
+    "rv.authoritative_text_ref, rv.source_tier, rv.official_identifier, "
+    "rv.identifier_status, f.code AS framework_code, "
+    "fv.version_label AS framework_version_label, fv.status AS framework_version_status"
+)
+
 
 def _as_dict(row: Any) -> Optional[dict]:
     """Normalise an ``asyncpg.Record`` to a JSON-safe dict (ISO dates, str UUIDs)."""
@@ -230,6 +247,71 @@ class DisclosureCatalogRepository(AbstractRepository[dict]):
             framework_version_id,
         )
         return [_as_dict(r) for r in rows]  # type: ignore[misc]
+
+    async def capability_catalogue_candidates(self) -> list[dict]:
+        """P17-L — framework versions that carry requirement rows, with their codes.
+
+        The governed capability catalogue lives on **one** framework version, and
+        that version must be chosen by rule rather than by ordering luck: a
+        framework can legitimately have several versions, and a database may
+        contain requirement rows that are not governed disclosure requirement
+        identities at all (test residue, a future catalogue, another framework's
+        draft). The caller decides which candidate is the governed catalogue, so
+        the *grammar* of a governed requirement identity is defined in exactly
+        one place (`domain.capability_catalogue`).
+
+        Tenant-free by construction (`SEC-1`, `SEC-3`, `AG-5`): catalogue tables
+        only, no tenant predicate, no ``current_setting``/``auth.uid``.
+        """
+        rows = await self._fetch_all(
+            "SELECT fv.id, fv.framework_id, fv.version_label, fv.legal_reference, "
+            "       fv.source_tier, fv.source_url, fv.authoritative_source_date, "
+            "       fv.status, fv.applicable_from, fv.applicable_to, fv.verified_at, "
+            "       f.code AS framework_code, "
+            "       array_agg(rv.requirement_code ORDER BY rv.requirement_code) "
+            "         AS requirement_codes "
+            "FROM public.disclosure_framework_versions fv "
+            "JOIN public.disclosure_frameworks f ON f.id = fv.framework_id "
+            "JOIN public.disclosure_requirement_versions rv "
+            "  ON rv.framework_version_id = fv.id "
+            "GROUP BY fv.id, fv.framework_id, fv.version_label, fv.legal_reference, "
+            "         fv.source_tier, fv.source_url, fv.authoritative_source_date, "
+            "         fv.status, fv.applicable_from, fv.applicable_to, fv.verified_at, "
+            "         f.code "
+            "ORDER BY (fv.status = 'IN_FORCE') DESC, fv.source_tier, fv.version_label"
+        )
+        return [_as_dict(r) for r in rows]  # type: ignore[misc]
+
+    async def list_capability_catalogue_requirements(
+        self, framework_version_id: str
+    ) -> list[dict]:
+        """P17-L — the governed capability rows for **one** framework version.
+
+        The single read model behind the capability truth surface (`DECISION-03`
+        §6/§16), so the customer and investor surfaces cannot diverge (`CS-2`).
+
+        Scoping is by ``framework_version_id``, never by framework code: two
+        versions of the same framework have different requirement sets, and
+        merging them would silently widen a capability claim.
+
+        Tenant-free **by construction** (`SEC-1`, `SEC-3`, `AG-5`): the query
+        joins catalogue tables only, carries **no** tenant predicate, and reads
+        no ``current_setting``/``auth.uid``. It therefore returns the same rows
+        under every tenant context — which is the property the runtime suite
+        proves rather than assumes.
+        """
+        rows = await self._fetch_all(
+            f"SELECT {_CAPABILITY_REQUIREMENT_COLUMNS} "
+            "FROM public.disclosure_requirement_versions rv "
+            "JOIN public.disclosure_framework_versions fv "
+            "  ON fv.id = rv.framework_version_id "
+            "JOIN public.disclosure_frameworks f ON f.id = fv.framework_id "
+            "WHERE rv.framework_version_id = $1 "
+            "ORDER BY rv.display_order NULLS LAST, rv.requirement_code",
+            framework_version_id,
+        )
+        return [_as_dict(r) for r in rows]  # type: ignore[misc]
+
 
     async def get(self, id: str) -> Optional[dict]:
         return None

@@ -22,11 +22,21 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.dependencies import ensure_org_access, get_pool, get_repositories, require_org_member
+from api.dependencies import (
+    ensure_org_access,
+    get_current_user,
+    get_pool,
+    get_repositories,
+    require_org_member,
+)
 from auth import AuthUser
 from core.logging import get_logger
-from data.disclosure import DisclosureRepository
+from data.disclosure import DisclosureCatalogRepository, DisclosureRepository
 from data.disclosure_projection import DisclosureProjectionRepository
+from domain.capability_catalogue import (
+    is_governed_requirement_code,
+    project_capability_catalogue,
+)
 from domain.disclosure import DisclosureViolation
 from domain.disclosure_exposure import (
     assert_drilldown_allowed,
@@ -684,3 +694,104 @@ async def get_frozen_artefact_signed_url(
         )
     except DisclosureViolation as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# P17-L — the governed capability truth surface
+#   GET /api/v3/capabilities
+# ---------------------------------------------------------------------------
+
+
+@router.get("/capabilities")
+async def get_capability_catalogue(
+    current_user: AuthUser = Depends(get_current_user),
+    pool: Any = Depends(get_pool),
+) -> dict:
+    """What CarbonTally currently supports — **product-level** truth (`P17-L`).
+
+    This is the one canonical read model behind both capability surfaces
+    (`DECISION-03 §6`): the customer product surface and the investor surface
+    consume this same payload, so a governed value cannot differ between them
+    (`CS-2`).
+
+    Governance enforced here:
+
+    * **Authenticated, tenant-free.** Authentication is required
+      (`DECISION-03 §16`), and *no* tenant context is read or accepted: the
+      endpoint takes no tenant parameter, performs no tenant query, and answers
+      identically for every caller (`CS-1`, `SEC-1`, `SEC-3`, `AG-5`). It is a
+      product fact, so it is safe to serve without a tenant context.
+    * **Server-authoritative.** The payload is derived from persisted
+      `disclosure_requirement_versions` rows through the existing governed
+      projection engine; nothing is hardcoded and no value is computed here.
+    * **Fails closed.** If the catalogue is not provisioned, or the projection
+      cannot be stated honestly, the endpoint returns **503** and no claim —
+      never a partial or upgraded one (`CS-3`, `IV-4`).
+
+    It answers *"what does CarbonTally support?"*. It deliberately does **not**
+    answer *"which Scope 3 categories apply to this customer?"* — there is no
+    applicability model (`PO-3`, `F-1`), no tenant state (`§13`), and no Axis-A
+    architecture status (`IV-1`, `AG-3`).
+    """
+    catalog = DisclosureCatalogRepository(pool)
+
+    # Which framework version is the governed capability catalogue? Chosen by
+    # rule, never by ordering luck: the version whose requirement rows are
+    # governed disclosure requirement identities. A framework may legitimately
+    # have several versions, and a database may contain requirement rows that
+    # are not a capability catalogue at all — merging them would widen a claim.
+    candidates = await catalog.capability_catalogue_candidates()
+    selected = next(
+        (
+            candidate
+            for candidate in candidates
+            if any(
+                is_governed_requirement_code(code)
+                for code in (candidate.get("requirement_codes") or [])
+            )
+        ),
+        None,
+    )
+    if selected is None:
+        logger.error(
+            "capability surface: no framework version carries a governed requirement catalogue"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The governed capability catalogue is not provisioned, so no "
+                "capability statement can be made."
+            ),
+        )
+
+    framework_code = str(selected.get("framework_code") or "")
+    framework = await catalog.get_framework_by_code(framework_code)
+    if framework is None:
+        logger.error("capability surface: framework %s is absent", framework_code)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The governed capability catalogue is not provisioned, so no "
+                "capability statement can be made."
+            ),
+        )
+
+    rows = await catalog.list_capability_catalogue_requirements(str(selected["id"]))
+    try:
+        return project_capability_catalogue(
+            framework=framework,
+            framework_version=selected,
+            requirement_rows=rows,
+        )
+    except DisclosureViolation as exc:
+        # A projection that cannot be stated within the frozen wording yields no
+        # claim at all: the surface shows less, never something stronger.
+        logger.error("capability surface: projection refused (%s)", exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Unable to produce the governed capability statement. No claim is "
+                "made rather than an unverified one."
+            ),
+        ) from exc
+
