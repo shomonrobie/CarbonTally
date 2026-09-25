@@ -102,6 +102,17 @@ class ContractualInstrument:
     source_facility: Optional[str] = None
     valid_from: Optional[date] = None
     valid_to: Optional[date] = None
+    #: P17-IMPLEMENT-06 — the database row identity (``contractual_instruments.id``).
+    #:
+    #: The natural identity of an instrument within a tenant is
+    #: ``(organization_id, instrument_type, identifier)``, which is what the
+    #: eligibility and DC-09 rules reason about. The surrogate ``id`` is carried so
+    #: a repository-loaded instrument can be correlated back to its row — required
+    #: to write the allocation that records the claim against it.
+    #:
+    #: Appended last with a default so every pre-existing positional or keyword
+    #: construction is byte-for-byte unchanged.
+    id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.instrument_type not in INSTRUMENT_TYPES:
