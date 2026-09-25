@@ -9,6 +9,7 @@ from decimal import Decimal
 
 import pytest
 
+from domain.accounting_dimensions import AccountingDimensions
 from domain.calculation import EmissionLog
 from domain.customer_factor import CustomerFactor
 from domain.factor import EmissionFactor
@@ -190,6 +191,12 @@ class TestCustomerFactorCalculation:
             activity="Electricity",
             activity_type="Electricity",
             scope="Scope 2",
+            # P17-IMPLEMENT-04: a Scope 2 accounting claim must carry its method.
+            # The P17-A schema enforces this on every new write
+            # (``calc_snapshots_scope2_method_required``), so this fixture now
+            # supplies the identity a real Scope 2 write must have. The test's
+            # own subject — customer-factor provenance — is unchanged.
+            accounting_dimensions=AccountingDimensions(scope2_method="LOCATION_BASED"),
         )
         result = await engine.calculate(request)
         assert result.customer_factor is not None
