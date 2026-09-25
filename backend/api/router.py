@@ -49,6 +49,7 @@ from api.v3_processing import router as v3_processing_router
 from api.v3_qc import router as v3_qc_router
 from api.v3_accounting_context import router as v3_accounting_context_router
 from api.v3_suppliers import router as v3_suppliers_router
+from api.v3_scope2 import router as v3_scope2_router
 from api.v3_processing_workflow import router as v3_processing_workflow_router
 from api.v3_automatic_processing import router as v3_automatic_processing_router
 from api.v3_pe import router as v3_pe_router
@@ -223,6 +224,7 @@ router.include_router(v3_disclosure_router)
 router.include_router(v3_manual_extraction_router)
 router.include_router(v3_qc_router)
 router.include_router(v3_suppliers_router)
+router.include_router(v3_scope2_router)
 router.include_router(v3_operations_router)
 router.include_router(v3_discovery_router)
 router.include_router(v3_messaging_router)
