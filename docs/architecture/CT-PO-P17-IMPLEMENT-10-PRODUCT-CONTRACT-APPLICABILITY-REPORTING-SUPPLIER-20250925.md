@@ -27,11 +27,24 @@ SHAs`.
 ## 3. Ending SHA
 
 ```
-PENDING — recorded in §24 at the end of this report
+656bb22dc5cde93019d80230c1ca376cc3159ea9
 ```
 
-The literal ending SHA is embedded by the immediately following
-documentation-only commit, exactly as P17-09 did.
+This is the **documentation commit that carries this report**
+(`docs(p17): record IMPLEMENT-10 report ...`), matching the P17-09 and ARCH-06
+convention: the literal ending SHA is embedded into the report by the immediately
+following documentation-only commit, whose only changes are the two SHA fields in
+§3 and §24.
+
+Commit chain:
+
+| Order | SHA | Subject |
+|---|---|---|
+| 1 | `0f248ad46e55c97fc5ae44e0146a081dc20219d5` | `feat(p17-10): persist category methodology, purchase channel and widened data-quality vocabulary` |
+| 2 | `656bb22dc5cde93019d80230c1ca376cc3159ea9` | `docs(p17): record IMPLEMENT-10 report (PARTIAL — methodology/provider/data-quality/reporting landed; applicability stopped for a PO decision)` |
+| 3 | *(finalisation commit)* | `docs(p17): record IMPLEMENT-10 commit SHAs` |
+
+Starting SHA: `4a342c5687b99264f32a4dfb0b4d142fd1bd0bcd`
 
 ## 4. Working-tree state
 
@@ -839,17 +852,20 @@ so the wider integration suite is meaningful, and independent verification.
 
 Created in logical order; **not pushed**.
 
-| Order | Subject | Contents |
-|---|---|---|
-| 1 | `feat(p17-10): persist category methodology, purchase channel and the widened data-quality vocabulary` | migration, domain, engine, persistence, services, API, tests |
-| 2 | `docs(p17): record IMPLEMENT-10 report (PARTIAL — methodology/provider/data-quality/reporting landed; applicability stopped for a PO decision)` | this report |
-| 3 | `docs(p17): record IMPLEMENT-10 commit SHAs` | the literal SHAs in §3 |
+| Order | SHA | Subject | Contents |
+|---|---|---|---|
+| 1 | `0f248ad46e55c97fc5ae44e0146a081dc20219d5` | `feat(p17-10): persist category methodology, purchase channel and widened data-quality vocabulary` | migration, domain, engine, persistence, services, API, tests (19 files) |
+| 2 | `656bb22dc5cde93019d80230c1ca376cc3159ea9` | `docs(p17): record IMPLEMENT-10 report (PARTIAL — methodology/provider/data-quality/reporting landed; applicability stopped for a PO decision)` | this report |
+| 3 | *(finalisation commit)* | `docs(p17): record IMPLEMENT-10 commit SHAs` | the literal SHAs in §3 |
 
 Starting SHA: `4a342c5687b99264f32a4dfb0b4d142fd1bd0bcd`
-Ending SHA: recorded in the third commit and in §3.
+Ending SHA: `656bb22dc5cde93019d80230c1ca376cc3159ea9` (the report commit; see §3)
 
-*Note: `.gitignore` is a pre-existing modification and is deliberately NOT
-committed, exactly as P17-09 recorded.*
+*Note: `.gitignore` is a pre-existing modification and is deliberately **not**
+committed, exactly as P17-09 recorded. The pre-existing untracked files were also
+left untouched.*
+
+**Pushed: NO.**
 
 ## 25. Final truthful verdict
 
