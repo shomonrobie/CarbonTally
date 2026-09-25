@@ -4,7 +4,9 @@
 **Date:** 2025-09-25
 **Repository:** `/home/shomonrobie/ct_93d5cdd` · **Branch:** `p8-release-reconciled`
 **Starting SHA:** `0d9e29f9c3181b438763b7e00f7ade4bacec10f7`
-**Ending SHA:** the documentation commit that introduces this report (parent `3dd9fbe`).
+**Ending SHA:** `2ba39e3ef7c73201b1e7e44ef48066129a989610` — the documentation commit that introduces this
+report (parent `3dd9fbe`). The literal value was embedded by the immediately following documentation-only
+commit, whose only change is this line and the commit table row below.
 **Author:** Cline — implementation agent.
 **Nature:** IMPLEMENTATION (schema + domain + tests). Not an independent verification.
 
@@ -30,7 +32,7 @@ The documentation commit carrying this report. Its parent, and the implementatio
 | 1 | `5282660` | `feat(p17): add CAMS accounting-dimension and boundary migrations` | 4 migrations |
 | 2 | `3b8f85a` | `feat(p17): add unified CAMS domain layer (scope2, scope3, acting-for, instruments, estimation)` | 7 new domain modules, `domain/__init__.py`, `core/exceptions.py` |
 | 3 | `3dd9fbe` | `test(p17): cover CAMS dimensions, boundaries, acting-for and migrations` | 5 test modules (156 tests) |
-| 4 | *(this report)* | `docs(p17): record IMPLEMENT-MASTER-01 implementation report` | report + JSON |
+| 4 | `2ba39e3` | `docs(p17): record IMPLEMENT-MASTER-01 implementation report` | this report |
 
 **Nothing was pushed.** All prior commits preserved; no amend, rebase, reset or force-push.
 
