@@ -777,6 +777,14 @@ INTEGRATION_DATABASE_URL=… python -m pytest tests/integration/test_p17k_govern
 cd frontend && npm test -- --ci capability-truth-surface
 ```
 
+Environment used: interpreter `/home/shomonrobie/carbon_tally/backend/.venv`
+(Python 3.14), suites launched with `cwd` inside the repository under test
+(`/home/shomonrobie/ct_93d5cdd/backend` and `/home/shomonrobie/ct_93d5cdd/frontend`);
+no dependency was installed or upgraded. Because the tests import
+`domain.capability_catalogue` and call the new selector, importing the
+*unpatched* tree would fail with `AttributeError` — so a green run also proves
+the patched sources were the ones executed.
+
 Observed: domain 30 passed · API 10 passed · integration 22 passed (`EXIT=0`) ·
 focused unit batch 457 passed (`UNIT_EXIT=0`) · P17-K 24 + P17-L 37 passed
 (`INT_EXIT=0`) · frontend 19 passed (`EXIT=0`).
