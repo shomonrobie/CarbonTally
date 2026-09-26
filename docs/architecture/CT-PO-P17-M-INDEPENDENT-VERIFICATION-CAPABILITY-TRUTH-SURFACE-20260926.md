@@ -53,6 +53,7 @@ silently worked around.
 
 | Clone | Purpose | Catalogue state |
 |---|---|---|
+| `ct_iv_p17m_20260926` | earlier same-lineage clone (tenant-isolation / API scenario runs) | governed catalogue present |
 | `ct_iv_p17m_b_20260926` | migration idempotency (3rd application) | governed catalogue present |
 | `ct_iv_p17m_c_20260926` | API/DB/DOM verification, adversarial injection | governed catalogue present (18 rows) |
 | `ct_p17m_nocat_20260926` | fail-closed probe | **no** framework versions |
