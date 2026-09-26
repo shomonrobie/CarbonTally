@@ -6,6 +6,12 @@ import App from './App';
 import AnalyticsBootstrap from './components/AnalyticsBootstrap';
 import reportWebVitals from './reportWebVitals';
 import { Toaster } from 'react-hot-toast'; // <-- ADDED THIS
+import { installBuildInfo } from './lib/buildInfo';
+
+// H1 (P18-PUBLIC-TRUTH-02): publish the deployment's build identity before the
+// application renders, so `window.__CARBONTALLY_BUILD_INFO__` always identifies
+// the commit / branch / build time that produced the bundle being served.
+installBuildInfo();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

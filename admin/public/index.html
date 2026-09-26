@@ -4,12 +4,17 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="CarbonTally Admin Dashboard" />
-    <title>CarbonTally - ADMIN PANEL TEST</title>
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="description" content="CarbonTally Admin — internal operations console" />
+    <!-- M2 (P18 · PUBLIC-TRUTH-02): the console must not present itself as a
+         test/deployment-check surface. The previous title and a hidden
+         deployment-check marker div were removed; the title is now production
+         branding and the console is marked noindex. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>CarbonTally Admin</title>
   </head>
   <body>
-    <div id="vercel-admin-debug-marker" style="display:none;">ADMIN_HTML_LOADED_SUCCESSFULLY</div>
+    <noscript>You need to enable JavaScript to run the CarbonTally Admin console.</noscript>
     <div id="root"></div>
   </body>
 </html>

@@ -24,6 +24,8 @@ import StaffReviewQueue from './components/StaffReviewQueue';
 import LogViewer from './components/LogViewer';
 import AdminAssignment from './components/AdminAssignment';
 import WorkHub from './pages/admin/WorkHub';
+import AdminConfigNotice from './components/AdminConfigNotice';
+import { isSupabaseReady, missingSupabaseConfig, supabaseConfigurationError } from './supabaseClient';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -90,6 +92,16 @@ const AppRoutes = () => {
 
 function App() {
   console.log('🚀 Admin System Booted!');
+
+  // H2 (P18 · PUBLIC-TRUTH-02): a build without a usable Supabase client used to
+  // throw while `supabaseClient.js` was evaluated (createClient(undefined,
+  // undefined)), which left `/admin` as a blank page with no explanation — a
+  // malformed project URL had the same effect. Fail into a controlled,
+  // explainable state instead. This is a deployment configuration problem,
+  // not an authentication or permission one.
+  if (!isSupabaseReady) {
+    return <AdminConfigNotice missing={missingSupabaseConfig} reason={supabaseConfigurationError} />;
+  }
 
   return (
     <AuthProvider>

@@ -1,7 +1,7 @@
 // AuthContext.js - COMPLETE FIXED VERSION
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase, isSupabaseReady } from '../supabaseClient';
 
 // Create context
 const AuthContext = createContext();
@@ -14,6 +14,17 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     console.log('🔐 Initializing auth...');
+
+    // H2 (P18 · PUBLIC-TRUTH-02): without a usable Supabase client there is
+    // nothing to authenticate against. Fail closed into a settled state (rather
+    // than throwing) so the configuration notice can render; no authenticated
+    // work is started and no data is touched.
+    if (!isSupabaseReady || !supabase) {
+      console.error('❌ Admin console Supabase configuration missing — authentication disabled.');
+      setAuthInitialized(true);
+      setLoading(false);
+      return undefined;
+    }
 
     // Get session from Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
