@@ -252,13 +252,23 @@ class DisclosureCatalogRepository(AbstractRepository[dict]):
         """P17-L — framework versions that carry requirement rows, with their codes.
 
         The governed capability catalogue lives on **one** framework version, and
-        that version must be chosen by rule rather than by ordering luck: a
-        framework can legitimately have several versions, and a database may
-        contain requirement rows that are not governed disclosure requirement
+        that version must be chosen by governed *identity* rather than by ordering
+        luck: a framework can legitimately have several versions, and a database
+        may contain requirement rows that are not governed disclosure requirement
         identities at all (test residue, a future catalogue, another framework's
         draft). The caller decides which candidate is the governed catalogue, so
         the *grammar* of a governed requirement identity is defined in exactly
         one place (`domain.capability_catalogue`).
+
+        **Row order is deliberately not a precedence claim** (`P17-M2`, `DEF-1`):
+        the ordering below exists only so that two reads of the same database
+        return the same sequence, and the identity-based rule that selects the
+        catalogue —
+        :func:`domain.capability_catalogue.select_governed_catalogue_version` —
+        never considers a candidate's position. An earlier revision ordered by
+        `IN_FORCE`/`source_tier`/`version_label` and the *first* candidate that
+        carried one governed requirement code became the product claim, which let
+        a competing version silently replace the governed catalogue.
 
         Tenant-free by construction (`SEC-1`, `SEC-3`, `AG-5`): catalogue tables
         only, no tenant predicate, no ``current_setting``/``auth.uid``.
@@ -278,7 +288,11 @@ class DisclosureCatalogRepository(AbstractRepository[dict]):
             "         fv.source_tier, fv.source_url, fv.authoritative_source_date, "
             "         fv.status, fv.applicable_from, fv.applicable_to, fv.verified_at, "
             "         f.code "
-            "ORDER BY (fv.status = 'IN_FORCE') DESC, fv.source_tier, fv.version_label"
+            # Deterministic for reproducibility only — NOT a precedence rule
+            # (`P17-M2`, `DEF-1`). Selection is by governed identity, and the
+            # selector ignores position, so no status/tier/label ordering here can
+            # decide which version becomes the product capability claim.
+            "ORDER BY f.code, fv.version_label, fv.id"
         )
         return [_as_dict(r) for r in rows]  # type: ignore[misc]
 

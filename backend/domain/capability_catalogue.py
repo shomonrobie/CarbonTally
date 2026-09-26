@@ -237,6 +237,98 @@ def is_governed_requirement_code(requirement_code: Optional[str]) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# The governed catalogue's own identity (`P17-M2`, fixing `DEF-1`)
+# ---------------------------------------------------------------------------
+#: The **complete** governed requirement-identity set of the capability
+#: catalogue: Scope 1, the two governed Scope 2 methods, and the 15 Scope 3
+#: categories. It is derived from the closed registries already declared above
+#: (`_SCOPE2_METHOD_BY_SUFFIX`, `SCOPE3_CATEGORY_COUNT`) rather than re-typed, so
+#: the identity grammar and the identity set cannot drift apart.
+def governed_requirement_identities() -> frozenset[str]:
+    """Every governed disclosure requirement identity, as one closed set."""
+    identities = {"GP-S1"}
+    identities.update(f"GP-S2-{suffix}" for suffix in _SCOPE2_METHOD_BY_SUFFIX)
+    identities.update(
+        f"GP-S3-CAT-{category:02d}" for category in range(1, SCOPE3_CATEGORY_COUNT + 1)
+    )
+    for identity in sorted(identities):  # pragma: no cover - closed registry
+        if not is_governed_requirement_code(identity):
+            raise DisclosureViolation(
+                f"P17-M2: {identity!r} is in the governed identity set but is not a "
+                "governed requirement identity"
+            )
+    return frozenset(identities)
+
+
+#: The frozen identity of the governed capability catalogue (`P17-K`). A
+#: framework version is the capability catalogue **only** if its requirement rows
+#: are exactly this identity set — never because it happens to carry one
+#: governed-looking code (`P17-M2` `DEF-1`).
+GOVERNED_CATALOGUE_IDENTITIES: frozenset[str] = governed_requirement_identities()
+
+
+def is_governed_catalogue_version(candidate: Mapping[str, Any]) -> bool:
+    """Is this framework version the governed capability catalogue?
+
+    The rule is **identity-anchored and order-free** (`P17-M2`, fixing `DEF-1`):
+
+    * every requirement row on the version must be a governed requirement
+      identity — a version carrying any other row is not a capability catalogue,
+      and serving it would mean stating a claim built on non-governed rows;
+    * the version must carry the **complete** governed identity set
+      (:data:`GOVERNED_CATALOGUE_IDENTITIES`), because a *subset* is a narrower
+      statement dressed as the canonical one.
+
+    Consequently a competing version that carries merely *one* governed
+    requirement code can never become the catalogue, whatever its ``status``,
+    ``source_tier`` or ``version_label`` sorting (`DEF-1`).
+    """
+    codes = [str(code) for code in (candidate.get("requirement_codes") or [])]
+    if not codes:
+        return False
+    if not all(is_governed_requirement_code(code) for code in codes):
+        return False
+    return GOVERNED_CATALOGUE_IDENTITIES <= set(codes)
+
+
+def select_governed_catalogue_version(
+    candidates: Sequence[Mapping[str, Any]],
+) -> Optional[dict[str, Any]]:
+    """The **one** governed capability catalogue version among ``candidates``.
+
+    * ``None`` — no candidate is the governed catalogue. The surface then makes
+      no claim at all (`CS-3`, `IV-4`).
+    * one candidate — that candidate is the catalogue, **regardless of its
+      position** in ``candidates``. Row order therefore cannot decide a product
+      claim (`DEF-1`).
+    * more than one candidate — the governed catalogue is *ambiguous*. That is a
+      governance fault, not a presentation choice, so this raises
+      :class:`DisclosureViolation` and the surface fails closed rather than
+      choosing (`CS-3`, `AGENTS.md §62` — a catalogue transition is a PO
+      decision, never an ordering side effect).
+    """
+    governed = [
+        dict(candidate)
+        for candidate in _dicts(candidates)
+        if is_governed_catalogue_version(candidate)
+    ]
+    if not governed:
+        return None
+    if len(governed) > 1:
+        labels = ", ".join(
+            sorted(str(item.get("version_label") or "") for item in governed)
+        )
+        raise DisclosureViolation(
+            "P17-M2: "
+            f"{len(governed)} framework versions each carry the complete governed "
+            f"requirement identity set ({labels}); the governed capability catalogue "
+            "is ambiguous, so no capability statement can be made until an explicit "
+            "governed catalogue transition resolves it"
+        )
+    return governed[0]
+
+
 def capability_explanation(capability: str) -> str:
     """The truthful human-readable explanation for a governed capability value."""
     if capability not in CARBONTALLY_CAPABILITIES:

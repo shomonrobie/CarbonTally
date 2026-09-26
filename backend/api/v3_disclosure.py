@@ -34,8 +34,8 @@ from core.logging import get_logger
 from data.disclosure import DisclosureCatalogRepository, DisclosureRepository
 from data.disclosure_projection import DisclosureProjectionRepository
 from domain.capability_catalogue import (
-    is_governed_requirement_code,
     project_capability_catalogue,
+    select_governed_catalogue_version,
 )
 from domain.disclosure import DisclosureViolation
 from domain.disclosure_exposure import (
@@ -724,9 +724,16 @@ async def get_capability_catalogue(
     * **Server-authoritative.** The payload is derived from persisted
       `disclosure_requirement_versions` rows through the existing governed
       projection engine; nothing is hardcoded and no value is computed here.
-    * **Fails closed.** If the catalogue is not provisioned, or the projection
-      cannot be stated honestly, the endpoint returns **503** and no claim —
-      never a partial or upgraded one (`CS-3`, `IV-4`).
+    * **Identity-anchored selection.** The catalogue version is chosen by
+      governed *identity* — the version whose rows are the complete governed
+      requirement identity set — never by `status`, `source_tier` or
+      `version_label` ordering (`P17-M2`, `DEF-1`). A competing version carrying
+      a governed-looking requirement code therefore cannot replace the governed
+      catalogue or upgrade a claim.
+    * **Fails closed.** If the catalogue is not provisioned, if two versions both
+      claim the governed identity set (an ambiguous catalogue), or if the
+      projection cannot be stated honestly, the endpoint returns **503** and no
+      claim — never a partial or upgraded one (`CS-3`, `IV-4`).
 
     It answers *"what does CarbonTally support?"*. It deliberately does **not**
     answer *"which Scope 3 categories apply to this customer?"* — there is no
@@ -735,23 +742,26 @@ async def get_capability_catalogue(
     """
     catalog = DisclosureCatalogRepository(pool)
 
-    # Which framework version is the governed capability catalogue? Chosen by
-    # rule, never by ordering luck: the version whose requirement rows are
-    # governed disclosure requirement identities. A framework may legitimately
-    # have several versions, and a database may contain requirement rows that
-    # are not a capability catalogue at all — merging them would widen a claim.
+    # Which framework version is the governed capability catalogue? By GOVERNED
+    # IDENTITY, never by ordering luck (P17-M2 / DEF-1): the version whose
+    # requirement rows are the complete governed identity set. A framework may
+    # legitimately have several versions, and a database may contain requirement
+    # rows that are not a capability catalogue at all — merging them, or letting a
+    # competitor carry one governed-looking code, would widen or narrow a claim.
     candidates = await catalog.capability_catalogue_candidates()
-    selected = next(
-        (
-            candidate
-            for candidate in candidates
-            if any(
-                is_governed_requirement_code(code)
-                for code in (candidate.get("requirement_codes") or [])
-            )
-        ),
-        None,
-    )
+    try:
+        selected = select_governed_catalogue_version(candidates)
+    except DisclosureViolation as exc:
+        # More than one version claims the catalogue identity: an ambiguous
+        # governed state yields NO claim, never a chosen one.
+        logger.error("capability surface: ambiguous governed catalogue (%s)", exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The governed capability catalogue is ambiguous, so no capability "
+                "statement can be made until it is resolved."
+            ),
+        ) from exc
     if selected is None:
         logger.error(
             "capability surface: no framework version carries a governed requirement catalogue"

@@ -153,15 +153,17 @@ def _read_path_statements(statements: list[str]) -> list[str]:
 # Helpers — the real read path (repository → canonical projection)
 # ---------------------------------------------------------------------------
 async def _select_catalogue_version(pool: Any) -> dict[str, Any]:
-    """The governed capability catalogue version, chosen by rule (mirrors the route)."""
+    """The governed capability catalogue version — the **shipped** selector.
+
+    This calls the production selector instead of re-implementing the rule, so
+    this suite cannot stay green while the route's rule differs (`P17-M2`,
+    `DEF-1`).
+    """
     candidates = await DisclosureCatalogRepository(pool).capability_catalogue_candidates()
-    for candidate in candidates:
-        if any(
-            cc.is_governed_requirement_code(code)
-            for code in (candidate.get("requirement_codes") or [])
-        ):
-            return dict(candidate)
-    raise AssertionError("no framework version carries a governed capability catalogue")
+    version = cc.select_governed_catalogue_version(candidates)
+    if version is None:
+        raise AssertionError("no framework version carries a governed capability catalogue")
+    return version
 
 
 async def _read_catalogue(pool: Any) -> list[dict[str, Any]]:
