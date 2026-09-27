@@ -63,7 +63,7 @@ async def create_emission_record(
         record = {
             'organization_id': emission_data.organization_id,
             'asset_id': emission_data.asset_id,
-            'defra_factor_id': emission_data.defra_factor_id,
+            'emission_factor_id': emission_data.defra_factor_id,
             'start_date': emission_data.start_date,
             'end_date': emission_data.end_date,
             'raw_quantity': emission_data.raw_quantity,

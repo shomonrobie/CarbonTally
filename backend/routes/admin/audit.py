@@ -73,36 +73,6 @@ async def get_activity_logs(
             detail=f"Failed to get activity logs: {str(e)}"
         )
 
-@router.get("/activity/{log_id}")
-async def get_activity_log_detail(
-    log_id: str,
-    current_user: AuthUser = Depends(require_admin())
-):
-    """Get detailed activity log entry."""
-    try:
-        supabase = get_supabase_client()
-        
-        result = supabase.from_('activity_logs') \
-            .select('*') \
-            .eq('id', log_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not result.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Activity log not found"
-            )
-        
-        return {"success": True, "data": result.data}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get activity log: {str(e)}"
-        )
-
 @router.get("/activity/export")
 async def export_activity_logs(
     current_user: AuthUser = Depends(require_admin()),
@@ -195,3 +165,34 @@ async def search_activity_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to search activity logs: {str(e)}"
         )
+
+@router.get("/activity/{log_id}")
+async def get_activity_log_detail(
+    log_id: str,
+    current_user: AuthUser = Depends(require_admin())
+):
+    """Get detailed activity log entry."""
+    try:
+        supabase = get_supabase_client()
+        
+        result = supabase.from_('activity_logs') \
+            .select('*') \
+            .eq('id', log_id) \
+            .maybe_single() \
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Activity log not found"
+            )
+        
+        return {"success": True, "data": result.data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get activity log: {str(e)}"
+        )
+

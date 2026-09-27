@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from auth import AuthUser, require_org_member
 from database import get_supabase_client
+from utils.emissions import get_emission_factor
 
 router = APIRouter(prefix="/api/drafts", tags=["Drafts"])
 
@@ -402,15 +403,24 @@ async def submit_draft(
         
         # Save to emissions_logs
         try:
-            # Get DEFRA factor
-            defra_result = supabase.from_('defra_conversion_factors') \
-                .select('id') \
-                .eq('activity_type', data.get('fuel_utility_type', 'Electricity')) \
-                .eq('reporting_year', data.get('reporting_year', datetime.now().year)) \
-                .maybe_single() \
-                .execute()
-            
-            defra_factor_id = defra_result.data.get('id') if defra_result.data else None
+            # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
+            # was renamed to `emission_factors`; an unresolved factor is a controlled
+            # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
+            factor_id = None
+            factor_resolution = None
+            try:
+                factor = get_emission_factor(
+                    supabase,
+                    data.get('fuel_utility_type', 'Electricity'),
+                    data.get('reporting_year', datetime.now().year),
+                    organization_id=org_id,
+                )
+                factor_id = factor['factor_id']
+                factor_resolution = factor['resolution']
+            except Exception as factor_error:
+                print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
+                factor_resolution = 'unresolved_manual_review'
+
             
             # Get asset
             asset_result = supabase.from_('assets') \
@@ -433,7 +443,7 @@ async def submit_draft(
                 .insert({
                     'organization_id': org_id,
                     'asset_id': asset_id,
-                    'defra_factor_id': defra_factor_id,
+                    'emission_factor_id': factor_id,
                     'start_date': data.get('billing_start', now[:10]),
                     'end_date': data.get('billing_start', now[:10]),
                     'raw_quantity': consumption,

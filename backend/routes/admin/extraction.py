@@ -185,23 +185,30 @@ async def approve_extraction(
             if asset_result.data:
                 asset_id = asset_result.data['id']
         
-        # Get DEFRA factor_id
+        # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
+        # was renamed to `emission_factors`; an unresolved factor is a controlled
+        # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
         factor_id = None
-        factor_result = supabase.from_('defra_conversion_factors') \
-            .select('id') \
-            .eq('activity_type', fuel_utility_type) \
-            .eq('reporting_year', calculation['reporting_year']) \
-            .maybe_single() \
-            .execute()
-        
-        if factor_result.data:
-            factor_id = factor_result.data['id']
+        factor_resolution = None
+        try:
+            factor = get_emission_factor(
+                supabase,
+                fuel_utility_type,
+                calculation['reporting_year'],
+                organization_id=organization_id,
+            )
+            factor_id = factor['factor_id']
+            factor_resolution = factor['resolution']
+        except Exception as factor_error:
+            print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
+            factor_resolution = 'unresolved_manual_review'
+
         
         # Insert into emissions_logs
         emission_log_data = {
             'organization_id': organization_id,
             'asset_id': asset_id,
-            'defra_factor_id': factor_id,
+            'emission_factor_id': factor_id,
             'start_date': billing_start,
             'end_date': billing_start,  # For simplicity, use same date
             'raw_quantity': consumption,

@@ -353,6 +353,20 @@ markdown
 | GET | /api/admin/audit/activity | Audit logs |
 Full endpoint list available in Swagger UI.
 
+> **Audit architecture correction — CT-AUDIT-01 / CT-IMPLEMENT-01 (2026-09-27).**
+> The list above is a historical inventory of the legacy admin monitoring routes
+> under `backend/routes/admin/audit.py` (prefix `/api/admin/audit`). Those routes
+> read the retained legacy `activity_logs` tables and are **not** the canonical
+> audit system. The canonical audit ledger is
+> `public.audit_trail` (append-only, deny-by-default RLS) written through
+> `backend/domain/audit.py`, `backend/data/audit.py` and
+> `backend/infra/audit_logger.py`; the legacy `audit_logs`/`activity_logs` tables
+> and the orphaned `backend/routes/admin/audit_logs.py` module are retained but
+> superseded (`docs/architecture/CT-PO-CARBONTALLY-CT-AUDIT-01-CANONICAL-AUDIT-SYSTEM-RECONCILIATION-20260927.md`).
+> Within `backend/routes/admin/audit.py`, the literal `/activity/export` and
+> `/activity/search` paths are now registered before `/activity/{log_id}` so the
+> literal export path is no longer shadowed by the detail route.
+
 Rate Limiting
 Tier	Requests per minute
 Free	60

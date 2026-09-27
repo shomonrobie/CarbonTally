@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from auth import AuthUser, require_org_member, require_role
 from database import get_supabase_client
+from utils.emissions import get_emission_factor
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
@@ -513,15 +514,24 @@ async def customer_review_document(
             
             if extraction_data:
                 try:
-                    # Get DEFRA factor
-                    defra_result = supabase.from_('defra_conversion_factors') \
-                        .select('id') \
-                        .eq('activity_type', extraction_data.get('fuel_utility_type', 'Electricity')) \
-                        .eq('reporting_year', extraction_data.get('reporting_year', datetime.now().year)) \
-                        .maybe_single() \
-                        .execute()
-                    
-                    defra_factor_id = defra_result.data.get('id') if defra_result.data else None
+                    # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
+                    # was renamed to `emission_factors`; an unresolved factor is a controlled
+                    # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
+                    factor_id = None
+                    factor_resolution = None
+                    try:
+                        factor = get_emission_factor(
+                            supabase,
+                            extraction_data.get('fuel_utility_type', 'Electricity'),
+                            extraction_data.get('reporting_year', datetime.now().year),
+                            organization_id=org_id,
+                        )
+                        factor_id = factor['factor_id']
+                        factor_resolution = factor['resolution']
+                    except Exception as factor_error:
+                        print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
+                        factor_resolution = 'unresolved_manual_review'
+
                     
                     # ✅ Get asset - use customer_document's asset_id if available
                     asset_id = None
@@ -545,7 +555,7 @@ async def customer_review_document(
                     emission_data = {
                         'organization_id': org_id,
                         'asset_id': asset_id,
-                        'defra_factor_id': defra_factor_id,
+                        'emission_factor_id': factor_id,
                         'start_date': extraction_data.get('billing_start', now[:10]),
                         'end_date': extraction_data.get('billing_start', now[:10]),
                         'raw_quantity': consumption,

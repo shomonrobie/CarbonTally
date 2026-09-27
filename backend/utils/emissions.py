@@ -1,6 +1,7 @@
 # backend/utils/emissions.py
 """
-Emissions calculation utilities for CSV processing and DEFRA factor lookups.
+Emissions calculation utilities for CSV processing and canonical emission-factor
+resolution (CT-SCHEMA-03 F-03/F-04 remediation).
 """
 
 import pandas as pd
@@ -42,72 +43,208 @@ ACTIVITY_TYPE_MAPPING = {
 # EMISSION FACTOR FUNCTIONS
 # ==========================================
 
-def get_emission_factor(supabase_client, activity_type: str, reporting_year: int = None) -> Dict:
+class FactorUnresolved(ValueError):
+    """No governed emission factor could be resolved for the activity.
+
+    CT-SCHEMA-03 F-03/F-04: an unresolved factor is a *controlled manual-review*
+    state (AGENTS.md #15/#22), never a silent ``None`` provenance link.
     """
-    Fetch emission factor from database with optional year fallback.
-    Handles activity type mapping.
+
+
+# Canonical provenance columns.  Verified against the CT-SCHEMA-02 canonical
+# inventory: `emission_factors` retains the legacy column names
+# (activity_type, co2e_multiplier, reporting_year) and adds the governed
+# provenance columns (unit, scope, country, factor_source, factor_set).
+CANONICAL_FACTOR_COLUMNS = (
+    'id, activity_type, co2e_multiplier, reporting_year, unit, scope, '
+    'country, factor_source, factor_set'
+)
+
+CUSTOMER_FACTOR_COLUMNS = (
+    'id, activity_type, co2e_multiplier, reporting_year, unit, scope, '
+    'country, factor_source, version, status'
+)
+
+#: Canonical eligibility for customer-factor precedence.  Mirrors
+#: ``CustomerFactorsRepository.get_active_for_org`` (D-cf-5): only approved
+#: (``status = 'active'``) customer factors outrank CarbonTally factors.
+CUSTOMER_FACTOR_ACTIVE_STATUS = 'active'
+
+
+def _resolve_activity_alias(supabase_client, activity_type, organization_id=None):
+    """Resolve a governed activity alias (org-scoped first, then global).
+
+    Mirrors ``FactorAliasesRepository.find_by_alias`` over the canonical
+    ``factor_aliases`` table (AGENTS.md #22: alias matching is a governed stage).
     """
     try:
-        # Map the activity type to database format
-        db_activity_type = ACTIVITY_TYPE_MAPPING.get(activity_type, activity_type)
-        
-        print(f"🔍 Looking up factor for: '{activity_type}' -> DB: '{db_activity_type}'")
-        
-        # If no year provided, use the most recent available
-        if reporting_year is None:
-            year_result = supabase_client.from_('defra_conversion_factors') \
-                .select('reporting_year') \
-                .eq('activity_type', db_activity_type) \
-                .order('reporting_year', desc=True) \
-                .limit(1) \
-                .execute()
-            
-            if year_result.data:
-                reporting_year = year_result.data[0]['reporting_year']
-                print(f"📅 Using most recent year: {reporting_year}")
-            else:
-                raise ValueError(f"No emission factor found for '{activity_type}' (DB: '{db_activity_type}')")
-        
-        # Fetch the factor for the specific year
-        factor_result = supabase_client.from_('defra_conversion_factors') \
-            .select('co2e_multiplier, reporting_year, id') \
-            .eq('activity_type', db_activity_type) \
-            .eq('reporting_year', reporting_year) \
+        result = supabase_client.from_('factor_aliases') \
+            .select('alias_text, target_activity_type, organization_id') \
+            .eq('alias_text', activity_type) \
             .execute()
-        
-        if factor_result.data and len(factor_result.data) > 0:
-            factor_data = factor_result.data[0]
-            print(f"✅ Found factor: {factor_data['co2e_multiplier']} for {db_activity_type} ({reporting_year})")
-            return {
-                'multiplier': float(factor_data['co2e_multiplier']),
-                'reporting_year': factor_data['reporting_year'],
-                'factor_id': factor_data['id'],
-                'is_fallback': False
-            }
-        
-        # Try fallback - most recent factor
-        fallback_result = supabase_client.from_('defra_conversion_factors') \
-            .select('co2e_multiplier, reporting_year, id') \
-            .eq('activity_type', db_activity_type) \
+    except Exception as alias_error:
+        print(f"⚠️ Alias lookup failed for '{activity_type}': {alias_error}")
+        return None
+
+    rows = result.data or []
+    org_scoped = [
+        r for r in rows
+        if organization_id and r.get('organization_id') == organization_id
+    ]
+    global_rows = [r for r in rows if not r.get('organization_id')]
+    for row in (org_scoped or global_rows):
+        target = row.get('target_activity_type')
+        if target:
+            return target
+    return None
+
+
+def _resolve_customer_factor(supabase_client, activity_type, reporting_year, organization_id):
+    """Tier 1 — APPROVED CUSTOMER FACTOR (highest precedence, AGENTS.md #15)."""
+    if not organization_id:
+        return None
+    query = supabase_client.from_('customer_factors') \
+        .select(CUSTOMER_FACTOR_COLUMNS) \
+        .eq('organization_id', organization_id) \
+        .eq('status', CUSTOMER_FACTOR_ACTIVE_STATUS) \
+        .eq('activity_type', activity_type)
+    if reporting_year is not None:
+        query = query.eq('reporting_year', reporting_year)
+    result = query.order('version', desc=True).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def _resolve_canonical_factor(supabase_client, activity_type, reporting_year):
+    """Tier 2 — CarbonTally governed factor in the canonical `emission_factors`.
+
+    Returns ``(row, is_fallback)``; ``(None, False)`` when nothing resolves.
+    The retired legacy DEFRA conversion-factor table was renamed to
+    ``emission_factors`` by the canonical chain and its recreation is
+    structurally forbidden (CT-SCHEMA-03 F-01).
+    """
+    if reporting_year is None:
+        year_result = supabase_client.from_('emission_factors') \
+            .select('reporting_year') \
+            .eq('activity_type', activity_type) \
             .order('reporting_year', desc=True) \
             .limit(1) \
             .execute()
-        
-        if fallback_result.data and len(fallback_result.data) > 0:
-            fallback_data = fallback_result.data[0]
-            print(f"⚠️ Using fallback factor: {fallback_data['co2e_multiplier']} from {fallback_data['reporting_year']}")
+        if not year_result.data:
+            return None, False
+        reporting_year = year_result.data[0]['reporting_year']
+
+    exact = supabase_client.from_('emission_factors') \
+        .select(CANONICAL_FACTOR_COLUMNS) \
+        .eq('activity_type', activity_type) \
+        .eq('reporting_year', reporting_year) \
+        .limit(1) \
+        .execute()
+    if exact.data:
+        return exact.data[0], False
+
+    # Latest-year fallback — explicit and recorded in the returned provenance
+    # (`is_fallback` / `resolution`), never applied silently (AGENTS.md #22).
+    fallback = supabase_client.from_('emission_factors') \
+        .select(CANONICAL_FACTOR_COLUMNS) \
+        .eq('activity_type', activity_type) \
+        .order('reporting_year', desc=True) \
+        .limit(1) \
+        .execute()
+    if fallback.data:
+        return fallback.data[0], True
+    return None, False
+
+
+def get_emission_factor(supabase_client, activity_type: str, reporting_year: int = None,
+                        organization_id: Optional[str] = None) -> Dict:
+    """Resolve an emission factor through the canonical governed chain.
+
+    Precedence (AGENTS.md #15 — ratified policy, not a fallback chain):
+
+        1. APPROVED CUSTOMER FACTOR    (`customer_factors`, org-scoped)
+        2. CARBONTALLY FACTOR MATCHING (`emission_factors` via `factor_aliases`)
+        3. UNRESOLVED → FactorUnresolved (controlled manual review)
+
+    The returned mapping is a superset of the historical contract, so existing
+    callers keep working while the factor decision becomes traceable:
+
+        multiplier, reporting_year, factor_id, is_fallback     (historical)
+        factor_kind, factor_source, factor_set, unit, scope, country,
+        customer_factor_id, alias_used, resolution             (provenance)
+
+    ``organization_id`` is optional for backward compatibility; when supplied,
+    approved customer factors take precedence over CarbonTally factors.
+    """
+    db_activity_type = ACTIVITY_TYPE_MAPPING.get(activity_type, activity_type)
+    alias_used = None
+
+    # ---- Tier 1: approved customer factor (org-scoped) ---------------------
+    if organization_id:
+        customer_row = _resolve_customer_factor(
+            supabase_client, db_activity_type, reporting_year, organization_id
+        )
+        if customer_row is None and db_activity_type != activity_type:
+            customer_row = _resolve_customer_factor(
+                supabase_client, activity_type, reporting_year, organization_id
+            )
+        if customer_row:
+            print(f"✅ Customer factor (approved): {customer_row['co2e_multiplier']} "
+                  f"for {db_activity_type} (org={organization_id})")
             return {
-                'multiplier': float(fallback_data['co2e_multiplier']),
-                'reporting_year': fallback_data['reporting_year'],
-                'factor_id': fallback_data['id'],
-                'is_fallback': True
+                'multiplier': float(customer_row['co2e_multiplier']),
+                'reporting_year': customer_row.get('reporting_year'),
+                'factor_id': customer_row['id'],
+                'is_fallback': False,
+                'factor_kind': 'customer_factor',
+                'factor_source': customer_row.get('factor_source'),
+                'factor_set': None,
+                'unit': customer_row.get('unit'),
+                'scope': customer_row.get('scope'),
+                'country': customer_row.get('country'),
+                'customer_factor_id': customer_row['id'],
+                'alias_used': None,
+                'resolution': 'customer_factor',
             }
-        
-        raise ValueError(f"No emission factor found for '{activity_type}' (DB: '{db_activity_type}')")
-        
-    except Exception as e:
-        print(f"❌ Error fetching emission factor: {e}")
-        raise
+
+    # ---- Governed alias resolution ----------------------------------------
+    resolved_activity = _resolve_activity_alias(
+        supabase_client, db_activity_type, organization_id
+    )
+    if resolved_activity and resolved_activity != db_activity_type:
+        alias_used = resolved_activity
+        db_activity_type = resolved_activity
+
+    # ---- Tier 2: CarbonTally governed factor ------------------------------
+    row, is_fallback = _resolve_canonical_factor(
+        supabase_client, db_activity_type, reporting_year
+    )
+    if row:
+        print(f"{'⚠️ Fallback' if is_fallback else '✅'} Factor: "
+              f"{row['co2e_multiplier']} for {db_activity_type} "
+              f"({row.get('reporting_year')})")
+        return {
+            'multiplier': float(row['co2e_multiplier']),
+            'reporting_year': row.get('reporting_year'),
+            'factor_id': row['id'],
+            'is_fallback': is_fallback,
+            'factor_kind': 'carbontally_factor',
+            'factor_source': row.get('factor_source'),
+            'factor_set': row.get('factor_set'),
+            'unit': row.get('unit'),
+            'scope': row.get('scope'),
+            'country': row.get('country'),
+            'customer_factor_id': None,
+            'alias_used': alias_used,
+            'resolution': 'latest_year_fallback' if is_fallback else 'exact_year',
+        }
+
+    # ---- Tier 3: unresolved → controlled manual review ---------------------
+    raise FactorUnresolved(
+        f"No governed emission factor resolved for '{activity_type}' "
+        f"(activity_type='{db_activity_type}', reporting_year={reporting_year}); "
+        "route to manual review — do not record a null factor reference."
+    )
+
 
 def get_activity_category(supabase_client, activity_type: str) -> Dict:
     """
