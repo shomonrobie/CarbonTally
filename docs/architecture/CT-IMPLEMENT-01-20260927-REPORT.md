@@ -829,6 +829,7 @@ No migration, seed, configuration, `.env`, `frontend/**`, `admin/**` or `e2e/**`
 |---|---|
 | `689bdc95750f3b7d088b2a5ea7a7ba195026b9a3` | `fix(ct-implement-01): canonical factor resolution, audit failure visibility, admin audit route ordering` |
 | `922b3236bb582fb6001dba6b7d4e4d02465a194b` | `docs(ct-implement-01): implementation report (partial, live migration blocked)` — the commit that first contained this report |
+| `28f82ed` (full SHA in the session summary) | `docs(ct-implement-01): record the report commit SHA` — records `922b3236…` in §16.3. This convention terminates there: the SHA-recording commit's own SHA is reported in the session summary rather than self-referentially. |
 
 Nothing was pushed.
 
