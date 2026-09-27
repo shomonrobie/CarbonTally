@@ -828,7 +828,7 @@ No migration, seed, configuration, `.env`, `frontend/**`, `admin/**` or `e2e/**`
 | SHA | Subject |
 |---|---|
 | `689bdc95750f3b7d088b2a5ea7a7ba195026b9a3` | `fix(ct-implement-01): canonical factor resolution, audit failure visibility, admin audit route ordering` |
-| *(the commit containing this report)* | `docs(ct-implement-01): implementation report` — recorded in the session summary, since a commit cannot contain its own SHA |
+| `922b3236bb582fb6001dba6b7d4e4d02465a194b` | `docs(ct-implement-01): implementation report (partial, live migration blocked)` — the commit that first contained this report |
 
 Nothing was pushed.
 
