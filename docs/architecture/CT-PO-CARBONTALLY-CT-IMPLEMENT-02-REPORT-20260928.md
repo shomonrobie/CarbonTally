@@ -206,6 +206,51 @@ insert a row before asserting UPDATE/DELETE/TRUNCATE refusal.
 
 ---
 
+### 5.1 Post-commit finding F-6 (state-aware provenance) — corrected
+
+Committing the three migrations legitimately changed what "HEAD" means, and two
+provenance assertions that had been written for the *pre-commit* state began to
+fail (92 pass / 2 fail) — this was caught by a deliberate post-commit re-run, not
+by assuming the earlier result still held:
+
+* `migration_set_provenance_ct_schema_01` asserted that `git HEAD` itself
+  reproduces the CT-SCHEMA-01 fingerprint. Once the CT-IMPLEMENT-02 migrations are
+  committed, HEAD has legitimately moved on, so the assertion was false — **not**
+  a schema defect.
+* `migration_set_only_authorised_revision` compared against `git diff HEAD` only,
+  so committed-but-in-HEAD files dropped out of the comparison while the allowed
+  set still listed them.
+
+Both were rewritten to be **state-aware and strictly stronger**, and re-verified
+green against both live rebuilt targets (`exit=0`):
+
+* `migration_set_provenance_baseline_from_head` — HEAD's migration set **minus**
+  the CT-IMPLEMENT-02 additions must reproduce one of the two recorded baseline
+  anchors: CT-SCHEMA-01 `d73e1e2b…` or CT-SCHEMA-02 `40b168b3…`. The observed
+  value here is `d73e1e2b…` (i.e. HEAD is still exactly CT-SCHEMA-01 plus the
+  three CT-IMPLEMENT-02 files, because the authorised D32 revision is still
+  uncommitted). Any *third* value means the baseline was altered and fails.
+* `migration_set_only_authorised_revision` — working-tree vs HEAD is now read from
+  `git status --porcelain`, which reports tracked modifications **and** untracked
+  additions, so the check is correct both before and after commit. Observed:
+  `['20260823000000_d32_private_documents_storage.sql']`, with the three
+  CT-IMPLEMENT-02 files reported as already in HEAD.
+
+Coverage preserved: a rogue migration still fails — committed, it joins the
+baseline subset and changes that fingerprint; uncommitted, it is not in the
+allowed set.
+
+Post-commit verification against both targets:
+
+```
+=== target ct_impl02b (from-zero VERIFIED rebuild) ===
+=== RESULT: ALL CHECKS PASSED (94 pass, 0 fail) ===
+=== target ct_impl02 (first from-zero rebuild) ===
+=== RESULT: ALL CHECKS PASSED (94 pass, 0 fail) ===
+```
+
+---
+
 ## 6. Application-layer change (new, additive — PD-2 domain + runner)
 
 ### 6.1 `backend/domain/report_schedule.py` (new)

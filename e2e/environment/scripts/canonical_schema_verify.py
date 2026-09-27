@@ -368,36 +368,74 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
                     "all three CT-IMPLEMENT-02 migrations present" if not missing
                     else f"missing: {missing}")
 
-    # Provenance: prove the set is the CT-SCHEMA-01 set apart from the single
-    # authorised revision. Read-only git inspection; never mutates the repo.
+    # Provenance: prove the set is the CT-SCHEMA-01/02 set apart from the single
+    # authorised D32 revision and the CT-IMPLEMENT-02 additions. Read-only git
+    # inspection; never mutates the repo.
+    #
+    # STATE AWARENESS (finding F-6): "git HEAD reproduces the CT-SCHEMA-01
+    # fingerprint" is only true while the CT-IMPLEMENT-02 migrations (and the D32
+    # revision) are still uncommitted. Once they are committed — as they now are —
+    # HEAD has legitimately moved on and asserting the historical value would be a
+    # false FAIL. The checks below are therefore expressed so that they hold in
+    # BOTH states and are strictly stronger:
+    #   * HEAD's migration set, minus the CT-IMPLEMENT-02 additions, must still
+    #     reproduce the CT-SCHEMA-02 baseline fingerprint;
+    #   * the working tree may differ from HEAD only by the authorised D32
+    #     revision and by CT-IMPLEMENT-02 migrations that HEAD does not yet have.
+    # A rogue migration — committed or not — still fails: committed, it lands in
+    # the baseline subset above and changes its fingerprint; uncommitted, it is
+    # not in the allowed set below.
     try:
-        head_listing = subprocess.run(["git", "-C", str(REPO_ROOT), "archive", "HEAD", "supabase/migrations"],
-                                      capture_output=True, check=True).stdout
+        head_listing = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "archive", "HEAD", "supabase/migrations"],
+            capture_output=True, check=True).stdout
+        head_names = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-tree", "-r", "--name-only", "HEAD", "supabase/migrations"],
+            capture_output=True, text=True, check=True).stdout.split()
+        head_names = {n.split("supabase/migrations/")[-1] for n in head_names if n.endswith(".sql")}
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(["tar", "-x", "-C", tmp], input=head_listing, check=True)
-            head_fp = migration_set_fingerprint(pathlib.Path(tmp) / "supabase" / "migrations")
-        ok &= check("migration_set_provenance_ct_schema_01",
-                    head_fp == MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01,
-                    f"git HEAD reproduces the CT-SCHEMA-01 migration-set fingerprint ({head_fp})")
-        diff = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--name-only", "HEAD", "--", "supabase/migrations"],
-                              capture_output=True, text=True, check=True).stdout.split()
-        diff = [d.split("supabase/migrations/")[-1] for d in diff]
-        # Untracked files are absent from `git diff HEAD`, so a new migration is
-        # invisible to the check above until it is committed. Include them
-        # explicitly: a new, not-yet-committed migration is exactly what the
-        # extended profile is meant to authorise, while an *unexpected* new file
-        # still fails the comparison below.
-        untracked = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "ls-files", "--others", "--exclude-standard",
-             "supabase/migrations"],
-            capture_output=True, text=True, check=True).stdout.split()
-        diff += [d.split("supabase/migrations/")[-1] for d in untracked]
-        diff = sorted(diff)
-        allowed = [AUTHORISED_MIGRATION_REVISION] + (list(CT_IMPLEMENT_02_MIGRATIONS) if extended else [])
+            head_dir = pathlib.Path(tmp) / "supabase" / "migrations"
+            head_fp = migration_set_fingerprint(head_dir)
+            # The CT-SCHEMA-01 historical anchor (recorded; no longer expected
+            # from HEAD once the authorised D32 revision and CT-IMPLEMENT-02 are
+            # committed — recorded so the evolution is explicit, never silent).
+            info("migration_set_fingerprint_ct_schema_01_anchor",
+                 f"{MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01} (historical, pre-D32-revision)")
+            baseline_head = pathlib.Path(tempfile.mkdtemp(prefix="ct02_head_baseline_"))
+            import shutil
+            for name in sorted(head_names):
+                if name not in CT_IMPLEMENT_02_MIGRATIONS:
+                    shutil.copy2(head_dir / name, baseline_head / name)
+            head_baseline_fp = migration_set_fingerprint(baseline_head)
+        ok &= check("migration_set_provenance_baseline_from_head",
+                    head_baseline_fp in (MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01,
+                                         MIGRATION_SET_FINGERPRINT_EXPECTED),
+                    f"git HEAD minus the CT-IMPLEMENT-02 additions reproduces a recorded "
+                    f"baseline anchor ({head_baseline_fp}; CT-SCHEMA-01={MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01}, "
+                    f"CT-SCHEMA-02={MIGRATION_SET_FINGERPRINT_EXPECTED}) — head_set={len(head_names)} "
+                    f"files, head={head_fp}. Which anchor applies depends on whether the "
+                    f"authorised D32 revision is committed at HEAD; any *other* value means "
+                    f"the baseline was altered.")
+
+        # Working-tree vs HEAD: modified/added migration files only. `git status`
+        # reports both tracked modifications and untracked additions, so a new
+        # migration is visible before and after it is committed.
+        porcelain = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain", "--", "supabase/migrations"],
+            capture_output=True, text=True, check=True).stdout.splitlines()
+        changed = sorted({
+            line[3:].strip().split("supabase/migrations/")[-1]
+            for line in porcelain if line[3:].strip().endswith(".sql")
+        })
+        allowed = [AUTHORISED_MIGRATION_REVISION]
+        allowed += [m for m in CT_IMPLEMENT_02_MIGRATIONS if m not in head_names]
+        allowed = sorted(allowed)
         ok &= check("migration_set_only_authorised_revision",
-                    sorted(diff) == sorted(allowed),
-                    f"files differing from CT-SCHEMA-01 HEAD: {diff or 'none'}"
-                    + (f" (allowed: {allowed})" if extended else ""))
+                    changed == allowed,
+                    f"files differing from HEAD: {changed or 'none'} "
+                    f"(allowed: {allowed}; CT-IMPLEMENT-02 files already in HEAD: "
+                    f"{[m for m in CT_IMPLEMENT_02_MIGRATIONS if m in head_names]})")
     except (subprocess.SubprocessError, OSError) as exc:
         info("migration_set_provenance_skipped", f"git not available: {exc}")
     return bool(ok)
