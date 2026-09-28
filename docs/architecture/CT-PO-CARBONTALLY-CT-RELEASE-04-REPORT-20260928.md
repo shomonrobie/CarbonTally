@@ -5,8 +5,8 @@
 **Branch:** `p8-release-reconciled`
 **Task ID:** CT-RELEASE-04-20260928-CLEAN-CHECKOUT-CANONICAL-REBUILD
 **Starting SHA:** `b313fc2242b1deca0370ac48749549f5bb435a11`
-**Ending SHA:** `c3a8df5` (the CT-RELEASE-04 implementation commit — see §15; a
-task-local bookkeeping note follows it)
+**Ending SHA:** `5a0c5af` (the CT-RELEASE-04 report commit — see §15; the
+task-local bookkeeping note that follows it names its own SHA)
 **Status:** REPRODUCIBILITY INFRASTRUCTURE **IMPLEMENTED · EXECUTED TWICE FROM TWO
 INDEPENDENT CLEAN CHECKOUTS ON DISPOSABLE TARGETS**; **NOT INDEPENDENTLY VERIFIED**;
 no production, live or investor-demo system was touched
@@ -308,9 +308,9 @@ itself.
 
 | Commit | SHA | Subject |
 |---|---|---|
-| 1 | `c3a8df5` | `CT-RELEASE-04: commit the canonical-rebuild support set so a clean HEAD rebuilds` (**the change under test**) |
-| 2 | this report's commit | `CT-RELEASE-04: implementation report` |
-| 3 | (bookkeeping) | the same report, edited to name commit 2's SHA in this table |
+| 1 | `c3a8df5` | `CT-RELEASE-04: commit the canonical-rebuild support set so a clean HEAD rebuilds` — **the change under test**; both clean-clone runs in §10–§11 were executed against this commit |
+| 2 | `5a0c5af` | `CT-RELEASE-04: implementation report` — this document |
+| 3 | (this commit; SHA recorded in the bookkeeping note below the table) | the same report, edited only to name commit 2's SHA — no content of substance changes |
 
 | Property | Value |
 |---|---|
@@ -326,6 +326,14 @@ part of CT-RELEASE-04: it adds one line (`.aider*`) plus a CRLF re-write of the
 file (`git diff --ignore-cr-at-eol --numstat .gitignore` → `1 0`). Absorbing an
 unrelated local modification into this commit would have violated AGENTS.md §70,
 so it remains uncommitted in the worktree and is recorded here instead.
+
+**Bookkeeping note.** Commit 3 exists solely because a commit cannot contain its
+own SHA. Its content is exactly the two edits above — the header *Ending SHA* line
+and row 2 of this table — so a reader who checks out commit 3 sees a document whose
+cited SHAs are all resolvable, and a reader who checks out commit 2 sees a document
+identical in substance. Nothing after `c3a8df5` changes any file that the rebuild
+reads: commits 2 and 3 touch `docs/` only, so the clean-clone result in §10–§11
+still applies verbatim to the current `HEAD`.
 
 ## 16. Remaining work / residual risk
 
