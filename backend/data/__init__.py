@@ -32,6 +32,8 @@ from .verifications import VerificationsRepository
 from .consultants import ConsultantsRepository
 from .manual_extraction import ManualExtractionRepository
 from .suppliers import SuppliersRepository
+from .report_schedules import ReportSchedulesRepository
+from .report_shares import ReportSharesRepository
 
 __all__ = [
     "AbstractRepository",
@@ -55,6 +57,8 @@ __all__ = [
     "ProcessingEntitiesRepository",
     "QueueSettingsRepository",
     "ReportsRepository",
+    "ReportSchedulesRepository",
+    "ReportSharesRepository",
     "ReportVersionsRepository",
     "ReviewQueueRepository",
     "RolesRepository",

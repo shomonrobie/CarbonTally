@@ -49,6 +49,14 @@ FREQUENCIES: tuple[str, ...] = (WEEKLY, MONTHLY, QUARTERLY, ANNUAL)
 #: canonical CHECK. Kept explicit so the mismatch stays visible in code.
 LEGACY_UNSUPPORTED_FREQUENCIES: tuple[str, ...] = ("daily",)
 
+#: Every accepted ``report_schedule_definitions.report_type`` value
+#: (``report_schedule_definitions_report_type_check``). It is deliberately a
+#: subset of what the report engine advertises: a schedule may only claim a
+#: report the engine can actually produce, so "a schedule exists" can never be
+#: mistaken for "the report can be generated".
+SCHEDULE_REPORT_TYPES: tuple[str, ...] = ("annual",)
+
+
 #: Calendar months advanced per frequency (``weekly`` advances by 7 days).
 _MONTHS_PER_FREQUENCY: dict[str, int] = {MONTHLY: 1, QUARTERLY: 3, ANNUAL: 12}
 
