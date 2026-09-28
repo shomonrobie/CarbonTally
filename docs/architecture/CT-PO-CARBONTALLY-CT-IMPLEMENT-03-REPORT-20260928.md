@@ -641,7 +641,7 @@ was read or written.
 |---|---|
 | Branch | `p8-release-reconciled` |
 | Starting SHA | `21310afae69cace6b67985eda7e817b0aee1c33b` (CT-IMPLEMENT-02's last commit) |
-| Ending SHA | **`eff1c56`** — the CT-IMPLEMENT-03 report commit, i.e. the branch tip once the implementation, tests and this report were in place. The only commit after it is the one that adds this sentence (a bookkeeping note carrying no code) |
+| Ending SHA | **`eff1c56`** — the CT-IMPLEMENT-03 report commit, i.e. the branch tip once the implementation, tests and this report were in place. The only commits after it are two bookkeeping notes: the one that records this SHA line and one that removes a single unused import. Neither changes behaviour |
 | Pushed | **no** |
 | History rewritten / reset / amended | **no** (`git reset`, `git clean`, force-push and amend were not used) |
 

@@ -29,7 +29,6 @@ from services.report_schedules import (
     ScheduleInUseError,
     ScheduleValidationError,
     canonical_frequencies,
-    shape_run as shape_scheduled_run,
     shape_schedule,
 )
 from services.report_shares import (
