@@ -5,11 +5,13 @@
 **Branch:** `p8-release-reconciled`
 **Task ID:** CT-RELEASE-04-20260928-CLEAN-CHECKOUT-CANONICAL-REBUILD
 **Starting SHA:** `b313fc2242b1deca0370ac48749549f5bb435a11`
-**Ending SHA:** `5a0c5af` (the CT-RELEASE-04 report commit — see §15; the
-task-local bookkeeping note that follows it names its own SHA)
-**Status:** REPRODUCIBILITY INFRASTRUCTURE **IMPLEMENTED · EXECUTED TWICE FROM TWO
-INDEPENDENT CLEAN CHECKOUTS ON DISPOSABLE TARGETS**; **NOT INDEPENDENTLY VERIFIED**;
-no production, live or investor-demo system was touched
+**Ending SHA:** `00af1a6` (the CT-RELEASE-04 bookkeeping commit — see §15; the
+addendum commit that carries this line changes `docs/` only)
+**Status:** REPRODUCIBILITY INFRASTRUCTURE **IMPLEMENTED · EXECUTED THREE TIMES —
+TWICE FROM TWO INDEPENDENT CLEAN CHECKOUTS OF `c3a8df5`, ONCE FROM A CLEAN CLONE
+FAST-FORWARDED TO THE FINAL HEAD — ON DISPOSABLE TARGETS**;
+**NOT INDEPENDENTLY VERIFIED**; no production, live or investor-demo system was
+touched
 
 > **INDEPENDENT VERIFICATION NOT PERFORMED.** Every result below was produced by
 > the implementing agent's own harness on disposable infrastructure. `TESTED` and
@@ -284,11 +286,11 @@ itself.
 |---|---|---|
 | Independent re-verification by a second agent | **NOT PERFORMED** | out of scope for this task; the clean-clone procedure in §8–§12 is written to be re-runnable by an independent verifier |
 | Push to any remote | **not performed** | explicitly out of scope (AGENTS.md §70); the commit is local |
-| Any production / live / investor-demo database or storage | **not touched** | the only targets were the two disposable labelled containers created by the runner |
+| Any production / live / investor-demo database or storage | **not touched** | the only targets were the three disposable labelled containers (`ct_rel04a`, `ct_rel04b`, `ct_rel04c`) created by the runner itself; no durable environment was addressed |
 | Full 1,185-identity demo audit, application/API/E2E suites | not run | unrelated to a tooling change; the suites do not exercise the rebuild path |
 | `ct-schema-02` profile (89-migration baseline) rebuild | not re-run | the 89-migration baseline anchor is asserted *inside* the 92-migration run (`baseline_migration_set_unchanged`, `migration_set_provenance_baseline_from_head`), which is the stronger statement |
 | A "clean checkout" on a machine that has never built this project | not possible here | Docker images were already present locally; the runs therefore prove *repository* completeness, not image-availability from a cold cache |
-| Disposable targets torn down | **no — deliberately left running** | so an independent verifier can re-run §12 against them. Teardown: `docker rm -f ct_rel04a_pg ct_rel04a_storage ct_rel04b_pg ct_rel04b_storage && docker volume rm ct_rel04a_pgdata ct_rel04b_pgdata` (add `rm -f /tmp/ct_rel04a.env /tmp/ct_rel04b.env`, which hold the disposable target passwords) |
+| Disposable targets torn down | **no — deliberately left running** | so an independent verifier can re-run §12 against them. Teardown: `docker rm -f ct_rel04a_pg ct_rel04a_storage ct_rel04b_pg ct_rel04b_storage ct_rel04c_pg ct_rel04c_storage && docker volume rm ct_rel04a_pgdata ct_rel04b_pgdata ct_rel04c_pgdata` (add `rm -f /tmp/ct_rel04a.env /tmp/ct_rel04b.env /tmp/ct_rel04c.env`, which hold the disposable target passwords, and `rm -rf /tmp/ct_rel04_clean /tmp/ct_rel04_clean2`, the two clean clones) |
 
 ## 14. Security, isolation and secret handling
 
@@ -310,7 +312,8 @@ itself.
 |---|---|---|
 | 1 | `c3a8df5` | `CT-RELEASE-04: commit the canonical-rebuild support set so a clean HEAD rebuilds` — **the change under test**; both clean-clone runs in §10–§11 were executed against this commit |
 | 2 | `5a0c5af` | `CT-RELEASE-04: implementation report` — this document |
-| 3 | (this commit; SHA recorded in the bookkeeping note below the table) | the same report, edited only to name commit 2's SHA — no content of substance changes |
+| 3 | `00af1a6` | `CT-RELEASE-04: record the implementation / report SHAs in the report` — bookkeeping; the report's own SHAs are made resolvable here |
+| 4 | the addendum commit (§18) | `CT-RELEASE-04: record the third rebuild, executed at the final HEAD` — §18 plus the two corrections noted below |
 
 | Property | Value |
 |---|---|
@@ -328,12 +331,17 @@ unrelated local modification into this commit would have violated AGENTS.md §70
 so it remains uncommitted in the worktree and is recorded here instead.
 
 **Bookkeeping note.** Commit 3 exists solely because a commit cannot contain its
-own SHA. Its content is exactly the two edits above — the header *Ending SHA* line
-and row 2 of this table — so a reader who checks out commit 3 sees a document whose
-cited SHAs are all resolvable, and a reader who checks out commit 2 sees a document
-identical in substance. Nothing after `c3a8df5` changes any file that the rebuild
-reads: commits 2 and 3 touch `docs/` only, so the clean-clone result in §10–§11
-still applies verbatim to the current `HEAD`.
+own SHA (row 3 above supplies it). Its content is exactly the two edits to the
+header *Ending SHA* line and row 2 of this table, so a reader who checks out commit
+3 sees a document whose cited SHAs are all resolvable, and a reader who checks out
+commit 2 sees a document identical in substance. Commit 4 reverses nothing: it
+corrects this table's row 3 wording (the earlier "SHA recorded in the bookkeeping
+note" phrasing was not literally true) and adds the §18 addendum.
+
+Nothing after `c3a8df5` changes any file that the rebuild reads — `git diff
+--name-only c3a8df5..HEAD -- e2e/ supabase/` is empty, and `git diff --stat
+c3a8df5..HEAD` is this one document — and §18 additionally *executes* the rebuild
+at the final HEAD rather than relying on that argument.
 
 ## 16. Remaining work / residual risk
 
@@ -354,12 +362,53 @@ still applies verbatim to the current `HEAD`.
 ## 17. Acceptance language
 
 * **IMPLEMENTED** — the support set is committed; a clean checkout of
-  `c3a8df5` contains everything the rebuild needs.
-* **TESTED** — executed twice from two independent clean clones on disposable
-  targets, with the developer worktree's copies of those files made unreadable:
-  92 migrations, 0 failures, 94/94 verifier checks, canonical inventory fingerprint
-  `5291cd91…c1407` and migration fingerprint `36d5d85b…37944` reproduced exactly,
-  and 13/13 F-02 regression assertions passed.
+  `c3a8df5` (and of the final HEAD) contains everything the rebuild needs.
+* **TESTED** — executed **three times** on disposable targets, with the developer
+  worktree's copies of those files made unreadable each time: twice from two
+  independent clean clones of `c3a8df5`, and once from a clean clone fast-forwarded
+  to the final HEAD (§18). Every run: 92 migrations, 0 failures, 94/94 verifier
+  checks, canonical inventory fingerprint `5291cd91…c1407` and migration fingerprint
+  `36d5d85b…37944` reproduced exactly; the F-02 regression additionally passed 13/13.
 * **VERIFIED** — *not claimed*. No independent agent has re-run this procedure.
 * **ACCEPTED** — *not claimed*. Acceptance is the Product Owner's, not this
   agent's.
+
+---
+
+## 18. Addendum — a third rebuild, executed at the *final* HEAD
+
+§10–§11 were executed against `c3a8df5` (the change under test). The two commits
+after it touch `docs/` only, so the result carries over by inspection — but since
+the task's goal is stated in terms of *HEAD*, the §8 procedure was run a **third
+time** against the repository exactly as it now stands, rather than resting on that
+inference.
+
+Method: clean clone A (which had been at `c3a8df5`) was fast-forwarded from the
+developer repository to commit 3, the worktree's copies of the support set were
+again set to mode `000` for the duration, and the rebuild ran on a third disposable
+target (`ct_rel04c`).
+
+| Step | Evidence |
+|---|---|
+| checkout | `git checkout -f 00af1a69f7e79ae34f02fa9f190013b72457d2cc` → `HEAD is now at 00af1a6 …`; `git status --short` **empty** |
+| chain in the checkout | `ls supabase/migrations/*.sql \| wc -l` → `92`; `e2e/environment/supabase/migrations` symlink resolves to the same `92` |
+| worktree control | the same six scripts and `fixtures/` at mode `000` throughout (`/tmp/ct04_run3_modes.txt`) |
+| command | `bash e2e/environment/scripts/canonical_schema_rebuild.sh --prefix ct_rel04c --port 55512 --profile ct-implement-02 --evidence /tmp/ct_rel04c_evidence` |
+| PHASE A | `PHASE A complete — platform layer present (storage.buckets, storage.objects, storage.foldername, auth.uid(), RLS on storage.objects)` |
+| PHASE B / D | `ALL_APPLIED applied=26 selected=26 source=/tmp/ct_rel04_clean/supabase/migrations`; `ALL_APPLIED applied=66 selected=66 source=/tmp/ct_rel04_clean/supabase/migrations` |
+| chain totals | `applied=92 failed=0`; `distinct_files=92` |
+| PHASE C | operator step applied and idempotent; `D32_SEMANTICS_RESULT pass=11 fail=0` |
+| VERIFY | `=== RESULT: ALL CHECKS PASSED (94 pass, 0 fail) ===` → `94` PASS / `0` FAIL in `verify.txt` |
+| canonical inventory fingerprint | `PASS inventory_fingerprint_matches_canonical — actual=5291cd9197bb7f0f84a99dec22c1b365633f4cd206cac5b787668cb4ee9c1407 expected=5291cd91…c1407` |
+| migration-set fingerprint | `PASS migration_set_fingerprint_matches_recorded — actual=36d5d85b…37944 expected=36d5d85b…37944` |
+| baseline anchor | `PASS baseline_migration_set_unchanged — … 40b168b393fb2ca70ea40093bd4e9eecebf5c4604c752eea6a6f5a902c003c30` |
+| provenance in a clean checkout | `PASS migration_set_only_authorised_revision — files differing from HEAD: none (allowed: [] …)` |
+| provenance baseline frame | `PASS migration_set_provenance_baseline_from_head — … head_set=92 files, head=36d5d85b…37944` |
+| exit | `REBUILD VERIFIED — canonical schema reproduced (see /tmp/ct_rel04c_evidence)` |
+| FAIL/ABORT scan | `grep -cE '^(FAIL\|ABORT)' /tmp/ct04_run3.log` → `0` |
+| cleanup | worktree modes restored; `git status --short` tracked entries → ` M .gitignore` only (the pre-existing, unrelated change of §15) |
+
+Run 3 reproduces Run 1 and Run 2 exactly: same 92/0/94, same two fingerprints,
+same baseline anchor. The clean-checkout guarantee therefore holds for the commit
+graph as it stands, not merely for the change under test.
+
