@@ -5,7 +5,8 @@
 **Branch:** `p8-release-reconciled`
 **Task ID:** CT-IMPLEMENT-03-20260928-REPORT-SCHEDULE-AND-SHARE-CANONICALIZATION
 **Starting SHA:** `21310afae69cace6b67985eda7e817b0aee1c33b`
-**Ending SHA:** see §23 (recorded after the report commit)
+**Ending SHA:** `eff1c56` (the CT-IMPLEMENT-03 report commit — see §22 for the task-local
+follow-ups after it)
 **Status:** APPLICATION LAYER **IMPLEMENTED · UNIT-TESTED · E2E-VERIFIED ON A DISPOSABLE
 CANONICAL DATABASE**; **NOT INDEPENDENTLY VERIFIED**; **NOT PRODUCTION READY**
 
@@ -428,7 +429,7 @@ The worktree was removed afterwards; no repository state was reset.
 cd backend
 INTEGRATION_DATABASE_URL="postgresql://supabase_admin:***@127.0.0.1:55481/ct_impl03_e2e" \
   python -m pytest tests/integration/test_ct03_report_schedule_share_canonical.py -q -p no:cacheprovider
-# ..........  EXIT=0      (10 tests, all passing; run twice with the same result)
+# ..........  EXIT=0      (10 tests, passing on three consecutive runs of the same clone, §15.5)
 ```
 
 | # | Test | What it proves with real HTTP + real PostgreSQL |
@@ -485,6 +486,31 @@ worked around by weakening the guard:
   granted anywhere;
 * the general fix (an explicit authorised-purge path for disposable targets, or a
   non-destructive default fixture) is recorded in §20.
+
+### 15.5 Finding N-3 — the suite's own cross-run isolation (found by re-running it)
+
+The first E2E runs passed, then a later re-run on the **same clone** failed
+`test_a_repeated_tick_cannot_create_a_second_run_or_report`. Cause, established from
+the database rather than guessed:
+
+* `run_due()` selects **every** due schedule on the target, and this fixture cannot
+  delete the schedules it creates (immutable run history, §10.1), so each run
+  leaves executed schedules behind;
+* the duplicate-slot path deliberately does **not** advance `next_run_at` (the slot
+  is already recorded), so a schedule that was rewound for the idempotency test
+  stays permanently due and reappears in later ticks;
+* the tick-level assertions (`succeeded == 1`, `duplicate_slots == 1`) therefore
+  counted neighbours as well as the schedule under test.
+
+Fix (test-only, no application change): tick-level counts became lower bounds,
+**artefact assertions became scoped to the schedule under test** (run rows and
+`DISTINCT report_id` for that schedule), and each runner test now **pauses** the
+schedule it created, so a leftover can never be due again. After the fix the suite
+passed **three consecutive runs** on the same clone (`.......... EXIT=0` each time),
+which is what makes the E2E result reproducible rather than a one-off.
+
+This is recorded because it is exactly the kind of defect that makes a green test
+run untrustworthy: it was found by re-running, not by reading.
 
 ---
 
@@ -570,6 +596,11 @@ this change-set at all.
 10. **`API_ENDPOINTS.md` was not updated** (R-5); it still lists
     `get_report_schedules()` among the legacy handlers and does not yet describe
     the canonical schedule/share routes.
+11. **The disposable clone accumulates rows the canonical guards make immutable**
+    (executed schedules, their runs, share rows and their access events, audit
+    entries). This is why the E2E pauses the schedules it creates (§15.5): on a
+    *durable* environment the same accumulation would require an authorised purge
+    path, which does not exist yet (G-3/G-4).
 
 ---
 
@@ -608,8 +639,11 @@ was read or written.
   acceptance has been sought.
 * The legacy contract changes (§9) and the new canonical routes have **not** been
   reviewed by anyone other than the implementer.
-* The two findings raised here (N-2 harness/guard incompatibility; the G-3
-  organisation-deletion conflict) have **not** been independently reproduced.
+* The three findings raised here — **N-2** (the canonical audit guard vs the shared
+  integration fixture), **N-3** (the suite's own cross-run isolation, §15.5) and the
+  **G-3** organisation-deletion conflict — have **not** been independently
+  reproduced. N-3 was found and fixed by the implementer within this unit, which is
+  precisely the kind of self-review independent QA exists to replace.
 
 ---
 
@@ -641,7 +675,7 @@ was read or written.
 |---|---|
 | Branch | `p8-release-reconciled` |
 | Starting SHA | `21310afae69cace6b67985eda7e817b0aee1c33b` (CT-IMPLEMENT-02's last commit) |
-| Ending SHA | **`eff1c56`** — the CT-IMPLEMENT-03 report commit, i.e. the branch tip once the implementation, tests and this report were in place. The only commits after it are two bookkeeping notes: the one that records this SHA line and one that removes a single unused import. Neither changes behaviour |
+| Ending SHA | **`eff1c56`** — the CT-IMPLEMENT-03 report commit, i.e. the branch tip once the implementation, tests and this report were in place. Task-local follow-ups after it (all recorded in the git log): one that records this SHA line, one that removes a single unused import, and one that adds §15.5 (the E2E isolation fix). None of them changes application behaviour |
 | Pushed | **no** |
 | History rewritten / reset / amended | **no** (`git reset`, `git clean`, force-push and amend were not used) |
 
@@ -708,7 +742,7 @@ large body of untracked audit/architecture documents.
 | 15 Share-route analysis | §12 |
 | 16 Frontend reconciliation | §13 |
 | 17 Tests | §14 |
-| 18 Disposable DB E2E results | §15 (+ §15.4 finding N-2) |
+| 18 Disposable DB E2E results | §15 (+ §15.4 finding N-2, §15.5 finding N-3) |
 | 19 Evidence the canonical runtime no longer depends on `report_schedules` | §16 |
 | 20 PO-gated items left unresolved | §17 |
 | 21 Known limitations | §18 |
