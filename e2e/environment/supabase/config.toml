@@ -52,7 +52,19 @@ max_client_conn = 100
 
 [db.migrations]
 # If disabled, migrations will be skipped during a db push or reset.
-enabled = true
+#
+# CT-SCHEMA-02: DISABLED deliberately. The Supabase CLI must not apply the
+# application migration chain for this project. The canonical procedure applies it
+# explicitly in the required two-layer order (scripts/apply_migrations.sh 1-26 ->
+# D32 operator step -> 27-89; see scripts/bootstrap.sh and scripts/reset.sh),
+# because migration 27 validates provider-context storage policies that must be
+# created between migrations 26 and 27.
+#
+# Enabling this would let the CLI apply an unreviewed chain: the historical
+# e2e/environment/supabase/migrations copy had drifted from supabase/migrations
+# (53 of 89 files, including a pre-revision D32) — exactly the divergence
+# CT-SCHEMA-02 removed. supabase/migrations is now a symlink to the canonical set.
+enabled = false
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
 schema_paths = []

@@ -380,11 +380,19 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
     # BOTH states and are strictly stronger:
     #   * HEAD's migration set, minus the CT-IMPLEMENT-02 additions, must still
     #     reproduce the CT-SCHEMA-02 baseline fingerprint;
-    #   * the working tree may differ from HEAD only by the authorised D32
-    #     revision and by CT-IMPLEMENT-02 migrations that HEAD does not yet have.
+    #   * the working tree may differ from HEAD only by authorised revisions that
+    #     HEAD does not yet contain.
     # A rogue migration — committed or not — still fails: committed, it lands in
     # the baseline subset above and changes its fingerprint; uncommitted, it is
     # not in the allowed set below.
+    #
+    # HEAD-SCOPED ALLOWED SET (CT-RELEASE-04): the expected set is derived from
+    # HEAD rather than from the pre-commit worktree. A clean checkout of HEAD can
+    # never "differ from HEAD", so requiring the authorised D32 revision to be
+    # present as an *uncommitted* change made this check — and therefore the
+    # canonical rebuild — reproducible only inside the developer worktree that
+    # happened to hold it. Committing an authorised revision moves it out of this
+    # set; it remains checked by its effect on the baseline fingerprint above.
     try:
         head_listing = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "archive", "HEAD", "supabase/migrations"],
@@ -428,9 +436,10 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
             line[3:].strip().split("supabase/migrations/")[-1]
             for line in porcelain if line[3:].strip().endswith(".sql")
         })
-        allowed = [AUTHORISED_MIGRATION_REVISION]
-        allowed += [m for m in CT_IMPLEMENT_02_MIGRATIONS if m not in head_names]
-        allowed = sorted(allowed)
+        allowed = sorted(
+            m for m in (AUTHORISED_MIGRATION_REVISION, *CT_IMPLEMENT_02_MIGRATIONS)
+            if m not in head_names
+        )
         ok &= check("migration_set_only_authorised_revision",
                     changed == allowed,
                     f"files differing from HEAD: {changed or 'none'} "

@@ -23,56 +23,18 @@
 --
 -- MECHANISM (supported; already established in this repository): the four
 -- approved policies are established through Supabase's storage-policy mechanism
--- executed in the provider-privileged context. Operationally that is the
--- Supabase dashboard storage-policy editor, or the equivalent SQL executed with
--- provider admin rights (Supabase provides no CLI or config.toml mechanism for
--- storage RLS policies — policies are SQL DDL on ``storage.objects`` in the
--- provider context; see also
+-- executed in the provider-privileged context — the same context this
+-- repository's own e2e harness already uses for this exact migration, documented
+-- in ``e2e/environment/scripts/apply_migrations.sh``:
+--   "supabase db reset applies migrations as the `postgres` role, which does not
+--    own `storage.objects`; the D32 storage-RLS migration therefore needs the
+--    `supabase_admin` role."
+-- Operationally that is the Supabase dashboard storage-policy editor, or the
+-- equivalent SQL executed with provider admin rights (Supabase provides no CLI
+-- or config.toml mechanism for storage RLS policies — policies are SQL DDL on
+-- ``storage.objects`` in the provider context; see also
 -- ``docs/operations/REPORT_ARTIFACTS_BUCKET_PROVISIONING.md``, where storage
 -- provisioning is dashboard/CLI operator work rather than migration DDL).
---
--- Canonical operator step (CT-SCHEMA-02): the repository now carries that
--- statement as ``e2e/environment/scripts/d32_storage_operator.sql`` — idempotent,
--- fail-closed, run once per environment by the provider admin role (locally
--- ``supabase_admin``) AFTER the migrations that create the objects its
--- predicates reference and BEFORE this migration. The ordering, the two layers
--- and the role contract are enforced by
--- ``e2e/environment/scripts/apply_migrations.sh`` and
--- ``e2e/environment/scripts/canonical_schema_rebuild.sh``.
---
--- ROLE CONTRACT (unchanged in substance, corrected in emphasis): this migration
--- is applied by CarbonTally's ordinary migration role (``postgres``), which does
--- NOT own ``storage.objects`` and must NOT be granted ownership of any
--- provider-managed relation (PO decision — Route C, no privilege escalation).
--- Provider privilege belongs to the operator step, not to the migration chain.
---
--- ----------------------------------------------------------------------------
--- P8-D17-D32-STORAGE-POLICY-VALIDATION-DETERMINISM-001 (CT-SCHEMA-02 revision)
--- ----------------------------------------------------------------------------
--- WHY: section 3 validated the *deparsed* predicate text returned by
--- ``pg_policies``. PostgreSQL renders a stored expression relative to the
--- session ``search_path``, so the same, unchanged policy deparsed as
--- ``auth.uid()`` for a role whose ``search_path`` omits ``auth`` (``postgres``)
--- and as ``uid()`` for a role whose ``search_path`` contains it
--- (``supabase_admin``: ``"$user", public, auth, extensions``). The validation
--- therefore passed or failed on ambient session state rather than on policy
--- content, and its text fragments were matched as substrings (``myauth.uid()``
--- would have satisfied ``auth.uid()``).
---
--- FIX (no change to the intended security semantics): the validator now
---   (a) pins a deterministic evaluation context before it reads any deparsed
---       text, so the rendering of a given policy is fixed for every caller;
---   (b) asserts the *identity* of the referenced objects by OID — the predicate
---       must call the ``auth.uid()`` function and must read
---       ``public.organization_members`` — instead of trusting a name substring;
---   (c) fails closed with an explicit platform / ordering diagnostic when a
---       required object is absent (platform storage layer, ``auth.uid()``, or
---       the ``organization_members`` dependency that fixes the operator step's
---       position in the chain).
--- Everything section 3 checked before is still checked: the four approved
--- names and commands, the ``authenticated`` grant, the absence of any
--- ``anon``/``public`` grant anywhere on ``storage.objects``, and every
--- org-scope predicate fragment. The validator remains read-only.
 --
 -- APPROVED POLICY DEFINITIONS (single source of truth — create these in the
 -- provider-privileged context; SECTION 3 validates them):
@@ -168,12 +130,6 @@ DECLARE
         'bucket_id', 'documents', 'foldername', 'uploads',
         'organization_members', 'auth.uid()', 'is_active'
     ];
-    -- identity anchors, resolved and compared by OID (search_path free)
-    approved_identity_function constant text := 'auth.uid()';
-    approved_identity_relation constant text := 'public.organization_members';
-    identity_function_oid oid;
-    identity_relation_oid oid;
-    stored_expression text;
     entry text;
     wanted_name text;
     wanted_cmd text;
@@ -182,33 +138,6 @@ DECLARE
     fragment text;
     broadened int;
 BEGIN
-    -- Fix the evaluation context FIRST. PostgreSQL renders a stored expression
-    -- relative to the session search_path; without this pin the same policy
-    -- deparses as ``auth.uid()`` for one role and ``uid()`` for another.
-    PERFORM set_config('search_path', 'pg_catalog', true);
-
-    -- Platform / ordering preconditions, each failing closed with its own
-    -- diagnostic so a missing layer is never reported as policy drift.
-    IF to_regclass('storage.objects') IS NULL
-       OR to_regclass('storage.buckets') IS NULL THEN
-        RAISE EXCEPTION
-            'D32 platform precondition failed: the Supabase storage layer is not provisioned in this database (storage.buckets / storage.objects absent). Provision the platform storage service before applying the application migration chain.';
-    END IF;
-
-    identity_function_oid := to_regprocedure(approved_identity_function)::oid;
-    IF identity_function_oid IS NULL THEN
-        RAISE EXCEPTION
-            'D32 platform precondition failed: % is not resolvable in this database; the platform auth layer is required before the storage policies can be validated or established.',
-            approved_identity_function;
-    END IF;
-
-    IF to_regclass(approved_identity_relation) IS NULL THEN
-        RAISE EXCEPTION
-            'D32 ordering precondition failed: % is absent, so the approved storage predicates cannot resolve yet. The D32 operator step and this migration must both run AFTER the migrations that define it.',
-            approved_identity_relation;
-    END IF;
-    identity_relation_oid := to_regclass(approved_identity_relation)::oid;
-
     FOREACH entry IN ARRAY approved LOOP
         wanted_name := split_part(entry, '|', 1);
         wanted_cmd := split_part(entry, '|', 2);
@@ -246,39 +175,9 @@ BEGIN
                     wanted_name, fragment;
             END IF;
         END LOOP;
-
-        -- Identity, not spelling: the stored expression tree must call the
-        -- authenticated-identity function itself (whatever the caller's
-        -- search_path makes it look like) and must read the approved
-        -- organisation-membership relation itself. A look-alike schema, or a
-        -- same-named function defined elsewhere, cannot satisfy this.
-        SELECT coalesce(p.polqual::text, '') || coalesce(p.polwithcheck::text, '')
-          INTO stored_expression
-          FROM pg_policy p
-          JOIN pg_class c ON c.oid = p.polrelid
-          JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE n.nspname = 'storage'
-           AND c.relname = 'objects'
-           AND p.polname = wanted_name;
-
-        IF coalesce(stored_expression, '') = '' THEN
-            RAISE EXCEPTION
-                'D32 policy drift: % has no stored expression to validate', wanted_name;
-        END IF;
-        IF position(':funcid ' || identity_function_oid::text || ' ' in stored_expression) = 0 THEN
-            RAISE EXCEPTION
-                'D32 policy drift: % does not call the approved session-identity function % (identity checked by OID), so its organisation scope cannot be trusted',
-                wanted_name, approved_identity_function;
-        END IF;
-        IF position(':relid ' || identity_relation_oid::text || ' ' in stored_expression) = 0 THEN
-            RAISE EXCEPTION
-                'D32 policy drift: % does not read the approved membership relation % (identity checked by OID)',
-                wanted_name, approved_identity_relation;
-        END IF;
     END LOOP;
 
     -- no policy anywhere on storage.objects may grant anonymous/public access
-
     SELECT count(*) INTO broadened
       FROM pg_policies p
      WHERE p.schemaname = 'storage'
