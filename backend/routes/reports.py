@@ -21,7 +21,7 @@ import traceback
 import uuid  # ✅ Added missing import
 from supabase import Client
 
-from auth import AuthUser, require_auth, require_org_member, require_org_admin, require_permission, require_role, require_admin
+from auth import AuthUser, enforce_org_body_scope, require_auth, require_org_member, require_org_admin, require_permission, require_role, require_admin
 from api.dependencies import RepositoryBundle, get_repositories
 from api.v3_reports import authorize_org_authority, authorize_org_member
 from services.report_schedules import (
@@ -1314,7 +1314,20 @@ async def generate_enhanced_sustainability_report(
     request: EnhancedReportRequest,
     current_user: AuthUser = Depends(require_org_member())
 ):
-    """Generate an enhanced sustainability report."""
+    """Generate an enhanced sustainability report.
+
+    CT-REMEDIATE-01 / D-4-AUTH: this is the *shadow* duplicate. The same path
+    is also registered by ``report_generator.router``, which ``router`` includes
+    at the top of this module — FastAPI matches the first registration, so the
+    live handler over HTTP is ``report_generator``'s. This copy is still reached
+    in-process by the POD-5 compatibility layer
+    (``routes.legacy_reports``), which authorises the body organisation before
+    delegating. The same body-scope check is applied here so that neither a
+    re-ordering of the router includes nor any future in-process caller can read
+    another organisation's emissions with the service-role client — see
+    ``auth.enforce_org_body_scope``.
+    """
+    enforce_org_body_scope(request.organization_id, current_user)
     try:
         supabase = get_supabase_client()
         

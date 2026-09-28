@@ -150,7 +150,7 @@ async def get_emissions_for_organization(
                         name
                     )
                 ),
-                defra_conversion_factors (
+                emission_factors (
                     id,
                     activity_type,
                     co2e_multiplier,
@@ -194,9 +194,16 @@ async def get_emissions_for_organization(
         # Transform data
         emissions = []
         for record in result.data or []:
-            asset = record.get('assets', {})
-            facility = asset.get('facilities', {})
-            defra = record.get('defra_conversion_factors', {})
+            # CT-REMEDIATE-01 / D-1: PostgREST returns ``null`` for an embedded
+            # relation that does not exist (the F-05-R4 case), and ``.get()`` on
+            # that ``None`` raised ``AttributeError: 'NoneType' object has no
+            # attribute 'get'`` — turning the tenant's own emissions read into an
+            # HTTP 500 (verified at line 198 of this handler, and again at 233 for
+            # a NULL ``metadata``). Both embeddings normalise to ``{}`` here; the
+            # response keys are unchanged and simply come back as ``None``.
+            asset = record.get('assets') or {}
+            facility = asset.get('facilities') or {}
+            factor_row = record.get('emission_factors') or {}
             
             emissions.append({
                 'id': record['id'],
@@ -210,10 +217,12 @@ async def get_emissions_for_organization(
                 'asset_type': asset.get('type'),
                 'facility_id': facility.get('id'),
                 'facility_name': facility.get('name'),
-                'defra_factor_id': defra.get('id'),
-                'activity_type': defra.get('activity_type'),
-                'co2e_multiplier': defra.get('co2e_multiplier'),
-                'reporting_year': defra.get('reporting_year'),
+                # Response keys are retained verbatim: they are part of the
+                # existing API contract for this endpoint.
+                'defra_factor_id': factor_row.get('id'),
+                'activity_type': factor_row.get('activity_type'),
+                'co2e_multiplier': factor_row.get('co2e_multiplier'),
+                'reporting_year': factor_row.get('reporting_year'),
                 'metadata': record.get('metadata', {})
             })
         
@@ -228,7 +237,11 @@ async def get_emissions_for_organization(
         }
         
         for e in emissions:
-            scope = e.get('metadata', {}).get('scope', 'Unknown')
+            # CT-REMEDIATE-01 / D-1: a legitimate NULL ``metadata`` aborted the
+            # summary with the same ``'NoneType' object has no attribute 'get'``
+            # (verified at this exact statement), so the scope is derived from a
+            # normalised mapping — never from a raw NULL.
+            scope = (e.get('metadata') or {}).get('scope', 'Unknown')
             if scope == 'Scope 1' or scope == '1':
                 scope_breakdown['scope1'] += e['calculated_kg_co2e']
             elif scope == 'Scope 2' or scope == '2':

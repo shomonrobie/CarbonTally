@@ -354,6 +354,46 @@ async def get_current_user(
 # AUTHENTICATION HELPERS - FIXED!
 # ==========================================
 
+def enforce_org_body_scope(organization_id: Any, current_user: AuthUser) -> None:
+    """POD-5 — authorise the organisation a request names in its **body**.
+
+    ``enforce_org_path_scope`` reads organisations from the route *path*, so it
+    is a deliberate no-op for the routes that take ``organization_id`` in the
+    JSON body — and those routes go on to read with the service-role client,
+    which bypasses RLS. Without this check any authenticated organisation member
+    could ask for another organisation's report. (Verified on
+    ``POST /api/reports/generate-enhanced-report``: with only
+    ``require_org_member()`` attached, a member of org B received org A's
+    generated PDF.)
+
+    The rule applied is the ratified POD-5 one (``routes/legacy_reports``): the
+    body organisation must be the caller's own. It is deliberately stricter than
+    the path rule above, which also accepts an *active* membership — whether
+    consultants or internal CarbonTally staff should generate a client's report
+    through these body-organisation paths is a Product Owner decision, so the
+    canonical route and its POD-5 compatibility alias keep identical behaviour
+    until that decision is made.
+    """
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    caller_org = getattr(current_user, "organization_id", None)
+    if not caller_org:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No organisation context for this account.",
+        )
+    if str(organization_id) != str(caller_org):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this organization",
+        )
+
+
 def require_auth():
     """
     Dependency factory for authentication.

@@ -9,9 +9,15 @@ from dataclasses import dataclass
 
 import pandas as pd
 from fpdf import FPDF
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from supabase import create_client
+
+# CT-REMEDIATE-01 / D-4-AUTH: this module owns a *mounted* route (see the
+# ``include_router`` in ``routes/reports.py``), so it must carry the same
+# authorization guard the sibling implementation and every other report route
+# use. ``auth`` deliberately does not import this module, so this is not a cycle.
+from auth import AuthUser, enforce_org_body_scope, require_org_member
 
 # ============================================
 # DATA CLASSES FOR STRUCTURED REPORTING
@@ -75,7 +81,16 @@ def sanitize_text(text):
     text = str(text)
     replacements = {
         '’': "'", '“': '"', '”': '"', '–': '-', '—': '-',
-        '…': '...', '•': '-', '®': '(R)', '™': '(TM)'
+        '…': '...', '•': '-', '®': '(R)', '™': '(TM)',
+        # CT-REMEDIATE-01 / D-4-EXT: the trend arrows produced by
+        # ``generate_trend_arrow`` are outside the core Helvetica (latin-1)
+        # encoding. The doubled forms are mapped first so the single-glyph
+        # entries cannot split them. Without these, ``add_trend_indicator``
+        # raised ``FPDFUnicodeEncodingException: Character "→" ... outside the
+        # range of characters supported by the font`` and aborted the entire
+        # PDF whenever a year-over-year comparison existed (same 500 surface
+        # as D-4).
+        '↓↓': 'vv', '↑↑': '^^', '↓': 'v', '↑': '^', '→': '->',
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
@@ -347,6 +362,49 @@ class EnhancedSustainabilityReportPDF(FPDF):
         self.multi_cell(180, 6, sanitize_text(content))
         self.ln(5)
     
+    def get_string_height(self, width: float, text: str, line_height: float = 5) -> float:
+        """Return the height (mm) needed to draw ``text`` wrapped to ``width``.
+
+        CT-REMEDIATE-01 / D-4-EXT2: ``add_narrative_box`` sized its box through a
+        ``get_string_height`` helper that does not exist here — PyFPDF provided
+        it, but fpdf2 (the library this module uses) exposes ``get_string_width``
+        only — so drawing a narrative box aborted with ``AttributeError``. That
+        made the entire year-over-year path of the report 500 out before a single
+        page was produced, independently of D-4. fpdf2 measures the wrapped
+        height itself here, in dry-run mode, so nothing is drawn and the cursor
+        is untouched, using the same sanitized text ``multi_cell`` will render.
+        """
+        text = sanitize_text(text)
+        if not text.strip():
+            return line_height
+        try:
+            return max(
+                line_height,
+                float(
+                    self.multi_cell(
+                        width, line_height, text, dry_run=True, output="HEIGHT"
+                    )
+                ),
+            )
+        except TypeError:  # pragma: no cover - fpdf2 without dry_run support
+            usable = max(width - 2 * float(getattr(self, 'c_margin', 1.0) or 0), 1)
+            lines = 0
+            for paragraph in text.split("\n"):
+                words = paragraph.split()
+                if not words:
+                    lines += 1
+                    continue
+                lines += 1
+                current = ""
+                for word in words:
+                    candidate = f"{current} {word}".strip()
+                    if current and self.get_string_width(candidate) > usable:
+                        lines += 1
+                        current = word
+                    else:
+                        current = candidate
+            return max(lines, 1) * line_height
+
     def add_narrative_box(self, title: str, content: str, 
                           narrative_type: str = "methodology"):
         """Add a styled narrative box for methodology, efficiency, etc."""
@@ -360,8 +418,14 @@ class EnhancedSustainabilityReportPDF(FPDF):
         self.set_fill_color(*fill_color)
         self.set_draw_color(*self.colors['primary'])
         
-        # Rounded rectangle effect (approximated with standard rect)
-        self.rect(10, self.get_y(), 190, self.get_string_height(20, content) + 30, 'DF')
+        # Rounded rectangle effect (approximated with standard rect).
+        # CT-REMEDIATE-01 / D-4-EXT2: the box is measured with the font and width
+        # its content is actually drawn with below (Helvetica 9pt inside 180mm),
+        # rather than the 20mm the previous call passed — a tenth of the real
+        # column, which would have drawn a box several times taller than its text.
+        self.set_font('Helvetica', '', 9)
+        box_height = self.get_string_height(180, content, line_height=5) + 30
+        self.rect(10, self.get_y(), 190, box_height, 'DF')
         
         self.set_y(self.get_y() + 5)
         self.set_font('Helvetica', 'B', 11)
@@ -385,7 +449,10 @@ class EnhancedSustainabilityReportPDF(FPDF):
         
         self.set_font('Helvetica', 'B', 14)
         self.set_text_color(*color)
-        self.cell(80, 10, f"{arrow} {percentage:+.1f}%", 0, 1, 'L')
+        # CT-REMEDIATE-01 / D-4-EXT: routed through the module's existing
+        # sanitizer exactly like the label above — the raw arrow glyph was
+        # unrepresentable in the core font and killed report generation.
+        self.cell(80, 10, sanitize_text(f"{arrow} {percentage:+.1f}%"), 0, 1, 'L')
         
         # Add a simple visual bar
         bar_width = 60
@@ -449,7 +516,14 @@ class EnhancedSustainabilityReportPDF(FPDF):
                     self.set_fill_color(240, 253, 244)
                     self.set_draw_color(22, 163, 74)
                 else:
-                    self.set_fill_color(248, 248, 248 if fill else 255, 255, 255)
+                    # F-05-R2.1: FPDF's ``set_fill_color`` accepts 1 or 3 channel
+                    # arguments; the previous 5-argument call raised
+                    # ``set_fill_color() takes from 2 to 4 positional arguments
+                    # but 6 were given`` and aborted PDF report generation.
+                    if fill:
+                        self.set_fill_color(248, 248, 248)
+                    else:
+                        self.set_fill_color(255, 255, 255)
                     self.set_draw_color(200, 200, 200)
                 
                 self.cell(column_widths[col_idx], 8, sanitize_text(str(cell)), 1, 0, 'L', True)
@@ -592,7 +666,7 @@ class EnhancedSustainabilityReportGenerator:
             end = (page + 1) * page_size - 1
             
             response = self.supabase.from_('emissions_logs')\
-                .select('*, defra_conversion_factors(activity_type, co2e_multiplier, reporting_year), assets(name, facilities(name))')\
+                .select('*, emission_factors(activity_type, co2e_multiplier, reporting_year), assets(name, facilities(name))')\
                 .eq('organization_id', self.organization_id)\
                 .gte('start_date', f'{year}-01-01')\
                 .lte('start_date', f'{year}-12-31')\
@@ -618,11 +692,14 @@ class EnhancedSustainabilityReportGenerator:
             total_emissions += kg_co2e
             
             metadata = record.get('metadata', {}) or {}
-            defra = record.get('defra_conversion_factors', {}) or {}
+            # Canonical factor read: `emissions_logs.emission_factor_id` →
+            # `emission_factors` (the retired legacy factor table name must not
+            # be referenced — see backend/utils/emissions.py).
+            factor_row = record.get('emission_factors', {}) or {}
             
             scope = metadata.get('scope', 'Unknown')
             if scope == 'Unknown':
-                activity = defra.get('activity_type', '')
+                activity = factor_row.get('activity_type', '')
                 if any(f in activity for f in ['Diesel', 'Petrol', 'Natural Gas', 'LPG']):
                     scope = 'Scope 1'
                 elif 'Electricity' in activity:
@@ -761,8 +838,8 @@ class EnhancedSustainabilityReportGenerator:
         # Group by activity type
         activity_groups = {}
         for record in self.current_year_data:
-            defra = record.get('defra_conversion_factors', {})
-            activity = defra.get('activity_type', 'Unknown')
+            factor_row = record.get('emission_factors') or {}
+            activity = factor_row.get('activity_type', 'Unknown')
             kg = record.get('calculated_kg_co2e', 0)
             
             if activity not in activity_groups:
@@ -777,8 +854,16 @@ class EnhancedSustainabilityReportGenerator:
             activity_groups[activity]['total_kg'] += kg
             activity_groups[activity]['count'] += 1
             
-            # Determine scope
-            metadata = record.get('metadata', {})
+            # Determine scope.
+            # CT-REMEDIATE-01 / D-1: PostgREST answers SQL NULL for a
+            # legitimately NULL column, and ``.get(key, default)`` does not
+            # substitute the default for a present-but-NULL key — so the
+            # previous expression handed ``None`` straight to ``.get('scope')``
+            # and aborted the whole report with the same ``AttributeError`` as
+            # the emissions route did. Normalised here exactly as
+            # ``_calculate_scope_totals`` and the ``emission_factors``/``assets``
+            # reads already are.
+            metadata = record.get('metadata') or {}
             scope = metadata.get('scope', 'Unknown')
             if scope == 'Unknown':
                 if any(f in activity for f in ['Diesel', 'Petrol', 'Natural Gas', 'LPG']):
@@ -874,7 +959,14 @@ class EnhancedSustainabilityReportGenerator:
         # Generate report pages
         self._generate_enhanced_pdf(pdf)
         
-        pdf_output = pdf.output(dest='S').encode('latin-1')
+        # fpdf2 (2.8.x) returns the PDF document as a `bytearray` from
+        # `FPDF.output()` — including via the legacy `dest='S'` shim. The
+        # historical `.encode('latin-1')` therefore raised
+        # `AttributeError: 'bytearray' object has no attribute 'encode'` and the
+        # endpoint answered HTTP 500 for every report request (CT-VERIFY-06 D-4).
+        # `bytes(...)` normalises the return value to the binary document the
+        # caller base64-encodes below; it does not decode/re-encode the PDF.
+        pdf_output = bytes(pdf.output(dest='S'))
         return {
             "status": "success",
             "report_type": "SECR",
@@ -1038,8 +1130,25 @@ class EnhancedReportRequest(BaseModel):
     include_narratives: bool = True
 
 @router.post("/generate-enhanced-report")
-async def generate_enhanced_sustainability_report(request: EnhancedReportRequest):
+async def generate_enhanced_sustainability_report(
+    request: EnhancedReportRequest,
+    # CT-REMEDIATE-01 / D-4-AUTH: the parenthesised guard factory is required —
+    # ``Depends(require_org_member)`` would never run the check (see the warning
+    # in ``auth.require_org_member``). This handler reads emissions with the
+    # service-role key for whatever ``organization_id`` the body names, and it
+    # served the route with no guard at all (verified: a request without
+    # credentials reached the generator and failed with its own 500 rather than
+    # 401). Repairing D-4 without this guard would have converted an
+    # unauthenticated 500 into an unauthenticated 200.
+    current_user: AuthUser = Depends(require_org_member()),
+):
     """Generate an enhanced sustainability report with narratives and YoY comparison."""
+    # CT-REMEDIATE-01 / D-4-AUTH: authorise the organisation this body names
+    # *before* any service-role read. ``require_org_member()`` only enforces
+    # exact-tenant scope for organisations named in the route PATH, and this
+    # route's organisation arrives in the JSON body, so without this call a
+    # member of any organisation could generate another organisation's report.
+    enforce_org_body_scope(request.organization_id, current_user)
     try:
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
