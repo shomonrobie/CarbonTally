@@ -305,6 +305,16 @@ async def startup_event():
             await get_automatic_processing_worker().start()
         except Exception as exc:  # pragma: no cover - worker must never block startup
             print(f"⚠️ automatic-processing worker failed to start: {exc!r}")
+        # CT-IMPLEMENT-03 (PD-2) — canonical scheduled-report worker. Schedules are
+        # definitions until something executes them; this loop runs due schedules
+        # through the canonical runner (idempotent per due slot, so a restart or a
+        # second worker cannot produce a duplicate report).
+        try:
+            from workers.report_schedules import get_report_schedule_worker
+
+            await get_report_schedule_worker().start()
+        except Exception as exc:  # pragma: no cover - worker must never block startup
+            print(f"⚠️ report-schedule worker failed to start: {exc!r}")
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -434,6 +444,12 @@ async def shutdown_event():
             )
 
             await get_automatic_processing_worker().stop()
+    except Exception:
+        pass
+    try:
+        from workers.report_schedules import get_report_schedule_worker
+
+        await get_report_schedule_worker().stop()
     except Exception:
         pass
     try:

@@ -58,6 +58,8 @@ from data.issues import IssuesRepository
 from data.organizations import OrganizationsRepository
 from data.processing_entities import ProcessingEntitiesRepository
 from data.reports import ReportsRepository
+from data.report_schedules import ReportSchedulesRepository
+from data.report_shares import ReportSharesRepository
 from data.report_versions import ReportVersionsRepository
 from data.exports import ExportsRepository
 from data.notifications import NotificationsRepository
@@ -375,6 +377,16 @@ class RepositoryBundle:
     #: validation alone. DEFAULTED to ``None`` for the same reason as the fields
     #: above: existing test fixtures construct this bundle.
     estimation_records: Optional[EstimationRecordsRepository] = None
+    #: CT-IMPLEMENT-03 (PD-2) — canonical scheduled reporting: the schedule
+    #: definition/state table (``report_schedule_definitions``) and its
+    #: append-only run history (``report_schedule_runs``). This repository is also
+    #: the runner's ``ScheduleStore``. DEFAULTED to ``None`` so fixtures that
+    #: predate the surface keep constructing: production wiring always supplies it.
+    report_schedules: Optional[ReportSchedulesRepository] = None
+    #: CT-IMPLEMENT-03 (PD-1) — canonical report sharing: the version-bound share
+    #: register (``report_shares``) and its append-only access history
+    #: (``report_share_access_events``). DEFAULTED to ``None`` (see above).
+    report_shares: Optional[ReportSharesRepository] = None
 
 
 async def get_pool():
@@ -449,6 +461,10 @@ async def get_repositories() -> RepositoryBundle:
         # P17-IMPLEMENT-02 — accounting context + acting-for attribution (real
         # wiring, not a test-only attribute).
         accounting_context=AccountingContextRepository(pool),
+        # CT-IMPLEMENT-03 (PD-2 / PD-1) — the canonical scheduled-reporting and
+        # report-sharing surfaces (real wiring, not a test-only attribute).
+        report_schedules=ReportSchedulesRepository(pool),
+        report_shares=ReportSharesRepository(pool),
     )
 
 
@@ -616,6 +632,22 @@ async def get_report_engine(
     audit_logger: AuditLogger = Depends(get_audit_logger),
 ) -> ReportGenerationEngine:
     """Per-request :class:`ReportGenerationEngine` with injected sub-engines."""
+    return build_report_engine(repos, event_bus=event_bus, audit_logger=audit_logger)
+
+
+def build_report_engine(
+    repos: RepositoryBundle,
+    *,
+    event_bus: EventBus,
+    audit_logger: AuditLogger,
+) -> ReportGenerationEngine:
+    """Build the authoritative report engine from a repository bundle.
+
+    Factored out of :func:`get_report_engine` so a non-request caller — the
+    canonical scheduled-reporting worker (CT-IMPLEMENT-03 / PD-2) — composes
+    **the same engine** rather than a second, drifting copy. A scheduled report
+    and a user-requested report must be one artefact produced one way.
+    """
     calculation_engine = CalculationEngine(
         repos.logs,
         event_bus=event_bus,

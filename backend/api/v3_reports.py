@@ -41,7 +41,7 @@ Export reuses the existing org-isolated ``/api/v3/exports/*`` surface (CSV/JSON)
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -84,6 +84,22 @@ from domain.report_lifecycle import (
 )
 from engines.pdf_render import render_branded_pdf
 from engines.report_generation import ReportGenerationEngine
+from services.report_schedules import (
+    ReportScheduleService,
+    ScheduleInUseError,
+    ScheduleValidationError,
+    canonical_frequencies,
+    shape_run as shape_scheduled_run,
+    shape_schedule,
+)
+from services.report_shares import (
+    ReportShareService,
+    ShareConflictError,
+    ShareNotShareableError,
+    ShareValidationError,
+    shape_event as shape_share_event,
+    shape_share,
+)
 
 logger = get_logger(__name__)
 
@@ -342,6 +358,430 @@ async def generate_report(
     if full is None:  # pragma: no cover - row was just completed
         raise HTTPException(status_code=500, detail="report not found after generation")
     return {"report": shape_report_out(full, version), "content": content}
+
+
+# ---------------------------------------------------------------------------
+# CT-IMPLEMENT-03 — canonical scheduled reporting (PD-2)
+# ---------------------------------------------------------------------------
+# Ratified PO decision PD-2 implements scheduled reporting; the schema is
+# ``supabase/migrations/20261023000000_ct02_scheduled_reporting.sql``
+# (``report_schedule_definitions`` + ``report_schedule_runs``), the vocabulary is
+# ``domain.report_schedule``, and execution is
+# ``services.report_schedule_runner`` (driven by ``workers.report_schedules``).
+#
+# These routes are the application surface for that model. They create, list,
+# pause, resume and delete *canonical* schedules and read their real execution
+# history. The retired ``report_schedules`` table is not referenced anywhere on
+# this path and must never be reintroduced (PD-2).
+#
+# Authority: reading a schedule is an organisation-member action; creating,
+# pausing, resuming or deleting one is an organisation-AUTHORITY action
+# (owner/admin), matching the RLS policies the schema declares for the table.
+# ---------------------------------------------------------------------------
+
+
+class ScheduleCreateIn(BaseModel):
+    """Request to create a canonical report schedule."""
+
+    organization_id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=200)
+    report_type: str = "annual"
+    reporting_year: int = Field(..., ge=1990, le=2100)
+    frequency: str = Field(..., min_length=1)
+    run_time: time = time(7, 0)
+    timezone: str = "Europe/London"
+    recipients: list[str] = Field(..., min_length=1)
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    retry_policy: Optional[dict[str, Any]] = None
+    is_active: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def authorize_org_authority(
+    current_user: AuthUser, organization_id: str, action: str
+) -> None:
+    """Require organisation owner/admin authority for ``action``, server-side.
+
+    Mirrors the schema's own RLS authority for the schedule/share tables
+    (``p8_disclosure_is_org_admin``): Processing Entity staff and CarbonTally
+    internal staff are not customer-organisation authorities, a read-only
+    ``viewer`` is not an authority, and a member of another organisation is
+    refused by :func:`ensure_org_access`. The UI is never the boundary.
+    """
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=403,
+            detail="Processing Entity staff cannot manage customer report schedules",
+        )
+    if current_user.is_internal_staff:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "CarbonTally staff cannot act as a customer organisation authority"
+            ),
+        )
+    ensure_org_access(current_user, organization_id)
+    if _org_role(current_user) not in _ORG_AUTHORITY_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail=f"action {action!r} requires organisation owner/admin access",
+        )
+
+
+def authorize_org_member(
+    current_user: AuthUser, organization_id: str, action: str
+) -> None:
+    """Require at least organisation-member access for a read-only ``action``."""
+    if current_user.is_entity_staff:
+        raise HTTPException(
+            status_code=403,
+            detail="Processing Entity staff cannot read customer report schedules",
+        )
+    ensure_org_access(current_user, organization_id)
+
+
+def _schedule_error(exc: ScheduleValidationError) -> HTTPException:
+    """Map a canonical schedule-validation failure to a described 4xx.
+
+    A schedule that has executed cannot be deleted (its run history is immutable),
+    which is a conflict with the current state rather than a bad request, so it is
+    reported as 409 with the same described body.
+    """
+    detail = {"message": str(exc), "field": exc.field or "schedule"}
+    if isinstance(exc, ScheduleInUseError):
+        return HTTPException(status_code=409, detail=detail)
+    return HTTPException(status_code=422, detail=detail)
+
+
+def _share_error(exc: Exception) -> HTTPException:
+    """Map a share-domain failure to its correct status (never a 500)."""
+    if isinstance(exc, ShareNotShareableError):
+        return HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "field": exc.field or "version_number"},
+        )
+    if isinstance(exc, ShareConflictError):
+        return HTTPException(
+            status_code=409, detail={"message": str(exc), "field": "recipients"}
+        )
+    if isinstance(exc, ShareValidationError):
+        return HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "field": exc.field or "share"},
+        )
+    return HTTPException(status_code=500, detail="Unable to complete the share request")
+
+
+@router.get("/schedules/frequencies")
+async def list_schedule_frequencies(
+    current_user: AuthUser = Depends(require_org_member()),
+) -> dict:
+    """The canonical frequency vocabulary (exactly what the database accepts).
+
+    Declared before ``/schedules/{schedule_id}`` so the literal path wins. This
+    is the same list the retired ``/api/reports/schedule/frequencies`` surface now
+    returns, so no caller can be told a frequency the schema rejects (F-2).
+    """
+    return {"frequencies": canonical_frequencies()}
+
+
+@router.post("/schedules", status_code=201)
+async def create_schedule(
+    payload: ScheduleCreateIn,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Create a canonical report schedule (organisation authority required)."""
+    authorize_org_authority(current_user, payload.organization_id, "create_schedule")
+    service = ReportScheduleService(repos)
+    try:
+        schedule = await service.create(
+            payload.organization_id,
+            actor=current_user.user_id,
+            name=payload.name,
+            report_type=payload.report_type,
+            reporting_year=payload.reporting_year,
+            frequency=payload.frequency,
+            run_time=payload.run_time,
+            recipients=payload.recipients,
+            timezone_name=payload.timezone,
+            period_start=payload.period_start,
+            period_end=payload.period_end,
+            retry_policy=payload.retry_policy,
+            is_active=payload.is_active,
+        )
+    except ScheduleValidationError as exc:
+        raise _schedule_error(exc) from exc
+    return {"schedule": shape_schedule(schedule)}
+
+
+@router.get("/schedules")
+async def list_schedules(
+    organization_id: str = Query(..., min_length=1),
+    is_active: Optional[bool] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """List an organisation's schedules with their persisted execution state."""
+    authorize_org_member(current_user, organization_id, "list_schedules")
+    page = await ReportScheduleService(repos).list_schedules(
+        organization_id, is_active=is_active, limit=limit, offset=offset
+    )
+    return {
+        **{k: v for k, v in page.items() if k != "schedules"},
+        "schedules": [shape_schedule(item) for item in page["schedules"]],
+    }
+
+
+@router.get("/schedules/{schedule_id}")
+async def get_schedule(
+    schedule_id: str,
+    organization_id: str = Query(..., min_length=1),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """One schedule plus its real execution history (no fabricated outcomes)."""
+    authorize_org_member(current_user, organization_id, "get_schedule")
+    service = ReportScheduleService(repos)
+    schedule = await service.get(organization_id, schedule_id)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="report schedule not found")
+    runs = await service.runs(organization_id, schedule_id, limit=20) or []
+    return {
+        "schedule": shape_schedule(schedule),
+        "runs": [shape_scheduled_run(run) for run in runs],
+    }
+
+
+@router.get("/schedules/{schedule_id}/runs")
+async def list_schedule_runs(
+    schedule_id: str,
+    organization_id: str = Query(..., min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Execution history for one schedule (idempotent slots, real outcomes)."""
+    authorize_org_member(current_user, organization_id, "list_schedule_runs")
+    runs = await ReportScheduleService(repos).runs(
+        organization_id, schedule_id, limit=limit
+    )
+    if runs is None:
+        raise HTTPException(status_code=404, detail="report schedule not found")
+    return {"schedule_id": schedule_id, "runs": [shape_scheduled_run(r) for r in runs]}
+
+
+@router.post("/schedules/{schedule_id}/pause")
+async def pause_schedule(
+    schedule_id: str,
+    organization_id: str = Query(..., min_length=1),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Pause a schedule (``is_active = false`` + ``paused_at``), audited."""
+    authorize_org_authority(current_user, organization_id, "pause_schedule")
+    row = await ReportScheduleService(repos).pause(
+        organization_id, schedule_id, actor=current_user.user_id
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="report schedule not found")
+    return {"schedule": shape_schedule(row)}
+
+
+@router.post("/schedules/{schedule_id}/resume")
+async def resume_schedule(
+    schedule_id: str,
+    organization_id: str = Query(..., min_length=1),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Resume a paused schedule and re-establish a real due time, audited."""
+    authorize_org_authority(current_user, organization_id, "resume_schedule")
+    row = await ReportScheduleService(repos).resume(
+        organization_id, schedule_id, actor=current_user.user_id
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="report schedule not found")
+    return {"schedule": shape_schedule(row)}
+
+
+@router.delete("/schedules/{schedule_id}")
+async def delete_schedule(
+    schedule_id: str,
+    organization_id: str = Query(..., min_length=1),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Delete a schedule (audited); its run history cascades with it."""
+    authorize_org_authority(current_user, organization_id, "delete_schedule")
+    try:
+        deleted = await ReportScheduleService(repos).delete(
+            organization_id, schedule_id, actor=current_user.user_id
+        )
+    except ScheduleValidationError as exc:
+        raise _schedule_error(exc) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="report schedule not found")
+    return {"schedule_id": schedule_id, "deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# CT-IMPLEMENT-03 — canonical report sharing (PD-1)
+# ---------------------------------------------------------------------------
+# Ratified PO decision PD-1 implements report sharing against the canonical
+# report/version architecture. The schema is
+# ``supabase/migrations/20261022000000_ct02_report_sharing.sql``
+# (``report_shares`` + ``report_share_access_events``), and the rules are the
+# schema's own: a share is bound to ONE immutable (APPROVED/FINAL) version, names
+# an explicit recipient, is tenant-owned, may expire, is revoked (never erased)
+# with a reason, and keeps an append-only access history.
+#
+# Sharing is a version-scoped act on a report, so ``POST /{report_id}/shares``
+# without ``version_number`` binds to the report's CURRENT version. That is the
+# only reading consistent with the canonical model: PD-1 sharing is version-bound,
+# so "share this report" can only mean "share its current version", and a report
+# whose current version is still mutable is refused (409) rather than shared.
+#
+# NOT implemented here (PO-gated in the CT-IMPLEMENT-03 report, G-2): consuming a
+# share — returning the report content to a recipient and recording
+# ``access``/``download``/``denied`` events. That needs a delivery/download policy
+# decision and signed-URL handling; no policy has been invented in its place.
+# ---------------------------------------------------------------------------
+
+
+class ShareCreateIn(BaseModel):
+    """Request to share one version of a report with explicit recipients."""
+
+    organization_id: str = Field(..., min_length=1)
+    recipients: list[str] = Field(..., min_length=1)
+    permission: str = "view"
+    version_number: Optional[int] = Field(default=None, ge=1)
+    expires_at: Optional[datetime] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ShareRevokeIn(BaseModel):
+    """Request to revoke one share (self-describing, per the schema)."""
+
+    organization_id: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/{report_id}/shares", status_code=201)
+async def create_report_share(
+    report_id: str,
+    payload: ShareCreateIn,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Share one immutable version of a report (organisation authority required)."""
+    authorize_org_authority(current_user, payload.organization_id, "share_report")
+    service = ReportShareService(repos)
+    try:
+        shares = await service.share(
+            organization_id=payload.organization_id,
+            report_id=report_id,
+            actor=current_user.user_id,
+            recipients=payload.recipients,
+            permission=payload.permission,
+            version_number=payload.version_number,
+            expires_at=payload.expires_at,
+        )
+    except (ShareValidationError, ShareConflictError) as exc:
+        raise _share_error(exc) from exc
+    return {
+        "report_id": report_id,
+        "shared": [shape_share(row) for row in shares],
+        "count": len(shares),
+    }
+
+
+@router.get("/{report_id}/shares")
+async def list_report_shares(
+    report_id: str,
+    organization_id: str = Query(..., min_length=1),
+    include_revoked: bool = Query(default=True),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """The share register of one report (revoked history included by default)."""
+    authorize_org_member(current_user, organization_id, "list_report_shares")
+    report = await repos.reports.get_full(report_id)
+    if report is None or str(report["organization_id"]) != str(organization_id):
+        raise HTTPException(status_code=404, detail="report not found")
+    shares = await ReportShareService(repos).list_for_report(
+        report_id, include_revoked=include_revoked
+    )
+    return {"report_id": report_id, "shares": [shape_share(row) for row in shares]}
+
+
+@router.post("/shares/{share_id}/revoke")
+async def revoke_report_share(
+    share_id: str,
+    payload: ShareRevokeIn,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Revoke a share (reason required); the register keeps the history."""
+    authorize_org_authority(current_user, payload.organization_id, "revoke_share")
+    service = ReportShareService(repos)
+    try:
+        row = await service.revoke(
+            org_scope=payload.organization_id,
+            share_id=share_id,
+            actor=current_user.user_id,
+            reason=payload.reason,
+        )
+    except ShareValidationError as exc:
+        raise _share_error(exc) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="report share not found")
+    return {"share": shape_share(row)}
+
+
+@router.get("/shares/{share_id}/access-history")
+async def get_share_access_history(
+    share_id: str,
+    organization_id: str = Query(..., min_length=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Append-only access/revocation history for one share."""
+    authorize_org_member(current_user, organization_id, "share_access_history")
+    share = await repos.report_shares.get_for_org(share_id, organization_id)
+    if share is None:
+        raise HTTPException(status_code=404, detail="report share not found")
+    events = await ReportShareService(repos).access_history(share_id, limit=limit) or []
+    return {
+        "share_id": share_id,
+        "share": shape_share(share),
+        "events": [shape_share_event(event) for event in events],
+    }
+
+
+@router.get("/shares/received")
+async def list_received_shares(
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+) -> dict:
+    """Reports shared with the calling user (live, unexpired shares only).
+
+    The recipient may belong to another organisation, so this read is scoped to
+    the caller's own identity rather than to an organisation — exactly the read
+    predicate the schema's RLS policy grants a recipient.
+    """
+    shares = await ReportShareService(repos).received(
+        user_id=current_user.user_id, email=current_user.email
+    )
+    return {"shares": [shape_share(row) for row in shares]}
 
 
 @router.get("/{report_id}")

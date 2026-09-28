@@ -1,10 +1,20 @@
 # backend/routes/reports.py - Fixed version
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
-from datetime import datetime, timedelta
+from pydantic import BaseModel, ConfigDict, Field
+from datetime import date, datetime, time, timedelta
 import io
 import pandas as pd
 import traceback
@@ -12,6 +22,23 @@ import uuid  # ✅ Added missing import
 from supabase import Client
 
 from auth import AuthUser, require_auth, require_org_member, require_org_admin, require_permission, require_role, require_admin
+from api.dependencies import RepositoryBundle, get_repositories
+from api.v3_reports import authorize_org_authority, authorize_org_member
+from services.report_schedules import (
+    ReportScheduleService,
+    ScheduleInUseError,
+    ScheduleValidationError,
+    canonical_frequencies,
+    shape_run as shape_scheduled_run,
+    shape_schedule,
+)
+from services.report_shares import (
+    ReportShareService,
+    ShareConflictError,
+    ShareNotShareableError,
+    ShareValidationError,
+    shape_share,
+)
 from database import get_supabase_client
 
 # Import from report_generator
@@ -107,39 +134,19 @@ class GenerateReportResponse(BaseModel):
     summary: Dict[str, Any]
     expires_at: datetime
 
-class ReportScheduleCreate(BaseModel):
-    report_type: str
-    name: str
-    frequency: str
-    day_of_week: Optional[int] = None
-    day_of_month: Optional[int] = None
-    time: str
-    organization_id: Optional[str] = None
-    recipients: List[str]
-    format: str = "json"
-    filters: Optional[Dict[str, Any]] = None
-    is_active: bool = True
+# ==========================================
+# CT-IMPLEMENT-03 — schedule models moved
+# ==========================================
+# `ReportScheduleCreate` / `ReportScheduleResponse` described a retired legacy
+# schedule table that the canonical schema does not contain: fields such as
+# `day_of_week`, `day_of_month`, `format` and `filters` exist nowhere in the
+# canonical model, and `next_run_at`/`last_run_at`/`last_run_status` were read
+# from a table that does not exist. They are replaced by the canonical request
+# model declared alongside the delegation routes below, and responses are shaped
+# by `services.report_schedules.shape_schedule` (the same shaper the canonical
+# `/api/v3/reports/schedules` surface uses), so there is one representation of a
+# schedule in the application.
 
-class ReportScheduleResponse(BaseModel):
-    id: str
-    report_type: str
-    name: str
-    frequency: str
-    day_of_week: Optional[int]
-    day_of_month: Optional[int]
-    time: str
-    organization_id: Optional[str]
-    recipients: List[str]
-    format: str
-    filters: Optional[Dict[str, Any]]
-    is_active: bool
-    next_run_at: Optional[datetime]
-    last_run_at: Optional[datetime]
-    last_run_status: Optional[str]
-    created_at: datetime
-    updated_at: Optional[datetime]
-    created_by: Optional[str]
-    created_by_name: Optional[str]
 
 class ReportTemplateCreate(BaseModel):
     name: str
@@ -173,25 +180,18 @@ class ReportTemplateResponse(BaseModel):
     created_by_name: Optional[str]
     usage_count: int
 
-class ReportShareCreate(BaseModel):
-    report_id: str
-    shared_with: List[str]
-    permission: str = "view"
-    expires_at: Optional[datetime] = None
+# ==========================================
+# CT-IMPLEMENT-03 — share models moved
+# ==========================================
+# `ReportShareCreate` / `ReportShareResponse` described the retired share register
+# (a JSONB `shares` array inside the legacy report-history row): a share had an
+# `id` only because the old code invented one, and the response echoed a metadata
+# blob rather than a persisted row. They are replaced by the canonical request
+# model declared alongside the delegation routes below, and responses are shaped
+# by `services.report_shares.shape_share` — the persisted share row (version
+# binding, permission, expiry, revocation, access count) rather than a JSONB
+# fragment.
 
-class ReportShareResponse(BaseModel):
-    id: str
-    report_id: str
-    report_name: Optional[str]
-    report_type: Optional[str]
-    shared_by: Optional[str]
-    shared_by_name: Optional[str]
-    shared_with: str
-    shared_with_name: Optional[str]
-    permission: str
-    expires_at: Optional[datetime]
-    created_at: datetime
-    is_active: bool
 
 # ==========================================
 # ✅ FIXED: Helper function for organization access
@@ -1191,19 +1191,45 @@ async def get_available_metrics(
         ]
     }
 
+# ==========================================
+# CT-IMPLEMENT-03 — SCHEDULE SURFACE (canonical compat)
+# ==========================================
+# These three paths used to read and write a retired `report_schedules` table
+# that the canonical schema does not contain, so every one of them was
+# live-broken the moment the canonical schema was applied. They now DELEGATE to
+# the canonical scheduled-reporting implementation (services.report_schedules,
+# persisting `report_schedule_definitions` / `report_schedule_runs`, PD-2) — the
+# same implementation the canonical surface uses, so there is one behaviour, not
+# two. No schedule logic lives here and no retired table is referenced.
+#
+# The canonical surface is `/api/v3/reports/schedules*`; these paths remain so
+# existing callers reach a WORKING implementation, and every response carries a
+# Deprecation header plus a Link to the successor.
+LEGACY_SUCCESSOR_PATH = "/api/v3/reports"
+
+
+def _legacy_deprecation(response: Response) -> None:
+    """Mark a legacy response as deprecated and name its successor."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = f'<{LEGACY_SUCCESSOR_PATH}>; rel="successor-version"'
+
+
 @router.get("/schedule/frequencies")
 async def get_schedule_frequencies(
-    current_user: AuthUser = Depends(require_admin())
+    response: Response,
+    current_user: AuthUser = Depends(require_org_member()),
 ):
-    """Get available schedule frequencies."""
-    return {
-        "frequencies": [
-            {"value": "daily", "label": "Daily"},
-            {"value": "weekly", "label": "Weekly"},
-            {"value": "monthly", "label": "Monthly"},
-            {"value": "quarterly", "label": "Quarterly"}
-        ]
-    }
+    """Available schedule frequencies — the CANONICAL vocabulary (F-2).
+
+    CT-IMPLEMENT-03: this endpoint advertised `daily`, which the canonical
+    `report_schedule_definitions_frequency_check` rejects, so a client that
+    followed the advertisement asked for a schedule the database refuses. The
+    list is now generated from `domain.report_schedule.FREQUENCIES` — exactly the
+    values that can be persisted — and `daily` is gone rather than being added to
+    the schema to keep a legacy label alive.
+    """
+    _legacy_deprecation(response)
+    return {"frequencies": canonical_frequencies()}
 
 
 @router.get("/templates/categories")
@@ -1324,208 +1350,143 @@ async def generate_enhanced_sustainability_report(
 # REPORT SCHEDULES ENDPOINTS (Add these)
 # ==========================================
 
-@router.post("/schedule", response_model=ReportScheduleResponse)
+# ==========================================
+# CT-IMPLEMENT-03 — schedule compat request model
+# ==========================================
+# The retired `ReportScheduleCreate` described fields the canonical model does not
+# have (`day_of_week`, `day_of_month`, `format`, `filters`) and omitted the ones
+# it requires (`reporting_year`, `timezone`, `run_time`). It is replaced by the
+# canonical schedule request, so a legacy caller reaches the same implementation
+# the canonical surface does. `extra="forbid"` means a stale payload is refused
+# with a described 422 instead of being silently half-applied.
+class LegacyScheduleCreate(BaseModel):
+    """Canonical report-schedule request (legacy compat surface)."""
+
+    name: str
+    report_type: str = "annual"
+    reporting_year: int
+    frequency: str
+    run_time: time = time(7, 0)
+    timezone: str = "Europe/London"
+    recipients: List[str]
+    organization_id: Optional[str] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    retry_policy: Optional[Dict[str, Any]] = None
+    is_active: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _schedule_request_error(exc: ScheduleValidationError) -> HTTPException:
+    """Map a canonical schedule-validation failure to a described 4xx.
+
+    A schedule that has executed cannot be deleted (immutable run history), which
+    is a state conflict rather than a bad request → 409.
+    """
+    detail = {"message": str(exc), "field": exc.field or "schedule"}
+    if isinstance(exc, ScheduleInUseError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
+    )
+
+
+def _legacy_schedule_org(
+    current_user: AuthUser, requested: Optional[str]
+) -> str:
+    """The organisation a legacy schedule request applies to."""
+    organization_id = requested or current_user.organization_id
+    if not organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "organization_id is required", "field": "organization_id"},
+        )
+    return organization_id
+
+
+@router.post("/schedule")
 async def create_report_schedule(
-    schedule_data: ReportScheduleCreate,
-    current_user: AuthUser = Depends(require_admin()),
-    supabase: Client = Depends(get_supabase_client)
+    schedule_data: LegacyScheduleCreate,
+    response: Response,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Create a scheduled report."""
+    """Create a scheduled report (delegates to the canonical implementation)."""
+    organization_id = _legacy_schedule_org(current_user, schedule_data.organization_id)
+    authorize_org_authority(current_user, organization_id, "create_report_schedule")
     try:
-        # Verify organization access if specified
-        if schedule_data.organization_id:
-            has_access = await verify_org_access(supabase, schedule_data.organization_id, current_user.user_id)
-            if not has_access:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have access to this organization"
-                )
-        
-        now = datetime.utcnow().isoformat()
-        
-        # Calculate next run time
-        next_run = calculate_next_run(
-            schedule_data.frequency, 
-            schedule_data.time, 
-            schedule_data.day_of_week, 
-            schedule_data.day_of_month
+        row = await ReportScheduleService(repos).create(
+            organization_id,
+            actor=current_user.user_id,
+            name=schedule_data.name,
+            report_type=schedule_data.report_type,
+            reporting_year=schedule_data.reporting_year,
+            frequency=schedule_data.frequency,
+            run_time=schedule_data.run_time,
+            recipients=schedule_data.recipients,
+            timezone_name=schedule_data.timezone,
+            period_start=schedule_data.period_start,
+            period_end=schedule_data.period_end,
+            retry_policy=schedule_data.retry_policy,
+            is_active=schedule_data.is_active,
         )
-        
-        schedule = {
-            'report_type': schedule_data.report_type,
-            'name': schedule_data.name,
-            'frequency': schedule_data.frequency,
-            'day_of_week': schedule_data.day_of_week,
-            'day_of_month': schedule_data.day_of_month,
-            'time': schedule_data.time,
-            'organization_id': schedule_data.organization_id,
-            'recipients': schedule_data.recipients,
-            'format': schedule_data.format,
-            'filters': schedule_data.filters,
-            'is_active': schedule_data.is_active,
-            'next_run_at': next_run.isoformat() if next_run else None,
-            'created_by': current_user.user_id,
-            'created_at': now,
-            'updated_at': now
-        }
-        
-        result = supabase.from_('report_schedules') \
-            .insert(schedule) \
-            .execute()
-        
-        if not result.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create report schedule"
-            )
-        
-        # Get user name
-        created_by_name = None
-        user_result = supabase.from_('auth.users') \
-            .select('email, raw_user_meta_data') \
-            .eq('id', current_user.user_id) \
-            .maybe_single() \
-            .execute()
-        
-        if user_result.data:
-            raw_meta = user_result.data.get('raw_user_meta_data', {})
-            created_by_name = raw_meta.get('full_name') or raw_meta.get('name') or user_result.data.get('email')
-        
-        schedule_data = result.data[0]
-        
-        return ReportScheduleResponse(
-            id=schedule_data['id'],
-            report_type=schedule_data['report_type'],
-            name=schedule_data['name'],
-            frequency=schedule_data['frequency'],
-            day_of_week=schedule_data.get('day_of_week'),
-            day_of_month=schedule_data.get('day_of_month'),
-            time=schedule_data['time'],
-            organization_id=schedule_data.get('organization_id'),
-            recipients=schedule_data.get('recipients', []),
-            format=schedule_data.get('format', 'json'),
-            filters=schedule_data.get('filters'),
-            is_active=schedule_data.get('is_active', True),
-            next_run_at=schedule_data.get('next_run_at'),
-            last_run_at=schedule_data.get('last_run_at'),
-            last_run_status=schedule_data.get('last_run_status'),
-            created_at=schedule_data['created_at'],
-            updated_at=schedule_data.get('updated_at'),
-            created_by=schedule_data.get('created_by'),
-            created_by_name=created_by_name
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error creating report schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create report schedule: {str(e)}"
-        )
+    except ScheduleValidationError as exc:
+        raise _schedule_request_error(exc) from exc
+    _legacy_deprecation(response)
+    return {"schedule": shape_schedule(row)}
 
 
-@router.get("/schedule", response_model=List[ReportScheduleResponse])
+@router.get("/schedule")
 async def get_report_schedules(
-    current_user: AuthUser = Depends(require_admin()),
-    supabase: Client = Depends(get_supabase_client)
+    response: Response,
+    organization_id: Optional[str] = Query(default=None),
+    is_active: Optional[bool] = Query(default=None),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Get all report schedules."""
-    try:
-        result = supabase.from_('report_schedules') \
-            .select('*') \
-            .order('created_at', desc=True) \
-            .execute()
-        
-        schedules = result.data or []
-        
-        # Enrich with user details
-        enriched_schedules = []
-        for schedule in schedules:
-            created_by_name = None
-            if schedule.get('created_by'):
-                user_result = supabase.from_('auth.users') \
-                    .select('email, raw_user_meta_data') \
-                    .eq('id', schedule['created_by']) \
-                    .maybe_single() \
-                    .execute()
-                
-                if user_result.data:
-                    raw_meta = user_result.data.get('raw_user_meta_data', {})
-                    created_by_name = raw_meta.get('full_name') or raw_meta.get('name') or user_result.data.get('email')
-            
-            enriched_schedules.append(ReportScheduleResponse(
-                id=schedule['id'],
-                report_type=schedule['report_type'],
-                name=schedule['name'],
-                frequency=schedule['frequency'],
-                day_of_week=schedule.get('day_of_week'),
-                day_of_month=schedule.get('day_of_month'),
-                time=schedule['time'],
-                organization_id=schedule.get('organization_id'),
-                recipients=schedule.get('recipients', []),
-                format=schedule.get('format', 'json'),
-                filters=schedule.get('filters'),
-                is_active=schedule.get('is_active', True),
-                next_run_at=schedule.get('next_run_at'),
-                last_run_at=schedule.get('last_run_at'),
-                last_run_status=schedule.get('last_run_status'),
-                created_at=schedule['created_at'],
-                updated_at=schedule.get('updated_at'),
-                created_by=schedule.get('created_by'),
-                created_by_name=created_by_name
-            ))
-        
-        return enriched_schedules
-        
-    except Exception as e:
-        print(f"❌ Error getting report schedules: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get report schedules: {str(e)}"
-        )
+    """List scheduled reports for an organisation (canonical delegation)."""
+    org = _legacy_schedule_org(current_user, organization_id)
+    authorize_org_member(current_user, org, "get_report_schedules")
+    page = await ReportScheduleService(repos).list_schedules(
+        org, is_active=is_active, limit=100, offset=0
+    )
+    _legacy_deprecation(response)
+    return {
+        "schedules": [shape_schedule(item) for item in page["schedules"]],
+        "total": page["total"],
+        "frequencies": page["frequencies"],
+    }
 
 
 @router.delete("/schedule/{schedule_id}")
 async def delete_report_schedule(
     schedule_id: str,
-    current_user: AuthUser = Depends(require_admin()),
-    supabase: Client = Depends(get_supabase_client)
+    response: Response,
+    organization_id: Optional[str] = Query(default=None),
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Delete a report schedule."""
+    """Delete a scheduled report (canonical delegation; deletion is audited)."""
+    org = _legacy_schedule_org(current_user, organization_id)
+    authorize_org_authority(current_user, org, "delete_report_schedule")
     try:
-        # Check if schedule exists
-        existing = supabase.from_('report_schedules') \
-            .select('id') \
-            .eq('id', schedule_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not existing.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Report schedule not found"
-            )
-        
-        result = supabase.from_('report_schedules') \
-            .delete() \
-            .eq('id', schedule_id) \
-            .execute()
-        
-        return {
-            "success": True,
-            "message": "Report schedule deleted successfully",
-            "schedule_id": schedule_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error deleting report schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete report schedule: {str(e)}"
+        deleted = await ReportScheduleService(repos).delete(
+            org, schedule_id, actor=current_user.user_id
         )
+    except ScheduleValidationError as exc:
+        raise _schedule_request_error(exc) from exc
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="report schedule not found",
+        )
+    _legacy_deprecation(response)
+    return {
+        "success": True,
+        "message": "Report schedule deleted successfully",
+        "schedule_id": schedule_id,
+    }
 
 
 # ==========================================
@@ -1839,260 +1800,117 @@ async def delete_report_template(
 # REPORT SHARING ENDPOINTS (Add these)
 # ==========================================
 
+# ==========================================
+# CT-IMPLEMENT-03 — REPORT SHARING (canonical compat)
+# ==========================================
+# `POST /{report_id}/share` and `GET /shared` used to read and write a retired
+# legacy report-history table (which PD-1 forbids recreating) and to store
+# "shares" inside that row's `metadata` JSONB.
+# Sharing was therefore live-broken, enumerated every report history row in the
+# database before filtering in Python, and had no server-side authorization, no
+# tenant isolation, no expiry, no revocation and no access history.
+#
+# They now DELEGATE to the canonical implementation (`report_shares` +
+# `report_share_access_events`, PD-1): a share is bound to ONE immutable
+# (APPROVED/FINAL) report version, names explicit recipients, may expire, and is
+# revoked (never erased) with a reason and an access history. The canonical
+# surface is `/api/v3/reports/{report_id}/shares*`.
+#
+# Contract change (documented, not silent): the response describes the CANONICAL
+# share row (`version_id`, `permission`, `expires_at`, `is_active`, `revoked_at`)
+# rather than the retired `metadata.shares` entry. A report whose current version
+# is still mutable is refused with 409 — PD-1 sharing is version-bound, and no
+# "share a draft" policy exists to invent.
+class LegacyShareCreate(BaseModel):
+    """Canonical report-share request (legacy compat surface)."""
+
+    report_id: Optional[str] = None
+    shared_with: List[str]
+    permission: str = "view"
+    expires_at: Optional[datetime] = None
+    version_number: Optional[int] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _share_request_error(exc: Exception) -> HTTPException:
+    """Map a share-domain failure to the right status (never a 500)."""
+    if isinstance(exc, ShareConflictError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "field": "shared_with"},
+        )
+    if isinstance(exc, ShareNotShareableError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "field": "version_number"},
+        )
+    if isinstance(exc, ShareValidationError):
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": str(exc), "field": exc.field or "share"},
+        )
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Unable to complete the share request",
+    )
+
+
 @router.post("/{report_id}/share")
 async def share_report(
     report_id: str,
-    share_data: ReportShareCreate,
+    share_data: LegacyShareCreate,
+    response: Response,
     current_user: AuthUser = Depends(require_org_member()),
-    supabase: Client = Depends(get_supabase_client)
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Share a report with other users."""
-    try:
-        # Verify report exists and user has access
-        report_result = supabase.from_('report_history') \
-            .select('id, organization_id, user_id, metadata') \
-            .eq('id', report_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not report_result.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Report not found"
-            )
-        
-        report = report_result.data
-        
-        # Verify user is the owner or admin
-        if report.get('user_id') != current_user.user_id:
-            # Check if user is staff/admin
-            staff_check = supabase.from_('staff_profiles') \
-                .select('id') \
-                .eq('user_id', current_user.user_id) \
-                .in_('role', ['admin', 'staff']) \
-                .maybe_single() \
-                .execute()
-            
-            if not staff_check.data:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to share this report"
-                )
-        
-        now = datetime.utcnow().isoformat()
-        
-        # Get existing shares or initialize
-        metadata = report.get('metadata', {})
-        if 'shares' not in metadata:
-            metadata['shares'] = []
-        
-        # Add shares
-        added_shares = []
-        for share_with in share_data.shared_with:
-            # Check if user exists
-            user_result = supabase.from_('auth.users') \
-                .select('id, email') \
-                .eq('email', share_with) \
-                .maybe_single() \
-                .execute()
-            
-            if not user_result.data:
-                # Try by ID
-                user_result = supabase.from_('auth.users') \
-                    .select('id, email') \
-                    .eq('id', share_with) \
-                    .maybe_single() \
-                    .execute()
-                
-                if not user_result.data:
-                    continue
-            
-            share_entry = {
-                'id': str(uuid.uuid4()),
-                'shared_with': user_result.data['id'],
-                'permission': share_data.permission,
-                'shared_by': current_user.user_id,
-                'created_at': now,
-                'expires_at': share_data.expires_at.isoformat() if share_data.expires_at else None
-            }
-            
-            # Check if already shared
-            existing_share = next((s for s in metadata['shares'] if s.get('shared_with') == share_entry['shared_with']), None)
-            if existing_share:
-                existing_share.update(share_entry)
-            else:
-                metadata['shares'].append(share_entry)
-            
-            added_shares.append(user_result.data['id'])
-        
-        # Update report metadata
-        update_result = supabase.from_('report_history') \
-            .update({
-                'metadata': metadata,
-                'updated_at': now
-            }) \
-            .eq('id', report_id) \
-            .execute()
-        
-        if not update_result.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to share report"
-            )
-        
-        return {
-            "success": True,
-            "message": f"Report shared with {len(added_shares)} users",
-            "report_id": report_id,
-            "shared_with": added_shares,
-            "permission": share_data.permission
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error sharing report: {e}")
+    """Share one immutable version of a report (canonical delegation)."""
+    if share_data.report_id and share_data.report_id != report_id:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to share report: {str(e)}"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "report_id in the body must match the report in the path",
+                "field": "report_id",
+            },
         )
+    report = await repos.reports.get_full(report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Report not found"
+        )
+    organization_id = str(report["organization_id"])
+    authorize_org_authority(current_user, organization_id, "share_report")
+    try:
+        shares = await ReportShareService(repos).share(
+            organization_id=organization_id,
+            report_id=report_id,
+            actor=current_user.user_id,
+            recipients=share_data.shared_with,
+            permission=share_data.permission,
+            version_number=share_data.version_number,
+            expires_at=share_data.expires_at,
+        )
+    except (ShareValidationError, ShareConflictError) as exc:
+        raise _share_request_error(exc) from exc
+    _legacy_deprecation(response)
+    return {
+        "message": f"Report shared with {len(shares)} users",
+        "report_id": report_id,
+        "shared_with": [row["id"] for row in shares],
+        "permission": share_data.permission,
+        "shares": [shape_share(row) for row in shares],
+    }
 
 
-@router.get("/shared", response_model=List[ReportShareResponse])
+@router.get("/shared")
 async def get_shared_reports(
+    response: Response,
     current_user: AuthUser = Depends(require_org_member()),
-    supabase: Client = Depends(get_supabase_client)
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Get reports shared with the current user."""
-    try:
-        # Get all report history entries
-        result = supabase.from_('report_history') \
-            .select('id, report_type, user_id, metadata, created_at, organization_id') \
-            .execute()
-        
-        reports = result.data or []
-        
-        shared_reports = []
-        for report in reports:
-            metadata = report.get('metadata', {})
-            shares = metadata.get('shares', [])
-            
-            for share in shares:
-                if share.get('shared_with') == current_user.user_id:
-                    # Check if expired
-                    if share.get('expires_at'):
-                        expires_at = datetime.fromisoformat(share['expires_at'].replace('Z', '+00:00'))
-                        if expires_at < datetime.utcnow():
-                            continue
-                    
-                    # Get shared by name
-                    shared_by_name = None
-                    if share.get('shared_by'):
-                        user_result = supabase.from_('auth.users') \
-                            .select('email, raw_user_meta_data') \
-                            .eq('id', share['shared_by']) \
-                            .maybe_single() \
-                            .execute()
-                        
-                        if user_result.data:
-                            raw_meta = user_result.data.get('raw_user_meta_data', {})
-                            shared_by_name = raw_meta.get('full_name') or raw_meta.get('name') or user_result.data.get('email')
-                    
-                    # Get report name from metadata
-                    report_name = metadata.get('report_name', f"Report {report['id'][:8]}")
-                    report_type = report.get('report_type', 'unknown')
-                    
-                    shared_reports.append(ReportShareResponse(
-                        id=share.get('id', str(uuid.uuid4())),
-                        report_id=report['id'],
-                        report_name=report_name,
-                        report_type=report_type,
-                        shared_by=share.get('shared_by'),
-                        shared_by_name=shared_by_name,
-                        shared_with=current_user.user_id,
-                        shared_with_name=None,
-                        permission=share.get('permission', 'view'),
-                        expires_at=share.get('expires_at'),
-                        created_at=datetime.fromisoformat(share['created_at']) if share.get('created_at') else datetime.utcnow(),
-                        is_active=True
-                    ))
-        
-        return shared_reports
-        
-    except Exception as e:
-        print(f"❌ Error getting shared reports: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get shared reports: {str(e)}"
-        )
-
-
-# ==========================================
-# HELPER FUNCTION
-# ==========================================
-
-def calculate_next_run(frequency: str, time_str: str, day_of_week: Optional[int] = None, 
-                       day_of_month: Optional[int] = None) -> Optional[datetime]:
-    """
-    Calculate the next run time for a scheduled report.
-    """
-    now = datetime.utcnow()
-    hour, minute = map(int, time_str.split(':'))
-    
-    if frequency == 'daily':
-        next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if next_run <= now:
-            next_run += timedelta(days=1)
-        return next_run
-    
-    elif frequency == 'weekly':
-        if day_of_week is None:
-            return None
-        days_ahead = day_of_week - now.weekday()
-        if days_ahead <= 0:
-            days_ahead += 7
-        next_run = now + timedelta(days=days_ahead)
-        next_run = next_run.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        return next_run
-    
-    elif frequency == 'monthly':
-        if day_of_month is None:
-            return None
-        if day_of_month > 28:
-            # Handle month end
-            next_month = now.replace(day=1) + timedelta(days=32)
-            last_day = (next_month.replace(day=1) - timedelta(days=1)).day
-            day = min(day_of_month, last_day)
-        else:
-            day = day_of_month
-        
-        next_run = now.replace(day=day, hour=hour, minute=minute, second=0, microsecond=0)
-        if next_run <= now:
-            next_month = now.replace(day=1) + timedelta(days=32)
-            next_run = next_month.replace(day=day, hour=hour, minute=minute, second=0, microsecond=0)
-        return next_run
-    
-    elif frequency == 'quarterly':
-        if day_of_month is None:
-            return None
-        current_quarter = (now.month - 1) // 3
-        next_quarter_month = (current_quarter * 3) + 4
-        if next_quarter_month > 12:
-            next_quarter_month = 1
-            year = now.year + 1
-        else:
-            year = now.year
-        
-        if day_of_month > 28:
-            next_month = datetime(year, next_quarter_month, 1) + timedelta(days=32)
-            last_day = (next_month.replace(day=1) - timedelta(days=1)).day
-            day = min(day_of_month, last_day)
-        else:
-            day = day_of_month
-        
-        next_run = datetime(year, next_quarter_month, day, hour, minute, 0)
-        if next_run <= now:
-            next_run = datetime(year + 1, next_quarter_month, day, hour, minute, 0)
-        return next_run
-    
-    return None
+    """Reports shared with the current user (canonical delegation)."""
+    shares = await ReportShareService(repos).received(
+        user_id=current_user.user_id, email=current_user.email
+    )
+    _legacy_deprecation(response)
+    return {"shares": [shape_share(row) for row in shares], "total": len(shares)}
