@@ -641,18 +641,16 @@ was read or written.
 |---|---|
 | Branch | `p8-release-reconciled` |
 | Starting SHA | `21310afae69cace6b67985eda7e817b0aee1c33b` (CT-IMPLEMENT-02's last commit) |
-| Ending SHA | the commit that adds this report (recorded in the commit list below as the last entry) |
+| Ending SHA | **`eff1c56`** — the CT-IMPLEMENT-03 report commit, i.e. the branch tip once the implementation, tests and this report were in place. The only commit after it is the one that adds this sentence (a bookkeeping note carrying no code) |
 | Pushed | **no** |
 | History rewritten / reset / amended | **no** (`git reset`, `git clean`, force-push and amend were not used) |
 
-Commits created (coherent units, in order):
-
-| # | Subject |
-|---|---|
-| 1 | `CT-IMPLEMENT-03: canonical schedule/share data layer, services and producer` |
-| 2 | `CT-IMPLEMENT-03: canonical schedule/share routes, legacy delegation, runner worker` |
-| 3 | `CT-IMPLEMENT-03: unit and disposable-DB E2E coverage for schedule/share canonicalization` |
-| 4 | `CT-IMPLEMENT-03: implementation report` |
+| Commit | SHA | Subject |
+|---|---|---|
+| 1 | `a74359e` | `CT-IMPLEMENT-03: canonical schedule/share data layer, services and producer` |
+| 2 | `a599b24` | `CT-IMPLEMENT-03: canonical schedule/share routes, legacy delegation, runner worker` |
+| 3 | `429df43` | `CT-IMPLEMENT-03: unit and disposable-DB E2E coverage for schedule/share canonicalization` |
+| 4 | `eff1c56` | `CT-IMPLEMENT-03: implementation report` (**ending SHA**) |
 
 Files changed by this change-set:
 
