@@ -5,7 +5,11 @@ from datetime import datetime
 from pydantic import BaseModel
 from auth import AuthUser, require_org_member
 from database import get_supabase_client
-from utils.emissions import get_emission_factor
+from utils.emissions import (
+    FactorUnresolved,
+    factor_blocked_detail,
+    require_emission_factor,
+)
 
 router = APIRouter(prefix="/api/drafts", tags=["Drafts"])
 
@@ -374,7 +378,27 @@ async def submit_draft(
         
         draft = draft_result.data
         data = draft.get('data', {})
-        
+
+        # F-04 (blocking validation): resolve the governed factor BEFORE any
+        # state changes. A missing factor blocks the whole submission — no
+        # document approval, no emissions row, no fabricated multiplier
+        # (AGENTS.md #17/#25). The draft is preserved so the operator can fix
+        # the mapping and re-submit.
+        factor_activity = data.get('fuel_utility_type', 'Electricity')
+        factor_year = data.get('reporting_year', datetime.now().year)
+        try:
+            factor = require_emission_factor(
+                supabase,
+                factor_activity,
+                factor_year,
+                organization_id=org_id,
+            )
+        except FactorUnresolved:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=factor_blocked_detail(factor_activity, factor_year),
+            )
+
         # Get document
         file_result = supabase.from_('organization_files') \
             .select('status') \
@@ -403,25 +427,10 @@ async def submit_draft(
         
         # Save to emissions_logs
         try:
-            # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
-            # was renamed to `emission_factors`; an unresolved factor is a controlled
-            # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
-            factor_id = None
-            factor_resolution = None
-            try:
-                factor = get_emission_factor(
-                    supabase,
-                    data.get('fuel_utility_type', 'Electricity'),
-                    data.get('reporting_year', datetime.now().year),
-                    organization_id=org_id,
-                )
-                factor_id = factor['factor_id']
-                factor_resolution = factor['resolution']
-            except Exception as factor_error:
-                print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
-                factor_resolution = 'unresolved_manual_review'
+            # Factor provenance was resolved and validated above (F-04).
+            factor_id = factor['factor_id']
+            factor_resolution = factor['resolution']
 
-            
             # Get asset
             asset_result = supabase.from_('assets') \
                 .select('id') \
@@ -432,9 +441,11 @@ async def submit_draft(
             
             asset_id = asset_result.data.get('id') if asset_result.data else None
             
-            # Calculate kg CO2e
+            # Calculate kg CO2e from the RESOLVED factor. F-04: the previous
+            # hard-coded 2.68 default fabricated an emissions figure whenever no
+            # factor resolved; a missing factor now blocks the submission above.
             consumption = float(data.get('consumption', 0))
-            kg_co2e = consumption * 2.68  # Default multiplier
+            kg_co2e = round(consumption * factor['multiplier'], 4)
             
             now = datetime.now().isoformat()
             
@@ -454,7 +465,13 @@ async def submit_draft(
                         'source': 'manual_entry',
                         'draft_data': data,
                         'submitted_at': now,
-                        'submitted_by': current_user.user_id
+                        'submitted_by': current_user.user_id,
+                        'multiplier_used': factor['multiplier'],
+                        'reporting_year': factor_year,
+                        'factor_resolution': factor_resolution,
+                        'factor_kind': factor.get('factor_kind'),
+                        'factor_source': factor.get('factor_source'),
+                        'customer_factor_id': factor.get('customer_factor_id'),
                     },
                     'created_at': now
                 }) \

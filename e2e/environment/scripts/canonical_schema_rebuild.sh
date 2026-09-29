@@ -10,8 +10,9 @@
 #                          (provisions auth.*, storage.buckets/objects/foldername)
 #   LAYER 2  APPLICATION   the canonical migrations + the D32 operator step
 #                          (89 files for --profile ct-schema-02, 92 with the
-#                          three CT-IMPLEMENT-02 migrations for
-#                          --profile ct-implement-02)
+#                          three CT-IMPLEMENT-02 migrations, 93 with
+#                          --profile ct-implement-02 — which also carries the
+#                          CT-FINAL-01 storage migration)
 #
 # CANONICAL SEQUENCE (dependency order — F-03):
 #
@@ -311,7 +312,9 @@ log "PHASE C complete — operator step idempotent (4 policies, 1 bucket, unchan
 
 case "$PROFILE" in
   ct-schema-02)    MIG_TO="89"; MIG_EXPECT="63" ;;
-  ct-implement-02) MIG_TO="92"; MIG_EXPECT="66" ;;
+  # CT-FINAL-01 extended the canonical chain to 93 files (the CT-FINAL-01
+  # documents-bucket storage migration is the 93rd); PHASE D applies 27-93.
+  ct-implement-02) MIG_TO="93"; MIG_EXPECT="67" ;;
   *) fail "unknown --profile '$PROFILE' (expected ct-schema-02 or ct-implement-02)" ;;
 esac
 log "profile=$PROFILE (migrations 27-$MIG_TO in PHASE D, expected $MIG_EXPECT)"

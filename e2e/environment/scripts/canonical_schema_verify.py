@@ -7,11 +7,13 @@ same fingerprint recipe, so the two results are comparable.
 
 It asserts, and fails closed on, each of:
 
-  1. MIGRATION SET     89 files, deterministic order, no duplicate versions, and a
-                       migration-set fingerprint that matches the recorded value,
-                       with an explicit provenance proof that the only file that
-                       ever differed from the CT-SCHEMA-01 set is the authorised
-                       D32 revision (git HEAD reproduces the CT-SCHEMA-01 value).
+  1. MIGRATION SET     89 baseline files + the additive CT-IMPLEMENT-02 and
+                       CT-FINAL-01 migrations (93 files total), deterministic
+                       order, no duplicate versions, a migration-set fingerprint
+                       that matches the recorded value, and an explicit
+                       provenance proof that the baseline subset still
+                       reproduces its recorded fingerprint — i.e. the later
+                       migrations only APPENDED.
   2. SCHEMA INVENTORY  the 12 inventory classes of CT-SCHEMA-01 and the exact
                        canonical inventory fingerprint.
   3. HEADLINE COUNTS   145 public tables / 145 RLS / 227 policies / 0 anon-public
@@ -83,10 +85,43 @@ CT_IMPLEMENT_02_MIGRATIONS = (
 #: Recorded on the first verified from-zero rebuild of the extended chain
 #: (see the CT-IMPLEMENT-02 report §Database). Filled in from the recorded
 #: inventory: never guessed, and never normalised to make a run pass.
-EXTENDED_MIGRATION_COUNT = 92
+#: CT-FINAL-01 raised this to 93 — the count and the fingerprint below were
+#: RE-MEASURED from the tree with this file's own recipe (``sha256`` of the
+#: ``sha256sum`` listing) when the 93rd migration became part of the release;
+#: they were not adjusted to make a run pass:
+#:
+#:     python3 -c "import sys, pathlib; sys.path.insert(0, 'e2e/environment/scripts'); \
+#:       import canonical_schema_verify as v; \
+#:       print(v.migration_set_fingerprint(pathlib.Path('supabase/migrations')))"
+#:     → a18a3d4f23d695e0618e7cc58fd9a766d6030273ddac86e903eb337f4f163e81
+EXTENDED_MIGRATION_COUNT = 93
 EXTENDED_MIGRATION_SET_FINGERPRINT = (
-    "36d5d85b93e6a6d0caba68037445fc43df4a87203b5931513bf07494e2437944"
+    "a18a3d4f23d695e0618e7cc58fd9a766d6030273ddac86e903eb337f4f163e81"
 )
+
+# ---------------------------------------------------------------------------
+# CT-FINAL-01 — the authorised migration that extends the chain once more
+# ---------------------------------------------------------------------------
+# CT-FINAL-01 adds ONE further additive migration AFTER the CT-IMPLEMENT-02
+# chain: ``20261024000000_ct_final_01_documents_bucket_size_limit.sql``.  It is
+# storage configuration only — it declares no application object — so it is
+# accounted for exactly as the CT-IMPLEMENT-02 additions are:
+#
+#   * excluded from the 89-file baseline subset, so the CT-SCHEMA-02 baseline
+#     fingerprint (``MIGRATION_SET_FINGERPRINT_EXPECTED``) keeps being
+#     *reproduced* rather than re-pinned — proof that no earlier migration moved;
+#   * included in the extended set whose count and fingerprint are recorded
+#     above;
+#   * listed as an authorised working-tree revision while it is still
+#     uncommitted, and simply absent from that list once it is committed (a
+#     clean checkout of HEAD can never "differ from HEAD").
+CT_FINAL_01_MIGRATIONS = (
+    "20261024000000_ct_final_01_documents_bucket_size_limit.sql",
+)
+
+#: Every migration added AFTER the CT-SCHEMA-01/02 baseline.  These are the files
+#: that must be excluded when the baseline subset is reconstructed.
+POST_BASELINE_MIGRATIONS = CT_IMPLEMENT_02_MIGRATIONS + CT_FINAL_01_MIGRATIONS
 
 #: Headline counts OBSERVED on the first from-zero rebuild of the extended chain
 #: (target ct_impl02, 2026-09-28, evidence /tmp/ct_impl02_evidence/verify.txt,
@@ -356,7 +391,7 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
         baseline_dir = pathlib.Path(tempfile.mkdtemp(prefix="ct02_baseline_"))
         import shutil
         for name in names:
-            if name not in CT_IMPLEMENT_02_MIGRATIONS:
+            if name not in POST_BASELINE_MIGRATIONS:
                 shutil.copy2(mig_dir / name, baseline_dir / name)
         baseline_fp = migration_set_fingerprint(baseline_dir)
         info("baseline_migration_count", str(len(list(baseline_dir.glob('*.sql')))))
@@ -367,6 +402,10 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
         ok &= check("ct_implement_02_migrations_present", not missing,
                     "all three CT-IMPLEMENT-02 migrations present" if not missing
                     else f"missing: {missing}")
+        missing_ct_final_01 = [m for m in CT_FINAL_01_MIGRATIONS if m not in names]
+        ok &= check("ct_final_01_migrations_present", not missing_ct_final_01,
+                    "the CT-FINAL-01 storage migration is present" if not missing_ct_final_01
+                    else f"missing: {missing_ct_final_01}")
 
     # Provenance: prove the set is the CT-SCHEMA-01/02 set apart from the single
     # authorised D32 revision and the CT-IMPLEMENT-02 additions. Read-only git
@@ -413,14 +452,15 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
             baseline_head = pathlib.Path(tempfile.mkdtemp(prefix="ct02_head_baseline_"))
             import shutil
             for name in sorted(head_names):
-                if name not in CT_IMPLEMENT_02_MIGRATIONS:
+                if name not in POST_BASELINE_MIGRATIONS:
                     shutil.copy2(head_dir / name, baseline_head / name)
             head_baseline_fp = migration_set_fingerprint(baseline_head)
         ok &= check("migration_set_provenance_baseline_from_head",
                     head_baseline_fp in (MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01,
                                          MIGRATION_SET_FINGERPRINT_EXPECTED),
-                    f"git HEAD minus the CT-IMPLEMENT-02 additions reproduces a recorded "
-                    f"baseline anchor ({head_baseline_fp}; CT-SCHEMA-01={MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01}, "
+                    f"git HEAD minus the additive CT-IMPLEMENT-02 / CT-FINAL-01 "
+                    f"migrations reproduces a recorded baseline anchor "
+                    f"({head_baseline_fp}; CT-SCHEMA-01={MIGRATION_SET_FINGERPRINT_CT_SCHEMA_01}, "
                     f"CT-SCHEMA-02={MIGRATION_SET_FINGERPRINT_EXPECTED}) — head_set={len(head_names)} "
                     f"files, head={head_fp}. Which anchor applies depends on whether the "
                     f"authorised D32 revision is committed at HEAD; any *other* value means "
@@ -437,14 +477,19 @@ def check_migration_set(mig_dir: pathlib.Path, expect_fingerprint: str,
             for line in porcelain if line[3:].strip().endswith(".sql")
         })
         allowed = sorted(
-            m for m in (AUTHORISED_MIGRATION_REVISION, *CT_IMPLEMENT_02_MIGRATIONS)
+            m for m in (
+                AUTHORISED_MIGRATION_REVISION,
+                *CT_IMPLEMENT_02_MIGRATIONS,
+                *CT_FINAL_01_MIGRATIONS,
+            )
             if m not in head_names
         )
         ok &= check("migration_set_only_authorised_revision",
                     changed == allowed,
                     f"files differing from HEAD: {changed or 'none'} "
-                    f"(allowed: {allowed}; CT-IMPLEMENT-02 files already in HEAD: "
-                    f"{[m for m in CT_IMPLEMENT_02_MIGRATIONS if m in head_names]})")
+                    f"(allowed: {allowed}; CT-IMPLEMENT-02/CT-FINAL-01 files "
+                    f"already in HEAD: "
+                    f"{[m for m in POST_BASELINE_MIGRATIONS if m in head_names]})")
     except (subprocess.SubprocessError, OSError) as exc:
         info("migration_set_provenance_skipped", f"git not available: {exc}")
     return bool(ok)
@@ -745,7 +790,7 @@ def main() -> int:
         # recorded extended fingerprint once it exists, and otherwise only its
         # per-class hashes are recorded for pinning (never silently accepted).
         expect_migration_fp = args.expect_migration_fingerprint if args.expect_migration_fingerprint != MIGRATION_SET_FINGERPRINT_EXPECTED else EXTENDED_MIGRATION_SET_FINGERPRINT
-        expected_count, expected_last = EXTENDED_MIGRATION_COUNT, CT_IMPLEMENT_02_MIGRATIONS[-1]
+        expected_count, expected_last = EXTENDED_MIGRATION_COUNT, CT_FINAL_01_MIGRATIONS[-1]
     else:
         expect_migration_fp = args.expect_migration_fingerprint
         expected_count, expected_last = EXPECTED_MIGRATION_COUNT, "20261020000000_p17k_governed_capability_catalogue.sql"

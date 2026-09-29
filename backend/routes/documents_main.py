@@ -6,9 +6,77 @@ from datetime import datetime
 from pydantic import BaseModel
 from auth import AuthUser, require_org_member, require_role
 from database import get_supabase_client
-from utils.emissions import get_emission_factor
+from utils.emissions import (
+    FactorUnresolved,
+    factor_blocked_detail,
+    require_emission_factor,
+)
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
+
+# ==========================================
+# SHARED HELPERS
+# ==========================================
+
+_APPROVE_REVIEW_CUSTOMER_COLUMNS = (
+    "id, asset_id, status as customer_doc_status, file_type, upload_date"
+)
+_STATUS_CUSTOMER_COLUMNS = "id, status as customer_doc_status"
+
+
+def _fetch_file_with_customer_document(
+    supabase,
+    file_id: str,
+    org_id: str,
+    *,
+    customer_columns: str = _APPROVE_REVIEW_CUSTOMER_COLUMNS,
+):
+    """Fetch an ``organization_files`` row plus its linked ``customer_documents`` row.
+
+    CT-FINAL-01 (D-5 / F-05-R4) — two independent runtime defects are fixed here:
+
+    * PostgREST can only embed a relation it knows about, and **no foreign key
+      links** ``organization_files`` ↔ ``customer_documents``, so the embed
+      answers ``PGRST200`` on a real database.  The handler converted that into
+      HTTP 500 for a perfectly valid same-tenant document.  The embed is still
+      attempted first (a deployment where the relation exists keeps the richer
+      payload) and the plain row is read when the relationship is absent.
+    * an absent/``NULL`` relation is normalised to ``{}`` — reading
+      ``.get('customer_documents')`` and then calling ``.get()`` on the ``NULL``
+      value raised ``AttributeError`` and produced the same 500.  A
+      ``customer_documents`` object is never fabricated (AGENTS.md #17/#74).
+
+    Returns the row (with a ``customer_documents`` mapping that is always a dict),
+    or ``None`` when the document does not exist in that organisation.
+    """
+
+    def _select(columns: str):
+        result = supabase.from_('organization_files') \
+            .select(columns) \
+            .eq('id', file_id) \
+            .eq('organization_id', org_id) \
+            .maybe_single() \
+            .execute()
+        # ``maybe_single()`` returns ``None`` (or a response with ``data=None``)
+        # when nothing matches; never assume a response object.
+        return getattr(result, "data", None)
+
+    try:
+        row = _select(f"*, customer_documents ({customer_columns})")
+    except Exception as exc:
+        message = str(exc)
+        if "PGRST200" not in message and "Could not find a relationship" not in message:
+            raise
+        row = _select("*")
+
+    if not isinstance(row, dict):
+        return None
+
+    linked = row.get('customer_documents')
+    if not isinstance(linked, dict):
+        linked = {}
+    return {**row, 'customer_documents': linked}
+
 
 # ==========================================
 # PYDANTIC MODELS
@@ -414,31 +482,17 @@ async def customer_review_document(
                 detail="User does not have access to this organization"
             )
         
-        # Get document with customer_document link
-        doc_result = supabase.from_('organization_files') \
-            .select('''
-                *,
-                customer_documents (
-                    id,
-                    asset_id,
-                    status as customer_doc_status,
-                    file_type,
-                    upload_date
-                )
-            ''') \
-            .eq('id', file_id) \
-            .eq('organization_id', org_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not doc_result.data:
+        # Get document with customer_document link (D-5: tolerant of the absent
+        # relationship / NULL embed — see _fetch_file_with_customer_document).
+        doc = _fetch_file_with_customer_document(supabase, file_id, org_id)
+
+        if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
-        
-        doc = doc_result.data
-        customer_doc = doc.get('customer_documents', {})
+
+        customer_doc = doc.get('customer_documents') or {}
         current_status = doc.get('status', 'uploaded')
         
         # Allow review if status is ready_for_review or manual entry
@@ -457,7 +511,46 @@ async def customer_review_document(
         
         now = datetime.now().isoformat()
         new_status = 'approved' if review_data.action == 'approve' else 'rejected'
-        
+
+        # F-04 (blocking validation): an approval requires a governed factor
+        # BEFORE any status change. Previously the document was marked approved
+        # first and the factor was resolved afterwards, so a missing factor left
+        # an "approved" document with no emissions row — or an emissions row
+        # carrying a fabricated 2.68 default multiplier. Now the write is
+        # blocked (409) and nothing is mutated (AGENTS.md #17/#25/#26).
+        extraction_data_for_review = {}
+        resolved_factor = None
+        if review_data.action == 'approve':
+            extraction_data_for_review = (
+                review_data.extraction_result
+                if hasattr(review_data, 'extraction_result')
+                else None
+            ) or {}
+            if not extraction_data_for_review:
+                extraction_data_for_review = (
+                    doc.get('metadata') or {}
+                ).get('extraction_result', {}) or {}
+
+            if extraction_data_for_review:
+                factor_activity = extraction_data_for_review.get(
+                    'fuel_utility_type', 'Electricity'
+                )
+                factor_year = extraction_data_for_review.get(
+                    'reporting_year', datetime.now().year
+                )
+                try:
+                    resolved_factor = require_emission_factor(
+                        supabase,
+                        factor_activity,
+                        factor_year,
+                        organization_id=org_id,
+                    )
+                except FactorUnresolved:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=factor_blocked_detail(factor_activity, factor_year),
+                    )
+
         # Update document status
         update_data = {
             'status': new_status,
@@ -504,35 +597,16 @@ async def customer_review_document(
         # If approved, save to emissions_logs
         emission_id = None
         if review_data.action == 'approve':
-            # Get extraction data from the request
-            extraction_data = review_data.extraction_result if hasattr(review_data, 'extraction_result') else {}
-            
-            if not extraction_data:
-                # Try to get from metadata
-                metadata = doc.get('metadata', {})
-                extraction_data = metadata.get('extraction_result', {})
-            
+            # Extraction data was resolved (and the factor validated) above.
+            extraction_data = extraction_data_for_review
+
             if extraction_data:
                 try:
-                    # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
-                    # was renamed to `emission_factors`; an unresolved factor is a controlled
-                    # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
-                    factor_id = None
-                    factor_resolution = None
-                    try:
-                        factor = get_emission_factor(
-                            supabase,
-                            extraction_data.get('fuel_utility_type', 'Electricity'),
-                            extraction_data.get('reporting_year', datetime.now().year),
-                            organization_id=org_id,
-                        )
-                        factor_id = factor['factor_id']
-                        factor_resolution = factor['resolution']
-                    except Exception as factor_error:
-                        print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
-                        factor_resolution = 'unresolved_manual_review'
+                    # Factor provenance resolved and validated before approval (F-04).
+                    factor = resolved_factor
+                    factor_id = factor['factor_id']
+                    factor_resolution = factor['resolution']
 
-                    
                     # ✅ Get asset - use customer_document's asset_id if available
                     asset_id = None
                     if customer_doc and customer_doc.get('asset_id'):
@@ -547,9 +621,11 @@ async def customer_review_document(
                             .execute()
                         asset_id = asset_result.data.get('id') if asset_result.data else None
                     
-                    # Calculate kg CO2e
+                    # Calculate kg CO2e from the RESOLVED factor (F-04: the
+                    # previous hard-coded 2.68 default fabricated emissions
+                    # whenever no factor resolved).
                     consumption = float(extraction_data.get('consumption', 0))
-                    kg_co2e = consumption * 2.68  # Default multiplier
+                    kg_co2e = round(consumption * factor['multiplier'], 4)
                     
                     # Save to emissions_logs
                     emission_data = {
@@ -566,7 +642,12 @@ async def customer_review_document(
                             'source': 'customer_approved',
                             'extraction_data': extraction_data,
                             'approved_at': now,
-                            'approved_by': current_user.user_id
+                            'approved_by': current_user.user_id,
+                            'multiplier_used': factor['multiplier'],
+                            'factor_resolution': factor_resolution,
+                            'factor_kind': factor.get('factor_kind'),
+                            'factor_source': factor.get('factor_source'),
+                            'customer_factor_id': factor.get('customer_factor_id'),
                         },
                         'created_at': now
                     }
@@ -619,38 +700,30 @@ async def update_document_status(
     try:
         supabase = get_supabase_client()
         
-        # Get document with customer_document link
-        doc_check = supabase.from_('organization_files') \
-            .select('''
-                organization_id, 
-                status, 
-                name, 
-                file_type,
-                customer_documents (
-                    id,
-                    status as customer_doc_status
-                )
-            ''') \
-            .eq('id', file_id) \
-            .eq('organization_id', org_id) \
-            .maybe_single() \
-            .execute()
-        
-        if not doc_check.data:
+        # Get document with customer_document link (D-5: tolerant of the absent
+        # relationship / NULL embed — see _fetch_file_with_customer_document).
+        doc_check = _fetch_file_with_customer_document(
+            supabase,
+            file_id,
+            org_id,
+            customer_columns=_STATUS_CUSTOMER_COLUMNS,
+        )
+
+        if not doc_check:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
         
         # ✅ Verify the organization matches
-        if doc_check.data['organization_id'] != org_id:
+        if doc_check.get('organization_id') != org_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Document does not belong to this organization"
             )
         
-        old_status = doc_check.data.get('status', 'uploaded')
-        customer_doc = doc_check.data.get('customer_documents', {})
+        old_status = doc_check.get('status', 'uploaded')
+        customer_doc = doc_check.get('customer_documents') or {}
         
         # Validate status
         valid_statuses = ['uploaded', 'processing', 'staff_review', 'ready_for_review', 'approved', 'rejected']
@@ -701,8 +774,8 @@ async def update_document_status(
                     manual_review_data = {
                         'file_id': file_id,
                         'organization_id': org_id,
-                        'file_name': doc_check.data.get('name', 'Unknown'),
-                        'file_type': doc_check.data.get('file_type', 'PDF'),
+                        'file_name': doc_check.get('name', 'Unknown'),
+                        'file_type': doc_check.get('file_type', 'PDF'),
                         'data_type': 'mixed',
                         'status': 'assigned',
                         'assigned_to': status_data.assigned_to,

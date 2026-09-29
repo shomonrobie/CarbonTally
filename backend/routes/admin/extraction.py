@@ -5,6 +5,11 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from auth import AuthUser, require_role, require_permission
 from database import get_supabase_client
+from utils.emissions import (
+    FactorUnresolved,
+    factor_blocked_detail,
+    require_emission_factor,
+)
 
 router = APIRouter(prefix="/api/admin/extraction", tags=["Admin - Extraction Management"])
 
@@ -100,11 +105,10 @@ async def calculate_emissions_with_defra(
         reporting_year = override_year if override_year else detected_year
         
         # Get emission factor
-        # Step 2 / WS-C — `get_emission_factor` lives in `utils.emissions`; it was
-        # never defined in `main` (guaranteed ImportError/HTTP 500 before).
-        from utils.emissions import get_emission_factor
-
-        factor_data = get_emission_factor(supabase_client, activity_type, reporting_year)
+        # Step 2 / WS-C — factor resolution lives in `utils.emissions`. F-04: the
+        # write path uses `require_emission_factor`, so an unresolved factor
+        # raises `FactorUnresolved` instead of persisting a null provenance link.
+        factor_data = require_emission_factor(supabase_client, activity_type, reporting_year)
         
         multiplier = factor_data['multiplier']
         calculated_kg_co2e = round(consumption * multiplier, 4)
@@ -120,6 +124,35 @@ async def calculate_emissions_with_defra(
     except Exception as e:
         print(f"❌ Error calculating emissions: {e}")
         raise
+
+
+def _restore_review_item(supabase, review_before) -> None:
+    """Compensating rollback for a partially-applied approval (CT-FINAL-01 D-3).
+
+    Restores the ``manual_review_queue`` row to the state captured before the
+    approval attempt, so an approval either completes completely or leaves no
+    side effect.  Best-effort by design: if the restore itself fails the failure
+    is logged (the caller still reports the original error and never a false
+    success — AGENTS.md #46/#74).
+    """
+    if not isinstance(review_before, dict) or not review_before.get("id"):
+        return
+    try:
+        supabase.from_('manual_review_queue') \
+            .update({
+                'status': review_before.get('status'),
+                'completed_at': review_before.get('completed_at'),
+                'completed_by': review_before.get('completed_by'),
+                'data_entry': review_before.get('data_entry'),
+            }) \
+            .eq('id', review_before['id']) \
+            .execute()
+    except Exception as restore_error:  # pragma: no cover - defensive
+        print(
+            f"⚠️ Failed to restore review item {review_before.get('id')}: "
+            f"{restore_error}"
+        )
+
 
 # ==========================================
 # ENDPOINTS
@@ -163,15 +196,26 @@ async def approve_extraction(
                 detail="Consumption must be greater than 0"
             )
         
-        # Calculate emissions
-        calculation = await calculate_emissions_with_defra(
-            supabase_client=supabase,
-            activity_type=fuel_utility_type,
-            consumption=consumption,
-            start_date=billing_start,
-            override_year=override_year
-        )
-        
+        # Calculate emissions.
+        # F-04 (blocking validation): resolution happens inside
+        # `calculate_emissions_with_defra`; if no governed factor matches, the
+        # approval is BLOCKED (409) before anything is written — no emissions row
+        # and no fabricated multiplier (AGENTS.md #17/#25).
+        try:
+            calculation = await calculate_emissions_with_defra(
+                supabase_client=supabase,
+                activity_type=fuel_utility_type,
+                consumption=consumption,
+                start_date=billing_start,
+                override_year=override_year
+            )
+        except FactorUnresolved:
+            blocked_year = override_year or str(billing_start)[:4]
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=factor_blocked_detail(fuel_utility_type, blocked_year),
+            )
+
         # Fetch asset_id from asset_name
         asset_id = None
         if asset_name:
@@ -185,25 +229,102 @@ async def approve_extraction(
             if asset_result.data:
                 asset_id = asset_result.data['id']
         
-        # Canonical factor resolution (CT-SCHEMA-03 F-04): the legacy DEFRA table
-        # was renamed to `emission_factors`; an unresolved factor is a controlled
-        # manual-review state, never a silent null provenance link (AGENTS.md #15/#17).
-        factor_id = None
-        factor_resolution = None
+        # Canonical factor provenance (CT-SCHEMA-03 F-04): the legacy DEFRA table
+        # was renamed to `emission_factors`. `calculate_emissions_with_defra`
+        # above already proved a factor resolves, so a second failure here blocks
+        # the write (409) rather than persisting an emissions row with a NULL
+        # factor reference (AGENTS.md #17).
         try:
-            factor = get_emission_factor(
+            factor = require_emission_factor(
                 supabase,
                 fuel_utility_type,
                 calculation['reporting_year'],
                 organization_id=organization_id,
             )
-            factor_id = factor['factor_id']
-            factor_resolution = factor['resolution']
-        except Exception as factor_error:
-            print(f"⚠️ Emission factor unresolved — manual review required: {factor_error}")
-            factor_resolution = 'unresolved_manual_review'
+        except FactorUnresolved:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=factor_blocked_detail(
+                    fuel_utility_type, calculation['reporting_year']
+                ),
+            )
 
-        
+        factor_id = factor['factor_id']
+        factor_resolution = factor['resolution']
+
+        # ------------------------------------------------------------------
+        # D-3 (CT-FINAL-01) — approval atomicity.
+        #
+        # The previous order was: insert the emissions row, then update
+        # ``manual_review_queue`` with columns that do not exist on that table
+        # (``approved_at`` / ``approved_by`` / ``emission_log_id``). PostgREST
+        # rejected the update (PGRST204), so the caller received a 500 *after* an
+        # emissions row had been committed — a partial approval.
+        #
+        # Corrected order and data model:
+        #   1. read the work item (404 when absent) and require that it belongs to
+        #      the organisation being approved for;
+        #   2. mark the work item complete using only columns that exist on
+        #      ``manual_review_queue`` (status / completed_at / completed_by, with
+        #      the approval provenance merged non-destructively into ``data_entry``);
+        #   3. write the emissions row (the authoritative artefact) LAST;
+        #   4. if that write fails, the work item is restored, so no partial
+        #      approval side effect survives.
+        # ------------------------------------------------------------------
+        review_before = None
+        review_marked_at = None
+        if review_id:
+            existing_review = supabase.from_('manual_review_queue') \
+                .select('id, organization_id, status, completed_at, completed_by, data_entry') \
+                .eq('id', review_id) \
+                .maybe_single() \
+                .execute()
+
+            if not existing_review.data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Review item '{review_id}' not found",
+                )
+
+            review_before = existing_review.data
+            review_org = review_before.get('organization_id')
+            if review_org and str(review_org) != str(organization_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="The review item does not belong to this organization",
+                )
+
+            data_entry = review_before.get('data_entry')
+            if not isinstance(data_entry, dict):
+                data_entry = {}
+
+            review_marked_at = datetime.now().isoformat()
+            review_update = supabase.from_('manual_review_queue') \
+                .update({
+                    'status': 'approved',
+                    # Existing columns only — the queue has no approved_at /
+                    # approved_by / emission_log_id column, so the approval
+                    # provenance is recorded inside the existing JSONB column.
+                    'completed_at': review_marked_at,
+                    'completed_by': current_user.user_id,
+                    'data_entry': {
+                        **data_entry,
+                        'approval': {
+                            'approved_at': review_marked_at,
+                            'approved_by': current_user.user_id,
+                            'approved_by_email': current_user.email,
+                        },
+                    },
+                }) \
+                .eq('id', review_id) \
+                .execute()
+
+            if not review_update.data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to record the review approval",
+                )
+
         # Insert into emissions_logs
         emission_log_data = {
             'organization_id': organization_id,
@@ -218,6 +339,10 @@ async def approve_extraction(
                 'fuel_type': fuel_utility_type,
                 'reporting_year': calculation['reporting_year'],
                 'multiplier_used': calculation['multiplier_used'],
+                'factor_resolution': factor_resolution,
+                'factor_kind': factor.get('factor_kind'),
+                'factor_source': factor.get('factor_source'),
+                'customer_factor_id': factor.get('customer_factor_id'),
                 'source': 'manual_review' if review_id else 'auto_extraction',
                 'review_id': review_id,
                 'approved_by': current_user.email,
@@ -225,33 +350,76 @@ async def approve_extraction(
             }
         }
         
-        emissions_result = supabase.from_('emissions_logs') \
-            .insert(emission_log_data) \
-            .execute()
-        
+        try:
+            emissions_result = supabase.from_('emissions_logs') \
+                .insert(emission_log_data) \
+                .execute()
+        except Exception as write_error:
+            _restore_review_item(supabase, review_before)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save emissions record: {write_error}",
+            )
+
         if not emissions_result.data:
+            _restore_review_item(supabase, review_before)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save emissions record"
             )
-        
+
         emission_id = emissions_result.data[0]['id']
-        
-        # Update review queue status if review_id provided
-        review_status = None
-        if review_id:
-            review_update = supabase.from_('manual_review_queue') \
-                .update({
-                    'status': 'approved',
-                    'approved_at': datetime.now().isoformat(),
-                    'approved_by': current_user.user_id,
-                    'emission_log_id': emission_id
-                }) \
-                .eq('id', review_id) \
-                .execute()
-            
-            if review_update.data:
-                review_status = 'approved'
+
+        # Link the (already completed) work item to the emissions artifact it
+        # produced. A failure here must not leave a committed emissions row
+        # behind an incomplete approval, so the row is compensated for.
+        if review_id and review_before is not None:
+            prior_entry = review_before.get('data_entry')
+            if not isinstance(prior_entry, dict):
+                prior_entry = {}
+            try:
+                linked = supabase.from_('manual_review_queue') \
+                    .update({
+                        'data_entry': {
+                            **prior_entry,
+                            'approval': {
+                                'approved_at': review_marked_at,
+                                'approved_by': current_user.user_id,
+                                'approved_by_email': current_user.email,
+                                'emission_log_id': emission_id,
+                            },
+                        }
+                    }) \
+                    .eq('id', review_id) \
+                    .execute()
+            except Exception as link_error:
+                print(f"⚠️ Failed to link review item {review_id}: {link_error}")
+                linked = None
+
+            if linked is None or not linked.data:
+                # Compensating rollback: remove the emissions row just written
+                # and restore the work item, so the approval either completes
+                # completely or leaves no side effect at all.
+                try:
+                    supabase.from_('emissions_logs') \
+                        .delete() \
+                        .eq('id', emission_id) \
+                        .execute()
+                except Exception as cleanup_error:  # pragma: no cover - defensive
+                    print(
+                        f"⚠️ Failed to compensate emissions row {emission_id}: "
+                        f"{cleanup_error}"
+                    )
+                _restore_review_item(supabase, review_before)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "Failed to link the approved review item; the approval "
+                        "was rolled back"
+                    ),
+                )
+
+        review_status = 'approved' if review_id else None
         
         return ExtractionApprovalResponse(
             success=True,

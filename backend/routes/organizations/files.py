@@ -9,6 +9,13 @@ import mimetypes
 from auth import AuthUser, require_org_member, require_permission, require_org_admin
 from supabase import Client
 from database import get_supabase_client
+from api.dependencies import RepositoryBundle, get_repositories
+from utils.upload_limits import (
+    UploadLimitExceeded,
+    enforce_batch,
+    enforce_single_file,
+    resolve_policy,
+)
 from utils import classify_document
 router = APIRouter(prefix="/api/organizations/files", tags=["Organization Files"])
 
@@ -515,7 +522,8 @@ async def upload_file(
     billing_period_end: Optional[str] = Form(None),
     facility_id: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
     Upload a file with document type classification.
@@ -549,15 +557,20 @@ async def upload_file(
             if not facility_id and asset_check.data.get('facility_id'):
                 facility_id = asset_check.data['facility_id']
         
-        # Validate file size
+        # Validate file size (CT-FINAL-01: the effective, admin-configurable
+        # platform limit — resolved from the canonical upload policy).
         content = await file.read()
         file_size = len(content)
-        
-        if file_size > 50 * 1024 * 1024:
-            raise HTTPException(
-                status_code=413,
-                detail="File size exceeds 50MB limit"
+        policy = await resolve_policy(getattr(repos, "settings", None))
+
+        try:
+            enforce_single_file(
+                file.filename,
+                file_size,
+                configured_limit_mb=policy["max_file_size_mb"],
             )
+        except UploadLimitExceeded as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         
         # Determine file type
         mime_type = file.content_type or 'application/octet-stream'
@@ -777,7 +790,8 @@ async def get_file_stats(
 async def bulk_upload_files(
     files: List[UploadFile] = File(..., description="Files to upload"),
     metadata: Optional[str] = Form(None, description="JSON metadata for all files"),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
     Upload multiple files to the organization's storage.
@@ -792,18 +806,24 @@ async def bulk_upload_files(
                 detail="User is not associated with an organization"
             )
         
-        # Check total size
-        total_size = 0
+        # Check total size — CT-FINAL-01: the effective (admin-configurable)
+        # batch limits are enforced BEFORE any storage object or database row is
+        # created (file size / files per batch / aggregate batch size).
+        policy = await resolve_policy(getattr(repos, "settings", None))
+        contents = []
         for file in files:
-            content = await file.read()
-            total_size += len(content)
-            await file.seek(0)  # Reset for later
-        
-        if total_size > 100 * 1024 * 1024:  # 100MB total
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Total file size exceeds 100MB limit"
+            contents.append(await file.read())
+        try:
+            enforce_batch(
+                [(file.filename, len(content)) for file, content in zip(files, contents)],
+                configured_limit_mb=policy["max_file_size_mb"],
+                configured_max_files=policy["max_files_per_batch"],
+                configured_total_mb=policy["max_batch_size_mb"],
             )
+        except UploadLimitExceeded as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+        total_size = sum(len(content) for content in contents)
         
         uploaded = []
         failed = []
@@ -817,16 +837,24 @@ async def bulk_upload_files(
             except:
                 metadata_dict = {"raw_metadata": metadata}
         
-        for file in files:
+        for index, file in enumerate(files):
             try:
-                content = await file.read()
+                # Bytes were read once for the batch-limit check above; the
+                # already-validated content is reused (a second ``read()`` would
+                # return b'' and upload an empty object).
+                content = contents[index]
                 file_size = len(content)
-                
-                if file_size > 50 * 1024 * 1024:
-                    failed.append({
-                        "name": file.filename,
-                        "error": "File exceeds 50MB limit"
-                    })
+
+                # Per-file limit (already enforced for the batch as a whole; this
+                # keeps the per-file outcome reported in the per-file result).
+                try:
+                    enforce_single_file(
+                        file.filename,
+                        file_size,
+                        configured_limit_mb=policy["max_file_size_mb"],
+                    )
+                except UploadLimitExceeded as exc:
+                    failed.append({"name": file.filename, "error": exc.detail})
                     continue
                 
                 # Determine file type

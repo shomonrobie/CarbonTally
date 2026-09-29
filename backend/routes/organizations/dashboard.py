@@ -106,7 +106,7 @@ async def get_dashboard_summary(
                 calculated_kg_co2e,
                 metadata,
                 assets (name),
-                defra_conversion_factors (activity_type)
+                emission_factors (activity_type)
             ''') \
             .eq('organization_id', org_id) \
             .order('start_date', desc=True) \
@@ -121,7 +121,7 @@ async def get_dashboard_summary(
                 'kg_co2e': record.get('calculated_kg_co2e', 0),
                 'tonnes_co2e': record.get('calculated_kg_co2e', 0) / 1000,
                 'asset': record.get('assets', {}).get('name'),
-                'activity_type': record.get('defra_conversion_factors', {}).get('activity_type'),
+                'activity_type': (record.get('emission_factors') or {}).get('activity_type'),
                 'metadata': record.get('metadata', {})
             })
         
@@ -200,7 +200,7 @@ async def get_organization_activity(
                 created_at,
                 metadata,
                 assets (name),
-                defra_conversion_factors (activity_type)
+                emission_factors (activity_type)
             ''') \
             .eq('organization_id', org_id) \
             .gte('created_at', cutoff_date.isoformat()) \
@@ -209,16 +209,23 @@ async def get_organization_activity(
             .execute()
         
         # Get recent members joined
+        #
+        # F-05-R2.2: this embed selected two columns that do not exist on the
+        # canonical schema — ``organization_members.joined_at`` and
+        # ``users.raw_user_meta_data`` (``public.users`` carries ``first_name`` /
+        # ``last_name``; the mirror has no metadata column). PostgREST answered
+        # ``42703 column users_1.raw_user_meta_data does not exist`` and the
+        # whole activity feed returned HTTP 500.
         members_result = supabase.from_('organization_members') \
             .select('''
                 id,
                 role,
-                joined_at,
-                users!inner (email, raw_user_meta_data->>'full_name' as full_name)
+                created_at,
+                users!inner (email, first_name, last_name)
             ''') \
             .eq('organization_id', org_id) \
-            .gte('joined_at', cutoff_date.isoformat()) \
-            .order('joined_at', desc=True) \
+            .gte('created_at', cutoff_date.isoformat()) \
+            .order('created_at', desc=True) \
             .limit(20) \
             .execute()
         
@@ -232,20 +239,27 @@ async def get_organization_activity(
                 'details': {
                     'kg_co2e': record.get('calculated_kg_co2e', 0),
                     'tonnes_co2e': record.get('calculated_kg_co2e', 0) / 1000,
-                    'asset': record.get('assets', {}).get('name'),
-                    'activity_type': record.get('defra_conversion_factors', {}).get('activity_type'),
+                    # F-05-R4: a NULL embedded relation must not raise.
+                    'asset': (record.get('assets') or {}).get('name'),
+                    'activity_type': (record.get('emission_factors') or {}).get('activity_type'),
                     'date': record.get('start_date')
                 }
             })
         
         for record in members_result.data or []:
-            user_data = record.get('users', {})
+            user_data = record.get('users') or {}
+            # ``public.users`` has no ``full_name`` column — compose it.
+            full_name = " ".join(
+                part
+                for part in (user_data.get('first_name'), user_data.get('last_name'))
+                if part
+            ) or None
             activities.append({
                 'type': 'member_joined',
-                'timestamp': record.get('joined_at'),
+                'timestamp': record.get('created_at'),
                 'details': {
                     'email': user_data.get('email'),
-                    'full_name': user_data.get('full_name'),
+                    'full_name': full_name,
                     'role': record.get('role')
                 }
             })

@@ -4,7 +4,7 @@ import os
 import jwt
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Callable
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from supabase import Client
@@ -354,6 +354,129 @@ async def get_current_user(
 # AUTHENTICATION HELPERS - FIXED!
 # ==========================================
 
+# ==========================================
+# ORGANISATION SCOPE ENFORCEMENT (F-05-R1)
+# ==========================================
+#
+# F-05-R1 (release-blocking, CT-FINAL-01): the organisation guards below only
+# proved that the caller was a member of *some* organisation, while the handler
+# then used the service-role Supabase client scoped ONLY by the organisation id
+# taken from the request path. Any authenticated organisation member could
+# therefore read and write ANOTHER organisation's data by changing that path
+# parameter. Reproduced on
+# ``POST /api/organizations/{org_id}/exports/exports/emissions``.
+#
+# The remediation is central rather than per-route: before any guarded handler
+# runs, every organisation named by the request PATH must be one the caller is
+# actually authorised for. 102 path-scoped routes share these two guards.
+
+#: Route path parameters that name the organisation a request operates on.
+ORG_SCOPE_PATH_PARAMS: tuple = (
+    "organization_id",
+    "org_id",
+    "organisation_id",
+)
+
+
+def get_request_org_scope(request: Optional[Request]) -> tuple:
+    """Organisation ids declared in the request's PATH (F-05-R1).
+
+    Returns ``()`` when the route declares no organisation path parameter, in
+    which case the guards keep their historical membership-only behaviour.
+    ``request`` is ``None`` only for direct (unit-test) invocations of a guard
+    checker; FastAPI always injects the real ``Request`` for routed requests.
+    """
+    path_params = getattr(request, "path_params", None) or {}
+    found: List[str] = []
+    for name in ORG_SCOPE_PATH_PARAMS:
+        value = path_params.get(name)
+        if value in (None, ""):
+            continue
+        value = str(value)
+        if value not in found:
+            found.append(value)
+    return tuple(found)
+
+
+def get_active_org_role(user_id: str, organization_id: str) -> Optional[str]:
+    """Authoritative role of an ACTIVE membership, or ``None`` (fail closed).
+
+    ``None`` means "not authorised": an unusable membership store must never
+    become an implicit allow, and it must never surface as HTTP 500 either
+    (F-05-R3 — the previous ``maybe_single()`` lookup raised ``AttributeError``
+    on ``None`` for a member of several organisations or for no row at all).
+    """
+    if not user_id or not organization_id:
+        return None
+    try:
+        supabase = get_supabase_client()
+        result = (
+            supabase.from_('organization_members')
+            .select('role, is_active')
+            .eq('user_id', user_id)
+            .eq('organization_id', organization_id)
+            .eq('is_active', True)
+            .limit(1)
+            .execute()
+        )
+    except HTTPException:
+        # Supabase not configured / unavailable → deny, never 500.
+        return None
+    except Exception as e:
+        print(f"⚠️ Organisation membership lookup failed: {e}")
+        return None
+
+    rows = getattr(result, "data", None) or []
+    if not rows:
+        return None
+    return rows[0].get('role')
+
+
+def _org_admin_authority(current_user: AuthUser, org_id: str) -> bool:
+    """True when ``current_user`` may administer ``org_id`` (owner/admin)."""
+    if (
+        current_user.organization_id
+        and current_user.organization_id == org_id
+        and (
+            current_user.role in ('org_owner', 'org_admin')
+            or current_user.role_name in ('owner', 'admin')
+        )
+    ):
+        # Token-derived fast path — no database round trip for the common case.
+        return True
+    return get_active_org_role(current_user.user_id, org_id) in ('owner', 'admin')
+
+
+async def enforce_org_path_scope(
+    request: Optional[Request], current_user: AuthUser
+) -> None:
+    """Require exact-tenant authority for every organisation named by the path.
+
+    * No organisation in the path → nothing to enforce (historical behaviour).
+    * CarbonTally INTERNAL staff → unchanged operational cross-organisation
+      access. They are not organisation members, so the guard's own membership
+      test still decides; this branch only avoids *denying* an internal staff
+      member that also holds an organisation membership.
+    * Everyone else → the path organisation must be the caller's own
+      organisation, or one where they hold an ACTIVE membership.
+    """
+    path_orgs = get_request_org_scope(request)
+    if not path_orgs or not current_user:
+        return
+    if current_user.is_internal_staff:
+        return
+
+    for org_id in path_orgs:
+        if current_user.organization_id and current_user.organization_id == org_id:
+            continue
+        if get_active_org_role(current_user.user_id, org_id) is not None:
+            continue
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this organization",
+        )
+
+
 def enforce_org_body_scope(organization_id: Any, current_user: AuthUser) -> None:
     """POD-5 — authorise the organisation a request names in its **body**.
 
@@ -397,8 +520,11 @@ def enforce_org_body_scope(organization_id: Any, current_user: AuthUser) -> None
 def require_auth():
     """
     Dependency factory for authentication.
-    Returns a callable that FastAPI can use as a dependency.
-    Works with both: Depends(require_auth) and Depends(require_auth())
+    Must be used as ``Depends(require_auth())``: the parenthesised form calls the
+    factory so the returned checker runs. ``Depends(require_auth)`` (no
+    parentheses) would hand FastAPI the factory itself, skip the check entirely
+    and inject the checker *function* as the handler's user argument (verified
+    against FastAPI 0.141.1 — HTTP 200 with no authentication).
     """
     async def auth_checker(
         current_user: AuthUser = Depends(get_current_user)
@@ -423,7 +549,8 @@ ADMIN_ROLE_NAMES: tuple[str, ...] = ("admin", "system_admin")
 def require_admin():
     """
     Dependency factory for admin privileges.
-    Works with both: Depends(require_admin) and Depends(require_admin())
+    Must be used as ``Depends(require_admin())`` — see ``require_auth`` for why
+    the no-parentheses form is a silent bypass.
     """
     async def admin_checker(
         current_user: AuthUser = Depends(get_current_user)
@@ -460,7 +587,10 @@ def require_admin():
 def require_staff():
     """
     Dependency factory for staff membership.
-    Works with both: Depends(require_staff) and Depends(require_staff())
+    Must be used as ``Depends(require_staff())`` — see ``require_auth`` for why
+    the no-parentheses form is a silent bypass. (``api.operations_auth`` exposes
+    an unrelated *dependency function* also named ``require_staff``; that one is
+    used bare and is correct.)
     """
     async def staff_checker(
         current_user: AuthUser = Depends(get_current_user)
@@ -485,10 +615,23 @@ def require_staff():
 def require_org_member():
     """
     Dependency factory for organization membership.
-    Works with both: Depends(require_org_member) and Depends(require_org_member())
+
+    F-05-R1: when the route PATH names an organisation (``{organization_id}`` /
+    ``{org_id}``), membership in *any* organisation is NOT sufficient — the
+    caller must be authorised for the organisation the path names, because the
+    handler goes on to use the service-role client scoped only by that path
+    parameter. Internal CarbonTally staff keep their approved operational
+    cross-organisation access; Processing Entity staff remain denied (D20
+    scope-first).
+
+    Must be used as ``Depends(require_org_member())`` — the parenthesised form.
+    ``Depends(require_org_member)`` (no parentheses) would pass the factory
+    itself as the dependency, never run the check, and inject the checker
+    function into the handler (verified against FastAPI 0.141.1).
     """
     async def org_member_checker(
-        current_user: AuthUser = Depends(get_current_user)
+        current_user: AuthUser = Depends(get_current_user),
+        request: Request = None,  # type: ignore[assignment]
     ) -> AuthUser:
         if not current_user:
             raise HTTPException(
@@ -502,7 +645,10 @@ def require_org_member():
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Organization member access required"
             )
-        
+
+        # F-05-R1 — exact-tenant enforcement (no-op without a path org).
+        await enforce_org_path_scope(request, current_user)
+
         return current_user
     
     return org_member_checker
@@ -510,16 +656,23 @@ def require_org_member():
 def require_org_admin():
     """
     Dependency factory for organization admin privileges.
-    Works with both: Depends(require_org_admin) and Depends(require_org_admin())
+    Must be used as ``Depends(require_org_admin())`` (see ``require_org_member``
+    for the no-parentheses hazard).
 
     Organisation administrators are the roles the schema's RLS treats as
     administrators of their own organisation: ``owner`` and ``admin``
     (``organization_members.role`` CHECK constraint; the RLS admin policies
     ``om_insert_admin`` / ``om_update_admin`` / ``om_select_self_or_admin`` use
     ``role IN ('owner','admin')``). Global CarbonTally admins pass too.
+
+    F-05-R1: when the path names an organisation, admin authority must hold for
+    *that* organisation. F-05-R3: the authoritative lookup is a list query, so a
+    member of several organisations (or a caller with no row) yields 403 rather
+    than the previous ``maybe_single()`` ``AttributeError`` → 500.
     """
     async def org_admin_checker(
-        current_user: AuthUser = Depends(get_current_user)
+        current_user: AuthUser = Depends(get_current_user),
+        request: Request = None,  # type: ignore[assignment]
     ) -> AuthUser:
         if not current_user:
             raise HTTPException(
@@ -540,34 +693,19 @@ def require_org_admin():
         ):
             return current_user
 
-        # Org member holding the owner/admin role. ``get_current_user`` derives
-        # ``role`` as ``org_<org_role>`` (e.g. ``org_owner``); the authoritative
-        # fallback below re-reads the membership row.
-        if current_user.is_org_member and current_user.organization_id:
-            if (
-                current_user.role in ('org_owner', 'org_admin')
-                or current_user.role_name in ('owner', 'admin')
-            ):
-                return current_user
-            # Authoritative fallback: resolve the membership role directly.
-            # ``get_supabase_client()`` raises HTTPException(500) when Supabase
-            # is not configured; that must not mask a 403 authz decision.
-            try:
-                supabase = get_supabase_client()
-                result = supabase.from_('organization_members') \
-                    .select('role') \
-                    .eq('user_id', current_user.user_id) \
-                    .eq('organization_id', current_user.organization_id) \
-                    .maybe_single() \
-                    .execute()
-
-                if result and result.data and result.data.get('role') in ('admin', 'owner'):
+        if current_user.is_org_member and current_user.user_id:
+            # The organisation(s) the caller must administer: the path
+            # organisation when the route names one, otherwise the caller's own
+            # organisation (historical behaviour).
+            path_orgs = get_request_org_scope(request)
+            target_orgs = path_orgs or (
+                (current_user.organization_id,)
+                if current_user.organization_id
+                else ()
+            )
+            for org_id in target_orgs:
+                if _org_admin_authority(current_user, org_id):
                     return current_user
-            except HTTPException:
-                # Supabase unavailable → fail closed with 403 (never 500).
-                pass
-            except Exception:
-                pass
 
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

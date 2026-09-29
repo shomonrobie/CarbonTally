@@ -1296,6 +1296,10 @@ async def upload_client_document(
     filename = file.filename or "untitled"
     content = await file.read()
     file_type = _classify_upload(filename, file.content_type or "")
+    # CT-FINAL-01 — same canonical upload policy as every other ingress path.
+    from utils.upload_limits import resolve_policy
+
+    policy = await resolve_policy(getattr(repos, "settings", None))
     record = await create_document_and_enqueue(
         organization_id=org_id,
         filename=filename,
@@ -1305,6 +1309,7 @@ async def upload_client_document(
         data_type=data_type,
         uploaded_by=current_user.user_id,
         repos=repos,
+        configured_limit_mb=policy["max_file_size_mb"],
     )
     return {
         "document": {

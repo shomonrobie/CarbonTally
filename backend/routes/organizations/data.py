@@ -43,6 +43,9 @@ class EmissionsResponse(BaseModel):
     period_end: Optional[str] = None
     records: List[EmissionsRecord]
     summary: EmissionsSummary
+    #: Retained for existing consumers of this endpoint (the pre-fix payload
+    #: carried ``total``); ``records``/``summary`` are the contract fields.
+    total: Optional[int] = None
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -69,7 +72,8 @@ def calculate_emissions_summary(records: List[Dict]) -> EmissionsSummary:
     # By asset
     by_asset = {}
     for record in records:
-        asset = record.get('assets', {}).get('name', 'Unknown')
+        # F-05-R4: a NULL embedded relation (`assets` absent) must not raise.
+        asset = (record.get('assets') or {}).get('name', 'Unknown')
         by_asset[asset] = by_asset.get(asset, 0) + record.get('calculated_kg_co2e', 0)
     
     return EmissionsSummary(
@@ -139,7 +143,7 @@ async def get_organization_emissions(
                     facility_id,
                     facilities (name)
                 ),
-                defra_conversion_factors (
+                emission_factors (
                     activity_type,
                     co2e_multiplier,
                     reporting_year
@@ -165,8 +169,10 @@ async def get_organization_emissions(
         # Transform data
         records = []
         for record in result.data:
-            defra = record.get('defra_conversion_factors', {})
-            asset = record.get('assets', {})
+            # Canonical factor read via `emissions_logs.emission_factor_id`.
+            factor_row = record.get('emission_factors') or {}
+            # F-05-R4: a NULL embedded relation must not raise AttributeError.
+            asset = record.get('assets') or {}
             
             records.append({
                 'id': record['id'],
@@ -175,13 +181,22 @@ async def get_organization_emissions(
                 'quantity': record.get('raw_quantity', 0),
                 'kg_co2e': record.get('calculated_kg_co2e', 0),
                 'tonnes_co2e': record.get('calculated_kg_co2e', 0) / 1000,
-                'activity_type': defra.get('activity_type'),
+                'activity_type': factor_row.get('activity_type'),
                 'asset': asset.get('name') if asset else None,
                 'metadata': record.get('metadata', {})
             })
         
+        # F-05-R2.3: the declared response model requires
+        # ``organization_id`` and ``summary``; the handler previously returned
+        # only ``{records, total}``, so FastAPI failed response validation and
+        # the endpoint answered HTTP 500 instead of the documented payload.
         return {
+            "organization_id": org_id,
+            "organization_name": org_name,
+            "period_start": start_date,
+            "period_end": end_date,
             "records": records,
+            "summary": calculate_emissions_summary(result.data or []),
             "total": len(records)
         }
         
@@ -226,7 +241,7 @@ async def export_emissions_csv(
                 calculated_kg_co2e,
                 metadata,
                 assets (name),
-                defra_conversion_factors (activity_type, co2e_multiplier, reporting_year)
+                emission_factors (activity_type, co2e_multiplier, reporting_year)
             ''') \
             .eq('organization_id', org_id)
         
@@ -244,13 +259,13 @@ async def export_emissions_csv(
                 'Date': record.get('start_date', ''),
                 'Quantity': record.get('raw_quantity', 0),
                 'Unit': record.get('metadata', {}).get('unit', ''),
-                'Activity Type': record.get('defra_conversion_factors', {}).get('activity_type', ''),
-                'Asset': record.get('assets', {}).get('name', ''),
+                'Activity Type': (record.get('emission_factors') or {}).get('activity_type', ''),
+                'Asset': (record.get('assets') or {}).get('name', ''),
                 'kg CO2e': record.get('calculated_kg_co2e', 0),
                 'Tonnes CO2e': record.get('calculated_kg_co2e', 0) / 1000,
                 'Scope': record.get('metadata', {}).get('scope', ''),
-                'Reporting Year': record.get('defra_conversion_factors', {}).get('reporting_year', ''),
-                'Multiplier': record.get('defra_conversion_factors', {}).get('co2e_multiplier', 0)
+                'Reporting Year': (record.get('emission_factors') or {}).get('reporting_year', ''),
+                'Multiplier': (record.get('emission_factors') or {}).get('co2e_multiplier', 0)
             })
         
         # Create DataFrame and CSV
@@ -388,7 +403,7 @@ async def get_organization_defra_factors(  # ✅ Renamed
                     detail="Not authorized for this organization"
                 )
         
-        query = supabase.from_('defra_conversion_factors') \
+        query = supabase.from_('emission_factors') \
             .select('id, activity_type, co2e_multiplier, reporting_year')
         
         if reporting_year:

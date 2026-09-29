@@ -24,6 +24,17 @@ from supabase import Client
 from auth import AuthUser, enforce_org_body_scope, require_auth, require_org_member, require_org_admin, require_permission, require_role, require_admin
 from api.dependencies import RepositoryBundle, get_repositories
 from api.v3_reports import authorize_org_authority, authorize_org_member
+from utils.upload_limits import (
+    UploadLimitExceeded,
+    enforce_single_file,
+    resolve_policy,
+)
+from utils.factor_catalogue import (
+    ADMIN_IMPORT_FACTOR_SET,
+    CANONICAL_FACTOR_TABLE,
+    canonical_factor_payload,
+    find_canonical_factor,
+)
 from services.report_schedules import (
     ReportScheduleService,
     ScheduleInUseError,
@@ -267,31 +278,49 @@ async def get_defra_mapping(
     
     return {"status": "success", "mapping": mapping}
 
+#: Canonical factor columns exposed to the manual-entry lookup (PD-5).  Never
+#: ``SELECT *``: the manual-entry surface gets the identity and provenance it
+#: needs to select a factor and record where it came from, and nothing else.
+_CANONICAL_FACTOR_LOOKUP_COLUMNS = (
+    'id, reporting_year, activity_type, co2e_multiplier, unit, scope, '
+    'country, factor_source, factor_set'
+)
+
 @router.get("/defra-factors/{reporting_year}")
 async def get_defra_factors_by_year(
     reporting_year: int,
     current_user: AuthUser = Depends(require_org_member())
 ):
-    """Get all DEFRA factors for a specific reporting year."""
+    """Get the canonical factor set for a specific reporting year (PD-5).
+
+    Ratified PO decision PD-5: manual entry must use the CANONICAL factor
+    catalogue.  This route therefore reads ``emission_factors`` — the retired
+    DEFRA conversion-factor table is not addressed anywhere on this path
+    (CT-SCHEMA-03 F-01/F-05 residual).
+
+    An unknown year, or a year with no factors, is not an error: it returns an
+    empty ``factors`` list so the caller can present the controlled
+    "no factor — manual review" state instead of fabricating a multiplier.
+    """
     try:
         supabase = get_supabase_client()
-        
-        result = supabase.from_('defra_conversion_factors') \
-            .select('*') \
+
+        result = supabase.from_('emission_factors') \
+            .select(_CANONICAL_FACTOR_LOOKUP_COLUMNS) \
             .eq('reporting_year', reporting_year) \
             .order('activity_type') \
             .execute()
-        
+
         return {
             "status": "success",
             "reporting_year": reporting_year,
-            "factors": result.data,
+            "factors": result.data or [],
             "count": len(result.data) if result.data else 0
         }
         
     except Exception as e:
-        print(f"❌ Error fetching DEFRA factors: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ Error fetching factors: {e}")
+        raise HTTPException(status_code=500, detail="Unable to load factors. Please try again.")
 
 # ==========================================
 # ✅ FIXED: CUSTOMER SUMMARY REPORT
@@ -1264,46 +1293,129 @@ async def get_template_categories(
 async def import_defra_factors(
     file: UploadFile = File(...),
     reporting_year: int = Form(...),
-    current_user: AuthUser = Depends(require_role(["admin"]))
+    current_user: AuthUser = Depends(require_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Admin endpoint to upload a cleaned DEFRA CSV."""
+    """Admin endpoint to import/refresh a cleaned factor CSV (PD-3 / PD-5).
+
+    Writes the CANONICAL factor store (``emission_factors``) through the shared
+    catalogue helper; the retired DEFRA conversion-factor table is not addressed
+    on this path.
+
+    The merge is an explicit natural-key read-then-write rather than a PostgREST
+    ``upsert(on_conflict=…)``: the canonical uniqueness rule is an EXPRESSION
+    index over ``COALESCE(country/unit/scope)``, which PostgREST cannot name as a
+    conflict target.  An existing factor has its multiplier and provenance
+    refreshed; a CSV can carry the optional canonical columns (unit, scope,
+    country, factor_source, factor_set) and its values are persisted verbatim.
+    """
     try:
         supabase = get_supabase_client()
 
+        # CT-FINAL-01 — an admin upload ingress is still an upload ingress: the
+        # same effective upload policy applies (no alternate path may silently
+        # bypass the configured limits).
+        policy = await resolve_policy(getattr(repos, "settings", None))
         contents = await file.read()
+        try:
+            enforce_single_file(
+                file.filename,
+                len(contents),
+                configured_limit_mb=policy["max_file_size_mb"],
+            )
+        except UploadLimitExceeded as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         df = pd.read_csv(io.BytesIO(contents))
-        
+
         required_cols = ['activity_type', 'co2e_multiplier']
         if not all(col in df.columns for col in required_cols):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"CSV must contain columns: {required_cols}"
             )
-            
+
         df = df.dropna(subset=required_cols)
         df['reporting_year'] = reporting_year
         df['co2e_multiplier'] = df['co2e_multiplier'].astype(float)
-        df['activity_type'] = df['activity_type'].str.strip()
-        
-        records = df[['reporting_year', 'activity_type', 'co2e_multiplier']].to_dict('records')
-        
-        result = supabase.from_('defra_conversion_factors').upsert(
-            records, 
-            on_conflict='reporting_year,activity_type'
-        ).execute()
-        
+        df['activity_type'] = df['activity_type'].astype(str).str.strip()
+
+        def optional_value(row, column, default):
+            """Return an optional CSV value, falling back to a canonical default."""
+            if column not in df.columns:
+                return default
+            value = row.get(column)
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                return default
+            text = str(value).strip()
+            return text or default
+
+        created = 0
+        updated = 0
+        errors: List[str] = []
+
+        for row in df.to_dict('records'):
+            payload = canonical_factor_payload(
+                reporting_year=reporting_year,
+                activity_type=row['activity_type'],
+                co2e_multiplier=row['co2e_multiplier'],
+                unit=optional_value(row, 'unit', None),
+                scope=optional_value(row, 'scope', None),
+                country=optional_value(row, 'country', None),
+                factor_source=optional_value(row, 'factor_source', None),
+                factor_set=optional_value(
+                    row, 'factor_set', ADMIN_IMPORT_FACTOR_SET
+                ),
+            )
+            try:
+                existing = find_canonical_factor(
+                    supabase,
+                    reporting_year=payload['reporting_year'],
+                    activity_type=payload['activity_type'],
+                    unit=payload['unit'],
+                    scope=payload['scope'],
+                    country=payload['country'],
+                )
+                if existing:
+                    supabase.from_(CANONICAL_FACTOR_TABLE) \
+                        .update({
+                            'co2e_multiplier': payload['co2e_multiplier'],
+                            'unit': payload['unit'],
+                            'scope': payload['scope'],
+                            'country': payload['country'],
+                            'factor_source': payload['factor_source'],
+                            'factor_set': payload['factor_set'],
+                            'updated_at': datetime.now().isoformat(),
+                        }) \
+                        .eq('id', existing['id']) \
+                        .execute()
+                    updated += 1
+                else:
+                    supabase.from_(CANONICAL_FACTOR_TABLE).insert(payload).execute()
+                    created += 1
+            except Exception as row_error:
+                errors.append(
+                    f"{payload['activity_type']} ({reporting_year}): {row_error}"
+                )
+
+        processed = created + updated
         return {
-            "status": "success", 
-            "message": f"Successfully imported/updated {len(records)} DEFRA factors for {reporting_year}",
-            "records_imported": len(records)
+            "status": "success",
+            "message": (
+                f"Imported {created} new and refreshed {updated} existing factors "
+                f"for {reporting_year}"
+            ),
+            "records_imported": processed,
+            "created": created,
+            "updated": updated,
+            "errors": errors if errors else None,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         import traceback
-        print(f"--- DEFRA IMPORT ERROR ---\n{traceback.format_exc()}\n-------------------")
-        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+        print(f"--- FACTOR IMPORT ERROR ---\n{traceback.format_exc()}\n-------------------")
+        raise HTTPException(status_code=500, detail="Import failed. Please try again.")
 
 # ==========================================
 # REPORT GENERATION ENDPOINT

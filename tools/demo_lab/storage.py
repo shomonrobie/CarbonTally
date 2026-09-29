@@ -184,7 +184,11 @@ def ensure_buckets() -> dict:
     sql = (
         "INSERT INTO storage.buckets (id, name, public, file_size_limit, "
         "allowed_mime_types) VALUES "
-        f"('{DOCUMENTS_BUCKET}', '{DOCUMENTS_BUCKET}', false, 52428800, NULL), "
+        # CT-FINAL-01 upload limits: the documents bucket mirrors the ratified
+        # 10 MB per-file cap (backend/utils/upload_limits.py). The artefact
+        # bucket holds internally generated report output, which is not a user
+        # upload ingress, so it keeps the larger infrastructure limit.
+        f"('{DOCUMENTS_BUCKET}', '{DOCUMENTS_BUCKET}', false, 10485760, NULL), "
         f"('{ARTEFACT_BUCKET}', '{ARTEFACT_BUCKET}', false, 52428800, NULL) "
         "ON CONFLICT (id) DO UPDATE SET public = false;")
     result = psql_stdin(sql)

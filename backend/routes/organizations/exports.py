@@ -53,7 +53,7 @@ async def export_emissions_data(
         
         # Build query
         query = supabase.from_('emissions_logs') \
-            .select('*, assets!left(name, type), defra_conversion_factors!left(activity_type, co2e_multiplier)') \
+            .select('*, assets!left(name, type), emission_factors!left(activity_type, co2e_multiplier)') \
             .eq('organization_id', org_id)
         
         # Apply date filters

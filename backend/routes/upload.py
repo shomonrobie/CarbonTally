@@ -10,7 +10,13 @@ import io
 import pandas as pd
 import numpy as np
 import traceback
-from auth import AuthUser, get_current_user, require_auth, require_org_member
+from auth import (
+    AuthUser,
+    enforce_org_body_scope,
+    get_current_user,
+    require_auth,
+    require_org_member,
+)
 
 from database import get_supabase_client
 from api.dependencies import RepositoryBundle, get_repositories
@@ -28,6 +34,12 @@ from utils.emissions import (
     calculate_emissions_with_defra,
     ACTIVITY_TYPE_MAPPING
 )
+from utils.upload_limits import (
+    UploadLimitExceeded,
+    effective_file_limit_mb,
+    enforce_single_file,
+    resolve_policy,
+)
 
 
 router = APIRouter(prefix="/api", tags=["Upload"])
@@ -37,72 +49,82 @@ router = APIRouter(prefix="/api", tags=["Upload"])
 # ==========================================
 
 async def get_system_settings(supabase_client):
+    """Fetch the remaining legacy document-processing settings.
+
+    CT-FINAL-01: the **upload limits** are no longer read from this legacy row.
+    The effective per-file / per-batch limits come from the canonical,
+    admin-configurable upload policy (``utils.upload_limits.resolve_policy``) and
+    are supplied explicitly by each ingress path, so the legacy 50MB/20/200MB
+    values that used to live here (all above the ratified platform caps) can
+    never be applied again.
     """
-    Fetch system settings from database with caching.
-    """
+    defaults = {
+        'allowed_file_types': ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png'],
+        'enable_auto_repair': True,
+        'data_retention_days': 365,
+    }
     try:
         # Try to get settings from system_settings table
         result = supabase_client.from_('system_settings') \
             .select('*') \
             .maybe_single() \
             .execute()
-        
+
         if result.data:
             settings = result.data
             if settings.get('settings_json'):
-                return settings['settings_json']
-            return {
-                'max_file_size_mb': settings.get('max_file_size_mb', 50),
-                'allowed_file_types': settings.get('allowed_file_types', ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png']),
-                'enable_auto_repair': settings.get('enable_auto_repair', True),
-                'max_batch_files': settings.get('max_batch_files', 20),
-                'max_total_batch_size_mb': settings.get('max_total_batch_size_mb', 200),
-                'data_retention_days': settings.get('data_retention_days', 365)
-            }
-        
-        # Return defaults if no settings found
-        return {
-            'max_file_size_mb': 50,
-            'allowed_file_types': ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png'],
-            'enable_auto_repair': True,
-            'max_batch_files': 20,
-            'max_total_batch_size_mb': 200,
-            'data_retention_days': 365
-        }
+                stored = settings['settings_json']
+                if isinstance(stored, dict):
+                    return {**defaults, **{
+                        key: stored.get(key, value)
+                        for key, value in defaults.items()
+                    }}
+
+        return dict(defaults)
     except Exception as e:
         print(f"⚠️ Error fetching settings: {e}")
-        return {
-            'max_file_size_mb': 50,
-            'allowed_file_types': ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png'],
-            'enable_auto_repair': True,
-            'max_batch_files': 20,
-            'max_total_batch_size_mb': 200,
-            'data_retention_days': 365
-        }
+        return dict(defaults)
 
-async def validate_file_upload(file: UploadFile, settings: dict, is_batch: bool = False):
+async def validate_file_upload(
+    file: UploadFile,
+    settings: dict,
+    is_batch: bool = False,
+    *,
+    configured_limit_mb=None,
+):
     """
-    Validate file against system settings.
-    Returns (is_valid, error_message, file_bytes)
+    Validate file against the canonical upload policy.
+
+    The effective per-file ceiling is the administrator-configured value from the
+    canonical upload policy (``configured_limit_mb``), clamped to the ratified
+    platform cap — never a route-local constant.  Returns
+    (is_valid, error_message, file_bytes); a limit violation is raised as the
+    canonical ``UPLOAD_FILE_TOO_LARGE`` 413 rather than a generic 400.
     """
     # Check file size
     file_bytes = await file.read()
-    file_size_mb = len(file_bytes) / (1024 * 1024)
-    max_size_mb = settings.get('max_file_size_mb', 50)
-    
-    if file_size_mb > max_size_mb:
-        return False, f"File too large. Max size is {max_size_mb}MB. Your file is {file_size_mb:.1f}MB", None
-    
+    file_size = len(file_bytes)
+    limit_mb = effective_file_limit_mb(configured_limit_mb)
+    try:
+        enforce_single_file(
+            file.filename, file_size, configured_limit_mb=configured_limit_mb
+        )
+    except UploadLimitExceeded as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    if file_size > limit_mb * 1024 * 1024:  # pragma: no cover - belt and braces
+        return False, f"File too large. Max size is {limit_mb}MB", None
+
     # Check file type
     file_ext = file.filename.split('.')[-1].lower()
     allowed_types = settings.get('allowed_file_types', ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png'])
-    
+
     if file_ext not in allowed_types:
         return False, f"File type '{file_ext}' not allowed. Allowed types: {', '.join(allowed_types)}", None
-    
+
     # Reset file position for further processing
     await file.seek(0)
-    
+
     return True, None, file_bytes
 
 # ==========================================
@@ -110,18 +132,35 @@ async def validate_file_upload(file: UploadFile, settings: dict, is_batch: bool 
 # ==========================================
 
 @router.post("/test-upload")
-async def test_upload(file: UploadFile = File(...)):
+async def test_upload(
+    file: UploadFile = File(...),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
     """
     Simple test endpoint to verify file uploads work.
+
+    CT-FINAL-01: this ingress reads the body, so it enforces the same effective
+    upload limit as every other ingress — a diagnostic endpoint must not be a
+    way around the platform limit.
     """
     try:
+        policy = await resolve_policy(getattr(repos, "settings", None))
         content = await file.read()
+        enforce_single_file(
+            file.filename,
+            len(content),
+            configured_limit_mb=policy["max_file_size_mb"],
+        )
         return {
             "status": "success",
             "filename": file.filename,
             "size": len(content),
             "content_type": file.content_type
         }
+    except HTTPException:
+        raise
+    except UploadLimitExceeded as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -129,18 +168,22 @@ async def test_upload(file: UploadFile = File(...)):
 async def upload_csv(
     file: UploadFile = File(...),
     data_type: str = Form('fuel'),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
-    Upload and process CSV/Excel file with system settings validation.
+    Upload and process CSV/Excel file with canonical upload-policy validation.
     """
     try:
-        # Get system settings
+        # Get the remaining legacy processing settings + the canonical policy
         supabase = get_supabase_client()
         settings = await get_system_settings(supabase)
-        
+        policy = await resolve_policy(getattr(repos, "settings", None))
+
         # Validate file
-        is_valid, error_msg, file_bytes = await validate_file_upload(file, settings)
+        is_valid, error_msg, file_bytes = await validate_file_upload(
+            file, settings, configured_limit_mb=policy["max_file_size_mb"]
+        )
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
         
@@ -206,9 +249,12 @@ async def upload_pdf(
         # Get system settings
         supabase = get_supabase_client()
         settings = await get_system_settings(supabase)
-        
+        policy = await resolve_policy(getattr(repos, "settings", None))
+
         # Validate file
-        is_valid, error_msg, file_bytes = await validate_file_upload(file, settings)
+        is_valid, error_msg, file_bytes = await validate_file_upload(
+            file, settings, configured_limit_mb=policy["max_file_size_mb"]
+        )
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
         
@@ -328,7 +374,8 @@ async def upload_batch(
 @router.post("/repair-pdf")
 async def repair_pdf(
     file: UploadFile = File(...),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
     Advanced PDF repair with OCR for corrupted or scanned documents.
@@ -342,8 +389,18 @@ async def repair_pdf(
         from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.utils import ImageReader
-        
+
+        # CT-FINAL-01 — same effective upload limit as every other ingress path.
+        policy = await resolve_policy(getattr(repos, "settings", None))
         file_bytes = await file.read()
+        try:
+            enforce_single_file(
+                file.filename,
+                len(file_bytes),
+                configured_limit_mb=policy["max_file_size_mb"],
+            )
+        except UploadLimitExceeded as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         supabase = get_supabase_client()
         
         # Step 1: Try to read with pypdf
@@ -582,29 +639,51 @@ async def upload_document(
     data_type: str = Form("utility"),
     organization_id: str = Form(...),
     special_instructions: Optional[str] = Form(None),
-    current_user: AuthUser = Depends(require_org_member())
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
 ):
     """
-    Upload a document for processing.
+    Upload a document for processing (legacy ingress).
+
+    CT-FINAL-01:
+    * the effective upload limit is the canonical, admin-configurable policy —
+      the previous hard-coded 50MB check (which bypassed the ratified ceiling)
+      is gone;
+    * the ``organization_id`` form field is authorised against the caller (the
+      ratified POD-5 body-scope rule: the body organisation must be the
+      caller's own), so a member of one organisation can no longer write a
+      document into another organisation's storage path or file table;
+    * the local ``file_status`` variable no longer shadows ``fastapi.status``,
+      which previously turned every error path into an unhandled 500.
     """
     try:
         supabase = get_supabase_client()
-        
+
         # Validate file
         if not file:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No file provided"
             )
-        
-        # Check file size (max 50MB)
+
+        # CT-FINAL-01 — authorise the organisation named in the FORM body. The
+        # path-scope guard is a no-op here (this route has no {org_id} path
+        # parameter) and the service-role client below bypasses RLS, so without
+        # this check any organisation member could write into another tenant.
+        enforce_org_body_scope(organization_id, current_user)
+
+        # Check file size against the canonical effective upload policy.
+        policy = await resolve_policy(getattr(repos, "settings", None))
         file_bytes = await file.read()
         file_size = len(file_bytes)
-        if file_size > 50 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File size exceeds 50MB limit"
+        try:
+            enforce_single_file(
+                file.filename,
+                file_size,
+                configured_limit_mb=policy["max_file_size_mb"],
             )
+        except UploadLimitExceeded as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         
         # Determine file type
         file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
@@ -681,7 +760,12 @@ async def upload_document(
         
         # Try to extract data if it's a PDF or Image
         extraction_result = None
-        status = 'uploaded'
+        # CT-FINAL-01 (D-2): this local used to be named ``status``, which
+        # shadowed ``fastapi.status`` for the whole handler — every ``except``
+        # branch raising ``HTTPException(status_code=status.HTTP_5xx…)`` then
+        # died with "cannot access local variable 'status'", i.e. a 500 on every
+        # error path instead of the intended status.
+        file_status = 'uploaded'
         confidence_score = 0
         issues = []
         
@@ -718,7 +802,7 @@ async def upload_document(
                     )
                 
                 if extraction_result.get('status') == 'success':
-                    status = 'ready_for_review'
+                    file_status = 'ready_for_review'
                     confidence_score = extraction_result.get('confidence_score', 0.8)
                     issues = extraction_result.get('issues', [])
                     
@@ -740,7 +824,7 @@ async def upload_document(
                         .execute()
                 else:
                     # Extraction failed or needs manual review
-                    status = 'staff_review'
+                    file_status = 'staff_review'
                     issues = extraction_result.get('issues', ['Extraction failed'])
                     
                     # Add to manual review queue
@@ -777,7 +861,7 @@ async def upload_document(
                     
             except Exception as extract_error:
                 print(f"⚠️ Extraction error: {extract_error}")
-                status = 'uploaded'
+                file_status = 'uploaded'
                 issues = [str(extract_error)]
                 
                 # Update file with extraction error
@@ -798,7 +882,7 @@ async def upload_document(
             "message": "File uploaded successfully",
             "file_id": file_id,
             "file_url": file_url,
-            "status": status,
+            "status": file_status,
             "file_type": file_type,
             "data_type": data_type,
             "extraction_result": extraction_result,

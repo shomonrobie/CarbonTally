@@ -17,11 +17,32 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Optional
 
-#: Default CarbonTally transactional sender.
-DEFAULT_FROM_EMAIL: str = "CarbonTally <notifications@carbontally.co.uk>"
+from services.email_sender import DEFAULT_SENDER as DEFAULT_FROM_EMAIL
 
 #: Sender types accepted by :func:`send_transactional_email`.
 _ResendClient = Any
+
+
+async def resolve_configured_sender(settings_repo: Any) -> str:
+    """Return the admin-configured platform sender, or the platform default.
+
+    CT-FINAL-01 notifications: the From address is platform configuration
+    (``system_settings`` key ``platform_notifications``), never the acting
+    user's mailbox.  The read is deliberately fail-open to the approved default:
+    an unavailable settings row must not stop a transactional email, and it must
+    never produce an unvalidated From address.
+    """
+    from services.email_sender import resolve_email_sender
+
+    if settings_repo is None:
+        return DEFAULT_FROM_EMAIL
+    try:
+        config = await settings_repo.get_notification_sender()
+    except Exception:  # noqa: BLE001 — configuration read is best-effort
+        return DEFAULT_FROM_EMAIL
+    if not isinstance(config, dict):
+        return DEFAULT_FROM_EMAIL
+    return resolve_email_sender(config.get("email_sender"))
 
 
 def _resend_client() -> Optional[_ResendClient]:

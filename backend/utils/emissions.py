@@ -51,6 +51,35 @@ class FactorUnresolved(ValueError):
     """
 
 
+class FactorUnresolvedBlocked(FactorUnresolved):
+    """A WRITE path has no governed factor, so the write is BLOCKED (F-04).
+
+    Raised by ``require_emission_factor``.  Write paths (document review
+    approval, manual-entry submit, admin extraction approval) must never
+    persist an emissions number without its factor provenance (AGENTS.md
+    #17/#25), so an unresolved factor is a blocking validation state rather
+    than a silent null ``emission_factor_id``.
+    """
+
+
+#: Machine-detectable prefix for the blocking validation state.  API callers
+#: return it in the error detail so a UI can recognise "blocked for manual
+#: review" without parsing prose.
+FACTOR_BLOCKED_CODE = 'FACTOR_UNRESOLVED_BLOCKED'
+
+
+def factor_blocked_detail(activity_type, reporting_year) -> str:
+    """Human-readable, actionable detail for a blocking factor state (F-04)."""
+    return (
+        f"{FACTOR_BLOCKED_CODE}: no governed emission factor matches "
+        f"'{activity_type}' for {reporting_year}. No emissions record was written. "
+        "Action required: map or approve an emission factor for this "
+        "activity/reporting year, then re-submit — the entry stays blocked for "
+        "manual review until a factor resolves."
+    )
+
+
+
 # Canonical provenance columns.  Verified against the CT-SCHEMA-02 canonical
 # inventory: `emission_factors` retains the legacy column names
 # (activity_type, co2e_multiplier, reporting_year) and adds the governed
@@ -244,6 +273,34 @@ def get_emission_factor(supabase_client, activity_type: str, reporting_year: int
         f"(activity_type='{db_activity_type}', reporting_year={reporting_year}); "
         "route to manual review — do not record a null factor reference."
     )
+
+
+def require_emission_factor(supabase_client, activity_type: str,
+                            reporting_year: int = None,
+                            organization_id: Optional[str] = None) -> Dict:
+    """Resolve the factor for a WRITE path, or raise ``FactorUnresolvedBlocked``.
+
+    F-04 (blocking validation): write paths must call this instead of
+    ``get_emission_factor`` so that "no factor" cannot degrade into a written
+    emissions row with a NULL ``emission_factor_id`` and a fabricated
+    multiplier.
+    """
+    try:
+        factor = get_emission_factor(
+            supabase_client,
+            activity_type,
+            reporting_year,
+            organization_id=organization_id,
+        )
+    except FactorUnresolved as exc:
+        raise FactorUnresolvedBlocked(str(exc)) from exc
+
+    if not factor.get('factor_id'):
+        raise FactorUnresolvedBlocked(
+            f"Resolved factor for '{activity_type}' carries no factor_id; "
+            "write blocked (F-04) — provenance is mandatory."
+        )
+    return factor
 
 
 def get_activity_category(supabase_client, activity_type: str) -> Dict:

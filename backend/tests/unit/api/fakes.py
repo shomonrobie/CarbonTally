@@ -3124,9 +3124,67 @@ class _SettingsStub:
             "updated_at": None,
             "updated_by": None,
         }
+        # CT-FINAL-01 notifications — platform email sender configuration.
+        self._notification = {
+            "email_sender": None,
+            "updated_at": None,
+            "updated_by": None,
+        }
+        # CT-FINAL-01 upload policy — unconfigured by default (the documented
+        # defaults then apply: 6MB/file, 50 files/batch, 500MB/batch).
+        self._upload_policy = {
+            "max_file_size_mb": None,
+            "max_files_per_batch": None,
+            "max_batch_size_mb": None,
+            "updated_at": None,
+            "updated_by": None,
+        }
 
     async def get_retention(self) -> dict:
         return dict(self._values)
+
+    async def get_notification_sender(self) -> dict:
+        return dict(self._notification)
+
+    async def update_notification_sender(
+        self, *, email_sender, updated_by
+    ) -> dict:
+        self._notification = {
+            "email_sender": email_sender,
+            "updated_at": "2026-09-28T00:00:00+00:00",
+            "updated_by": updated_by,
+        }
+        return dict(self._notification)
+
+    # -----------------------------------------------------------------
+    # CT-FINAL-01 — canonical upload policy (Admin Panel → Upload Policy).
+    # Stateful, like the real ``system_settings`` row: a PUT is visible to the
+    # following GET and to every upload ingress path within the same world.
+    # -----------------------------------------------------------------
+
+    async def get_upload_policy(self) -> dict:
+        return dict(self._upload_policy)
+
+    async def update_upload_policy(
+        self,
+        *,
+        max_file_size_mb=None,
+        max_files_per_batch=None,
+        max_batch_size_mb=None,
+        updated_by=None,
+    ) -> dict:
+        merged = dict(self._upload_policy)
+        for field, supplied in (
+            ("max_file_size_mb", max_file_size_mb),
+            ("max_files_per_batch", max_files_per_batch),
+            ("max_batch_size_mb", max_batch_size_mb),
+        ):
+            if supplied is not None:
+                merged[field] = supplied
+        merged["updated_at"] = "2026-09-28T00:00:00+00:00"
+        merged["updated_by"] = updated_by
+        self._upload_policy = merged
+        return dict(self._upload_policy)
 
     async def update_retention(self, **kwargs) -> dict:
         for key in ("audit_log_retention_days", "data_retention_days",

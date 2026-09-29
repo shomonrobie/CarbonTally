@@ -25,6 +25,7 @@ from api.dependencies import (
 from auth import AuthUser, require_org_member
 from infra.supabase import get_service_client
 from services.storage import DOCUMENTS_BUCKET, path_from_url, storage_signed_url
+from utils.upload_limits import UploadLimitExceeded, enforce_single_file, resolve_policy
 
 router = APIRouter(prefix="/api/v3", tags=["V3 — Documents"])
 
@@ -229,6 +230,10 @@ async def upload_document(
     filename = file.filename or "untitled"
     content = await file.read()
     file_type = _classify(filename, file.content_type or "")
+    # CT-FINAL-01 — the canonical upload policy is resolved ONCE per request and
+    # passed down, so this ingress enforces exactly the effective
+    # administrator-configured limits (never a per-route copy of them).
+    policy = await resolve_policy(getattr(repos, "settings", None))
     return await create_document_and_enqueue(
         organization_id=organization_id,
         filename=filename,
@@ -238,6 +243,7 @@ async def upload_document(
         data_type=data_type,
         uploaded_by=current_user.user_id,
         repos=repos,
+        configured_limit_mb=policy["max_file_size_mb"],
     )
 
 
@@ -265,6 +271,7 @@ async def create_document_and_enqueue(
     data_type: str,
     uploaded_by: str,
     repos: RepositoryBundle,
+    configured_limit_mb=None,
 ) -> dict:
     """Shared document-creation + durable-enqueue pipeline (Phase E).
 
@@ -272,9 +279,22 @@ async def create_document_and_enqueue(
     entry point drives the same durable server-side pipeline:
     storage → organization_files → extraction batch/item → automatic-processing
     job (ingest → extract → map → validate → calculate → review) → OCR prefill.
+
+    ``configured_limit_mb`` is the effective per-file limit from the canonical
+    upload policy (``utils.upload_limits.resolve_policy``); when the caller
+    cannot resolve it, the documented default applies — never "unlimited".
     """
     day = datetime.utcnow().strftime("%Y/%m/%d")
     path = f"uploads/{organization_id}/{day}/{uuid4().hex}_{filename}"
+    # CT-FINAL-01 upload limits — enforced server-side BEFORE any storage object
+    # or database row is created (the UI is never the limit boundary).  A
+    # rejection therefore leaves no partial evidence behind.
+    try:
+        enforce_single_file(
+            filename, len(content), configured_limit_mb=configured_limit_mb
+        )
+    except UploadLimitExceeded as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     # P0-1 — store new documents with a browser-renderable content type so the
     # document viewer can render PDFs/images inline instead of triggering a
     # download (an existing object is never altered; this only affects uploads).

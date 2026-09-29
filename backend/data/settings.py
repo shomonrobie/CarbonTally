@@ -33,6 +33,65 @@ _ANALYTICS_KEY = "analytics_ga4"
 
 _ANALYTICS_COLUMNS = "setting_value, updated_at, updated_by"
 
+#: Fixed key for the notification configuration row (CT-FINAL-01 notifications).
+_NOTIFICATION_KEY = "platform_notifications"
+
+_NOTIFICATION_COLUMNS = "setting_value, updated_at, updated_by"
+
+#: Fixed key for the CT-FINAL-01 upload-policy row (Admin Panel → Upload Policy).
+_UPLOAD_POLICY_KEY = "upload_policy"
+
+_UPLOAD_POLICY_COLUMNS = "setting_value, updated_at, updated_by"
+
+
+def _upload_policy_from_row(row: Optional[Any]) -> dict:
+    """Map a ``system_settings`` row to the upload-policy configuration shape.
+
+    A missing row, an unparseable payload or a malformed value yields ``None``
+    for that field: the effective limit is then the documented default
+    (``utils.upload_limits.effective_policy``), never an invented value and
+    never "unlimited".  Unknown keys in a stored payload are ignored — an
+    operator can never smuggle an unrelated limit in through this row.
+    """
+    from utils.upload_limits import POLICY_FIELDS
+
+    try:
+        value = loads_jsonb(row.get("setting_value")) if row is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if not isinstance(value, dict):
+        value = {}
+    policy = {field: value.get(field) for field in POLICY_FIELDS}
+    return {
+        **policy,
+        "updated_at": row.get("updated_at") if row is not None else None,
+        "updated_by": row.get("updated_by") if row is not None else None,
+    }
+
+
+def _notification_from_row(row: Optional[Any]) -> dict:
+    """Map a ``system_settings`` row to the notification configuration shape.
+
+    A missing row, an unparseable payload or a malformed value fails closed to
+    "not configured": the effective sender is then the platform default
+    (``services.email_sender.resolve_email_sender``), never an invented address.
+    """
+    try:
+        value = loads_jsonb(row.get("setting_value")) if row is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if not isinstance(value, dict):
+        value = {}
+    sender = value.get("email_sender")
+    if not isinstance(sender, str) or not sender.strip():
+        sender = None
+    return {
+        "email_sender": sender,
+        "updated_at": row.get("updated_at") if row is not None else None,
+        "updated_by": row.get("updated_by") if row is not None else None,
+    }
+
+
 
 def _analytics_from_row(row: Optional[Any]) -> dict:
     """Map a ``system_settings`` row to the analytics configuration shape.
@@ -245,3 +304,138 @@ class SettingsRepository(AbstractRepository[dict]):
         if row is None:
             raise RuntimeError("system_settings upsert returned no row")
         return _analytics_from_row(row)
+
+    # -----------------------------------------------------------------
+    # Notifications — platform email sender (CT-FINAL-01)
+    # -----------------------------------------------------------------
+
+    async def get_notification_sender(self) -> dict:
+        """Return the configured notification sender (never a credential).
+
+        Provider configuration lives in the generic ``setting_value`` JSONB
+        column, so this needs no schema change.  A missing row yields
+        ``email_sender = None`` — the caller resolves the platform default.
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_NOTIFICATION_COLUMNS}
+            FROM public.system_settings
+            WHERE setting_key = $1
+            """,
+            _NOTIFICATION_KEY,
+        )
+        return _notification_from_row(row)
+
+    async def update_notification_sender(
+        self,
+        *,
+        email_sender: Optional[str],
+        updated_by: Optional[str],
+    ) -> dict:
+        """Persist the platform notification sender.
+
+        The value must already have been validated by
+        ``services.email_sender.normalise_email_sender`` (the API layer does
+        this), so an unvalidated address can never reach this write.
+        """
+        snapshot = {"email_sender": email_sender}
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.system_settings (
+                setting_key, setting_type, description, setting_value,
+                updated_by, updated_at, created_at
+            )
+            VALUES (
+                $1, 'notifications',
+                'Notification configuration (platform transactional-email sender)',
+                $2::jsonb, $3, NOW(), NOW()
+            )
+            ON CONFLICT (setting_key)
+            DO UPDATE SET
+                setting_type = EXCLUDED.setting_type,
+                description = EXCLUDED.description,
+                setting_value = EXCLUDED.setting_value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+            RETURNING {_NOTIFICATION_COLUMNS}
+            """,
+            _NOTIFICATION_KEY,
+            dumps_jsonb(snapshot),
+            updated_by,
+        )
+        if row is None:
+            raise RuntimeError("system_settings upsert returned no row")
+        return _notification_from_row(row)
+
+    # -----------------------------------------------------------------
+    # Upload policy — canonical admin-configurable upload limits (CT-FINAL-01)
+    # -----------------------------------------------------------------
+
+    async def get_upload_policy(self) -> dict:
+        """Return the configured upload policy (never an invented value).
+
+        A missing row yields ``None`` for every field — the caller applies the
+        documented defaults (``utils.upload_limits.effective_policy``).
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_UPLOAD_POLICY_COLUMNS}
+            FROM public.system_settings
+            WHERE setting_key = $1
+            """,
+            _UPLOAD_POLICY_KEY,
+        )
+        return _upload_policy_from_row(row)
+
+    async def update_upload_policy(
+        self,
+        *,
+        max_file_size_mb=None,
+        max_files_per_batch=None,
+        max_batch_size_mb=None,
+        updated_by: Optional[str] = None,
+    ) -> dict:
+        """Persist the upload policy; a ``None`` field keeps its stored value.
+
+        The values must already have been validated by
+        ``utils.upload_limits.validate_upload_policy`` (the API layer does
+        this), so an out-of-range limit can never reach this write.  The row
+        lives in the pre-existing ``system_settings`` table, so no schema
+        change is required and the value survives an application restart.
+        """
+        current = await self.get_upload_policy()
+        snapshot = {}
+        for field, supplied in (
+            ("max_file_size_mb", max_file_size_mb),
+            ("max_files_per_batch", max_files_per_batch),
+            ("max_batch_size_mb", max_batch_size_mb),
+        ):
+            snapshot[field] = current.get(field) if supplied is None else supplied
+
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.system_settings (
+                setting_key, setting_type, description, setting_value,
+                updated_by, updated_at, created_at
+            )
+            VALUES (
+                $1, 'upload_policy',
+                'Upload policy (max file size, files per batch, aggregate batch size)',
+                $2::jsonb, $3, NOW(), NOW()
+            )
+            ON CONFLICT (setting_key)
+            DO UPDATE SET
+                setting_type = EXCLUDED.setting_type,
+                description = EXCLUDED.description,
+                setting_value = EXCLUDED.setting_value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+            RETURNING {_UPLOAD_POLICY_COLUMNS}
+            """,
+            _UPLOAD_POLICY_KEY,
+            dumps_jsonb(snapshot),
+            updated_by,
+        )
+        if row is None:
+            raise RuntimeError("system_settings upsert returned no row")
+        return _upload_policy_from_row(row)
