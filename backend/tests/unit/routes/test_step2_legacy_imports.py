@@ -55,8 +55,28 @@ def test_upload_route_imports_its_helpers_from_utils_emissions():
 
 
 def test_admin_extraction_imports_the_factor_helper_from_utils_emissions():
-    source = (_BACKEND / "routes" / "admin" / "extraction.py").read_text(encoding="utf-8")
-    assert "from utils.emissions import get_emission_factor" in source
+    """Step 2 / WS-C — the admin extraction route resolves factors from
+    `utils.emissions` (never from `main`).
+
+    CT-FINAL-01 (F-04 + D-3) changed *which* helper the approval write path uses:
+    it must resolve through `require_emission_factor`, which raises
+    `FactorUnresolved` instead of persisting a null provenance link. The Step-2
+    requirement — the helper lives in `utils.emissions`, not `main` — is
+    unchanged, so the assertion follows the canonical resolver.
+    """
+    path = _BACKEND / "routes" / "admin" / "extraction.py"
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "utils.emissions":
+            imported.update(alias.name for alias in node.names)
+    for name in ("require_emission_factor", "FactorUnresolved", "factor_blocked_detail"):
+        assert name in imported, f"routes/admin/extraction.py does not import {name}"
+    # F-04: the non-blocking resolver must not come back on this write path, and
+    # the module must never fall back to the absent `main` import.
+    assert "get_emission_factor" not in source
+    assert "from main import" not in source
 
 
 def test_manual_review_queueing_uses_the_v3_adapter_not_an_absent_helper():
