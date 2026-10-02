@@ -9,7 +9,13 @@ from fastapi.responses import Response  # ✅ Added missing import
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from auth import AuthUser, require_auth, require_org_member, require_admin
+from auth import (
+    AuthUser,
+    require_auth,
+    require_org_member,
+    require_org_member_or_internal_staff,
+    require_admin,
+)
 from database import get_supabase_client
 
 router = APIRouter(prefix="/api/documents", tags=["Documents - Activity"])
@@ -29,7 +35,7 @@ class CustomerReviewResponse(BaseModel):
 @router.get("/{file_id}/activity")
 async def get_document_activity(
     file_id: str,
-    current_user: AuthUser = Depends(require_auth()),
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff()),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
@@ -148,11 +154,25 @@ async def export_document_activity(
 # ==========================================
 # Customer Review Endpoints
 # ==========================================
+#
+# F3 (D-7) — the three handlers below were gated only by ``require_auth()``, and
+# ``/{file_id}/reviews`` additionally never checked that the document belongs to
+# the caller's organisation (the "# Check access" comment sat above a bare
+# document lookup). They now use the organisation guard
+# (``require_org_member_or_internal_staff()``: membership + the D-7 lifecycle
+# decision, an INACTIVE organisation grants nothing) and ``/{file_id}/reviews``
+# applies the same document-access check ``/{file_id}/activity`` already
+# applies. The guard is the staff-aware variant (G2) because the plain
+# ``require_org_member()`` membership test also refused CarbonTally INTERNAL
+# staff, whom every other organisation guard exempts for operational oversight.
+# The two ``require_admin()`` routes in this module
+# (``/{file_id}/activity/export`` and ``/admin/reviews/customer``) stay
+# internal-staff-only — D-7 exempts internal staff operational oversight.
 
 @router.get("/{file_id}/reviews")
 async def get_document_reviews(
     file_id: str,
-    current_user: AuthUser = Depends(require_auth()),
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff()),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
@@ -160,7 +180,9 @@ async def get_document_reviews(
     try:
         supabase = get_supabase_client()
         
-        # Check access
+        # Check the document exists (its organisation is the tenant boundary
+        # enforced below, by the same membership lookup ``/{file_id}/activity``
+        # uses — a foreign tenant's error must not disclose the document).
         doc = supabase.from_('organization_files') \
             .select('organization_id') \
             .eq('id', file_id) \
@@ -173,6 +195,24 @@ async def get_document_reviews(
                 detail="Document not found"
             )
         
+        # F3 (D-7) — organisation access: a caller who is not a member of the
+        # document's organisation must not read its reviews. This is the check
+        # ``/{file_id}/activity`` already applies (same message); before F3 this
+        # handler read ``customer_review_log`` for ANY file id.
+        if not current_user.is_admin:
+            member = supabase.from_('organization_members') \
+                .select('id') \
+                .eq('organization_id', doc.data['organization_id']) \
+                .eq('user_id', current_user.user_id) \
+                .maybe_single() \
+                .execute()
+
+            if not member.data:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view this document"
+                )
+
         # Get reviews
         result = supabase.from_('customer_review_log') \
             .select('*, users!left(email)') \
@@ -198,7 +238,7 @@ async def get_document_reviews(
 async def respond_to_review(
     file_id: str,
     response: CustomerReviewResponse,
-    current_user: AuthUser = Depends(require_auth())
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff())
 ):
     """Submit customer review response."""
     try:

@@ -1,16 +1,17 @@
 """Narrow private object-storage abstraction (D2 / OID-3).
 
-This module deliberately implements **only an interface plus local providers**:
+This module implements the interface plus the local providers:
 
 * :class:`ObjectStore` — the provider-neutral protocol;
 * :class:`LocalFilesystemObjectStore` — a private local-directory provider used
   for local/disposable verification;
 * :class:`InMemoryObjectStore` — an in-process provider for unit tests.
 
-**No production provider is selected, provisioned or contacted**, no credentials
-are created, and no cloud SDK is added (D2 / OID-3). A future implementation adds
-a provider (for example an S3-compatible client) that satisfies the same
-protocol; nothing else in the foundation changes.
+The production provider — an S3-compatible client for the off-site destination
+the ratified architecture selects — lives in :mod:`backup.s3store` and satisfies
+this same protocol, so nothing else in the foundation changes. It is imported
+**lazily** by :func:`build_object_store` to keep this module free of a dependency
+on the HTTP client.
 
 The abstraction receives **ciphertext only** — the service encrypts before it
 calls :meth:`ObjectStore.put_object` (see ``backup.service``).
@@ -270,14 +271,20 @@ class LocalFilesystemObjectStore:
 
 
 def build_object_store(settings: BackupSettings) -> ObjectStore:
-    """Construct the configured provider (local or in-memory).
+    """Construct the configured provider.
 
-    No production provider exists by design in Phase 1.
+    ``local`` and ``memory`` are the Phase 1 providers; ``s3`` is the Phase 2
+    S3-compatible production destination (D2 / OID-3). The S3 provider is
+    imported lazily so this module keeps no import edge onto the HTTP client.
     """
     if settings.object_store == "memory":
         return InMemoryObjectStore()
     if settings.object_store == "local":
         return LocalFilesystemObjectStore(settings.local_root)
+    if settings.object_store == "s3":
+        from backup.s3store import S3ObjectStore
+
+        return S3ObjectStore(settings)
     raise BackupStorageError(
         "unsupported object store", details={"object_store": settings.object_store}
     )

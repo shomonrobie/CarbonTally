@@ -1,0 +1,54 @@
+total dirty entries: 165
+by XY class:
+    115 ??
+     50  M
+
+### BUCKET A — application/runtime code (release-bearing)
+83
+### BUCKET B — tests (release-bearing for the verification claim)
+14
+### BUCKET C — evidence/audit/architecture docs referenced by FINAL-02/03
+61
+### BUCKET D — other docs (not runtime; unrelated PO/insight/ChatGPT/deepseek material)
+75
+### BUCKET D-non-CT (other docs)
+14
+### BUCKET E — scratch/local-only junk (must NOT be frozen)
+.costrict/
+.p18_audit_tmp/
+8
+=
+backend/nohup.out
+costrict-p3-ov-01-independent-re-verification.txt
+6
+### BUCKET F — repo/deploy config
+.gitignore
+backend/requirements.txt
+
+### paths the frozen release DEPENDS ON but which are UNTRACKED (step-1 STOP evidence)
+     1	UNTRACKED: admin/src/services/factorAdminService.js
+     2	UNTRACKED: backend/api/upload_gate.py
+     3	UNTRACKED: backend/api/v3_backups.py
+     4	UNTRACKED: backend/api/v3_document_uploads.py
+     5	UNTRACKED: backend/backup/jobs.py
+     6	UNTRACKED: backend/backup/objects.py
+     7	UNTRACKED: backend/backup/policy.py
+     8	UNTRACKED: backend/backup/restore.py
+     9	UNTRACKED: backend/backup/retention.py
+    10	UNTRACKED: backend/backup/s3store.py
+    11	UNTRACKED: backend/backup/sigv4.py
+    12	UNTRACKED: backend/backup/verification.py
+    13	UNTRACKED: backend/backup/worker.py
+    14	UNTRACKED: backend/services/document_cleanup.py
+    15	UNTRACKED: backend/services/document_security.py
+    16	UNTRACKED: backend/services/email_provider.py
+    17	UNTRACKED: backend/services/storage_keys.py
+    18	UNTRACKED: backend/services/storage_metering.py
+    19	UNTRACKED: frontend/src/v3/ops/BackupsTab.jsx
+    20	UNTRACKED: supabase/migrations/20261025000000_ct_step2_documents_bucket_size_alignment.sql
+    21	UNTRACKED: supabase/migrations/20261026000000_ct_backup_01_backup_jobs.sql
+    22	UNTRACKED: supabase/migrations/20261027000000_ct_backup_02_backup_sets_and_verification.sql
+    23	UNTRACKED: tools/b7_pool_soak.py
+
+### does the app DATABASE_URL DB name (local) — dbname only, no credentials
+ct_local_93d5cdd

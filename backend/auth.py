@@ -78,6 +78,14 @@ class AuthUser(BaseModel):
     is_admin: bool = False
     role_name: Optional[str] = None
 
+    # D-7 Decision B — organisation lifecycle state resolved with the principal.
+    # ``False`` = the caller's own organisation (``organizations.is_active``) is
+    # INACTIVE: every organisation-scoped guard denies, while authentication
+    # itself (``/auth/status``, ``/auth/me``) keeps working so the client can
+    # show the suspension and a CarbonTally Admin can re-enable the tenant.
+    # ``True`` also covers principals with no organisation at all.
+    organization_is_active: bool = True
+
     # D20 (APPROVED 2026-08-20) — scope-aware authorization dimension:
     # ``staff_profiles.entity_id IS NULL`` = CarbonTally internal staff;
     # ``entity_id IS NOT NULL`` = Processing Entity staff. Role names are NOT
@@ -290,6 +298,24 @@ async def get_current_user(
                 
         except Exception as org_error:
             print(f"⚠️ Organization member query error: {org_error}")
+
+        # D-7 Decision B — resolve the caller's ORGANISATION lifecycle state
+        # (``organizations.is_active``) once, here, so every organisation-scoped
+        # guard inherits one canonical decision without another round trip.
+        # Fail closed: an unavailable/unknown state denies organisation-scoped
+        # access (``organizations.is_active`` is NOT NULL DEFAULT true, so
+        # "unknown" is a real suspension or an unusable store, never an active
+        # tenant). Authentication itself is unaffected — a suspended tenant's
+        # user can still learn their own status, and deny-by-default comes from
+        # the organisation guards.
+        organization_is_active = True
+        if is_org_member and organization_id:
+            organization_is_active = is_organization_active(organization_id)
+            if not organization_is_active:
+                print(
+                    f"⛔ D-7: organisation {organization_id} is inactive — "
+                    f"organisation-scoped access denied for {user_email}"
+                )
         
         # ✅ RETURN: Allow all authenticated users
         # Get user metadata from auth (GoTrue path only — the manual JWT-decode
@@ -329,6 +355,8 @@ async def get_current_user(
             accuracy_rate=staff_data.get('accuracy_rate', 100.0) if staff_data else 100.0,
             is_staff=is_staff,
             is_org_member=is_org_member,
+            # D-7 Decision B — organisation (not membership) lifecycle state.
+            organization_is_active=organization_is_active,
             # D20: ``is_admin`` (global CarbonTally admin) is scoped to internal
             # staff only — a Processing Entity staff profile with an
             # ``admin``-named role must never become a global admin.
@@ -398,6 +426,108 @@ def get_request_org_scope(request: Optional[Request]) -> tuple:
     return tuple(found)
 
 
+#: D-7 Decision B — the single message for every suspended-organisation denial.
+#: Non-disclosing (it states the resource the caller asked for, never whether
+#: some *other* organisation's resource exists) and uniform across every
+#: organisation-scoped guard.
+ORGANIZATION_SUSPENDED_DETAIL = "This organization is suspended"
+
+
+def read_organization_active_state(organization_id: str) -> Optional[bool]:
+    """Read ``organizations.is_active`` for the organisation guard layer (D-7).
+
+    Returns ``True``/``False`` for a KNOWN state and ``None`` when the caller's
+    store exposes no row for ``organization_id``. Store failures propagate;
+    :func:`is_organization_active` turns them into a denial (fail closed), the
+    policy ``get_active_org_role`` already applies to membership lookups
+    (F-05-R3: an unusable store must never become an implicit allow, and must
+    never surface as HTTP 500 either).
+
+    Data path: ``auth.get_supabase_client`` — the service-role store the
+    organisation guards already resolve authority through. The backend pool
+    bypasses RLS, so ``public.is_org_active()`` cannot enforce anything here and
+    the application layer must decide. The repository-based equivalent is
+    ``api.insight_authz.organization_is_active`` (same predicate, resolved
+    through ``RepositoryBundle``); it is not reused from this module because
+    ``api.insight_authz`` imports ``auth``.
+    """
+    if not organization_id:
+        return None
+    supabase = get_supabase_client()
+    result = (
+        supabase.from_('organizations')
+        .select('is_active')
+        .eq('id', organization_id)
+        .limit(1)
+        .execute()
+    )
+    data = getattr(result, "data", None)
+    if isinstance(data, dict):
+        row = data
+    elif isinstance(data, list) and data:
+        row = data[0]
+    else:
+        row = None
+    if not isinstance(row, dict):
+        return None
+    state = row.get('is_active')
+    if state is None:
+        return None
+    return bool(state)
+
+
+def is_organization_active(organization_id: str) -> bool:
+    """The D-7 organisation-live predicate — fail closed.
+
+    ``organizations.is_active = true`` → ``True``; ``false``, no row, or an
+    unusable store → ``False``. ``organizations.is_active`` is
+    ``NOT NULL DEFAULT true`` in the canonical schema, so a missing or failed
+    read is never evidence of an active tenant: a membership row without its
+    organisation, or a store that cannot answer, is a denial.
+    """
+    try:
+        return read_organization_active_state(organization_id) is True
+    except HTTPException:
+        # Supabase not configured / unavailable → deny, never 500.
+        return False
+    except Exception as e:
+        print(f"⚠️ D-7 organisation state lookup failed for {organization_id}: {e}")
+        return False
+
+
+def _caller_organization_inactive(current_user: AuthUser) -> bool:
+    """True when the principal's OWN organisation is INACTIVE (D-7).
+
+    Zero database round trips — the state was resolved once in
+    :func:`get_current_user` and travels on the principal, so the own-tenant
+    path stays a single decision (and the F-05-R1 guards keep their
+    zero-query behaviour for active tenants).
+    """
+    return bool(getattr(current_user, "organization_id", None)) and (
+        getattr(current_user, "organization_is_active", True) is False
+    )
+
+
+def _organization_inactive_for_path_org(current_user: AuthUser, org_id: str) -> bool:
+    """True when the organisation named by a path/body is INACTIVE (D-7).
+
+    The caller's OWN organisation is answered from the principal (no query). A
+    foreign organisation is answered from the store, and only an explicit
+    ``is_active = false`` denies: a foreign row the caller's store does not
+    expose at all leaves the frozen F-05-R1 membership decision standing (every
+    member of an INACTIVE tenant is still denied by their own-tenant path and by
+    ``require_org_member``). A store FAILURE denies — fail closed.
+    """
+    own = getattr(current_user, "organization_id", None)
+    if own and own == org_id:
+        return getattr(current_user, "organization_is_active", True) is False
+    try:
+        return read_organization_active_state(org_id) is False
+    except Exception as e:
+        print(f"⚠️ D-7 organisation state lookup failed for {org_id}: {e}")
+        return True
+
+
 def get_active_org_role(user_id: str, organization_id: str) -> Optional[str]:
     """Authoritative role of an ACTIVE membership, or ``None`` (fail closed).
 
@@ -443,8 +573,15 @@ def _org_admin_authority(current_user: AuthUser, org_id: str) -> bool:
         )
     ):
         # Token-derived fast path — no database round trip for the common case.
-        return True
-    return get_active_org_role(current_user.user_id, org_id) in ('owner', 'admin')
+        # D-7 Decision B: an INACTIVE organisation strips the owner/admin role
+        # names of all administrative authority — nobody administers a suspended
+        # tenant. The state travels with the principal, so this stays query-free.
+        return not _caller_organization_inactive(current_user)
+    if get_active_org_role(current_user.user_id, org_id) in ('owner', 'admin'):
+        # D-7 Decision B — an ACTIVE membership row is not administrative
+        # authority over an INACTIVE organisation (cross-tenant membership path).
+        return not _organization_inactive_for_path_org(current_user, org_id)
+    return False
 
 
 async def enforce_org_path_scope(
@@ -468,13 +605,28 @@ async def enforce_org_path_scope(
 
     for org_id in path_orgs:
         if current_user.organization_id and current_user.organization_id == org_id:
+            # D-7 Decision B — an INACTIVE organisation grants NO
+            # organisation-scoped access, whatever the caller's role (owner,
+            # admin, consultant or member). Answered from the principal: no
+            # query, and the denial happens before any handler runs.
+            if _caller_organization_inactive(current_user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ORGANIZATION_SUSPENDED_DETAIL,
+                )
             continue
-        if get_active_org_role(current_user.user_id, org_id) is not None:
-            continue
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have access to this organization",
-        )
+        if get_active_org_role(current_user.user_id, org_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have access to this organization",
+            )
+        # D-7 Decision B — an ACTIVE membership in an INACTIVE tenant is not
+        # authority over it: deny as soon as the organisation is known inactive.
+        if _organization_inactive_for_path_org(current_user, org_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
 
 
 def enforce_org_body_scope(organization_id: Any, current_user: AuthUser) -> None:
@@ -514,6 +666,65 @@ def enforce_org_body_scope(organization_id: Any, current_user: AuthUser) -> None
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this organization",
+        )
+
+
+async def enforce_org_query_scope(organization_id: Any, current_user: AuthUser) -> None:
+    """G1 — authorise the organisation a request names in its **query string**.
+
+    ``enforce_org_path_scope`` reads organisations from the route *path* and
+    :func:`enforce_org_body_scope` from the JSON *body*, so both are deliberate
+    no-ops for the routes that filter with ``?organization_id=`` — and those
+    routes read with the service-role client, which bypasses RLS. Without this
+    check the query parameter WAS the whole scope decision: any organisation
+    member could read another tenant's emissions by changing one parameter.
+    (Verified on ``GET /api/emissions/stats`` and ``GET /api/emissions/export``:
+    with only ``require_org_member()`` attached, a member of org A received org
+    B's totals and org B's exported rows.)
+
+    The rule is the F-05-R1 *path* rule, because these handlers resolve a
+    caller's scope as a SET of organisations (an unfiltered request is scoped by
+    the caller's active memberships, so multi-organisation members are in
+    scope). The named organisation must therefore be the caller's own, or one
+    where they hold an ACTIVE membership — and never an INACTIVE tenant (D-7,
+    Decision B). Internal CarbonTally staff keep the documented operational
+    cross-organisation access every other organisation guard grants them.
+
+    ``async`` only for symmetry with :func:`enforce_org_path_scope`, so call
+    sites read identically (both are awaited enforcers).
+
+    Callers MUST re-raise ``HTTPException`` ahead of any generic handler: these
+    handlers wrap their bodies in ``except Exception``, and ``HTTPException`` IS
+    an ``Exception``, so a denial would otherwise surface as HTTP 500.
+    """
+    if not organization_id or current_user is None:
+        return
+    if current_user.is_internal_staff:
+        # CarbonTally internal staff — operational cross-organisation access.
+        return
+
+    requested = str(organization_id)
+    if current_user.organization_id and str(current_user.organization_id) == requested:
+        # D-7 Decision B — the caller's OWN organisation. Answered from the
+        # principal, so the active-tenant path stays query-free.
+        if _caller_organization_inactive(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+        return
+
+    if get_active_org_role(current_user.user_id, requested) is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this organization",
+        )
+    # D-7 Decision B — an ACTIVE membership in an INACTIVE tenant is not
+    # authority over it.
+    if _organization_inactive_for_path_org(current_user, requested):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ORGANIZATION_SUSPENDED_DETAIL,
         )
 
 
@@ -584,6 +795,86 @@ def require_admin():
     
     return admin_checker
 
+# ==========================================
+# BACKUP MANAGEMENT AUTHORIZATION (BACKUP-01 §9 / CAPABILITY)
+# ==========================================
+# The ratified backup architecture (D4 / §9) requires that the backup surfaces be
+# reachable by an *explicit* administrative capability rather than by admin
+# authority alone: "``require_admin()`` **plus** an explicit ``can_manage_backups``
+# capability (the permissions dict already exists on ``staff_roles``);
+# ``system_admin`` should hold it; ordinary reviewers/operators must not".
+#
+# This is deliberately NOT a parallel authorization framework: it composes the
+# existing admin guard's rules (the same ``ADMIN_ROLE_NAMES`` /
+# ``is_superuser`` test ``require_admin`` applies, and the same
+# Processing-Entity denial) and adds the capability check on top. It grants
+# nothing by itself and widens no existing guard.
+
+#: The explicit capability that gates every backup-management surface. Granted as
+#: DATA (a `staff_roles.permissions` key) to the internal admin roles by
+#: ``supabase/migrations/20261026000000_ct_backup_01_backup_jobs.sql``.
+BACKUP_CAPABILITY = "can_manage_backups"
+
+
+def has_backup_capability(user: Optional["AuthUser"]) -> bool:
+    """True only for an internal admin that explicitly holds the capability.
+
+    Two independent gates, both evaluated server-side from the resolved principal:
+
+    * **admin authority** — the identical test ``require_admin`` applies
+      (``ADMIN_ROLE_NAMES`` membership or ``is_superuser``), with Processing
+      Entity staff denied first;
+    * **the capability** — ``permissions["can_manage_backups"]``.
+
+    Neither alone is sufficient, by design. A stray permission key on an ordinary
+    staff role must not confer backup authority, and an admin must be able to have
+    backup authority withheld without inventing a new role.
+    """
+    if user is None:
+        return False
+    if getattr(user, "is_entity_staff", False):
+        return False
+    admin_authority = bool(
+        user.role in ADMIN_ROLE_NAMES
+        or (user.role_name or "") in ADMIN_ROLE_NAMES
+        or user.permissions.get("is_superuser", False)
+    )
+    return admin_authority and bool(user.permissions.get(BACKUP_CAPABILITY, False))
+
+
+def require_backup_manager():
+    """Dependency factory for backup management.
+
+    Must be used as ``Depends(require_backup_manager())`` — the same
+    no-parentheses hazard described on ``require_auth`` applies here. A caller
+    without the capability receives **403** (never 404 for an existing job, so the
+    response cannot be used to probe what exists).
+    """
+    async def backup_manager_checker(
+        current_user: AuthUser = Depends(get_current_user),
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # D20 (scope-first): Processing Entity staff never hold internal
+        # CarbonTally admin authority, whatever their role name.
+        if current_user.is_entity_staff:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Processing Entity staff cannot hold internal admin authority",
+            )
+        if not has_backup_capability(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Backup management privileges required",
+            )
+        return current_user
+
+    return backup_manager_checker
+
 def require_staff():
     """
     Dependency factory for staff membership.
@@ -646,12 +937,95 @@ def require_org_member():
                 detail="Organization member access required"
             )
 
+        # D-7 Decision B — organisation activation is INDEPENDENT of membership
+        # activation: an INACTIVE organisation denies every organisation-scoped
+        # route (owner, admin, consultant, member, viewer) before any
+        # organisation-scoped data is read or written. Routes that name no
+        # organisation in the path operate on the caller's own tenant, so the
+        # principal's organisation state is the decision.
+        if _caller_organization_inactive(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+
         # F-05-R1 — exact-tenant enforcement (no-op without a path org).
         await enforce_org_path_scope(request, current_user)
 
         return current_user
     
     return org_member_checker
+
+
+def require_org_member_or_internal_staff():
+    """``require_org_member()`` plus the internal-staff operational exemption (G2).
+
+    The eight emissions / document-activity handlers that were last gated only
+    by ``require_auth()`` were migrated onto ``require_org_member()`` (F1/F3,
+    D-7) to close the suspended-tenant hole. That guard's membership test
+    (``is_org_member``) also refuses CarbonTally INTERNAL staff, who are not
+    organisation members — so the migration silently removed the operational
+    cross-organisation access that EVERY OTHER organisation guard grants them
+    (``enforce_org_path_scope``, ``require_org_admin``, ``require_org_access``,
+    ``ensure_org_access``). Support and oversight tooling on these routes needs
+    that access back.
+
+    This guard therefore keeps ``require_org_member()``'s decisions for
+    ORGANISATION principals — membership, the D-7 lifecycle denial, and the
+    F-05-R1 path rule — and returns early for internal staff, exactly as the
+    other guards do; D-7 exempts internal staff operational oversight. It
+    reveals nothing new: internal staff already hold the global-admin authorizer
+    (``require_admin``) used by the admin-only routes in the same modules.
+
+    Processing Entity staff (``staff_profiles.entity_id`` set) are NOT internal
+    staff, so D20 scope-first is unchanged: they still get 403 "Organization
+    member access required". Handlers keep their own record-level checks
+    (``is_admin`` / membership on the record's organisation), so admitting staff
+    here does not widen what a customer can reach.
+
+    Must be used as ``Depends(require_org_member_or_internal_staff())`` — see
+    ``require_org_member`` for the no-parentheses hazard.
+    """
+    async def org_member_or_staff_checker(
+        current_user: AuthUser = Depends(get_current_user),
+        request: Request = None,  # type: ignore[assignment]
+    ) -> AuthUser:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # CarbonTally internal staff — operational cross-organisation access,
+        # the same exemption (and the same query-free early return) the other
+        # organisation guards apply.
+        if current_user.is_internal_staff:
+            return current_user
+
+        if not current_user.is_org_member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization member access required"
+            )
+
+        # D-7 Decision B — organisation activation is INDEPENDENT of membership
+        # activation: an INACTIVE organisation denies every organisation-scoped
+        # route (owner, admin, consultant, member, viewer) before any
+        # organisation-scoped data is read or written.
+        if _caller_organization_inactive(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+
+        # F-05-R1 — exact-tenant enforcement (no-op without a path org).
+        await enforce_org_path_scope(request, current_user)
+
+        return current_user
+
+    return org_member_or_staff_checker
+
 
 def require_org_admin():
     """
@@ -693,6 +1067,19 @@ def require_org_admin():
         ):
             return current_user
 
+        # D-7 Decision B — an INACTIVE organisation strips organisation-admin
+        # authority from everyone inside it: the ``owner``/``admin`` role names
+        # are powerless while the tenant is suspended, whatever the route asks
+        # for. The caller's OWN tenant answer comes from the principal, so the
+        # decision costs no query and it is uniform with ``require_org_member``
+        # (same status, same detail). Internal CarbonTally staff were already
+        # returned above, so support and re-enable keep working.
+        if _caller_organization_inactive(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+
         if current_user.is_org_member and current_user.user_id:
             # The organisation(s) the caller must administer: the path
             # organisation when the route names one, otherwise the caller's own
@@ -704,6 +1091,12 @@ def require_org_admin():
                 else ()
             )
             for org_id in target_orgs:
+                # D-7 Decision B is applied per administered organisation by
+                # ``_org_admin_authority``: an ACTIVE membership row in an
+                # INACTIVE organisation is not administrative authority over it
+                # (cross-tenant membership path). The foreign organisation's
+                # state is read only AFTER the caller's own role was established,
+                # so a denied caller never learns another tenant's lifecycle.
                 if _org_admin_authority(current_user, org_id):
                     return current_user
 
@@ -727,7 +1120,21 @@ def require_org_access(organization_id: str):
         # access — they fall through to the org-membership check (denied).
         if current_user.is_internal_staff:
             return current_user
-        
+
+        # D-7 Decision B — an INACTIVE organisation denies every ordinary
+        # organisation-scoped route (owner, admin, consultant, member), and the
+        # denial happens before the endpoint can read or mutate tenant data. The
+        # state is on the principal (one decision, no extra query); CarbonTally
+        # internal staff were already returned above so support/re-enable keeps
+        # working. ``organization_id`` is the route's organisation: when it is the
+        # caller's own it is answered here, and when it is not, the membership
+        # test below still denies, so no foreign state has to be read.
+        if organization_id and _caller_organization_inactive(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+
         # Organization members can only access their own
         if current_user.is_org_member:
             if current_user.organization_id != organization_id:

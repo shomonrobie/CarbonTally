@@ -16,7 +16,7 @@ behind ``require_admin()``.
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Any, Dict, Mapping, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -25,8 +25,16 @@ from api.dependencies import (
     get_repositories,
 )
 from auth import AuthUser, require_admin
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
+from services.email_provider import (
+    ALLOWED_CREDENTIAL_ENVS,
+    DEFAULT_CREDENTIAL_ENV,
+    DEFAULT_PROVIDER,
+    describe_provider_config,
+    normalise_provider_config,
+    provider_readiness,
+)
 from services.email_sender import (
     DEFAULT_SENDER,
     describe_email_sender,
@@ -109,6 +117,84 @@ class UploadPolicyUpdate(BaseModel):
     max_file_size_mb: Optional[int] = None
     max_files_per_batch: Optional[int] = None
     max_batch_size_mb: Optional[int] = None
+
+
+class EmailProviderUpdate(BaseModel):
+    """Email delivery provider configuration (CT-FINAL-02 / EMAIL-CONFIG-01).
+
+    Every field is optional: an omitted/``null`` field keeps the currently
+    stored value (the same merge semantics as the upload policy), while an
+    **empty string** clears it — an SMTP transport that is no longer in use must
+    be removable.  No credential is ever accepted here — only the *name* of the
+    allow-listed environment variable that holds it.  Unknown fields are refused
+    outright (``422``), so a credential sent as an ordinary setting is rejected
+    rather than silently dropped or stored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    credential_env: Optional[str] = None
+
+
+#: The persisted provider-configuration fields (one canonical vocabulary).
+_PROVIDER_UPDATE_FIELDS = (
+    "provider",
+    "smtp_host",
+    "smtp_port",
+    "smtp_username",
+    "smtp_use_tls",
+    "credential_env",
+)
+
+
+def _merge_provider_update(
+    current: Mapping[str, Any], payload: EmailProviderUpdate
+) -> Dict[str, Any]:
+    """Merge a partial update onto the stored provider configuration.
+
+    A field the administrator did not supply keeps its stored value.  Changing
+    the provider without naming a credential variable re-points the credential
+    at that provider's default environment variable: a stale variable left over
+    from the previous provider would otherwise be read at delivery time, and the
+    newly selected provider would fail closed for the wrong reason.
+    """
+    merged: Dict[str, Any] = {}
+    for field in _PROVIDER_UPDATE_FIELDS:
+        supplied = getattr(payload, field)
+        merged[field] = current.get(field) if supplied is None else supplied
+
+    new_provider = merged.get("provider") or DEFAULT_PROVIDER
+    if isinstance(new_provider, str):
+        new_provider = new_provider.strip().lower()
+    stored_provider = current.get("provider") or DEFAULT_PROVIDER
+    if payload.credential_env is None and new_provider != stored_provider:
+        merged["credential_env"] = DEFAULT_CREDENTIAL_ENV.get(new_provider)
+    return merged
+
+
+def _describe_email_provider(
+    stored: Mapping[str, Any], sender: Optional[str]
+) -> Dict[str, Any]:
+    """Describe the effective provider configuration — never a credential.
+
+    The description carries the selected provider, the referenced credential
+    environment variable and whether that variable is *present* (a boolean), so
+    the Admin Dashboard can show what will actually happen without any secret
+    crossing the API boundary.  ``readiness`` names any reason delivery would
+    fail (no network call is made).
+    """
+    described = describe_provider_config(stored, stored=stored)
+    described["readiness"] = provider_readiness(stored, sender=sender)
+    # The allow-listed credential variables are published so the Admin Dashboard
+    # can offer exactly the variables the adapter will read — the UI never
+    # invents or widens the set (the server re-validates every submission).
+    described["credential_options"] = sorted(ALLOWED_CREDENTIAL_ENVS)
+    return described
 
 
 def _describe_upload_policy(configured: dict, stored: dict) -> dict:
@@ -330,3 +416,102 @@ async def update_upload_policy_settings(
         field: saved.get(field) for field in POLICY_FIELDS
     }
     return {"settings": _describe_upload_policy(configured, saved)}
+
+
+@router.get("/email-provider")
+async def get_email_provider_settings(
+    current_user: AuthUser = Depends(require_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Return the effective email delivery provider configuration (admin only).
+
+    The response describes configuration only and can never contain a
+    credential: the settings row stores the *name* of the environment variable
+    that holds the provider credential, and this read reports only whether that
+    variable is present in the server environment (a boolean).  The provider in
+    force is reported even when nothing has been configured — the documented
+    default (Resend) applies in that case, so the Admin Dashboard shows what
+    will actually happen rather than an empty state.
+    """
+    stored = await repos.settings.get_email_provider()
+    sender_config = await repos.settings.get_notification_sender()
+    return {
+        "settings": _describe_email_provider(
+            stored, resolve_email_sender(sender_config.get("email_sender"))
+        )
+    }
+
+
+@router.post("/email-provider/validate")
+async def validate_email_provider_settings(
+    payload: EmailProviderUpdate,
+    current_user: AuthUser = Depends(require_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Validate a candidate provider configuration **without persisting it**.
+
+    ``valid`` is ``false`` for anything the save path would refuse, and
+    ``settings.readiness.blocking_issues`` names every remaining reason delivery
+    would fail, so an administrator is never told a provider is usable when it
+    would fail at the first send.  This performs no network call and sends no
+    email; clearing every field simply re-describes the configuration in force.
+    """
+    stored = await repos.settings.get_email_provider()
+    candidate = _merge_provider_update(stored, payload)
+    sender_config = await repos.settings.get_notification_sender()
+    sender = resolve_email_sender(sender_config.get("email_sender"))
+
+    try:
+        validated = normalise_provider_config(candidate)
+    except ValueError as exc:
+        # Never describe the half-configured candidate as if it were in force.
+        return {
+            "valid": False,
+            "errors": [str(exc)],
+            "settings": _describe_email_provider(stored, sender),
+        }
+
+    described = _describe_email_provider(validated, sender)
+    described["updated_at"] = stored.get("updated_at")
+    described["updated_by"] = stored.get("updated_by")
+    return {"valid": True, "errors": [], "settings": described}
+
+
+@router.put("/email-provider")
+async def update_email_provider_settings(
+    payload: EmailProviderUpdate,
+    current_user: AuthUser = Depends(require_admin()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Persist the email delivery provider configuration (admin only).
+
+    The *merged* configuration is validated before anything is written, so an
+    unknown provider, a malformed SMTP transport, a credential variable outside
+    the environment allow-list, or a credential submitted as an ordinary
+    setting is refused with 422 and nothing is stored — the previously stored
+    configuration stays in force (fail closed).  Delivery credentials are never
+    accepted or returned: only the referenced environment variable name is
+    persisted.
+    """
+    stored = await repos.settings.get_email_provider()
+    candidate = _merge_provider_update(stored, payload)
+    try:
+        validated = normalise_provider_config(candidate)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    saved = await repos.settings.update_email_provider(
+        provider=validated["provider"],
+        smtp_host=validated["smtp_host"],
+        smtp_port=validated["smtp_port"],
+        smtp_username=validated["smtp_username"],
+        smtp_use_tls=validated["smtp_use_tls"],
+        credential_env=validated["credential_env"],
+        updated_by=current_user.user_id,
+    )
+    sender_config = await repos.settings.get_notification_sender()
+    return {
+        "settings": _describe_email_provider(
+            saved, resolve_email_sender(sender_config.get("email_sender"))
+        )
+    }

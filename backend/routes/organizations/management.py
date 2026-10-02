@@ -55,6 +55,14 @@ class OrganizationUpdate(BaseModel):
     issb_enabled: Optional[bool] = Field(None)
     default_defra_version: Optional[int] = Field(None)
     preferred_units: Optional[str] = Field(None)
+    # D-7 Decision B — the organisation lifecycle flag. Admin-only surface (this
+    # route is gated by ``require_role(["admin"])``, so only CarbonTally internal
+    # staff reach it): ``false`` suspends the tenant for every member, ``true``
+    # reactivates it. Suspending via this field is the counterpart of the
+    # soft-delete path, which already writes ``is_active = false``.
+    is_active: Optional[bool] = Field(
+        None, description="Organisation lifecycle flag: false suspends, true reactivates"
+    )
 
 class OrganizationResponse(BaseModel):
     id: str
@@ -86,6 +94,9 @@ class OrganizationResponse(BaseModel):
     updated_at: datetime
     member_count: Optional[int] = 0
     emissions_record_count: Optional[int] = 0
+    # D-7 Decision B — the organisation lifecycle flag travels with the admin
+    # view so an operator can see (and then flip) a suspended tenant.
+    is_active: bool = True
 
 class OrganizationStats(BaseModel):
     organization_id: str
@@ -236,7 +247,9 @@ async def get_organization(
             created_at=org['created_at'],
             updated_at=org.get('updated_at', org['created_at']),
             member_count=stats['total_members'],
-            emissions_record_count=stats['total_emissions_records']
+            emissions_record_count=stats['total_emissions_records'],
+            # D-7 Decision B — the tenant's lifecycle state as stored.
+            is_active=org.get('is_active', True)
         )
         
     except HTTPException:

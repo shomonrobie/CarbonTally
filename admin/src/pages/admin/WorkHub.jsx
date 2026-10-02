@@ -189,13 +189,14 @@ const WorkHub = () => {
       const userId = user?.id;
       const userEmail = user?.email;
 
-      // ✅ Notifications
-      const { data: notifications } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // CT-FINAL-03 (package 09 §4.5) — the direct `notifications` read was
+      // REMOVED. It never worked: the table exposes `recipient_id` /
+      // `recipient_type`, not `user_id`, so PostgREST errored and the
+      // destructuring discarded the error. `notifications` is now fail-closed
+      // (RLS enabled, zero policies) and `/api/v3/notifications` remains the
+      // authoritative, recipient-scoped channel — existing consumers keep
+      // working; only this broken duplicate is gone.
+      const notifications = [];
 
       // ✅ Tasks (role-based)
       let tasksQuery = supabase
@@ -243,16 +244,16 @@ const WorkHub = () => {
         processing = processingData || [];
       }
 
-      // ✅ Staff workload (Admin only)
-      let staffWorkload = [];
-      if (permissions.isAdmin) {
-        const { data: workload } = await supabase
-          .from('staff_workload')
-          .select('*, staff_profiles(first_name, last_name, email, role)')
-          .order('date', { ascending: false })
-          .limit(5);
-        staffWorkload = workload || [];
-      }
+      // CT-FINAL-03 (package 09 §4.7) — the direct `staff_workload` read was
+      // REMOVED as demonstrably dead code: it selected columns that exist
+      // nowhere in the schema (`assigned_reviews`, `in_progress_reviews`,
+      // `last_updated` — package 09 §6.0.1) and the table has 0 rows, so no
+      // working path was lost. The removal stands: `staff_workload` is now
+      // RLS-enabled fail-closed with zero policies by
+      // `20261029000000_ct_final_03_staff_workload_rls.sql` (the residual-closure
+      // follow-up to `20261028000000_…`), so no direct browser read may be
+      // restored — staff workload is served by the backend only.
+      const staffWorkload = [];
 
       setWorkData({
         notifications: notifications || [],

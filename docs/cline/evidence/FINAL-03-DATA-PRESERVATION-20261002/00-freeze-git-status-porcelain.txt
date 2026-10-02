@@ -1,0 +1,165 @@
+ M .gitignore
+ M admin/src/components/admin/DefraFactorModal.js
+ M admin/src/components/admin/ImportDefraModal.js
+ M admin/src/pages/admin/DefraFactors.js
+ M backend/api/dependencies.py
+ M backend/api/router.py
+ M backend/api/v3_consultants.py
+ M backend/api/v3_discovery.py
+ M backend/api/v3_documents.py
+ M backend/api/v3_organizations.py
+ M backend/api/v3_settings.py
+ M backend/auth.py
+ M backend/backup/__init__.py
+ M backend/backup/errors.py
+ M backend/backup/service.py
+ M backend/backup/settings.py
+ M backend/backup/storage.py
+ M backend/data/organization_files.py
+ M backend/data/settings.py
+ M backend/main.py
+ M backend/requirements.txt
+ M backend/routes/admin/bulk.py
+ M backend/routes/document_activity.py
+ M backend/routes/emissions.py
+ M backend/routes/notifications.py
+ M backend/routes/organizations/files.py
+ M backend/routes/organizations/management.py
+ M backend/routes/upload.py
+ M backend/services/email_service.py
+ M backend/services/operational_alerting.py
+ M backend/services/retention.py
+ M backend/services/storage.py
+ M backend/services/v3_email.py
+ M backend/tests/unit/api/fakes.py
+ M backend/tests/unit/backup/test_storage_and_settings.py
+ M backend/tests/unit/test_ct_implement_01_remediation.py
+ M backend/utils/email.py
+ M docs/architecture/CT-IMPLEMENT-01-20260927-REPORT.md
+ M docs/architecture/CT-PO-CARBONTALLY-CT-IMPLEMENT-02-REPORT-20260928.md
+ M docs/architecture/CT-PO-CARBONTALLY-CT-IMPLEMENT-03-REPORT-20260928.md
+ M docs/audit/cline/CARBONTALLY_FINAL_PRODUCT_DECISION_REGISTER.md
+ M frontend/App_.js
+ M frontend/src/App.js
+ M frontend/src/components/ManualEntryStandalone.jsx
+ M frontend/src/v3/__tests__/review-api.test.js
+ M frontend/src/v3/api.js
+ M frontend/src/v3/consultant/ConsultantPage.jsx
+ M frontend/src/v3/customer/DocumentsPage.jsx
+ M frontend/src/v3/ops/OperationsPage.jsx
+ M frontend/src/v3/ops/SettingsTab.jsx
+?? .costrict/
+?? .p18_audit_tmp/
+?? 8
+?? =
+?? admin/src/services/factorAdminService.js
+?? backend/api/upload_gate.py
+?? backend/api/v3_backups.py
+?? backend/api/v3_document_uploads.py
+?? backend/backup/jobs.py
+?? backend/backup/objects.py
+?? backend/backup/policy.py
+?? backend/backup/restore.py
+?? backend/backup/retention.py
+?? backend/backup/s3store.py
+?? backend/backup/sigv4.py
+?? backend/backup/verification.py
+?? backend/backup/worker.py
+?? backend/nohup.out
+?? backend/services/document_cleanup.py
+?? backend/services/document_security.py
+?? backend/services/email_provider.py
+?? backend/services/storage_keys.py
+?? backend/services/storage_metering.py
+?? backend/tests/integration/backup/test_restore_local.py
+?? backend/tests/unit/api/test_backup_admin_api.py
+?? backend/tests/unit/api/test_ct_final_02_email_provider.py
+?? backend/tests/unit/api/test_d7_f1_f2_f3_enforcement.py
+?? backend/tests/unit/api/test_d7_org_lifecycle_decisions.py
+?? backend/tests/unit/api/test_g1_g2_emissions_query_scope_and_staff_access.py
+?? backend/tests/unit/api/test_storage_management_step1.py
+?? backend/tests/unit/api/test_storage_management_step2.py
+?? backend/tests/unit/backup/test_b7_connection_lease.py
+?? backend/tests/unit/backup/test_jobs.py
+?? backend/tests/unit/backup/test_sigv4_and_s3store.py
+?? costrict-p3-ov-01-independent-re-verification.txt
+?? docs/ChatGPT/CarbonTally_Incremental_ChatGPT_PO_History_2026-09-22.md
+?? docs/ChatGPT/CarbonTally_Incremental_Chat_History_2026-09-22-Insight-Strategy-v2.md
+?? docs/ChatGPT/CarbonTally_Incremental_Chat_History_2026-09-22.md
+?? docs/ChatGPT/carbontally_handoff.md
+?? docs/ChatGPT/carbontally_handoff_2026_09_28.md
+?? docs/Final_Kimi/Kimi_Agent_UK_IE_Compliance_Audit_Report/.~lock.CarbonTally_UK_IE_Production_Readiness_Review.docx#
+?? docs/architecture/CARBONTALLY_PRODUCTION_BACKUP_RESTORE_COMPLETE_IMPLEMENTATION_20261002.md
+?? docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_ARCHITECTURE.md
+?? docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_BASELINE.md
+?? docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_STEP1_IMPLEMENTATION_20260930.md
+?? docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_STEP2_IMPLEMENTATION_20260930.md
+?? docs/architecture/CARBONTALLY_STORAGE_PO_EVIDENCE_REVIEW_20260930.md
+?? docs/architecture/CO-STRING-P17-ARCH-03-20250925-INDEPENDENT-VERIFICATION-FREEZE.md
+?? docs/architecture/CT-FINAL-02-20260929-EMAIL-AND-UPLOAD-CONFIGURATION-REPORT.md
+?? docs/architecture/CT-FINAL-02-20260930-REHEARSAL-BASELINE-AND-GAP-MATRIX.md
+?? docs/architecture/CT-FINAL-02-20261001-LIVE-EVIDENCE-CLOSURE-PASS-REPORT.md
+?? docs/architecture/CT-FINAL-02-20261001-LOCAL-REHEARSAL-REPORT.md
+?? docs/architecture/CT-FINAL-02-B2-READONLY-VERIFICATION-20261001.md
+?? docs/architecture/CT-FINAL-02-CLOSURE-AND-LIVE-READINESS-20261001.md
+?? docs/architecture/CT-FINAL-02-INDEPENDENT-VERIFICATION-REPORT.md
+?? docs/architecture/CT-FINAL-03-PRODUCTION-CUTOVER-PACKAGE-20261002.md
+?? docs/architecture/CT-PO-CARBONTALLY-CANONICAL-SCHEMA-FEATURE-SUPPORT-MATRIX-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CANONICAL-SCHEMA-FROM-ZERO-VERIFICATION-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CAPABILITY-AND-RELEASE-LEDGER-20260926.md
+?? docs/architecture/CT-PO-CARBONTALLY-CENSUS-INDEPENDENT-VERIFICATION-20260926.md
+?? docs/architecture/CT-PO-CARBONTALLY-COMPLETE-CAPABILITY-CENSUS-20260926-REPORT.md
+?? docs/architecture/CT-PO-CARBONTALLY-COMPLETE-CAPABILITY-CENSUS-20260926.md
+?? docs/architecture/CT-PO-CARBONTALLY-COMPLETE-FEATURE-CATALOGUE-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CONFIGURATION-CATALOGUE-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CT-AUDIT-01-CANONICAL-AUDIT-SYSTEM-RECONCILIATION-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CT-SCHEMA-01-REPORT-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CT-SCHEMA-02-REPORT-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CT-SCHEMA-03-REPORT-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-CT-VERIFY-03-INDEPENDENT-REPORT-20260928.md
+?? docs/architecture/CT-PO-CARBONTALLY-DATABASE-CENSUS-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-DATABASE-RECONCILIATION-20260927-REPORT.md
+?? docs/architecture/CT-PO-CARBONTALLY-DATABASE-RECONCILIATION-LEDGER-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-FALSE-IMPLEMENTED-AND-WIRED-REGISTER-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-FEATURE-CATALOGUE-INDEPENDENT-VERIFICATION-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-FEATURE-VERIFICATION-MATRIX-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-FINAL-REPORT-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-FUNCTIONALITY-TRACEABILITY-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-GAP-ANALYSIS-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-HISTORICAL-32-FILE-MODIFICATION-TIMELINE-20260926-REPORT.md
+?? docs/architecture/CT-PO-CARBONTALLY-HISTORICAL-32-FILE-MODIFICATION-TIMELINE-20260926.md
+?? docs/architecture/CT-PO-CARBONTALLY-HISTORICAL-32-FILE-TECHNICAL-RECONCILIATION-20260926-REPORT.md
+?? docs/architecture/CT-PO-CARBONTALLY-HISTORICAL-32-FILE-TECHNICAL-RECONCILIATION-20260926.md
+?? docs/architecture/CT-PO-CARBONTALLY-PO-DECISION-EVIDENCE-PACK-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-RECON-03C-IMPORT-SUMMARY-AND-SUPABASE-CONFIG-DECISION-PACK-20260927-REPORT.md
+?? docs/architecture/CT-PO-CARBONTALLY-RECON-03C-IMPORT-SUMMARY-AND-SUPABASE-CONFIG-DECISION-PACK-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-SCHEMA-CODE-MISMATCH-REGISTER-20260927.md
+?? docs/architecture/CT-PO-CARBONTALLY-SCHEMA-COMPARISON-MATRIX-20260927.md
+?? docs/architecture/CT-PO-CT-READINESS-01-MIGRATION-DRIFT-AND-CANONICAL-DB-BASELINE-AUDIT-20260927-REPORT.md
+?? docs/architecture/CT-PO-CT-READINESS-01-MIGRATION-DRIFT-AND-CANONICAL-DB-BASELINE-AUDIT-20260927.md
+?? docs/architecture/CT-PO-CT-READINESS-02-PHASE-A-REAL-READINESS-BASELINE-20260927-REPORT.md
+?? docs/architecture/CT-PO-CT-READINESS-02-PHASE-A-REAL-READINESS-BASELINE-20260927.md
+?? docs/architecture/CT-PO-CT-RELEASE-01-20260927-GITHUB-SYNC-REPORT.md
+?? docs/architecture/CT-PO-MASTER-WORKPLAN-20260925.md
+?? docs/architecture/CT-PO-P12-INVESTOR-DEMO-4STEP-WP-20260924.md
+?? docs/architecture/CT-PO-P14-RECON-01-INVESTOR-ACCEPTANCE-CONTRACT-20260924.md
+?? docs/architecture/CT-PO-P18-PUBLIC-TRUTH-04-20260926-PUBLISH-VERIFICATION-FINAL.md
+?? docs/architecture/CT-PO-P18-PUBLIC-TRUTH-04-20260926-PUBLISH-VERIFICATION.md
+?? docs/architecture/CarbonTally_Insight_Architecture_Reference_2026-09-22-v2.md
+?? docs/architecture/CarbonTally_Insight_Architecture_Reference_2026-09-22.md
+?? docs/architecture/CarbonTally_Insight_Question_Library_2026-09-22.md
+?? docs/architecture/CarbonTally_PO_INS-01_Post-Closure_Reconciliation_2026-09-22.md
+?? docs/architecture/CarbonTally_PO_Insight_Capability_Decision_Matrix_2026-09-22.md
+?? "docs/architecture/P17-PRODUCT-01 \342\200\224 Complete Scope 2 + Scope 3 Processing & Evidence Product Specification.md"
+?? docs/architecture/booking.com-hotel-booking.txt
+?? docs/cline/CARBONTALLY_CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md
+?? docs/cline/evidence/FINAL-03-P1-B7-20261002/
+?? docs/deepseek/
+?? frontend/src/v3/__tests__/backup-admin-api.test.js
+?? frontend/src/v3/__tests__/direct-upload.test.js
+?? frontend/src/v3/__tests__/settings-tab-email-provider.test.jsx
+?? frontend/src/v3/ops/BackupsTab.jsx
+?? supabase/migrations/20261025000000_ct_step2_documents_bucket_size_alignment.sql
+?? supabase/migrations/20261026000000_ct_backup_01_backup_jobs.sql
+?? supabase/migrations/20261027000000_ct_backup_02_backup_sets_and_verification.sql
+?? tools/b7_pool_soak.py

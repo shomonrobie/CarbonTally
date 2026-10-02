@@ -3,14 +3,15 @@
 Email utilities for CarbonTally
 """
 
-import os
-import resend
 from typing import Optional, Dict, Any
 from datetime import datetime
-import json
 
-# Initialize Resend
-resend.api_key = os.getenv("RESEND_API_KEY")
+# CT-FINAL-02 EMAIL-CONFIG-01: this module no longer talks to a delivery
+# provider directly and no longer mutates a provider SDK's global API key.
+# Every message is delivered through the canonical platform mailer
+# (``services.v3_email.send_platform_email``), which applies the
+# admin-configured provider (Resend or SMTP) and the admin-configured sender,
+# and reports an honest delivery result.
 
 # ==========================================
 # Core Email Functions
@@ -20,22 +21,24 @@ async def send_email(
     to: str,
     subject: str,
     html_content: str,
-    from_email: str = "CarbonTally <notifications@carbontally.co.uk>"
+    from_email: Optional[str] = None
 ) -> bool:
-    """Generic email sending function."""
-    try:
-        response = resend.Emails.send({
-            "from": from_email,
-            "to": [to],
-            "subject": subject,
-            "html": html_content,
-        })
-        print(f"✅ Email sent to {to}: {subject}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Email error: {e}")
-        return False
+    """Send one platform email through the canonical, configured provider.
+
+    ``from_email`` is optional: when omitted the admin-configured platform
+    sender applies (failing closed to the approved CarbonTally default).  A
+    provider that is not configured returns ``False`` — never a fabricated
+    success.
+    """
+    from services.v3_email import send_platform_email
+
+    delivered, _reason = await send_platform_email(
+        to_email=to,
+        subject=subject,
+        html=html_content,
+        from_email=from_email,
+    )
+    return delivered
 
 # ==========================================
 # Template Rendering Functions

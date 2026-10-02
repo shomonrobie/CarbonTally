@@ -504,17 +504,16 @@ export const getClientDashboard = (clientId, startDate, endDate) => {
 export const getClientDocuments = (clientId) =>
   v3Fetch(`/api/v3/consultants/clients/${clientId}/documents`);
 
-// CON-2 — consultant uploads a document INTO an authorized client's org
-// (durable server-side pipeline: storage → item → auto-processing job → OCR).
-export const uploadConsultantDocument = (clientId, file, dataType = 'utility') => {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('data_type', dataType);
-  return v3Fetch(`/api/v3/consultants/clients/${clientId}/documents`, {
-    method: 'POST',
-    body: form,
-  });
-};
+// CON-2 — consultant uploads a document INTO an authorized client's org.
+//
+// Storage Management Step 2A — this now uses the direct-to-storage flow (signed
+// upload URL → private storage → completion + security gate) instead of proxying
+// the bytes through the backend. The signature and the resolved payload shape are
+// unchanged, so the consultant workspace keeps its existing behaviour; the
+// backend still re-checks the active client grant, the consultant's
+// `upload_documents` capability and the security gate before accepting anything.
+export const uploadConsultantDocument = (clientId, file, dataType = 'utility') =>
+  v3UploadConsultantDocumentDirect({ clientId, file, data_type: dataType });
 
 // CON-3 — the client's processing items (with org context) for the consultant
 // processing workspace. Optional `stage` narrows to a workflow stage.
@@ -975,6 +974,222 @@ export const v3UploadDocument = async ({ organization_id, data_type, file }) => 
 
 export const v3ListUploadBatches = (organizationId) =>
   v3Fetch(`/api/v3/batches?organization_id=${encodeURIComponent(organizationId)}`);
+
+// ---------------------------------------------------------------------------
+// Storage Management Step 2A — direct-to-storage upload (signed upload URL)
+// ---------------------------------------------------------------------------
+//
+// The browser never receives a storage credential. It asks CarbonTally for a
+// short-lived, object-scoped upload authorisation, uploads the bytes straight
+// to private Supabase Storage, then confirms completion so the backend can
+// verify the stored object and run the security gate before anything is
+// processed.
+//
+// Errors carry a machine-readable `code` so the UI can explain precisely what
+// happened (never a generic failure):
+//   UPLOAD_TOO_LARGE | UPLOAD_UNSUPPORTED_TYPE | UPLOAD_SECURITY_REJECTED |
+//   UPLOAD_AUTHORIZATION_EXPIRED | UPLOAD_IN_PROGRESS | UPLOAD_NETWORK |
+//   UPLOAD_STORAGE | UPLOAD_FAILED
+const directUploadError = (message, code, status) => {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  return error;
+};
+
+const classifyDirectUploadFailure = (status, detail) => {
+  const text = String(detail || '');
+  if (status === 413 || text.includes('UPLOAD_FILE_TOO_LARGE')) {
+    return 'UPLOAD_TOO_LARGE';
+  }
+  if (status === 422 && text.includes('security gate')) {
+    return 'UPLOAD_SECURITY_REJECTED';
+  }
+  if (status === 422) {
+    return 'UPLOAD_UNSUPPORTED_TYPE';
+  }
+  if (status === 409 || text.includes('expired')) {
+    return 'UPLOAD_AUTHORIZATION_EXPIRED';
+  }
+  if (status === 503) {
+    return 'UPLOAD_STORAGE';
+  }
+  return 'UPLOAD_FAILED';
+};
+
+/** Ask CarbonTally to authorise one direct upload (no bytes are sent here). */
+export const v3StartDirectUpload = ({ organization_id, file, data_type }) =>
+  v3Fetch('/api/v3/documents/upload-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      organization_id,
+      filename: file.name,
+      size_bytes: file.size,
+      content_type: file.type || '',
+      data_type: data_type || 'utility',
+    }),
+  });
+
+/** Confirm a completed direct upload; the backend verifies + security-gates it. */
+export const v3CompleteDirectUpload = (documentId) =>
+  v3Fetch(`/api/v3/documents/${encodeURIComponent(documentId)}/upload-complete`, {
+    method: 'POST',
+  });
+
+/** PUT the bytes straight to private storage (progress-reporting, abortable). */
+export const putBytesToSignedUrl = (authorization, file, { onProgress, signal } = {}) =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(authorization.method || 'PUT', authorization.url, true);
+    Object.entries(authorization.headers || {}).forEach(([key, value]) => {
+      try {
+        xhr.setRequestHeader(key, value);
+      } catch (_e) {
+        /* a header the browser refuses to set is not fatal */
+      }
+    });
+    if (xhr.upload && typeof onProgress === 'function') {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ status: xhr.status });
+        return;
+      }
+      reject(
+        directUploadError(
+          'Storage refused the upload — the authorisation may have expired. Please try again.',
+          xhr.status === 401 || xhr.status === 403
+            ? 'UPLOAD_AUTHORIZATION_EXPIRED'
+            : 'UPLOAD_STORAGE',
+          xhr.status
+        )
+      );
+    };
+    xhr.onerror = () => reject(
+      directUploadError('The file could not be uploaded to storage. Please try again.', 'UPLOAD_STORAGE', 0)
+    );
+    xhr.onabort = () => reject(
+      directUploadError('The upload was cancelled.', 'UPLOAD_NETWORK', 0)
+    );
+    if (signal) {
+      if (signal.aborted) {
+        xhr.abort();
+        return;
+      }
+      signal.addEventListener('abort', () => xhr.abort());
+    }
+    xhr.send(file);
+  });
+
+/**
+ * The complete direct-upload flow for one organisation document:
+ * start → PUT bytes to private storage → confirm completion (security gate).
+ *
+ * Resolves with the completion payload (`status`, `security_gate`, `scan_state`,
+ * `virus_scanned`, …) so the UI reports the REAL backend verdict — including a
+ * rejection — instead of assuming success.
+ */
+export const v3UploadDocumentDirect = async ({
+  organization_id,
+  data_type,
+  file,
+  onProgress,
+  signal,
+}) => {
+  let started;
+  try {
+    started = await v3StartDirectUpload({ organization_id, file, data_type });
+  } catch (e) {
+    throw directUploadError(e.message, classifyDirectUploadFailure(e.status, e.raw), e.status);
+  }
+  const authorization = started?.upload;
+  if (!authorization || !authorization.url) {
+    throw directUploadError(
+      'Storage did not return an upload authorisation. Nothing was uploaded.',
+      'UPLOAD_STORAGE',
+      503
+    );
+  }
+  await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  try {
+    return await v3CompleteDirectUpload(started.document_id);
+  } catch (e) {
+    throw directUploadError(e.message, classifyDirectUploadFailure(e.status, e.raw), e.status);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Consultant direct upload into an AUTHORIZED client's organisation
+// ---------------------------------------------------------------------------
+
+export const v3StartConsultantDirectUpload = (clientId, file, dataType = 'utility') =>
+  v3Fetch(`/api/v3/consultants/clients/${encodeURIComponent(clientId)}/documents/upload-url`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: file.name,
+      size_bytes: file.size,
+      content_type: file.type || '',
+      data_type: dataType,
+    }),
+  });
+
+export const v3CompleteConsultantDirectUpload = (clientId, documentId) =>
+  v3Fetch(
+    `/api/v3/consultants/clients/${encodeURIComponent(clientId)}/documents/` +
+      `${encodeURIComponent(documentId)}/upload-complete`,
+    { method: 'POST' }
+  );
+
+/**
+ * Consultant equivalent of `v3UploadDocumentDirect`. The completion payload is
+ * returned in the same shape the previous multipart helper produced (a
+ * `document` object) so the consultant workspace keeps its existing behaviour.
+ */
+export const v3UploadConsultantDocumentDirect = async ({
+  clientId,
+  data_type,
+  file,
+  onProgress,
+  signal,
+}) => {
+  let started;
+  try {
+    started = await v3StartConsultantDirectUpload(clientId, file, data_type);
+  } catch (e) {
+    throw directUploadError(e.message, classifyDirectUploadFailure(e.status, e.raw), e.status);
+  }
+  const authorization = started?.upload;
+  if (!authorization || !authorization.url) {
+    throw directUploadError(
+      'Storage did not return an upload authorisation. Nothing was uploaded.',
+      'UPLOAD_STORAGE',
+      503
+    );
+  }
+  await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  let completed;
+  try {
+    completed = await v3CompleteConsultantDirectUpload(clientId, started.document_id);
+  } catch (e) {
+    throw directUploadError(e.message, classifyDirectUploadFailure(e.status, e.raw), e.status);
+  }
+  return {
+    ...completed,
+    document: {
+      id: completed.document_id,
+      organization_id: completed.organization_id,
+      name: completed.filename,
+      status: completed.status,
+      size_bytes: completed.size_bytes,
+    },
+  };
+};
+
 
 // ---------------------------------------------------------------------------
 // Manual extraction (customer processing) — /api/v3/manual-extraction/*
@@ -1725,6 +1940,58 @@ export const updateAnalyticsSettings = (payload) =>
   v3Fetch('/api/v3/settings/analytics', { method: 'PUT', body: JSON.stringify(payload) });
 
 // ---------------------------------------------------------------------------
+// Upload policy (CT-FINAL-01) — /api/v3/settings/upload-policy
+// ---------------------------------------------------------------------------
+// One authoritative source for the effective upload limits (per file, files per
+// batch, batch total). Every upload ingress path enforces these server-side —
+// the UI is never the limit boundary.
+
+export const getUploadPolicySettings = () => v3Fetch('/api/v3/settings/upload-policy');
+
+export const updateUploadPolicySettings = (payload) =>
+  v3Fetch('/api/v3/settings/upload-policy', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+// ---------------------------------------------------------------------------
+// Notification sender (CT-FINAL-01) — /api/v3/settings/notification-sender
+// ---------------------------------------------------------------------------
+// The From address of platform transactional email is platform configuration,
+// never the acting user's mailbox (D19 §13).
+
+export const getNotificationSenderSettings = () =>
+  v3Fetch('/api/v3/settings/notification-sender');
+
+export const updateNotificationSenderSettings = (payload) =>
+  v3Fetch('/api/v3/settings/notification-sender', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+// ---------------------------------------------------------------------------
+// Email delivery provider (CT-FINAL-02 EMAIL-CONFIG-01)
+// ---------------------------------------------------------------------------
+// The provider (Resend | SMTP) and its non-secret SMTP transport configuration
+// are admin configuration. Credentials are NEVER submitted or returned: the API
+// reports only the referenced environment variable's name and whether it is
+// present in the server environment.
+
+export const getEmailProviderSettings = () => v3Fetch('/api/v3/settings/email-provider');
+
+export const validateEmailProviderSettings = (payload) =>
+  v3Fetch('/api/v3/settings/email-provider/validate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const updateEmailProviderSettings = (payload) =>
+  v3Fetch('/api/v3/settings/email-provider', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+// ---------------------------------------------------------------------------
 // Org-scoped search (G-P1-1) — /api/v3/search
 // ---------------------------------------------------------------------------
 
@@ -1824,4 +2091,82 @@ export const invokeInsightTool = (organizationId, tool, input = {}) =>
     method: 'POST',
     body: JSON.stringify({ organization_id: organizationId, tool, input }),
   });
+
+// ---------------------------------------------------------------------------
+// BACKUP-01/02 — admin backup management (/api/v3/admin/backups)
+//
+// Every function here is a thin wrapper over the authoritative backend; the
+// backend re-checks admin authority AND the `can_manage_backups` capability on
+// each call, so this client is a convenience, never a security boundary. No
+// response carries a key, a credential or artifact plaintext.
+// ---------------------------------------------------------------------------
+
+export const getBackupStatus = () => v3Fetch('/api/v3/admin/backups/status');
+
+export const listBackups = (limit = 50, offset = 0) =>
+  v3Fetch(`/api/v3/admin/backups?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`);
+
+export const getBackup = (jobId) =>
+  v3Fetch(`/api/v3/admin/backups/${encodeURIComponent(jobId)}`);
+
+export const getBackupPair = (jobId) =>
+  v3Fetch(`/api/v3/admin/backups/${encodeURIComponent(jobId)}/pair`);
+
+// Explicit confirmation is required by the API (§9): a stray request cannot
+// start a dump. `include_objects` defaults server-side to the stored policy.
+export const createBackup = ({ includeObjects = null, reason = '' } = {}) =>
+  v3Fetch('/api/v3/admin/backups', {
+    method: 'POST',
+    body: JSON.stringify({
+      confirm: true,
+      include_objects: includeObjects,
+      reason: reason || null,
+    }),
+  });
+
+export const verifyBackup = (jobId) =>
+  v3Fetch(`/api/v3/admin/backups/${encodeURIComponent(jobId)}/verify`, { method: 'POST' });
+
+export const getBackupPolicy = () => v3Fetch('/api/v3/admin/backups/policy');
+
+export const updateBackupPolicy = (payload) =>
+  v3Fetch('/api/v3/admin/backups/policy', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+// Authorised download of the ENCRYPTED artifact (server-mediated; the artifact
+// is already AES-256-GCM ciphertext, and the key is held in separate custody).
+export const downloadBackupArtifact = async (jobId, fallbackName = 'backup.tar.gz.enc') => {
+  const token = await getV3Token();
+  const response = await fetch(
+    `${API_URL}/api/v3/admin/backups/${encodeURIComponent(jobId)}/download`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    let detail = `Download failed (${response.status})`;
+    try {
+      const body = await response.json();
+      detail = body.detail || body.error?.message || detail;
+    } catch (_e) {
+      /* non-JSON error body */
+    }
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return filename;
+};
 

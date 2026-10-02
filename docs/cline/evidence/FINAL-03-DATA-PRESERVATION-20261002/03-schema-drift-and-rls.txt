@@ -1,0 +1,82 @@
+=== RLS-DISABLED TABLES IN PRODUCTION (47) — the RLS drift
+approval_decisions, approval_requests, audit_trail, beta_access_codes, beta_users, business_hours, consultant_billing, consultant_tasks, conversation_activity_log, conversation_participants, dashboard_metrics, email_logs, emission_factors, login_history, manual_extraction_items, message_activity_log, notification_delivery, notifications, password_reset_tokens, processing_assignments, processing_audit_trail, processing_steps, processing_time_log, qc_checklists, qc_checks, qc_errors, queue_settings, reassignment_history, report_comments, report_versions, review_assignment_history, review_audit_trail, sla_compliance, sla_definitions, staff_activity_log, staff_daily_performance, staff_performance, staff_roles, staff_workload, system_settings, team_performance, typing_status, user_activity_log, user_presence, verification_activity_log, verification_logs, waitlist
+
+=== EXISTENCE IN PRODUCTION of the tables the unapplied set creates
+(none present)
+
+=== do the unapplied migrations touch emission_factors?
+-- 20260928000000_p8_fs_activity_clarifications.sql
+50:    selected_factor_id   uuid REFERENCES public.emission_factors(id) ON DELETE SET NULL,
+-- 20261010000000_p17a_accounting_dimensions_and_factor_governance.sql
+192:-- 3. emission_factors — factor governance (§2.3)
+197:ALTER TABLE public.emission_factors
+203:COMMENT ON COLUMN public.emission_factors.scope3_category_hint IS
+-- 20261013000000_p17h_estimation_and_assumption_records.sql
+36:    factor_id         uuid REFERENCES public.emission_factors(id) ON DELETE RESTRICT,
+(end emission_factors scan)
+
+=== the two UPDATE statements (context)
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.activity_clarifications
+    ADD COLUMN IF NOT EXISTS adjudication_id        uuid,
+    ADD COLUMN IF NOT EXISTS version                integer NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS supersedes_id          uuid,
+    ADD COLUMN IF NOT EXISTS is_current             boolean NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS effective_context_key  text,
+    ADD COLUMN IF NOT EXISTS evidence_signature     text,
+    ADD COLUMN IF NOT EXISTS evidence_context       jsonb NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS re_evaluation_required boolean NOT NULL DEFAULT false;
+
+-- ---------------------------------------------------------------------------
+-- 2. Backfill existing rows as version 1 / current of their own adjudication
+-- ---------------------------------------------------------------------------
+UPDATE public.activity_clarifications
+   SET adjudication_id = COALESCE(adjudication_id, id),
+       effective_context_key = COALESCE(effective_context_key, activity_key)
+ WHERE adjudication_id IS NULL
+    OR effective_context_key IS NULL;
+
+ALTER TABLE public.activity_clarifications
+    ALTER COLUMN adjudication_id SET NOT NULL,
+    ALTER COLUMN effective_context_key SET NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- 3. Self-reference: the version this row supersedes (history linkage)
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+--- backup_01 staff_roles update
+-- ----------------------------------------------------------------------------
+-- §9 — the explicit admin capability (a DATA grant, not a policy change)
+-- ----------------------------------------------------------------------------
+-- `staff_roles.permissions` is the authoritative permission catalog (see
+-- 20260828010000_v3m8_system_admin_role_model.sql for the established pattern).
+-- Granting the capability here means the (separately deployed) admin surface is
+-- reachable by the internal admin roles and by nobody else.  It widens no RLS
+-- policy, creates no role, and touches no other permission.
+-- `auth.ADMIN_ROLE_NAMES` recognises exactly ('admin', 'system_admin'), and
+-- PO Decision 2 makes `system_admin` a superset of the legacy `admin` role, so
+-- both names are granted.
+UPDATE public.staff_roles
+SET permissions = permissions || '{"can_manage_backups": true}'::jsonb,
+    updated_at = NOW()
+WHERE name IN ('admin', 'system_admin')
+  AND (permissions->>'can_manage_backups') IS DISTINCT FROM 'true';
+
+-- ----------------------------------------------------------------------------
+-- Verification — fail loudly rather than leave a half-provisioned queue
+-- ----------------------------------------------------------------------------
+DO $ct_backup_01$
+DECLARE
+    active_jobs integer;
+BEGIN
+    IF to_regclass('public.backup_jobs') IS NULL THEN
+        RAISE EXCEPTION 'BACKUP-01: public.backup_jobs was not created';
+    END IF;
+
+    IF NOT (SELECT relrowsecurity
+            FROM pg_class
+            WHERE oid = 'public.backup_jobs'::regclass) THEN
+=== END ===

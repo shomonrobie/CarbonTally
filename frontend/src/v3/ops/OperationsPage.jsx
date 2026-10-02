@@ -23,6 +23,9 @@ import OpsMessagingTab from './OpsMessagingTab';
 import OpsPeMessagingTab from './OpsPeMessagingTab';
 import OpsAssignmentsTab from './OpsAssignmentsTab';
 import OperationalHealthTab from './OperationalHealthTab';
+// BACKUP-01/02 — the Admin Backups area (create/status/history/verify/download/
+// policy) over /api/v3/admin/backups.
+import BackupsTab from './BackupsTab';
 import './ops.css';
 
 export default function OperationsPage() {
@@ -101,6 +104,12 @@ export default function OperationsPage() {
     );
   }
   if (isGlobalAdmin) TABS.push({ id: 'issues', label: 'Issues', component: IssuesTriageTab });
+  // BACKUP-01/02 — Admin Backups. Navigation only: every backup route requires
+  // admin authority AND the `can_manage_backups` capability server-side (§9), so
+  // this gate decides whether the tab is *shown*, never whether access is granted.
+  if (isGlobalAdmin && p.can_manage_backups) {
+    TABS.push({ id: 'backups', label: 'Backups', component: BackupsTab });
+  }
   if (p.can_manage_billing) {
     // D37-0 — the Commercial surface requires the real can_manage_billing
     // staff permission (server-side enforced; this tab is the entry point).

@@ -5,8 +5,6 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from auth import AuthUser, require_auth, require_org_admin, require_org_member, require_permission, require_role
 from database import get_supabase_client
-import resend
-import os
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -72,30 +70,27 @@ class NotificationResponse(BaseModel):
 # HELPER FUNCTIONS
 # ==========================================
 
-def send_email(to: str, subject: str, html_content: str, from_email: str = "CarbonTally <notifications@carbontally.co.uk>") -> bool:
+async def send_email(to: str, subject: str, html_content: str, from_email: Optional[str] = None) -> bool:
     """
-    Generic email sending function using Resend.
+    Send one platform notification email.
+
+    CT-FINAL-02 EMAIL-CONFIG-01: delivery goes through the canonical platform
+    mailer, which applies the admin-configured delivery provider (Resend or
+    SMTP) and the admin-configured sender.  This module no longer talks to a
+    provider SDK directly, and a provider that is not configured reports a
+    failed delivery instead of a fabricated success.
     """
-    try:
-        resend.api_key = os.getenv("RESEND_API_KEY")
-        
-        if not resend.api_key:
-            print("⚠️ RESEND_API_KEY not set, skipping email")
-            return False
-        
-        response = resend.Emails.send({
-            "from": from_email,
-            "to": [to],
-            "subject": subject,
-            "html": html_content,
-        })
-        
-        print(f"✅ Email sent to {to}: {subject}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Email error: {e}")
-        return False
+    from services.v3_email import send_platform_email
+
+    delivered, reason = await send_platform_email(
+        to_email=to,
+        subject=subject,
+        html=html_content,
+        from_email=from_email,
+    )
+    if not delivered:
+        print(f"Notification email not delivered to {to}: {reason}")
+    return delivered
 
 async def get_customer_email(supabase_client, organization_id: str) -> Optional[str]:
     """Get customer email from organization."""
@@ -305,7 +300,7 @@ async def notify_customer_manual_extraction(
             organization_name=organization_name
         )
         
-        email_sent = send_email(
+        email_sent = await send_email(
             to=customer_email,
             subject=f"✅ Your Document Has Been Processed: {file_name}",
             html_content=email_html
@@ -405,7 +400,7 @@ async def notify_batch_completion(
             organization_name=organization_name
         )
         
-        email_sent = send_email(
+        email_sent = await send_email(
             to=customer_email,
             subject=f"✅ Your Batch Upload Is Ready: {batch_name}",
             html_content=email_html
@@ -502,7 +497,7 @@ async def notify_staff(
         
         for email in staff_emails:
             try:
-                email_sent = send_email(
+                email_sent = await send_email(
                     to=email,
                     subject=notification_data.subject,
                     html_content=html_content

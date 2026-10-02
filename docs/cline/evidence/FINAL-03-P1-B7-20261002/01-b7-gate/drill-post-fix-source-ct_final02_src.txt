@@ -1,0 +1,40 @@
+drill: source=ct_final02_src target=ct_b7_drill_f02src_1790937500 workdir=/tmp/ct_backup_drill_ct_b7_drill_f02src_1790937500
+
+== PHASE 1 — the project's own export capability ==
+  backup_id: 08dd5d434cb9464980f72c3a462d3d1e
+  artifact_object: backups/08dd5d434cb9464980f72c3a462d3d1e/carbontally-logical-backup-v1.tar.gz.enc
+  artifact_bytes: 968174
+  ciphertext_only: True
+  envelope: {'envelope_version': '1', 'algorithm': 'AES-256-GCM', 'key_id': 'key-v1'}
+  members: 154
+  catalog_member: True
+  ddl_member: True
+  data_members: 149
+  checksums_verified: 152
+  manifest_counts: {'functions': 37, 'partitions': 0, 'policies': 271, 'rows': 14270, 'sequences': 0, 'tables': 149, 'triggers': 103, 'views': 0}
+  manifest_inventory_schemas: ['public']
+  manifest_policies: 271
+  manifest_triggers: 103
+  manifest_functions: 37
+  ddl_can_rebuild: {'create_table': True, 'primary_key': True, 'foreign_key': True, 'create_index': True, 'unique': True, 'rls_enabled': False, 'policy': True}
+
+== PHASE 2 — platform recovery (pg_dump -> pg_restore) ==
+  dump_bytes: 3240188
+  restore_returncode: 1
+  restore_errors: ['pg_restore: error: could not execute query: ERROR:  permission denied for table secrets', 'pg_restore: warning: errors ignored on restore: 1']
+  missing_tables: []
+  row_count_mismatches: {}
+  index_delta: 0
+  constraint_delta: 0
+  policy_delta: 0
+  rls_table_delta: 0
+  bucket_delta: 0
+  source: {'tables': ['activity_categories', 'activity_clarifications', 'activity_feed', 'activity_logs', 'ai_content_history', 'approval_decisions', 'approval_requests', 'assets', 'audit_logs', 'audit_trail', 'beta_access_codes', 'beta_users', 'billing_commercial_config', 'billing_credit_ledger', 'billing_idempotency_keys', 'billing_orders', 'billing_payment_records', 'billing_plans', 'billing_storage_usage', 'business_hours', 'calculation_snapshots', 'carbontally_insight_conversations', 'carbontally_insight_interactions', 'carbontally_insight_messages', 'carbontally_insight_tool_calls', 'consultant_billing', 'consultant_clients', 'consultant_custom_domains', 'consultant_firm_members', 'consultant_profiles', 'consultant_senders', 'consultant_tasks', 'contractual_instruments', 'conversation_activity_log', 'conversation_participants', 'conversations', 'customer_communication', 'customer_documents', 'customer_factors', 'customer_review_log', 'customer_subscriptions', 'customer_verifications', 'dashboard_metrics', 'data_discovery_requests', 'disclosure_applicability_assessments', 'disclosure_framework_versions', 'disclosure_frameworks', 'disclosure_intensity_denominator_framework_links', 'disclosure_intensity_denominator_types', 'disclosure_intensity_ratios', 'disclosure_narrative_entries', 'disclosure_purpose_requirements', 'disclosure_report_instance_binding', 'disclosure_report_purpose_versions', 'disclosure_report_purposes', 'disclosure_requirement_mappings', 'disclosure_requirement_versions', 'disclosure_value_evidence', 'disclosure_values', 'document_activity_log', 'document_processing_queue', 'document_type_categories', 'document_types', 'domain_events', 'draft_entries', 'email_logs', 'email_templates', 'emission_factors', 'emissions_logs', 'estimation_records', 'evidence_line_items', 'export_history', 'facilities', 'factor_aliases', 'file_attachments', 'glossary', 'import_batches', 'insight_concurrency_leases', 'insight_rate_limit_buckets', 'instrument_allocations', 'issues', 'login_history', 'manual_extraction_batches', 'manual_extraction_items', 'manual_processing_grants', 'manual_review_queue', 'message_activity_log', 'messages', 'notification_delivery', 'notification_templates', 'notifications', 'organization_files', 'organization_members', 'organization_metadata', 'organizations', 'password_reset_tokens', 'pending_invites', 'processing_assignments', 'processing_audit_trail', 'processing_entities', 'processing_logs', 'processing_queue', 'processing_steps', 'processing_time_log', 'product_categories', 'qc_checklists', 'qc_checks', 'qc_errors', 'queue_settings', 'reassignment_history', 'report_comments', 'report_generation_queue', 'report_schedule_definitions', 'report_schedule_runs', 'report_share_access_events', 'report_shares', 'report_templates', 'report_version_artifacts', 'report_versions', 'review_assignment_history', 'review_audit_trail', 'roles', 'scope3_categories', 'sla_compliance', 'sla_definitions', 'staff_activity_log', 'staff_daily_performance', 'staff_performance', 'staff_profiles', 'staff_roles', 'staff_workload', 'supplier_categories', 'suppliers', 'system_settings', 'team_performance', 'typing_status', 'units', 'upload_batches', 'usage_tracking', 'user_activity_log', 'user_feedback', 'user_invitations', 'user_presence', 'users', 'vehicles', 'verification_activity_log', 'verification_logs', 'waitlist', 'work_item_assignments'], 'indexes': 409, 'constraints': 662, 'rls_tables': 149, 'policies': 271, 'buckets': 1}
+
+== PHASE 3 — the restored database accepts the shipped migrations ==
+  {'migrations': 96, 'applied': 94, 'already_present': 1, 'failed': [('20260801000000_rc2_constraints.sql', 'column "organization_id" of relation "conversations" contains null values')]}
+
+== PHASE 4 — the application runs against the reconstruction ==
+  returncode: 1
+  summary: ['ERROR tests/integration/test_f039_1_adjudication_lifecycle_runtime.py::test_history_contract_is_tenant_and_consultant_bounded', 'ERROR tests/integration/test_f039_1_adjudication_lifecycle_runtime.py::test_effective_read_determinism_is_enforced_by_the_real_schema']
+EXIT=0

@@ -1,0 +1,273 @@
+{
+  "label": "after",
+  "mode": "default (post-fix)",
+  "database": "ct_local_93d5cdd",
+  "backup_tables_present": [],
+  "pool": {
+    "min_size": 1,
+    "max_size": 5
+  },
+  "requested_duration_s": 600.0,
+  "violations": [],
+  "timeline": [
+    {
+      "elapsed_s": 0.1,
+      "statements": 1,
+      "missing_table": 1,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 2.4,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 30.2,
+      "statements": 149,
+      "missing_table": 149,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 60.3,
+      "statements": 295,
+      "missing_table": 295,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 2.0,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 90.4,
+      "statements": 441,
+      "missing_table": 441,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.7,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 120.6,
+      "statements": 587,
+      "missing_table": 587,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 2.8,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 150.6,
+      "statements": 732,
+      "missing_table": 732,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 180.7,
+      "statements": 877,
+      "missing_table": 877,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 210.7,
+      "statements": 1023,
+      "missing_table": 1023,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 240.8,
+      "statements": 1168,
+      "missing_table": 1168,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.7,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 270.8,
+      "statements": 1314,
+      "missing_table": 1314,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 1.2,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 300.9,
+      "statements": 1460,
+      "missing_table": 1460,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.4,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 331.0,
+      "statements": 1605,
+      "missing_table": 1605,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 5.7,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 361.2,
+      "statements": 1751,
+      "missing_table": 1751,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.9,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 391.2,
+      "statements": 1896,
+      "missing_table": 1896,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 0.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 421.3,
+      "statements": 2041,
+      "missing_table": 2041,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 2,
+      "db_connections": 3,
+      "health_ms": 2.6,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 451.4,
+      "statements": 2187,
+      "missing_table": 2187,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 0.7,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 481.5,
+      "statements": 2333,
+      "missing_table": 2333,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 1.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 511.5,
+      "statements": 2478,
+      "missing_table": 2478,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 1.9,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 541.7,
+      "statements": 2624,
+      "missing_table": 2624,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 1.5,
+      "worker_alive": true
+    },
+    {
+      "elapsed_s": 571.7,
+      "statements": 2769,
+      "missing_table": 2769,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 1,
+      "db_connections": 2,
+      "health_ms": 2.0,
+      "worker_alive": true
+    }
+  ],
+  "elapsed_s": 600.2,
+  "statements": 2905,
+  "outcomes": {
+    "ok": 0,
+    "missing-table": 2905,
+    "starved": 0
+  },
+  "by_statement": {
+    "release_stale:missing-table": 323,
+    "mark_expired:missing-table": 323,
+    "list_expired:missing-table": 323,
+    "claim_next:missing-table": 323,
+    "get:missing-table": 323,
+    "get_active:missing-table": 323,
+    "list_recent:missing-table": 323,
+    "list_by_backup_set:missing-table": 322,
+    "mark_failed:missing-table": 322
+  },
+  "pool_size_max": 2,
+  "pool_idle_min": 1,
+  "db_connections_max": 4,
+  "health_probes": 2905,
+  "health_max_ms": 29.5,
+  "health_timeouts": 0,
+  "lease_shortfalls_observed": 2,
+  "lease_shortfalls_cleared": 2,
+  "worker_attempts": 120.0,
+  "worker_missing_table_reports": 1,
+  "worker_per_tick_failures": 0,
+  "clauses": {
+    "no_leased_connection_kept": true,
+    "health_pool_path_responsive": true,
+    "worker_loop_alive_for_the_whole_soak": true,
+    "missing_schema_reported_once": true,
+    "missing_schema_not_a_per_tick_error": true
+  },
+  "verdict": "clean",
+  "expected": "clean",
+  "verdict_as_expected": true
+}

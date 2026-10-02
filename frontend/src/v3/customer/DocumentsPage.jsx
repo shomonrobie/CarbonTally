@@ -3,10 +3,55 @@
 // and browse persisted documents (/api/v3/documents) + upload batches
 // (/api/v3/batches). All org-scoped, real backend data.
 import React, { useCallback, useEffect, useState } from 'react';
-import { getDocumentEmissions, resolveV3Organization, v3ListDocuments, v3ListUploadBatches, v3UploadDocument } from '../api';
+import { getDocumentEmissions, resolveV3Organization, v3ListDocuments, v3ListUploadBatches, v3UploadDocumentDirect } from '../api';
 import { formatBytes } from '../utils';
 import { ErrorState } from '../components/StateViews';
 import DataTable from '../components/ui/DataTable';
+
+// Storage Management Step 2A — user-facing copy for the direct-upload outcomes.
+// Every string explains the BACKEND's answer; nothing here invents a success.
+const describeUploadError = (e) => {
+  switch (e?.code) {
+    case 'UPLOAD_TOO_LARGE':
+      return (
+        e.message ||
+        'That file is larger than the platform per-file limit. The original is never compressed server-side — please upload a smaller file or split the document.'
+      );
+    case 'UPLOAD_UNSUPPORTED_TYPE':
+      return (
+        e.message ||
+        'That file type is not supported. Supported: PDF, JPG/PNG/GIF/WEBP/BMP, CSV, XLSX/XLS.'
+      );
+    case 'UPLOAD_SECURITY_REJECTED':
+      return (
+        e.message ||
+        'The document was rejected by the security check, so it did not enter processing.'
+      );
+    case 'UPLOAD_AUTHORIZATION_EXPIRED':
+      return (
+        'The upload authorisation expired before the file finished uploading (or it was refused). Nothing was added — please start the upload again.'
+      );
+    case 'UPLOAD_STORAGE':
+      return 'Storage did not accept the file. Nothing was added to your documents.';
+    case 'UPLOAD_NETWORK':
+      return 'The upload was interrupted. Nothing was added to your documents.';
+    default:
+      return e?.message || 'Upload failed';
+  }
+};
+
+const describeSecurityGate = (result) => {
+  const gate = result?.security_gate || {};
+  if (result?.virus_scanned) return `virus scan reported by ${gate.scanner}`;
+  const state = result?.scan_state || gate.scan_state;
+  if (state === 'clean') {
+    return 'structural validation passed — no external virus scanner is configured for this deployment';
+  }
+  return state || 'recorded by the backend';
+};
+
+/** The supported document types (mirrors the server-side allow-list). */
+const ACCEPTED_DOCUMENT_TYPES = '.pdf,.jpg,.jpeg,.png,.gif,.webp,.bmp,.csv,.xlsx,.xls';
 
 export default function DocumentsPage() {
   const [org, setOrg] = useState(null);
@@ -16,6 +61,7 @@ export default function DocumentsPage() {
   const [dataType, setDataType] = useState('utility');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [retryCount, setRetryCount] = useState(0);
@@ -66,17 +112,30 @@ export default function DocumentsPage() {
   const onUpload = async () => {
     if (!file || !org) return;
     setUploading(true);
+    setProgress(0);
     setError('');
     setNotice('');
     try {
-      await v3UploadDocument({ organization_id: org.id, data_type: dataType, file });
+      // Storage Management Step 2A — the browser uploads the bytes straight to
+      // private storage with a short-lived, object-scoped authorisation and then
+      // asks CarbonTally to verify + security-gate the result. Only the backend
+      // decides whether the document is accepted.
+      const result = await v3UploadDocumentDirect({
+        organization_id: org.id,
+        data_type: dataType,
+        file,
+        onProgress: setProgress,
+      });
       setFile(null);
-      setNotice('Document uploaded.');
+      setNotice(
+        `“${file.name}” uploaded — status ${result.status}. Security gate: ${describeSecurityGate(result)}.`
+      );
       await load(org.id);
     } catch (e) {
-      setError(e.message || 'Upload failed');
+      setError(describeUploadError(e));
     } finally {
       setUploading(false);
+      setProgress(0);
     }
   };
 
@@ -180,7 +239,16 @@ export default function DocumentsPage() {
         <div className="v3-form-grid">
           <div className="v3-form-group">
             <label>File</label>
-            <input type="file" onChange={(e) => setFile(e.target.files[0] || null)} />
+            <input
+              type="file"
+              accept={ACCEPTED_DOCUMENT_TYPES}
+              onChange={(e) => setFile(e.target.files[0] || null)}
+            />
+            <p className="v3-muted" style={{ marginTop: 4 }}>
+              PDF, JPG/PNG/GIF/WEBP/BMP, CSV or Excel. The file is uploaded
+              directly to private storage and validated by CarbonTally's security
+              gate before it is processed.
+            </p>
           </div>
           <div className="v3-form-group">
             <label>Data type</label>
@@ -194,9 +262,15 @@ export default function DocumentsPage() {
         </div>
         <div className="v3-actions">
           <button className="v3-btn v3-btn-primary" onClick={onUpload} disabled={uploading || !file}>
-            {uploading ? 'Uploading…' : 'Upload'}
+            {uploading ? `Uploading… ${progress}%` : 'Upload'}
           </button>
         </div>
+        {uploading && (
+          <div className="v3-muted" role="status" aria-live="polite" style={{ marginTop: 8 }}>
+            {progress}% — do not close this window while the file is uploading.
+            An unfinished upload is refused and can be started again.
+          </div>
+        )}
       </div>
 
       <div className="v3-card">

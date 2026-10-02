@@ -22,7 +22,10 @@ from api.dependencies import (
 from auth import AuthUser, require_auth, require_org_member, require_org_admin
 from domain.audit import AuditEntry
 from services.billing import resolve_registration_mode
-from services.v3_email import render_simple_html, send_transactional_email
+from services.v3_email import (
+    render_simple_html,
+    send_transactional_email,
+)
 
 router = APIRouter(prefix="/api/v3/organizations", tags=["V3 — Organizations"])
 
@@ -242,6 +245,10 @@ async def create_organization(
                     "organization."
                 ),
             ),
+            # CT-FINAL-01/02 notifications: the From address AND the delivery
+            # provider are admin-configurable platform configuration, never the
+            # acting user's mailbox.
+            settings_repo=repos.settings,
         )
     except Exception:  # noqa: BLE001 — email delivery must never break onboarding
         pass

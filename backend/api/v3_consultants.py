@@ -29,6 +29,7 @@ from api.consultant_branding import (
     default_branding_dict,
     resolve_consultant_branding,
 )
+from api.upload_gate import authorize_consultant_upload
 from api.dependencies import (
     RepositoryBundle,
     get_audit_logger,
@@ -1287,9 +1288,16 @@ async def upload_client_document(
     enters the SAME durable server-side pipeline as a customer upload
     (organization_files → extraction item → automatic-processing job → OCR).
     """
-    # Active-grant + firm-ownership (404 cross-firm, 403 when not active).
-    org_id = await _authorized_client_org(client_id, current_user, context, repos)
-    ensure_consultant_permission(context, "upload_documents")
+    # Active-grant + firm-ownership (404 cross-firm, 403 when not active) and the
+    # firm member's can_upload_documents capability are enforced by the single
+    # authoritative upload gate (Storage Management Step 1B).
+    actor = await authorize_consultant_upload(
+        current_user=current_user,
+        consultant_context=context,
+        client_id=client_id,
+        repos=repos,
+    )
+    org_id = actor.organization_id
 
     from api.v3_documents import create_document_and_enqueue
 
@@ -1310,6 +1318,7 @@ async def upload_client_document(
         uploaded_by=current_user.user_id,
         repos=repos,
         configured_limit_mb=policy["max_file_size_mb"],
+        provenance=actor.provenance(),
     )
     return {
         "document": {

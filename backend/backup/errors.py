@@ -82,3 +82,72 @@ class BackupStorageError(BackupError):
 
     code = "BACKUP_STORAGE_ERROR"
     http_status = 502
+
+
+class BackupJobError(BackupError):
+    """The backup **job model** failed (enqueue, claim or state transition).
+
+    Distinct from the artifact errors above: nothing has been exported, stored
+    or verified when this is raised — the durable queue row is the only thing in
+    play.
+    """
+
+    code = "BACKUP_JOB_ERROR"
+    http_status = 500
+
+
+class BackupJobConflictError(BackupJobError):
+    """The queue is not in a state that permits the requested transition.
+
+    Covers the ratified single-flight guard (a ``queued``/``running`` job already
+    exists — §11) and the attempt budget being exhausted. ``http_status`` is 409
+    so the caller can surface the *existing* job id instead of an opaque failure.
+    """
+
+    code = "BACKUP_JOB_CONFLICT"
+    http_status = 409
+
+
+class BackupJobNotFoundError(BackupJobError):
+    """No backup job exists for the supplied identifier."""
+
+    code = "BACKUP_JOB_NOT_FOUND"
+    http_status = 404
+
+
+class BackupRestoreError(BackupError):
+    """Restore from a CarbonTally artifact failed (D4).
+
+    Restore is the dangerous half of the capability, so every failure is a typed,
+    fail-closed error: the target is never left in a state that is *claimed* to be
+    a completed restore. A partially applied restore is reported as a failure with
+    the exact statement that failed, and the caller (an operator tool, never a
+    normal admin action) decides what to do with the disposable target.
+    """
+
+    code = "BACKUP_RESTORE_ERROR"
+    http_status = 500
+
+
+class BackupRestoreTargetError(BackupRestoreError):
+    """The restore target may not be used for a restore (fail-closed guard).
+
+    Raised *before* any statement runs when the target is not a disposable/
+    recovery database, or when it already holds user objects — restoring into a
+    populated database would silently overwrite live data, which is exactly the
+    hazard §13 of the ratified architecture requires us to refuse.
+    """
+
+    code = "BACKUP_RESTORE_TARGET_REFUSED"
+    http_status = 400
+
+
+class BackupObjectError(BackupError):
+    """Storage-**object** backup or restore failed (§14).
+
+    Objects are a separate, sequenced job paired with a database job by a common
+    *backup-set* id; a failure here must never affect the database artifact.
+    """
+
+    code = "BACKUP_OBJECT_ERROR"
+    http_status = 502

@@ -220,17 +220,16 @@ class OperationalAlertingService:
         # importable in unit tests and when email is unconfigured). It reports
         # ``(delivered, reason)``: an unconfigured provider is an HONEST failure and
         # is raised so the caller records it instead of faking a success.
-        from services.v3_email import resolve_configured_sender, send_transactional_email
+        from services.v3_email import send_transactional_email
 
         delivered, reason = await send_transactional_email(
             to_email=email,
             subject=subject,
             html=body,
-            # CT-FINAL-01 notifications: the dispatch sender is platform
-            # configuration; the alert actor is recorded on the audit entry.
-            from_email=await resolve_configured_sender(
-                getattr(self._repos, "settings", None)
-            ),
+            # CT-FINAL-01/02 notifications: the dispatch sender AND the delivery
+            # provider are platform configuration; the alert actor is recorded
+            # on the audit entry.
+            settings_repo=getattr(self._repos, "settings", None),
         )
         if not delivered:
             raise RuntimeError(f"email not delivered: {reason}")

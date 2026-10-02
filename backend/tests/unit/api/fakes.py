@@ -214,6 +214,36 @@ def admin_user() -> AuthUser:
     )
 
 
+def backup_admin_user() -> AuthUser:
+    """An internal admin that explicitly holds the backup capability (BACKUP-01 §9).
+
+    Both gates must hold for the backup surface: **admin authority** (the same
+    test ``require_admin`` applies) *and* ``permissions["can_manage_backups"]``.
+    ``admin_user()`` deliberately omits the capability, so it is the negative
+    control; this is the positive one.
+    """
+    return AuthUser(
+        user_id="admin-1",
+        email="admin@carbontally.test",
+        role="admin",
+        role_name="admin",
+        is_staff=True,
+        permissions={"can_manage_organizations": True, "can_manage_backups": True},
+    )
+
+
+def backup_admin_without_capability() -> AuthUser:
+    """Admin authority **without** the capability — the capability is the gate."""
+    return AuthUser(
+        user_id="admin-2",
+        email="admin2@carbontally.test",
+        role="admin",
+        role_name="admin",
+        is_staff=True,
+        permissions={"can_manage_organizations": True, "can_manage_backups": False},
+    )
+
+
 def member_user(org_id: str, user_id: str, email: str) -> AuthUser:
     return AuthUser(
         user_id=user_id,
@@ -2832,16 +2862,23 @@ class MemoryFiles:
         return None
 
     async def update_metadata(self, id: str, metadata: dict):
-        from dataclasses import replace
+        from dataclasses import is_dataclass, replace
 
         f = self._by_id.get(str(id))
         if f is not None:
-            try:
-                f = replace(f, metadata=metadata)
-            except Exception:  # pragma: no cover - plain-object fallback
-                return None
+            if is_dataclass(f) and not isinstance(f, type):
+                try:
+                    f = replace(f, metadata=metadata)
+                except Exception:  # pragma: no cover - plain-object fallback
+                    return None
+            else:
+                try:
+                    f["metadata"] = metadata
+                except TypeError:  # pragma: no cover - immutable mapping
+                    return None
             self._by_id[str(id)] = f
         return f
+
 
     async def create(
         self,
@@ -2854,6 +2891,7 @@ class MemoryFiles:
         bucket: str,
         uploaded_by: str,
         metadata: Optional[dict] = None,
+        status: Optional[str] = None,
     ):
         row = {
             "id": f"file-{len(self._by_id) + 1}",
@@ -2864,11 +2902,62 @@ class MemoryFiles:
             "file_type": file_type,
             "mime_type": mime_type,
             "bucket": bucket,
+            "status": status or "uploaded",
+            "uploaded_by": uploaded_by,
+            "uploaded_at": datetime.now(timezone.utc),
             "metadata": metadata or {},
         }
         self._by_id[str(row["id"])] = row
         self._rows.setdefault(org_id, []).append(row)
         return row
+
+    async def update_status(self, id: str, status: str, size_bytes=None):
+        """Mirror ``OrganizationFilesRepository.update_status`` (Step 1 lifecycle)."""
+        from dataclasses import is_dataclass, replace
+
+        f = self._by_id.get(str(id))
+        if f is None:
+            return None
+        if is_dataclass(f) and not isinstance(f, type):
+            f = replace(f, status=status)
+        else:
+            try:
+                f["status"] = status
+                if size_bytes is not None:
+                    f["size_bytes"] = int(size_bytes)
+            except TypeError:  # pragma: no cover - immutable mapping
+                return None
+        self._by_id[str(id)] = f
+        return f
+
+    async def list_abandoned_pending_uploads(self, cutoff, *, status="pending_upload", limit=500):
+        """Mirror ``OrganizationFilesRepository.list_abandoned_pending_uploads``.
+
+        Step 2F: rows still in ``pending_upload`` whose authorisation predates
+        ``cutoff``.  ``uploaded_at`` may be naive in fixtures; a naive value is
+        treated as UTC (the column is ``timestamptz`` in production).
+        """
+        found = []
+        for row in self._by_id.values():
+            current = (
+                row.get("status") if isinstance(row, dict) else getattr(row, "status", None)
+            )
+            if current != status:
+                continue
+            started = (
+                row.get("uploaded_at")
+                if isinstance(row, dict)
+                else getattr(row, "uploaded_at", None)
+            )
+            if not isinstance(started, datetime):
+                continue
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            if started < cutoff:
+                found.append(row)
+        return found[: int(limit)]
+
+
 
     async def save(self, entity):
         return entity
@@ -3106,6 +3195,20 @@ class _EvidenceLinesStub(_StubRepo):
         )
 
 
+#: The persisted email-provider configuration fields (CT-FINAL-02
+#: EMAIL-CONFIG-01).  The in-memory stub mirrors ``data.settings`` and
+#: ``services.email_provider``: only the provider selection and the referenced
+#: credential *variable name* are stored, never a credential value.
+_EMAIL_PROVIDER_FIELDS = (
+    "provider",
+    "smtp_host",
+    "smtp_port",
+    "smtp_username",
+    "smtp_use_tls",
+    "credential_env",
+)
+
+
 class _SettingsStub:
     """In-memory settings stub for the platform retention surface (N3).
 
@@ -3139,6 +3242,19 @@ class _SettingsStub:
             "updated_at": None,
             "updated_by": None,
         }
+        # CT-FINAL-02 email delivery provider (EMAIL-CONFIG-01) — unconfigured by
+        # default, so the documented default provider (Resend + RESEND_API_KEY)
+        # applies until an administrator selects one.  Only the provider
+        # selection and the referenced credential *variable name* are ever
+        # stored: the fake holds no credential, exactly like the real row.
+        self._email_provider = {
+            field: None for field in _EMAIL_PROVIDER_FIELDS
+        } | {"updated_at": None, "updated_by": None}
+        # BACKUP-02 / §16 — the backup operational policy. Unlike the real
+        # repository (which returns ``None`` for every field until a row exists),
+        # the stub starts *empty* and the API applies the documented defaults, so
+        # a test can prove "nothing was decided yet" is reported honestly.
+        self._backup_policy: dict = {"updated_at": None, "updated_by": None}
 
     async def get_retention(self) -> dict:
         return dict(self._values)
@@ -3186,6 +3302,32 @@ class _SettingsStub:
         self._upload_policy = merged
         return dict(self._upload_policy)
 
+    # -----------------------------------------------------------------
+    # CT-FINAL-02 — email delivery provider (EMAIL-CONFIG-01).
+    # Stateful, like the real ``system_settings`` row, and with the real
+    # repository's merge semantics: a field the caller omits keeps its stored
+    # value while an explicitly supplied value (including ``None`` or an empty
+    # string, which normalises to ``None``) replaces/clears it.
+    # -----------------------------------------------------------------
+
+    async def get_email_provider(self) -> dict:
+        return dict(self._email_provider)
+
+    async def update_email_provider(self, **kwargs) -> dict:
+        from services.email_provider import normalise_provider_config
+
+        merged = dict(self._email_provider)
+        for field in _EMAIL_PROVIDER_FIELDS:
+            if field in kwargs:
+                merged[field] = kwargs[field]
+        snapshot = normalise_provider_config(merged)
+        self._email_provider = {
+            **snapshot,
+            "updated_at": "2026-09-29T00:00:00+00:00",
+            "updated_by": kwargs.get("updated_by"),
+        }
+        return dict(self._email_provider)
+
     async def update_retention(self, **kwargs) -> dict:
         for key in ("audit_log_retention_days", "data_retention_days",
                     "document_retention_days", "backup_retention_days"):
@@ -3193,6 +3335,40 @@ class _SettingsStub:
                 self._values[key] = kwargs.get(key)
         self._values["updated_by"] = kwargs.get("updated_by")
         return dict(self._values)
+
+    # -----------------------------------------------------------------
+    # BACKUP-02 / §16 — the backup operational policy (configuration only).
+    # Stateful with the real repository's merge semantics: a field the caller
+    # omits keeps its stored value, and `retention_days` is NEVER stored here
+    # (it lives in the retention setting, one source of truth).
+    # -----------------------------------------------------------------
+
+    async def get_backup_policy(self) -> dict:
+        from backup.policy import POLICY_FIELDS
+
+        return {
+            **{field: self._backup_policy.get(field) for field in POLICY_FIELDS},
+            "updated_at": self._backup_policy.get("updated_at"),
+            "updated_by": self._backup_policy.get("updated_by"),
+        }
+
+    async def update_backup_policy(self, *, fields: dict, updated_by=None) -> dict:
+        from backup.policy import POLICY_FIELDS
+
+        allowed = {
+            key: value
+            for key, value in dict(fields).items()
+            if key in POLICY_FIELDS and key != "retention_days"
+        }
+        for field in POLICY_FIELDS:
+            if field == "retention_days":
+                continue
+            self._backup_policy.setdefault(field, None)
+            if field in allowed:
+                self._backup_policy[field] = allowed[field]
+        self._backup_policy["updated_at"] = "2026-10-01T00:00:00+00:00"
+        self._backup_policy["updated_by"] = updated_by
+        return await self.get_backup_policy()
 
     async def get(self, id: str):
         return await self.get_retention()

@@ -1,0 +1,84 @@
+{
+  "label": "control-recheck",
+  "mode": "legacy-idiom (pre-fix control)",
+  "database": "ct_local_93d5cdd",
+  "backup_tables_present": [],
+  "pool": {
+    "min_size": 1,
+    "max_size": 5
+  },
+  "requested_duration_s": 60.0,
+  "violations": [
+    "release_stale: 1 leased connection(s) never returned within 2.0s of quiescence (size=1, idle=0)",
+    "mark_expired: 2 leased connection(s) never returned within 2.0s of quiescence (size=2, idle=0)",
+    "list_expired: 3 leased connection(s) never returned within 2.0s of quiescence (size=3, idle=0)"
+  ],
+  "timeline": [
+    {
+      "elapsed_s": 2.1,
+      "statements": 1,
+      "missing_table": 1,
+      "starved": 0,
+      "pool_size": 1,
+      "pool_idle": 0,
+      "db_connections": 3,
+      "health_ms": 55.0,
+      "worker_alive": null
+    },
+    {
+      "elapsed_s": 4.3,
+      "statements": 2,
+      "missing_table": 2,
+      "starved": 0,
+      "pool_size": 2,
+      "pool_idle": 0,
+      "db_connections": 4,
+      "health_ms": 57.4,
+      "worker_alive": null
+    },
+    {
+      "elapsed_s": 6.6,
+      "statements": 3,
+      "missing_table": 3,
+      "starved": 0,
+      "pool_size": 3,
+      "pool_idle": 0,
+      "db_connections": 5,
+      "health_ms": 84.9,
+      "worker_alive": null
+    }
+  ],
+  "elapsed_s": 6.6,
+  "statements": 3,
+  "outcomes": {
+    "ok": 0,
+    "missing-table": 3,
+    "starved": 0
+  },
+  "by_statement": {
+    "release_stale:missing-table": 1,
+    "mark_expired:missing-table": 1,
+    "list_expired:missing-table": 1
+  },
+  "pool_size_max": 3,
+  "pool_idle_min": 0,
+  "db_connections_max": 5,
+  "health_probes": 3,
+  "health_max_ms": 84.9,
+  "health_timeouts": 0,
+  "lease_shortfalls_observed": 3,
+  "lease_shortfalls_cleared": 0,
+  "worker_attempts": null,
+  "worker_missing_table_reports": null,
+  "worker_per_tick_failures": null,
+  "clauses": {
+    "no_leased_connection_kept": false,
+    "health_pool_path_responsive": true,
+    "worker_loop_alive_for_the_whole_soak": true,
+    "missing_schema_reported_once": null,
+    "missing_schema_not_a_per_tick_error": null
+  },
+  "verdict": "violations detected",
+  "expected": "violations detected",
+  "verdict_as_expected": true
+}

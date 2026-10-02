@@ -1,0 +1,17 @@
+=== storage.objects inventory
+documents=58
+storage.buckets: documents:public=false:limit=2097152
+
+=== Which migration ENABLES RLS for the 47 prod-disabled tables, and is it applied in prod?
+staff_roles              NOT FOUND in migration set
+system_settings          NOT FOUND in migration set
+notifications            NOT FOUND in migration set
+email_logs               NOT FOUND in migration set
+login_history            NOT FOUND in migration set
+password_reset_tokens    NOT FOUND in migration set
+emission_factors         NOT FOUND in migration set
+audit_trail              NOT FOUND in migration set
+
+=== same check for the tables the unapplied set enables (for contrast)
+20260928000000_p8_fs_activity_clarifications.sql 20261001000000_p8_i1_insight_persistence.sql 20261003000000_p8_i4_insight_interactions.sql 20261005000000_p8_insight_discovery_aggregation_rate_limit.sql 20261011000000_p17c_contractual_instruments_and_allocations.sql 20261012000000_p17d_scope3_category_taxonomy.sql 20261013000000_p17h_estimation_and_assumption_records.sql 20261022000000_ct02_report_sharing.sql 20261023000000_ct02_scheduled_reporting.sql 20261026000000_ct_backup_01_backup_jobs.sql 
+=== END ===

@@ -19,6 +19,13 @@ import {
   removeVehicle,
   getRetentionSettings,
   updateRetentionSettings,
+  getUploadPolicySettings,
+  updateUploadPolicySettings,
+  getNotificationSenderSettings,
+  updateNotificationSenderSettings,
+  getEmailProviderSettings,
+  validateEmailProviderSettings,
+  updateEmailProviderSettings,
 } from '../api';
 
 describe('Phase 2 API client surface', () => {
@@ -36,6 +43,13 @@ describe('Phase 2 API client surface', () => {
     ['removeVehicle', removeVehicle],
     ['getRetentionSettings', getRetentionSettings],
     ['updateRetentionSettings', updateRetentionSettings],
+    ['getUploadPolicySettings', getUploadPolicySettings],
+    ['updateUploadPolicySettings', updateUploadPolicySettings],
+    ['getNotificationSenderSettings', getNotificationSenderSettings],
+    ['updateNotificationSenderSettings', updateNotificationSenderSettings],
+    ['getEmailProviderSettings', getEmailProviderSettings],
+    ['validateEmailProviderSettings', validateEmailProviderSettings],
+    ['updateEmailProviderSettings', updateEmailProviderSettings],
   ];
 
   test.each(endpointFunctions)('%s is exported and callable', (_name, fn) => {

@@ -1,0 +1,10 @@
+psql:/tmp/p0_counts.sql:30: NOTICE:  org set: '0c0aa358-eaed-492c-9a8b-f7fabe6531ac','8ae45e55-afa9-42f1-b4f9-f0225f9b98cd'
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED conversations (col=organization_id) rows=1
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED document_processing_queue (col=organization_id) rows=11
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED evidence_line_items (col=organization_id) rows=74
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED manual_extraction_batches (col=organization_id) rows=2
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED messages (col=organization_id) rows=1
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED organization_files (col=organization_id) rows=11
+psql:/tmp/p0_counts.sql:30: NOTICE:  LINKED organization_members (col=organization_id) rows=2
+psql:/tmp/p0_counts.sql:30: NOTICE:  org-linked non-zero tables: 7
+=== END COUNTS ===

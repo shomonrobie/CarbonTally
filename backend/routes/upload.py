@@ -20,10 +20,19 @@ from auth import (
 
 from database import get_supabase_client
 from api.dependencies import RepositoryBundle, get_repositories
+from api.upload_gate import (
+    ACTION_DERIVED_ARTEFACT,
+    ACTION_SECURITY_SCAN_COMPLETED,
+    authorize_organization_upload,
+    record_document_event,
+)
 from api.v3_documents import (
     LegacyManualReviewError,
     legacy_queue_for_manual_review,
 )
+from services.document_security import rejection_detail, scan_document
+from services.storage import storage_signed_url
+from services.storage_keys import build_document_storage_key, build_derived_artifact_key
 from utils.emissions import (
     process_fuel_data,
     process_utility_data,
@@ -402,6 +411,38 @@ async def repair_pdf(
         except UploadLimitExceeded as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         supabase = get_supabase_client()
+
+        # Storage Management Step 2B — this utility ingests a document and
+        # produces a NEW object, so it authorizes through the same upload gate as
+        # every other ingress and runs the same security gate on the input before
+        # any byte is stored.  The caller's own organisation is the tenant.
+        repair_organization = str(getattr(current_user, "organization_id", "") or "")
+        actor = await authorize_organization_upload(
+            current_user=current_user,
+            organization_id=repair_organization,
+            repos=repos,
+        )
+        verdict = scan_document(
+            content=file_bytes,
+            filename=file.filename,
+            declared_mime=file.content_type or "application/pdf",
+        )
+        if not verdict.accepted:
+            await record_document_event(
+                repos=repos,
+                action=ACTION_SECURITY_SCAN_COMPLETED,
+                actor=actor,
+                organization_id=actor.organization_id,
+                entity_id="",
+                changed_fields={
+                    "security_gate": verdict.as_metadata(),
+                    "ingress": "legacy_repair_pdf",
+                    "filename": file.filename,
+                },
+                reason=f"security gate verdict: {verdict.verdict}",
+                outcome="failure",
+            )
+            raise HTTPException(status_code=422, detail=rejection_detail(verdict))
         
         # Step 1: Try to read with pypdf
         is_readable = False
@@ -481,25 +522,66 @@ async def repair_pdf(
         else:
             repaired_bytes = packet.getvalue()
         
-        # Step 5: Upload to Supabase
-        repaired_filename = f"repaired_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
-        file_path = f"repaired_pdfs/{repaired_filename}"
-        
-        storage_response = supabase.storage.from_('documents').upload(
+        # Step 5: store the DERIVED artefact (Step 2P)
+        #
+        # The repaired file is a distinct, derived object — it is never the
+        # customer's original evidence and it never overwrites it.  It is written
+        # under the caller's organisation namespace with a dedicated `derived`
+        # segment, so the ratified D32 RLS predicate (`uploads/<org>/...`) still
+        # governs it and no consultant/second tenancy is introduced.  The legacy
+        # org-less `repaired_pdfs/...` prefix is not used for new objects.
+        repaired_filename = f"repaired_{file.filename}"
+        file_path = build_derived_artifact_key(repair_organization, "repaired.pdf")
+
+        supabase.storage.from_('documents').upload(
             file_path,
             repaired_bytes,
             file_options={"content-type": "application/pdf"}
         )
-        
-        file_url = supabase.storage.from_('documents').get_public_url(file_path)
-        
+
+        # Step 2C — a derived artefact is also served through a short-lived
+        # signed URL; no public URL is constructed for a document object.
+        file_url = storage_signed_url(file_path) or file_path
+
+        # Step 2P — record the transformation, its provenance, and the fact that
+        # this is a derived artefact (the original bytes were only ever read).
+        await record_document_event(
+            repos=repos,
+            action=ACTION_DERIVED_ARTEFACT,
+            actor=actor,
+            organization_id=actor.organization_id,
+            entity_id="",
+            changed_fields={
+                "ingress": "legacy_repair_pdf",
+                "derived": True,
+                "transformation": "pdf_ocr_repair",
+                "source_filename": file.filename,
+                "source_size_bytes": len(file_bytes),
+                "derived_storage_path": file_path,
+                "original_replaced": False,
+                "security_gate": verdict.as_metadata(),
+            },
+            reason=(
+                "a derived (repaired/OCR) artefact was created; the original "
+                "document was not modified or replaced"
+            ),
+        )
+
         return {
             "status": "success",
             "message": "PDF repaired successfully",
             "repaired_url": file_url,
             "filename": repaired_filename,
             "pages": len(images),
-            "ocr_text_samples": [text[:200] for text in ocr_texts[:3]]
+            "ocr_text_samples": [text[:200] for text in ocr_texts[:3]],
+            # Step 2P — explicit provenance for the derived artefact: the caller
+            # (and any later record) can see this is a derived copy, not the
+            # customer's original evidence.
+            "derived": True,
+            "transformation": "pdf_ocr_repair",
+            "original_replaced": False,
+            "storage_path": file_path,
+            "signed_url_is_short_lived": True,
         }
         
     except Exception as e:
@@ -685,6 +767,46 @@ async def upload_document(
         except UploadLimitExceeded as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         
+        # Storage Management Step 2B — the legacy ingress now authorizes through
+        # the SAME authoritative gate as the V3 ingresses (organisation
+        # membership / internal-staff operational scope / Processing-Entity
+        # denial / the CL-42 viewer read-only rule), so a legacy caller can no
+        # longer reach storage under a weaker rule than a V3 caller.
+        actor = await authorize_organization_upload(
+            current_user=current_user,
+            organization_id=organization_id,
+            repos=repos,
+        )
+
+        # Storage Management Step 2B/2D — the security gate runs BEFORE anything
+        # is written.  This is the property Step 1 recorded as missing: a legacy
+        # route may not store unvalidated content that later feeds normal
+        # processing.
+        verdict = scan_document(
+            content=file_bytes,
+            filename=file.filename,
+            declared_mime=file.content_type or "",
+        )
+        await record_document_event(
+            repos=repos,
+            action=ACTION_SECURITY_SCAN_COMPLETED,
+            actor=actor,
+            organization_id=actor.organization_id,
+            entity_id="",
+            changed_fields={
+                "security_gate": verdict.as_metadata(),
+                "ingress": "legacy_api_upload",
+                "filename": file.filename,
+            },
+            reason=f"security gate verdict: {verdict.verdict}",
+            outcome="success" if verdict.accepted else "failure",
+        )
+        if not verdict.accepted:
+            raise HTTPException(
+                status_code=422,
+                detail=rejection_detail(verdict),
+            )
+
         # Determine file type
         file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
         mime_type = file.content_type or 'application/octet-stream'
@@ -698,10 +820,14 @@ async def upload_document(
         else:
             file_type = 'OTHER'
         
-        # Generate storage path
-        now = datetime.now()
-        file_path = f"uploads/{organization_id}/{now.strftime('%Y/%m/%d')}/{now.strftime('%Y%m%d_%H%M%S')}_{file.filename}"
-        
+        # Storage Management Step 2B/2Q — the object key is now generated by
+        # CarbonTally in the client organisation's canonical namespace
+        # (``uploads/{org}/{YYYY}/{MM}/{DD}/{uuid}{.ext}``) instead of being
+        # derived from the user-supplied file name.  This removes the legacy
+        # ``uploads/{org}/{date}/{timestamp}_{name}`` convention (whose only
+        # protection was UI-level) and keeps every writer on one key builder.
+        file_path = build_document_storage_key(organization_id, file.filename)
+
         # Upload to Supabase Storage
         try:
             bucket = 'documents'
@@ -714,8 +840,11 @@ async def upload_document(
                     "cache-control": "3600"
                 }
             )
-            # Get public URL
-            file_url = supabase.storage.from_(bucket).get_public_url(file_path)
+            # Storage Management Step 2C — no public URL is constructed for a
+            # customer document.  The bucket is private (D32); the response
+            # carries a SHORT-LIVED signed URL and the durable identity is the
+            # canonical path, which is what gets persisted.
+            file_url = storage_signed_url(file_path) or file_path
         except Exception as storage_error:
             print(f"❌ Storage upload error: {storage_error}")
             raise HTTPException(
@@ -742,7 +871,13 @@ async def upload_document(
                 'data_type': data_type,
                 'special_instructions': special_instructions,
                 'uploaded_by_email': current_user.email,
-                'upload_timestamp': datetime.now().isoformat()
+                'upload_timestamp': datetime.now().isoformat(),
+                # Storage Management Step 2B — the security verdict and the
+                # uploader provenance travel with the document row.
+                'security_gate': verdict.as_metadata(),
+                'original_filename': file.filename,
+                'upload_actor_type': actor.actor_type,
+                'ingress': 'legacy_api_upload'
             }
         }
         
@@ -835,7 +970,10 @@ async def upload_document(
                             'file_name': file.filename,
                             'file_type': file_type,
                             'data_type': data_type,
-                            'file_url': file_url,
+                            # Step 2C — the canonical PATH is persisted, never a
+                            # public URL and never a signed URL (a signed URL is
+                            # a short-lived credential, not durable identity).
+                            'file_url': file_path,
                             'status': 'pending',
                             'auto_extraction_result': extraction_result,
                             'customer_notes': special_instructions,

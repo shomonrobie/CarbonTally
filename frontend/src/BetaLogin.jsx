@@ -6,6 +6,24 @@ import { supabase } from './supabaseClient';
 import toast from 'react-hot-toast';
 import './css/BetaLogin.css';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+// CT-FINAL-03 (R-3 / package 09 §4.2) — the beta gate is decided by the backend
+// from the caller's own verified session (`GET /api/beta/me`). The browser no
+// longer reads `beta_users` directly: that table is fail-closed now (RLS
+// enabled, ZERO policies), and the direct read allowed any authenticated JWT to
+// enumerate the beta access list.
+const fetchBetaStatus = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || localStorage.getItem('access_token');
+  const response = await fetch(`${API_URL}/api/beta/me`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) return null;
+  const body = await response.json();
+  return body && body.is_beta_user ? body : null;
+};
+
 function BetaLogin() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,12 +86,8 @@ function BetaLogin() {
         return;
       }
 
-      // ✅ Check if user is a beta user
-      const { data: betaCheck, error: betaError } = await supabase
-        .from('beta_users')
-        .select('email')
-        .eq('email', email.toLowerCase().trim())
-        .maybeSingle();
+      // CT-FINAL-03 (package 09 §4.2) — server-side, session-keyed beta check.
+      const betaCheck = await fetchBetaStatus();
 
       if (!betaCheck) {
         await supabase.auth.signOut();
@@ -131,12 +145,8 @@ function BetaLogin() {
         return;
       }
 
-      // ✅ Check if user is a beta user
-      const { data: betaCheck, error: betaError } = await supabase
-        .from('beta_users')
-        .select('email')
-        .eq('email', emailTrimmed.toLowerCase())
-        .maybeSingle();
+      // CT-FINAL-03 (package 09 §4.2) — server-side, session-keyed beta check.
+      const betaCheck = await fetchBetaStatus();
 
       if (!betaCheck) {
         await supabase.auth.signOut();

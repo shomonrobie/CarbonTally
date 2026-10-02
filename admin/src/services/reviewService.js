@@ -1,5 +1,13 @@
 // D:\carbon_ledger\admin\src\services\reviewService.js
+//
+// CT-FINAL-03 (package 09 §4.6) — `review_audit_trail` is fail-closed (RLS
+// enabled, ZERO policies). The four client-side audit INSERTs are removed:
+// an authenticated browser must not be able to manufacture audit records
+// (`review_audit_trail` is the integrity record for review assignment), and no
+// server-side authorisation existed for them. Audit reads now go through the
+// existing admin-gated route `/api/admin/reviews/history/audit`.
 import { supabase } from '../supabaseClient';
+import { adminFetch } from './adminApi';
 
 // Fetch all staff members (users with staff role)
 export const fetchStaffMembers = async () => {
@@ -36,16 +44,8 @@ export const assignReviewToStaff = async (reviewId, staffUserId, assignedBy) => 
 
   if (error) throw error;
 
-  // Create audit trail entry
-  await supabase
-    .from('review_audit_trail')
-    .insert({
-      review_id: reviewId,
-      action: 'assigned',
-      performed_by: assignedBy,
-      assigned_to: staffUserId,
-      new_value: { assigned_to: staffUserId }
-    });
+  // CT-FINAL-03: the audit INSERT that used to run here was removed — the audit
+  // trail is now server-authored only (see the file header).
 
   return data;
 };
@@ -65,13 +65,7 @@ export const startReview = async (reviewId, staffUserId) => {
 
   if (error) throw error;
 
-  await supabase
-    .from('review_audit_trail')
-    .insert({
-      review_id: reviewId,
-      action: 'started',
-      performed_by: staffUserId
-    });
+  // CT-FINAL-03: the 'started' audit INSERT that used to run here was removed.
 
   return data;
 };
@@ -118,33 +112,22 @@ export const submitReview = async (reviewId, staffUserId, dataEntry, notes) => {
     })
     .eq('user_id', staffUserId);
 
-  // Create audit trail
-  await supabase
-    .from('review_audit_trail')
-    .insert({
-      review_id: reviewId,
-      action: 'completed',
-      performed_by: staffUserId,
-      new_value: { data_entry: dataEntry }
-    });
+  // CT-FINAL-03: the 'completed' audit INSERT that used to run here was removed.
 
   return data;
 };
 
 // Get review audit trail
 export const getReviewAuditTrail = async (reviewId) => {
-  const { data, error } = await supabase
-    .from('review_audit_trail')
-    .select(`
-      *,
-      performer:performed_by (email),
-      assignee:assigned_to (email)
-    `)
-    .eq('review_id', reviewId)
-    .order('created_at', { ascending: false });
+  // CT-FINAL-03 (package 09 §4.6) — read through the admin-gated backend route.
+  const params = new URLSearchParams();
+  if (reviewId) params.set('review_id', reviewId);
+  const qs = params.toString();
 
-  if (error) throw error;
-  return data || [];
+  const result = await adminFetch(
+    `/api/admin/reviews/history/audit${qs ? `?${qs}` : ''}`
+  );
+  return (result && result.data) || [];
 };
 
 // Get staff member by user ID
@@ -180,16 +163,7 @@ export const reassignReview = async (reviewId, newStaffUserId, assignedBy) => {
 
   if (error) throw error;
 
-  await supabase
-    .from('review_audit_trail')
-    .insert({
-      review_id: reviewId,
-      action: 'reassigned',
-      performed_by: assignedBy,
-      assigned_to: newStaffUserId,
-      old_value: { assigned_to: oldReview?.assigned_to },
-      new_value: { assigned_to: newStaffUserId }
-    });
+  // CT-FINAL-03: the 'reassigned' audit INSERT that used to run here was removed.
 
   return data;
 };

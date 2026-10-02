@@ -1,0 +1,13 @@
+### backend/.env RESOLVED IDENTITY (values redacted: hosts only)
+  DATABASE_URL -> db_host=127.0.0.1:54426 (len 63)
+  REACT_APP_API_URL -> http://localhost:8060 (len 21)
+  ENVIRONMENT -> present len=5
+  SUPABASE_URL -> http://127.0.0.1:19999 (len 22)
+  REACT_APP_API_URL -> http://localhost:8000 (len 21)
+  SUPABASE_LIVE_URL -> https://pvwiojoyaqywtydzcpbg.supabase.co (len 40)
+  SUPABASE_LIVE_POSTGRES_DATABASE_URL -> db_host=aws-1-eu-west-2.pooler.supabase.com:5432 (len 107)
+
+### frontend/.env.local RESOLVED IDENTITY
+  REACT_APP_API_URL -> http://localhost:8070 (len 21)
+  REACT_APP_SUPABASE_URL -> http://127.0.0.1:54430 (len 22)
+  REACT_APP_SUPABASE_ANON_KEY -> present len=153

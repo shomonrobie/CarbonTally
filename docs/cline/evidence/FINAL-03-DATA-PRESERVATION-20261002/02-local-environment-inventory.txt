@@ -1,0 +1,30 @@
+### ALL local containers (name | image)
+carbontally_demo_lab_gateway | nginx:alpine
+carbontally_demo_lab_postgrest | public.ecr.aws/supabase/postgrest:v14.5
+carbontally_demo_lab_storage | public.ecr.aws/supabase/storage-api:v1.69.0
+ct_drill2_pg | public.ecr.aws/supabase/postgres:17.6.1.147
+ct_drill_pg | public.ecr.aws/supabase/postgres:17.6.1.147
+ct_final02_auth | public.ecr.aws/supabase/gotrue:v2.195.0
+ct_final02_gateway | nginx:alpine
+ct_final02_rest | public.ecr.aws/supabase/postgrest:v14.5
+ct_final02_storage | public.ecr.aws/supabase/storage-api:v1.69.0
+hindsight-carbontally | ghcr.io/vectorize-io/hindsight:latest
+n8n-n8n-1 | n8nio/n8n:latest
+supabase_auth_carbon_ledger | public.ecr.aws/supabase/gotrue:v2.195.0
+supabase_db_carbon_ledger | public.ecr.aws/supabase/postgres:17.6.1.147
+supabase_inbucket_carbon_ledger | public.ecr.aws/supabase/mailpit:v1.30.2
+supabase_kong_carbon_ledger | public.ecr.aws/supabase/kong:2.8.1
+supabase_pg_meta_carbon_ledger | public.ecr.aws/supabase/postgres-meta:v0.98.0
+supabase_realtime_carbon_ledger | public.ecr.aws/supabase/realtime:v2.129.0
+supabase_rest_carbon_ledger | public.ecr.aws/supabase/postgrest:v14.5
+supabase_storage_carbon_ledger | public.ecr.aws/supabase/storage-api:v1.69.0
+supabase_studio_carbon_ledger | public.ecr.aws/supabase/studio:2026.08.17-sha-0c1da8f
+
+### containers whose image looks like a Postgres server
+ct_drill2_pg [public.ecr.aws/supabase/postgres:17.6.1.147] tables=0 emission_factors=? organizations=?
+ct_drill_pg [public.ecr.aws/supabase/postgres:17.6.1.147] tables=0 emission_factors=? organizations=?
+ct_final02_rest [public.ecr.aws/supabase/postgrest:v14.5] tables=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH emission_factors=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH organizations=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH
+carbontally_demo_lab_postgrest [public.ecr.aws/supabase/postgrest:v14.5] tables=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH emission_factors=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH organizations=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH
+supabase_pg_meta_carbon_ledger [public.ecr.aws/supabase/postgres-meta:v0.98.0] tables=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH emission_factors=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH organizations=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH
+supabase_rest_carbon_ledger [public.ecr.aws/supabase/postgrest:v14.5] tables=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH emission_factors=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH organizations=OCI runtime exec failed: exec failed: unable to start container process: exec: "psql": executable file not found in $PATH
+supabase_db_carbon_ledger [public.ecr.aws/supabase/postgres:17.6.1.147] tables=116 emission_factors=7049 organizations=975

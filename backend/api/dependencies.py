@@ -28,7 +28,9 @@ from fastapi import Depends, HTTPException, Request, status
 # --- existing authentication/RBAC (backend/auth.py) — reused, not duplicated --
 from auth import (
     AuthUser,
+    ORGANIZATION_SUSPENDED_DETAIL,
     get_current_user,
+    is_organization_active,
     require_admin,
     require_entity_member,  # noqa: F401 — V3 entity-scoped guard
     require_org_admin,  # noqa: F401 — V3 customer-factor approval (D-cf-3)
@@ -237,6 +239,28 @@ async def ensure_processing_org_access(
         )
 
 
+def _ensure_audit_org_active(current_user: AuthUser, organization_id: str) -> None:
+    """D-7 (F2) — an INACTIVE organisation grants NO audit/evidence access.
+
+    The caller's OWN organisation is answered from the principal
+    (``organization_is_active``, resolved once in ``get_current_user``), so the
+    own-tenant audit path stays query-free. Any OTHER organisation — a
+    consultant's client — is read only here, i.e. after authority over it has
+    been proven, and only an explicit ``is_active = false`` denies; an unusable
+    store denies too (:func:`auth.is_organization_active` is fail closed).
+    """
+    bound_org = getattr(current_user, "organization_id", None)
+    if bound_org and bound_org == organization_id:
+        inactive = getattr(current_user, "organization_is_active", True) is False
+    else:
+        inactive = not is_organization_active(organization_id)
+    if inactive:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ORGANIZATION_SUSPENDED_DETAIL,
+        )
+
+
 #: Organisation roles permitted to read organisation audit/evidence records.
 _ORG_AUDIT_ROLES = frozenset({"owner", "admin", "org_owner", "org_admin"})
 
@@ -252,6 +276,9 @@ async def ensure_org_audit_access(
     * Processing Entity staff: denied (never customer-organisation scope).
     * Organisation member: must be **owner/admin** of their own organisation.
     * Consultant: must hold an ACTIVE client grant for the organisation.
+
+    D-7: the organisation must ALSO be ACTIVE — a suspended tenant grants no
+    audit/evidence access to anyone (internal staff oversight is unaffected).
 
     The URL/workspace is never the boundary; scope + role/capability are
     resolved server-side on every request.
@@ -270,6 +297,11 @@ async def ensure_org_audit_access(
         return
     if current_user.is_org_member:
         ensure_org_access(current_user, organization_id)
+        # D-7 (F2) — no audit/evidence read inside an INACTIVE organisation,
+        # whatever the caller's role: the lifecycle denial precedes the role
+        # admission test, so owner, admin, member and viewer of a suspended
+        # tenant all receive the same answer (and no audit data).
+        _ensure_audit_org_active(current_user, organization_id)
         role = (current_user.role_name or current_user.role or "").lower()
         if role not in _ORG_AUDIT_ROLES:
             raise HTTPException(
@@ -282,6 +314,10 @@ async def ensure_org_audit_access(
     )
 
     await ensure_consultant_org_access(current_user, repos, organization_id)
+    # D-7 (F2) — the client grant is proven above, so the CLIENT organisation's
+    # lifecycle may be read now (authority precedes the foreign lifecycle read);
+    # an INACTIVE client tenant grants its consultant nothing either.
+    _ensure_audit_org_active(current_user, organization_id)
 
 
 # ===========================================================================

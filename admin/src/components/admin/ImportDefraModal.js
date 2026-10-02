@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { FaTimes, FaUpload, FaFileAlt } from 'react-icons/fa';
-import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import { bulkUpsertFactors } from '../../services/factorAdminService';
 
 const ImportDefraModal = ({ isOpen, onClose, onSuccess }) => {
   const [file, setFile] = useState(null);
@@ -57,46 +57,26 @@ const ImportDefraModal = ({ isOpen, onClose, onSuccess }) => {
         return;
       }
 
-      // Insert records
-      let successCount = 0;
-      let errorCount = 0;
+      // PD-3: the import is performed by the admin API against the CANONICAL
+      // factor store. Duplicate detection, the multiplier refresh, provenance
+      // and the audit entry are all decided server-side (a browser-side upsert
+      // could not enforce any of them).
+      const result = await bulkUpsertFactors(
+        records.map((record) => ({
+          activity_type: record.activity_type.trim(),
+          reporting_year: record.reporting_year,
+          co2e_multiplier: record.co2e_multiplier,
+        })),
+        { updateExisting: true }
+      );
 
-      for (const record of records) {
-        try {
-          // Check if exists
-          const { data: existing } = await supabase
-            .from('defra_conversion_factors')
-            .select('id')
-            .eq('activity_type', record.activity_type.trim())
-            .eq('reporting_year', record.reporting_year)
-            .maybeSingle();
-
-          if (existing) {
-            // Update
-            await supabase
-              .from('defra_conversion_factors')
-              .update({
-                co2e_multiplier: record.co2e_multiplier,
-              })
-              .eq('id', existing.id);
-          } else {
-            // Insert
-            await supabase
-              .from('defra_conversion_factors')
-              .insert({
-                activity_type: record.activity_type.trim(),
-                reporting_year: record.reporting_year,
-                co2e_multiplier: record.co2e_multiplier,
-              });
-          }
-          successCount++;
-        } catch (error) {
-          errorCount++;
-          console.error('Error importing record:', record, error);
-        }
-      }
-
-      toast.success(`✅ Imported ${successCount} records${errorCount > 0 ? ` (${errorCount} errors)` : ''}`);
+      const errorCount = (result.errors || []).length;
+      const imported = (result.created ?? 0) + (result.updated ?? 0);
+      toast.success(
+        `✅ Imported ${imported} records` +
+          ` (${result.created ?? 0} new, ${result.updated ?? 0} refreshed)` +
+          `${errorCount > 0 ? `, ${errorCount} errors` : ''}`
+      );
       onSuccess();
       onClose();
     } catch (error) {

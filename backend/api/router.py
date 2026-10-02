@@ -37,6 +37,8 @@ from api.issues import router as issues_router
 from api.v3_documents import router as v3_documents_router
 from api.v3_exports import router as v3_exports_router
 from api.v3_notifications import router as v3_notifications_router
+# Storage Management Step 1C — direct-to-storage (signed) document upload.
+from api.v3_document_uploads import router as v3_document_uploads_router
 from api.v3_organizations import router as v3_organizations_router
 from api.v3_commercial import router as v3_commercial_router
 from api.v3_billing import router as v3_billing_router
@@ -72,6 +74,10 @@ from api.v3_evidence import router as v3_evidence_router
 from api.v3_insight import router as v3_insight_router
 from api.v3_insight_tools import router as v3_insight_tools_router
 from api.v3_insight_interactions import router as v3_insight_interactions_router
+# BACKUP-01/02 — the admin backup management surface (§9/§12/§14/§16). Mounted
+# under the existing admin prefix and gated by admin authority **plus** the
+# ``can_manage_backups`` capability.
+from api.v3_backups import router as v3_backups_router
 from api.middleware import RequestContextMiddleware
 from core.exceptions import CarbonTallyError
 
@@ -208,6 +214,7 @@ router.include_router(v3_organizations_router)
 router.include_router(v3_commercial_router)
 router.include_router(v3_billing_router)
 router.include_router(v3_documents_router)
+router.include_router(v3_document_uploads_router)
 router.include_router(v3_review_router)
 router.include_router(v3_verifications_router)
 router.include_router(v3_notifications_router)
@@ -253,6 +260,10 @@ router.include_router(v3_insight_router)
 router.include_router(v3_insight_tools_router)
 # Phase 8 I4 — Layer-2 interaction orchestration API (PO I4 authorization).
 router.include_router(v3_insight_interactions_router)
+# BACKUP-01/02 — admin backup management (status/history, request, verify,
+# download, policy). Every route re-checks admin authority + the
+# `can_manage_backups` capability, so mounting here adds no new access path.
+router.include_router(v3_backups_router)
 
 
 # ---------------------------------------------------------------------------

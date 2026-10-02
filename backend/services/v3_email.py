@@ -6,15 +6,17 @@ verified externally (Resend domain verification + DNS). This module:
 * sends ONLY from the CarbonTally default sender OR a VERIFIED consultant
   sender row (``consultant_senders.status = 'verified'``) — arbitrary From
   addresses are never allowed (D19 §13);
-* is a no-op stub when ``RESEND_API_KEY`` is not configured (local/dev), so
-  callers can still exercise the full workflow and the delivery result is
-  returned honestly (``delivered=False`` + reason);
-* keeps the Resend dependency lazy and testable (the caller may inject a
-  fake sender).
+* sends through the **admin-configured delivery provider**
+  (``services.email_provider``, CT-FINAL-02 EMAIL-CONFIG-01: Resend or SMTP),
+  never through a hard-coded provider;
+* is a no-op stub when the selected provider's credential is not configured
+  (local/dev), so callers can still exercise the full workflow and the
+  delivery result is returned honestly (``delivered=False`` + reason);
+* keeps the delivery dependency lazy and testable (the caller may inject a
+  fake sender or client).
 """
 from __future__ import annotations
 
-import os
 from typing import Any, Callable, Optional
 
 from services.email_sender import DEFAULT_SENDER as DEFAULT_FROM_EMAIL
@@ -45,21 +47,33 @@ async def resolve_configured_sender(settings_repo: Any) -> str:
     return resolve_email_sender(config.get("email_sender"))
 
 
+async def resolve_configured_provider(settings_repo: Any) -> dict:
+    """Return the admin-configured email delivery provider configuration.
+
+    CT-FINAL-02 EMAIL-CONFIG-01: the provider is platform configuration
+    (``system_settings`` key ``email_provider``).  A missing/unreadable row
+    yields ``{}`` so the documented default provider (Resend) applies — the
+    provider can never be "none", and no credential is ever read from here.
+    """
+    from services.email_provider import resolve_provider_config
+
+    return await resolve_provider_config(settings_repo)
+
+
 def _resend_client() -> Optional[_ResendClient]:
     """Return the Resend client when configured, else ``None``.
 
     Import is lazy so the module (and every caller) imports without a network
-    or API-key dependency.
+    or API-key dependency.  Provider/credential resolution itself lives in
+    ``services.email_provider`` — this helper is retained only for callers that
+    inject nothing and rely on the default provider.
     """
-    api_key = os.environ.get("RESEND_API_KEY")
-    if not api_key:
-        return None
-    try:
-        import resend
-    except Exception:  # noqa: BLE001
-        return None
-    resend.api_key = api_key
-    return resend
+    from services.email_provider import (
+        DEFAULT_CREDENTIAL_ENV,
+        _resend_client as provider_resend_client,
+    )
+
+    return provider_resend_client(DEFAULT_CREDENTIAL_ENV["resend"])
 
 
 async def send_transactional_email(
@@ -67,48 +81,79 @@ async def send_transactional_email(
     to_email: str,
     subject: str,
     html: str,
-    from_email: str = DEFAULT_FROM_EMAIL,
+    from_email: Optional[str] = None,
     sender: Optional[Callable[..., bool]] = None,
     client: Optional[_ResendClient] = None,
+    settings_repo: Any = None,
+    provider_config: Optional[dict] = None,
 ) -> tuple[bool, str]:
-    """Send one transactional email.
+    """Send one transactional email through the **configured** provider.
 
     Args:
         to_email: recipient address.
         subject: email subject.
         html: HTML body.
-        from_email: the From address. Only the CarbonTally default OR a
-            pre-verified consultant sender is ever passed by callers — this
-            module never fabricates a From address.
+        from_email: the From address.  When omitted it is resolved from the
+            admin-configured platform sender (``services.email_sender``), which
+            itself fails closed to the approved CarbonTally default.
         sender: optional injected sender ``callable`` for tests (returns bool).
         client: optional injected Resend client for tests.
+        settings_repo: the platform settings repository.  When supplied, the
+            sender **and** the delivery provider are resolved from the
+            persisted admin configuration — this is the canonical runtime path
+            (Admin Dashboard → stored configuration → provider adapter).
+        provider_config: an already-resolved provider configuration (avoids a
+            second settings read when the caller has one).
 
     Returns:
-        ``(delivered, reason)``. ``delivered=False`` when Resend is not
-        configured (the caller should surface an honest "email could not be
-        delivered" state rather than a fake success).
+        ``(delivered, reason)``. ``delivered=False`` when the selected provider
+        is not configured (the caller should surface an honest "email could not
+        be delivered" state rather than a fake success).  Delivery never falls
+        back to another provider.
     """
-    if sender is not None:
-        try:
-            ok = sender(to_email=to_email, subject=subject, html=html, from_email=from_email)
-            return bool(ok), "sent" if ok else "send failed"
-        except Exception as exc:  # noqa: BLE001
-            return False, f"send failed: {exc}"
-    client = client or _resend_client()
-    if client is None:
-        return False, "email delivery not configured (RESEND_API_KEY unset)"
-    try:
-        client.Emails.send(
-            {
-                "from": from_email,
-                "to": [to_email],
-                "subject": subject,
-                "html": html,
-            }
-        )
-        return True, "sent"
-    except Exception as exc:  # noqa: BLE001
-        return False, f"send failed: {exc}"
+    from services.email_provider import deliver_email
+
+    if from_email is None:
+        from_email = await resolve_configured_sender(settings_repo)
+    if provider_config is None and settings_repo is not None:
+        provider_config = await resolve_configured_provider(settings_repo)
+
+    return await deliver_email(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        from_email=from_email,
+        config=provider_config,
+        client=client,
+        sender=sender,
+    )
+
+
+async def send_platform_email(
+    *,
+    to_email: str,
+    subject: str,
+    html: str,
+    from_email: Optional[str] = None,
+) -> tuple[bool, str]:
+    """Send a platform email from a caller with **no** request-scoped settings.
+
+    This is the canonical entry point for legacy/background notification code
+    (``utils.email``, ``routes.notifications``): it resolves the platform
+    settings itself — so the admin-configured sender **and** delivery provider
+    both apply — and then delivers through exactly the same path as every other
+    notification.  A configuration that cannot be read degrades to the
+    documented defaults, never to "no provider".
+    """
+    from services.email_provider import platform_settings_repo
+
+    return await send_transactional_email(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        from_email=from_email,
+        settings_repo=await platform_settings_repo(),
+    )
 
 
 def render_simple_html(*, brand_name: str, heading: str, body_html: str, footer: Optional[str] = None) -> str:

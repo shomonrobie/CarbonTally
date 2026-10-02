@@ -29,9 +29,10 @@ import os
 import shutil
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 from core.logging import get_logger
 
@@ -107,12 +108,32 @@ class BackupService:
         Args:
             settings: resolved configuration (the encryption key is required).
             object_store: provider override (tests inject local/in-memory stores).
-            connection_factory: async callable returning an ``asyncpg`` connection.
-                Defaults to acquiring one from ``infra.supabase.get_service_pool()``.
+            connection_factory: async callable returning either an ``asyncpg``
+                connection (the injector then owns its lifecycle verbatim) or the
+                shared pool's **acquire context**, which is entered for the export
+                so the connection is returned on every exit path (B7). Defaults to
+                the service-role pool's acquire context.
         """
         self._settings = settings
         self._store = object_store or build_object_store(settings)
         self._connection_factory = connection_factory or _pool_connection_factory
+
+    @asynccontextmanager
+    async def _connection(self) -> AsyncIterator[Any]:
+        """Lease one connection for the statements inside the ``async with`` block.
+
+        An acquire context (the default factory) is entered with ``async with`` so
+        asyncpg returns the connection to the pool on the way out — including when
+        the body raises and when the task is cancelled. A bare connection (an
+        injected factory) is yielded unchanged so its lifecycle stays with the
+        injector, exactly as before the B7 fix.
+        """
+        acquired = await self._connection_factory()
+        if hasattr(acquired, "__aenter__") and hasattr(acquired, "__aexit__"):
+            async with acquired as connection:
+                yield connection
+            return
+        yield acquired
 
     async def create_backup(
         self,
@@ -156,13 +177,16 @@ class BackupService:
         temp_dir = tempfile.mkdtemp(prefix="ct_backup_", dir=self._settings.temp_root)
         os.chmod(temp_dir, 0o700)
         try:
-            connection = await self._connection_factory()
-            result = await export_schemas(
-                connection,
-                list(self._settings.schemas),
-                output_dir=temp_dir,
-                allow_denied_schemas=self._settings.allow_denied_schemas,
-            )
+            async with self._connection() as connection:
+                result = await export_schemas(
+                    connection,
+                    list(self._settings.schemas),
+                    output_dir=temp_dir,
+                    allow_denied_schemas=self._settings.allow_denied_schemas,
+                )
+            # Outside the block on purpose: the connection is back in the pool while
+            # the archive is built, encrypted and published (B7 — the export is the
+            # only step that needs a database connection).
             _write_checksums(temp_dir, _content_checksums(temp_dir))
 
             manifest = _build_manifest(
@@ -388,7 +412,14 @@ def _write_checksums(temp_dir: str, checksums: dict[str, str]) -> None:
 
 
 async def _pool_connection_factory() -> Any:
-    """Acquire a connection from the existing service-role pool.
+    """Return the shared service-role pool's **acquire context** (B7 fix).
+
+    ``pool.acquire()`` is asyncpg's documented "use this connection, then give it
+    back" context: the caller enters it with ``async with`` and the connection
+    returns to the pool on every exit path. Returning an already-acquired
+    connection (``await pool.acquire()``) leaves no release path at all — the leak
+    that starved the *five-slot* application pool after a handful of backup worker
+    ticks (FINAL-02 §15.2/§18).
 
     Reuses ``infra.supabase.get_service_pool()``; nothing new is introduced and no
     credential is read from anywhere but the environment.
@@ -396,7 +427,7 @@ async def _pool_connection_factory() -> Any:
     from infra.supabase import get_service_pool
 
     pool = await get_service_pool()
-    return await pool.acquire()
+    return pool.acquire()
 
 
 __all__ = ["BackupRecord", "BackupService", "OBJECT_KEY_PREFIX"]

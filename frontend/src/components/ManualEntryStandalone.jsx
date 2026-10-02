@@ -218,25 +218,46 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
       const token = await getToken();
       const consumption = parseFloat(formData.consumption);
       
-      let defraFactorId = null;
-      let multiplier = 2.68;
-      
+      // PD-5 (ratified): manual entry resolves its factor from the CANONICAL
+      // factor catalogue. The mounted route is
+      // `/api/reports/defra-factors/{reporting_year}`; the previously called
+      // `/api/defra-factors/{year}` does not exist and 404ed on every entry.
+      let factorId = null;
+      let multiplier = null;
+      let factorSource = null;
+
       try {
-        const defraResponse = await fetch(
-          `${API_URL}/api/defra-factors/${formData.reporting_year}`,
+        const factorResponse = await fetch(
+          `${API_URL}/api/reports/defra-factors/${formData.reporting_year}`,
           { headers: { 'Authorization': `Bearer ${token}` } }
         );
-        
-        if (defraResponse.ok) {
-          const defraData = await defraResponse.json();
-          const factor = defraData.factors?.find(f => f.activity_type === formData.fuel_utility_type);
+
+        if (factorResponse.ok) {
+          const factorData = await factorResponse.json();
+          const factor = factorData.factors?.find(f => f.activity_type === formData.fuel_utility_type);
           if (factor) {
-            defraFactorId = factor.id;
-            multiplier = parseFloat(factor.co2e_multiplier) || 2.68;
+            factorId = factor.id;
+            multiplier = parseFloat(factor.co2e_multiplier);
+            factorSource = factor.factor_source || 'emission_factors';
           }
+        } else {
+          console.warn('Factor lookup failed with status', factorResponse.status);
         }
       } catch (error) {
-        console.warn('Could not fetch DEFRA factor, using default:', error);
+        console.warn('Could not resolve a factor from the canonical catalogue:', error);
+      }
+
+      // PD-5: a factor that resolves from NO governed source is never replaced by
+      // a hard-coded multiplier. The entry is not written; it must go through the
+      // controlled manual-review path instead of recording a number with no
+      // provenance (AGENTS.md §17).
+      if (!factorId || !(multiplier > 0)) {
+        toast.error(
+          'No governed emission factor matches this activity and reporting year, so the entry was not saved. ' +
+          'Add or approve a factor for this activity, or request manual review.'
+        );
+        setSubmitting(false);
+        return;
       }
 
       // Get asset ID
@@ -273,7 +294,7 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
       const payload = {
         organization_id: organization.id,
         asset_id: assetId,
-        defra_factor_id: defraFactorId,
+        defra_factor_id: factorId,
         start_date: formData.billing_start,
         end_date: formData.billing_start,
         raw_quantity: consumption,
@@ -288,6 +309,7 @@ const ManualEntryStandalone = ({ organization, onComplete, onCancel }) => {
           unit: formData.unit,
           reporting_year: formData.reporting_year,
           multiplier_used: multiplier,
+          factor_resolution: factorSource,
           entry_date: new Date().toISOString()
         }
       };

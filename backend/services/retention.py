@@ -145,4 +145,22 @@ async def enforce_retention(repos: Any, *, dry_run: bool = True) -> dict[str, An
             )
         report["domains"]["operational_telemetry_retention_days"] = telemetry
 
+    # --- Storage Management Step 2F — abandoned upload authorisations ---------
+    # Bounded by an EXISTING lifecycle constant (the completion window after
+    # which Step 1 already refuses completion), not by a new retention duration,
+    # so this runs regardless of configuration.  It is non-destructive: the row
+    # is retained and only its state moves to the terminal `upload_expired`; no
+    # object is read, signed or deleted.
+    try:
+        from services.document_cleanup import reap_abandoned_uploads
+
+        report["domains"]["abandoned_uploads"] = await reap_abandoned_uploads(
+            repos, dry_run=dry_run
+        )
+    except Exception as exc:  # noqa: BLE001 - retention must never crash the job
+        report["domains"]["abandoned_uploads"] = {
+            "supported": False,
+            "reason": f"abandoned-upload reaping failed: {str(exc)[:200]}",
+        }
+
     return report

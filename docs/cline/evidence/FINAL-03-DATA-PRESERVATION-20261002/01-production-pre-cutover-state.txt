@@ -1,0 +1,35 @@
+### READ-ONLY PRODUCTION PROBE (default_transaction_read_only=on enforced)
+dsn: host=aws-1-eu-west-2.pooler.supabase.com:5432  user=postgres.<ref>  [password redacted]
+
+--- identity (database | current_user | server addr | port)
+postgres | postgres | 2a05:d01c:874:6b01:6fcd:e130:fb9:3b90/128 | 5432
+--- server version
+17.6
+--- public table count (canonical expectation: 149)
+134
+--- RLS-enabled public tables (expectation: 149)
+--- public policies (expectation: 271)
+198
+--- emission_factors (expectation: 7049)
+7049
+--- backup* tables (expectation after step 5: backup_jobs, backup_sets, ...)
+(none)
+--- organizations count (expectation for CLEAN prod: 0)
+2
+--- auth.users count (expectation for CLEAN prod: platform/system only)
+2
+--- demo-named organizations
+ERROR:  column "slug" does not exist
+LINE 1: ...izations where lower(name) like '%demo%' or lower(slug) like...
+                                                             ^
+--- demo-domain auth users (@demo.carbontally.local)
+0
+--- latest 6 applied migrations
+20260927000000, 20260926000000, 20260925000000, 20260924000000, 20260923000000, 20260922000000
+--- BACKUP-01/02 migrations applied?
+(NOT APPLIED)
+--- storage buckets (name:public:size_limit)
+documents:false:2097152
+--- managed backups available via SQL? (pg_  extension presence only)
+pg_stat_statements, pgcrypto, pg_trgm
+=== END PROD PROBE ===

@@ -46,7 +46,10 @@ from domain.discovery import (
     validate_adoption_scope,
 )
 from data.discovery import generate_verification_code
-from services.v3_email import render_simple_html, send_transactional_email
+from services.v3_email import (
+    render_simple_html,
+    send_transactional_email,
+)
 
 router = APIRouter(prefix="/api/v3/discovery", tags=["V3 — Discovery (D19)"])
 
@@ -367,6 +370,9 @@ async def create_request(
                 to_email=contact_email,
                 subject="CarbonTally — existing-data adoption verification",
                 html=html,
+                # CT-FINAL-01/02 notifications: platform-configured sender and
+                # delivery provider, not the initiating user's mailbox.
+                settings_repo=repos.settings,
             )
 
     await _record_audit(

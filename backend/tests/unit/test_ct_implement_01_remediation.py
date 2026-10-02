@@ -15,6 +15,14 @@ deterministic and database-free:
    factor via ``factor_aliases`` → controlled unresolved), never through the
    retired ``defra_conversion_factors`` table, and records the factor provenance
    that produced the number.
+4. **CT-SCHEMA-03 F-05/F-09 (CT-IMPLEMENT-04, 2026-09-28)** — every remaining
+   *non-decision-gated* read site of the retired ``defra_conversion_factors``
+   table is repointed onto the canonical ``emission_factors`` table (enhanced
+   report generation, the emissions listing, the organisation
+   data/dashboard/export routes) and both legacy frontend factor embeds are
+   removed.  New references are confined by an explicit allowlist to the
+   surfaces still awaiting a PO decision (PD-3 admin factor management, PD-5
+   manual-entry factor lookup).
 
 The tests use an in-memory fake Supabase client, so they assert the *queries and
 the decision* rather than a live database.  Live schema compatibility of the
@@ -410,7 +418,64 @@ _REPOINTED_FILES = (
     "backend/routes/documents_main.py",
     "backend/routes/drafts.py",
     "backend/routes/admin/extraction.py",
+    # CT-IMPLEMENT-04 (2026-09-28) — CT-SCHEMA-03 F-05 repoints
+    "backend/report_generator.py",
+    "backend/routes/emissions.py",
+    "backend/routes/organizations/data.py",
+    "backend/routes/organizations/dashboard.py",
+    "backend/routes/organizations/exports.py",
+    # CT-IMPLEMENT-04 (2026-09-28) — CT-SCHEMA-03 F-09 frontend embeds
+    "frontend/src/App.js",
+    "frontend/App_.js",
 )
+
+# These files must *contain* the canonical factor table name, so the guard above
+# cannot be satisfied by deleting the factor lookup altogether.
+_CANONICAL_FACTOR_READ_FILES = (
+    "backend/report_generator.py",
+    "backend/routes/emissions.py",
+    "backend/routes/organizations/data.py",
+    "backend/routes/organizations/dashboard.py",
+    "backend/routes/organizations/exports.py",
+)
+
+# Live-code files still permitted to name the retired table.  Each entry is a
+# surface awaiting a PO decision (PD-3 admin factor management — CT-SCHEMA-03
+# F-06/F-07; PD-3/PD-5 factor curation + manual-entry lookup — F-05 residual), a
+# deliberate documentation comment, or this guard itself.
+_LEGACY_REFERENCE_ALLOWLIST = {
+    "backend/routes/admin/defra.py",  # PD-3 / F-06 — 16 reads
+    "backend/routes/reports.py",  # PD-3 / PD-5 — 2 reads (F-05 residual)
+    "backend/routes/reference.py",  # documentation comment only
+    "backend/tests/unit/test_ct_implement_01_remediation.py",  # this guard
+    "admin/src/pages/admin/DefraFactors.js",  # PD-3 / F-07
+    "admin/src/components/admin/DefraFactorModal.js",  # PD-3 / F-07
+    "admin/src/components/admin/ImportDefraModal.js",  # PD-3 / F-07
+}
+
+_LEGACY_SCAN_ROOTS = (
+    ("backend", "*.py"),
+    # F-05-R7 (CT-VERIFY-05 §6): the roots must also cover the ROOT-LEVEL
+    # frontend bundles, not just ``frontend/src`` — otherwise a newly added
+    # legacy reference in ``frontend/*.js`` would never fail this guard.
+    # ``node_modules``/``build``/``dist`` stay excluded via ``_EXCLUDED_DIRS``.
+    ("frontend", "*.js"),
+    ("frontend", "*.jsx"),
+    ("admin", "*.js"),
+    ("admin", "*.jsx"),
+)
+
+_EXCLUDED_DIRS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+}
 
 
 @pytest.mark.parametrize("relative_path", _REPOINTED_FILES)
@@ -435,3 +500,41 @@ def test_emissions_logs_writes_use_the_canonical_factor_column(relative_path):
 
     text = (_REPO_ROOT / relative_path).read_text(encoding="utf-8", errors="replace")
     assert "'emission_factor_id'" in text
+
+
+@pytest.mark.parametrize("relative_path", _CANONICAL_FACTOR_READ_FILES)
+def test_repointed_factor_reads_use_the_canonical_table(relative_path):
+    """The repoint must *target* ``emission_factors``, not merely delete a read."""
+
+    text = (_REPO_ROOT / relative_path).read_text(encoding="utf-8", errors="replace")
+    assert "emission_factors" in text
+
+
+def test_legacy_factor_table_references_are_confined_to_decided_files():
+    """No live-code file may *start* naming the retired table.
+
+    The allowlist is the residual inventory recorded by CT-IMPLEMENT-04 §5: the
+    files still naming the retired table are exactly the surfaces awaiting a PO
+    decision (PD-3 admin factor management, PD-5 manual-entry factor lookup)
+    plus one deliberate documentation comment.  A newly added reference fails
+    this test; remediating an allowlisted file merely stops matching, so the
+    allowlist never has to grow.
+    """
+
+    offenders = []
+    for root, pattern in _LEGACY_SCAN_ROOTS:
+        base = _REPO_ROOT / root
+        if not base.exists():
+            continue
+        for path in sorted(base.rglob(pattern)):
+            relative = path.relative_to(_REPO_ROOT)
+            if set(relative.parts[:-1]) & _EXCLUDED_DIRS:
+                continue
+            recorded = str(relative)
+            if recorded in _LEGACY_REFERENCE_ALLOWLIST:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if "defra_conversion_factors" in text:
+                offenders.append(recorded)
+
+    assert offenders == []

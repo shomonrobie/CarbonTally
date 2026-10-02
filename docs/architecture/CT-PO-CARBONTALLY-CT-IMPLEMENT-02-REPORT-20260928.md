@@ -356,7 +356,8 @@ and validates) the policy per instance, and a test asserts non-sharing.
    bound to the canonical report engine, a route rewrite for schedule
    create/list/pause/delete, and a worker/trigger that calls `run_due()`.
 3. **R-6** classification + mechanism once the PO decision is ratified.
-4. **R-1** remaining factor read sites (~37); **R-3** provenance suite;
+4. **R-1** remaining factor read sites (~37; **status 2026-09-28: reduced to 19
+   occurrences in 3 backend files by CT-IMPLEMENT-04 — see its §5**); **R-3** provenance suite;
    **R-5** documentation truth (including `API_ENDPOINTS.md`); **R-8** feature
    catalogue regeneration; **R-9** seeded tenant-isolation negative suite.
 5. **R-11 live migration:** EXTERNAL BLOCKER — no production target and no

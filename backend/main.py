@@ -39,6 +39,7 @@ except Exception as _v3_import_error:  # pragma: no cover - defensive fallback
 # Public/General routes
 from routes import (
     waitlist,
+    beta_access,     # CT-FINAL-03 — self-service beta access (R-3)
     upload,
     reports,
     legacy_reports,
@@ -210,6 +211,7 @@ app.add_middleware(
 
 # Public/General routes
 app.include_router(waitlist.router)
+app.include_router(beta_access.router)   # CT-FINAL-03 — /api/beta/me, /api/beta/redeem
 app.include_router(upload.router)
 app.include_router(reports.router)
 # Step 2C / POD-5 — thin compatibility aliases for the legacy report paths the
@@ -315,6 +317,44 @@ async def startup_event():
             await get_report_schedule_worker().start()
         except Exception as exc:  # pragma: no cover - worker must never block startup
             print(f"⚠️ report-schedule worker failed to start: {exc!r}")
+        # BACKUP-01/02 — the durable backup worker (architecture §9/§12/§14/§16).
+        # The request path only ever records a `queued` row; nothing runs a backup
+        # unless a worker drains that queue, so the composition root starts one
+        # here. Job state is durable, so a restart resumes rather than loses work.
+        # The outcome notifier is injected from *here* (not from the backup package)
+        # so `backup/` keeps its documented boundary — it never imports `data`/`api`.
+        try:
+            import os as _os
+
+            from api.dependencies import get_pool
+            from backup.worker import get_backup_worker
+            from data.notifications import NotificationsRepository
+
+            async def _notify_backup_outcome(
+                recipient: str, event_key: str, title: str, message: str
+            ) -> None:
+                repository = NotificationsRepository(await get_pool())
+                await repository.create_idempotent(
+                    recipient,
+                    event_key,
+                    notification_type="backup",
+                    title=title,
+                    message=message,
+                    priority=1,
+                    actor_domain="system",
+                )
+
+            prune = _os.getenv("CT_BACKUP_PRUNE_ARTIFACTS", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            await get_backup_worker(
+                notify=_notify_backup_outcome, retention_prune=prune
+            ).start()
+            print("🗄️ Backup worker started")
+        except Exception as exc:  # pragma: no cover - worker must never block startup
+            print(f"⚠️ backup worker failed to start: {exc!r}")
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -450,6 +490,14 @@ async def shutdown_event():
         from workers.report_schedules import get_report_schedule_worker
 
         await get_report_schedule_worker().stop()
+    except Exception:
+        pass
+    # BACKUP-01/02 — stop the backup worker loop (durable job state means an
+    # interrupted job is reclaimed by the next process rather than lost).
+    try:
+        from backup.worker import get_backup_worker
+
+        await get_backup_worker().stop()
     except Exception:
         pass
     try:

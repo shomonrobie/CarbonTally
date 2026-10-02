@@ -16,7 +16,7 @@ import {
   FaEyeSlash,
   FaMagic
 } from 'react-icons/fa';
-import { supabase } from '../../supabaseClient';
+import { adminFetch } from '../../services/adminApi';
 import toast from 'react-hot-toast';
 
 const BetaManagement = () => {
@@ -31,22 +31,16 @@ const BetaManagement = () => {
   const { data: waitlist, isLoading, refetch } = useQuery({
     queryKey: ['betaWaitlist'],
     queryFn: async () => {
-      let query = supabase
-        .from('waitlist')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // CT-FINAL-03 (package 09 §5.3) — `waitlist` holds prospect PII and is now
+      // fail-closed (RLS enabled, zero policies); the listing is served by the
+      // admin-gated backend route instead of a direct PostgREST read.
+      const params = new URLSearchParams();
+      if (filterStatus !== 'all') params.set('status', filterStatus);
+      if (searchTerm) params.set('search', searchTerm);
+      const qs = params.toString();
 
-      if (filterStatus !== 'all') {
-        query = query.eq('status', filterStatus);
-      }
-
-      if (searchTerm) {
-        query = query.or(`email.ilike.%${searchTerm}%,company_name.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      const result = await adminFetch(`/api/waitlist/${qs ? `?${qs}` : ''}`);
+      return (result && result.data) || [];
     },
   });
 
@@ -54,15 +48,12 @@ const BetaManagement = () => {
   const { data: emailLogs } = useQuery({
     queryKey: ['emailLogs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('email_logs')
-        .select('*')
-        .eq('type', 'beta_invite')  // ✅ Changed to 'beta_invite'
-        .order('created_at', { ascending: false })
-        .limit(100);
-      
-      if (error) throw error;
-      return data || [];
+      // CT-FINAL-03 (package 09 §4.4) — `email_logs` holds recipient PII and is
+      // now fail-closed; the existing admin-gated log route serves the same rows.
+      const result = await adminFetch(
+        '/api/admin/logs/email?type=beta_invite&limit=100'
+      );
+      return (result && result.data) || [];
     },
   });
 
@@ -94,14 +85,12 @@ const BetaManagement = () => {
   // ✅ Resend magic link mutation (replaces resendConfirmation)
   const resendMagicLinkMutation = useMutation({
     mutationFn: async (email) => {
-      // ✅ First, check if user has a beta code
-      const { data: codeData, error: codeError } = await supabase
-        .from('beta_access_codes')
-        .select('code')
-        .eq('email', email)
-        .maybeSingle();
-
-      if (codeError) throw codeError;
+      // CT-FINAL-03 (package 09 §4.2) — `beta_access_codes` carries invite/token
+      // material and is now fail-closed; the existing admin route resolves it.
+      const codesResult = await adminFetch(
+        `/api/admin/beta/codes?email=${encodeURIComponent(email)}&limit=1`
+      );
+      const codeData = ((codesResult && codesResult.data) || [])[0];
 
       let betaCode;
       if (codeData) {

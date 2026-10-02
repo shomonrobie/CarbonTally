@@ -22,10 +22,32 @@ from api.dependencies import (
     ensure_org_access,
     get_repositories,
 )
+from api.upload_gate import (
+    ACTION_ACCEPTED,
+    ACTION_DOWNLOAD,
+    ACTION_SECURITY_REJECTED,
+    ACTION_SECURITY_SCAN_COMPLETED,
+    ACTION_SECURITY_SCAN_STARTED,
+    ACTION_SIGNED_URL_ISSUED,
+    ACTION_UPLOAD_COMPLETED,
+    ACTION_UPLOAD_INITIATED,
+    authorize_organization_upload,
+    record_document_event,
+)
 from auth import AuthUser, require_org_member
 from infra.supabase import get_service_client
+from services.document_security import (
+    STATUS_CLEAN,
+    is_downloadable,
+    is_processable,
+    rejection_detail,
+    scan_document,
+)
 from services.storage import DOCUMENTS_BUCKET, path_from_url, storage_signed_url
+from services.storage_keys import build_document_storage_key
 from utils.upload_limits import UploadLimitExceeded, enforce_single_file, resolve_policy
+
+
 
 router = APIRouter(prefix="/api/v3", tags=["V3 — Documents"])
 
@@ -217,16 +239,17 @@ async def upload_document(
     current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Upload a document to Supabase Storage and record it in organization_files."""
-    ensure_org_access(current_user, organization_id)
-    # CL-42 (P1 security) — a Viewer is read-only: the upload must be denied
-    # BEFORE any storage object or database row is created. Owner/Admin/Member
-    # keep write access according to the product model.
-    if current_user.role_name == "org_viewer" or current_user.role == "org_viewer":
-        raise HTTPException(
-            status_code=403,
-            detail="Viewers are read-only and cannot upload documents",
-        )
+    """Upload a document to Supabase Storage and record it in organization_files.
+
+    Storage Management Step 1B — authorization is delegated to the single
+    authoritative upload gate (``api.upload_gate``), and the resolved actor
+    provenance is carried onto the document and into the audit trail.  The
+    security gate then runs inside ``create_document_and_enqueue`` before
+    anything is written.
+    """
+    actor = await authorize_organization_upload(
+        current_user=current_user, organization_id=organization_id, repos=repos
+    )
     filename = file.filename or "untitled"
     content = await file.read()
     file_type = _classify(filename, file.content_type or "")
@@ -235,7 +258,7 @@ async def upload_document(
     # administrator-configured limits (never a per-route copy of them).
     policy = await resolve_policy(getattr(repos, "settings", None))
     return await create_document_and_enqueue(
-        organization_id=organization_id,
+        organization_id=actor.organization_id,
         filename=filename,
         content=content,
         mime_type=file.content_type or "application/octet-stream",
@@ -244,6 +267,7 @@ async def upload_document(
         uploaded_by=current_user.user_id,
         repos=repos,
         configured_limit_mb=policy["max_file_size_mb"],
+        provenance=actor.provenance(),
     )
 
 
@@ -272,6 +296,7 @@ async def create_document_and_enqueue(
     uploaded_by: str,
     repos: RepositoryBundle,
     configured_limit_mb=None,
+    provenance: Optional[dict] = None,
 ) -> dict:
     """Shared document-creation + durable-enqueue pipeline (Phase E).
 
@@ -280,12 +305,27 @@ async def create_document_and_enqueue(
     storage → organization_files → extraction batch/item → automatic-processing
     job (ingest → extract → map → validate → calculate → review) → OCR prefill.
 
+    Storage Management Step 1 hardening applied here:
+
+    * the object key is **generated server-side** (``services.storage_keys``) —
+      the user file name never determines the storage path identity;
+    * upload-limit enforcement and the **security gate** both run before any
+      storage object or database row is created, so a rejected upload leaves no
+      partial evidence;
+    * the row is created in the ``clean`` state the gate produced, and only a
+      processable document is enqueued;
+    * the row stores the canonical **path**, never a signed URL (a signed URL is
+      short-lived and is never persisted as a secret);
+    * ``provenance`` (consultant firm/member or organisation role) is merged into
+      the document metadata and the audit entries — consultant-originated uploads
+      still live in the client organisation's namespace.
+
     ``configured_limit_mb`` is the effective per-file limit from the canonical
     upload policy (``utils.upload_limits.resolve_policy``); when the caller
     cannot resolve it, the documented default applies — never "unlimited".
     """
-    day = datetime.utcnow().strftime("%Y/%m/%d")
-    path = f"uploads/{organization_id}/{day}/{uuid4().hex}_{filename}"
+    provenance = dict(provenance or {})
+
     # CT-FINAL-01 upload limits — enforced server-side BEFORE any storage object
     # or database row is created (the UI is never the limit boundary).  A
     # rejection therefore leaves no partial evidence behind.
@@ -295,10 +335,80 @@ async def create_document_and_enqueue(
         )
     except UploadLimitExceeded as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    # Storage Management Step 1D/1E — the security gate runs before the write.
+    await record_document_event(
+        repos=repos,
+        action=ACTION_UPLOAD_INITIATED,
+        actor=None,
+        actor_id=uploaded_by,
+        actor_type=provenance.get("upload_actor_type"),
+        organization_id=organization_id,
+        entity_id="",
+        changed_fields={
+            **provenance,
+            "filename": filename,
+            "size_bytes": len(content),
+            "declared_mime": mime_type,
+            "ingress": "v3_proxied_upload",
+        },
+        reason="document upload initiated",
+    )
+    await record_document_event(
+        repos=repos,
+        action=ACTION_SECURITY_SCAN_STARTED,
+        actor=None,
+        actor_id=uploaded_by,
+        actor_type=provenance.get("upload_actor_type"),
+        organization_id=organization_id,
+        entity_id="",
+        changed_fields={"filename": filename},
+        reason="security gate started",
+    )
+    verdict = scan_document(
+        content=content, filename=filename, declared_mime=mime_type
+    )
+    await record_document_event(
+        repos=repos,
+        action=ACTION_SECURITY_SCAN_COMPLETED,
+        actor=None,
+        actor_id=uploaded_by,
+        actor_type=provenance.get("upload_actor_type"),
+        organization_id=organization_id,
+        entity_id="",
+        changed_fields={"filename": filename, "security_gate": verdict.as_metadata()},
+        reason=f"security gate verdict: {verdict.verdict}",
+        outcome="success" if verdict.accepted else "failure",
+    )
+    if not verdict.accepted:
+        await record_document_event(
+            repos=repos,
+            action=ACTION_SECURITY_REJECTED,
+            actor=None,
+            actor_id=uploaded_by,
+            actor_type=provenance.get("upload_actor_type"),
+            organization_id=organization_id,
+            entity_id="",
+            changed_fields={
+                **provenance,
+                "filename": filename,
+                "security_gate": verdict.as_metadata(),
+            },
+            reason=rejection_detail(verdict),
+            outcome="failure",
+        )
+        raise HTTPException(status_code=422, detail=rejection_detail(verdict))
+
+
     # P0-1 — store new documents with a browser-renderable content type so the
     # document viewer can render PDFs/images inline instead of triggering a
     # download (an existing object is never altered; this only affects uploads).
     mime_type = _renderable_content_type(filename, file_type, mime_type)
+    # Step 1C — the object key is generated by CarbonTally, never by the client.
+    try:
+        path = build_document_storage_key(organization_id, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid upload target: {exc}")
     client = get_service_client()
     try:
         client.storage.from_(DOCUMENTS_BUCKET).upload(
@@ -308,10 +418,10 @@ async def create_document_and_enqueue(
         )
     except Exception as exc:  # pragma: no cover - storage failure path
         raise HTTPException(status_code=500, detail=f"storage upload failed: {exc}")
-    # D32 (P0): the documents bucket is PRIVATE. Only short-lived signed URLs
-    # are ever produced — never a public URL. The canonical PATH is stored on
-    # the record; consumers request a fresh signed URL per view.
-    file_url = storage_signed_url(path)
+    # D32 (P0): the documents bucket is PRIVATE. Only short-lived signed URLs are
+    # ever produced — never a public URL. The canonical PATH is stored on the
+    # record; consumers request a fresh signed URL per view. A signed URL is never
+    # persisted (Step 1I).
     record = await repos.files.create(
         org_id=organization_id,
         name=filename,
@@ -321,9 +431,92 @@ async def create_document_and_enqueue(
         mime_type=mime_type,
         bucket="documents",
         uploaded_by=uploaded_by,
-        metadata={"data_type": data_type, "file_url": file_url},
+        status=STATUS_CLEAN,
+        metadata={
+            "data_type": data_type,
+            "file_url": path,
+            "security_gate": verdict.as_metadata(),
+            **provenance,
+        },
+    )
+    document_id = _record_attr(record, "id") or ""
+    await record_document_event(
+        repos=repos,
+        action=ACTION_UPLOAD_COMPLETED,
+        actor=None,
+        actor_id=uploaded_by,
+        actor_type=provenance.get("upload_actor_type"),
+        organization_id=organization_id,
+        entity_id=document_id,
+        changed_fields={
+            **provenance,
+            "filename": filename,
+            "storage_path": path,
+            "bucket": DOCUMENTS_BUCKET,
+            "status": STATUS_CLEAN,
+        },
+        reason="document stored and accepted by the security gate",
+    )
+    await record_document_event(
+        repos=repos,
+        action=ACTION_ACCEPTED,
+        actor=None,
+        actor_id=uploaded_by,
+        actor_type=provenance.get("upload_actor_type"),
+        organization_id=organization_id,
+        entity_id=document_id,
+        changed_fields={"status": STATUS_CLEAN, "filename": filename},
+        reason="document accepted for normal CarbonTally processing",
     )
 
+    # Step 1E — a document that did not pass the security gate never enters
+    # normal processing.  (The gate above already rejects before the write; this
+    # is the explicit fail-closed guard for any future caller that supplies a
+    # pre-existing record.)
+    if not is_processable(_record_attr(record, "status") or STATUS_CLEAN):
+        return record
+
+    return await enqueue_document_processing(
+        record=record,
+        document_id=document_id,
+        organization_id=organization_id,
+        filename=filename,
+        content=content,
+        mime_type=mime_type,
+        file_type=file_type,
+        data_type=data_type,
+        uploaded_by=uploaded_by,
+        repos=repos,
+        storage_path=path,
+    )
+
+
+async def enqueue_document_processing(
+    *,
+    record: Any,
+    document_id: str,
+    organization_id: str,
+    filename: str,
+    content: Optional[bytes],
+    mime_type: str,
+    file_type: str,
+    data_type: str,
+    uploaded_by: str,
+    repos: RepositoryBundle,
+    storage_path: str,
+) -> dict:
+    """Register a stored, security-cleared document with the processing pipeline.
+
+    Shared by both upload ingresses so a directly-uploaded (signed-URL) document
+    enters exactly the same durable pipeline as a server-proxied upload:
+    extraction batch/item → ``document_processing_queue`` job → OCR prefill.
+
+    ``content`` is optional.  The direct (browser → Supabase Storage) flow does
+    not hold the whole object server-side, so it passes ``None``: the OCR prefill
+    is then recorded as deferred and the pipeline's own ingest stage reads the
+    object from private storage.  Enqueue failures never fail the upload — the
+    outcome is persisted on the document instead (WS-C).
+    """
     # CT-STEP2-FINAL-STABILIZATION-012 (WS-C) — the automatic-processing enqueue
     # outcome is recorded on the document so a failed/skipped enqueue can never be
     # silent again (previously it was only printed to the server log). The
@@ -362,11 +555,11 @@ async def create_document_and_enqueue(
         item = await repos.manual_extraction.create_item(
             upload_batch.id,
             filename,
-            path,  # D32: store the canonical PATH (non-expiring); responses sign it
+            storage_path,  # D32: canonical PATH (non-expiring); responses sign it
             page_count,
             file_type.lower() if file_type != "OTHER" else None,
             "pending",
-            file_id=record.id,  # D33: authoritative item → source-document link
+            file_id=document_id,  # D33: authoritative item → source-document link
         )
 
         # CL-56 (Phase A) — durable automatic processing: every upload now
@@ -378,7 +571,7 @@ async def create_document_and_enqueue(
             await repos.processing.create(
                 organization_id=organization_id,
                 file_name=filename,
-                file_url=path,
+                file_url=storage_path,
                 file_type=file_type,
                 processing_type=data_type,
                 created_by=uploaded_by,
@@ -386,7 +579,7 @@ async def create_document_and_enqueue(
                 metadata={
                     "mime": mime_type,
                     "page_count": page_count,
-                    "document_id": str(record.id),
+                    "document_id": str(document_id),
                 },
             )
         except Exception as exc:  # noqa: BLE001 - enqueue is best-effort
@@ -421,13 +614,30 @@ async def create_document_and_enqueue(
     # extracted text is persisted on the organization_files metadata JSONB (no
     # schema change) and surfaced in the item workspace for human review. OCR
     # failure never fails the upload — the item stays pending for manual entry.
+    #
+    # Storage Management Step 1: the direct (signed-URL) upload holds only a
+    # bounded prefix server-side, so OCR prefill is recorded as deferred and the
+    # pipeline's ingest stage reads the object from private storage instead of
+    # persisting a partial-text artefact.
     try:
-        ocr = _extract_document_text(content, filename, mime_type)
-        if ocr["status"] in ("ok", "no_text"):
-            # WS-C — write through the same accumulator so the enqueue outcome
-            # recorded above is never dropped by this later best-effort write.
-            record_metadata["ocr"] = ocr
-            await repos.files.update_metadata(record.id, record_metadata)
+        if content is None:
+            record_metadata["ocr"] = {
+                "status": "deferred",
+                "method": None,
+                "text": "",
+                "page_count": 0,
+                "detail": (
+                    "direct upload: OCR prefill runs in the pipeline ingest stage"
+                ),
+            }
+            await repos.files.update_metadata(document_id, record_metadata)
+        else:
+            ocr = _extract_document_text(content, filename, mime_type)
+            if ocr["status"] in ("ok", "no_text"):
+                # WS-C — write through the same accumulator so the enqueue outcome
+                # recorded above is never dropped by this later best-effort write.
+                record_metadata["ocr"] = ocr
+                await repos.files.update_metadata(document_id, record_metadata)
     except Exception as exc:  # pragma: no cover - defensive
         print(f"⚠️ OCR persistence failed for {filename}: {exc!r}")
 
@@ -601,16 +811,60 @@ async def get_document_signed_url(
     D32 (P0): the documents bucket is private — documents are never served via
     public URLs. This endpoint is the only way viewers obtain access, and it is
     authorization-gated per organisation.
+
+    Storage Management Step 1 replaces the inline check with the shared upload
+    gate and adds two Step 1 rules:
+
+    * a document that has not passed the security gate (``pending_upload`` or
+      ``rejected``/quarantined) is **refused**, because a successful object
+      upload is not proof that a document is safe;
+    * issuing a signed URL is a significant access event and is audited.  The
+      URL itself is never persisted — it is a credential with a lifetime.
     """
     doc = await repos.files.get(file_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="document not found")
-    ensure_org_access(current_user, doc.organization_id)
-    from services.storage import path_from_url
-
-    url = storage_signed_url(path_from_url(doc.path))
+    actor = await authorize_organization_upload(
+        current_user=current_user,
+        organization_id=str(_record_attr(doc, "organization_id") or ""),
+        repos=repos,
+    )
+    document_status = _record_attr(doc, "status")
+    if not is_downloadable(document_status):
+        await record_document_event(
+            repos=repos,
+            action=ACTION_DOWNLOAD,
+            actor=actor,
+            organization_id=actor.organization_id,
+            entity_id=file_id,
+            changed_fields={"document_status": document_status},
+            reason=(
+                "document access refused: it has not passed the security gate "
+                "(pending or rejected/quarantined)"
+            ),
+            outcome="failure",
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="document is not available: it has not passed the security gate",
+        )
+    url = storage_signed_url(path_from_url(_record_attr(doc, "path")))
     if not url:
         raise HTTPException(status_code=404, detail="document object not found in storage")
+    # Step 1I — signing is a significant access event.  Only identifiers and the
+    # lifetime are recorded; the signed URL itself is never persisted.
+    await record_document_event(
+        repos=repos,
+        action=ACTION_SIGNED_URL_ISSUED,
+        actor=actor,
+        organization_id=actor.organization_id,
+        entity_id=file_id,
+        changed_fields={
+            "expires_in_seconds": 3600,
+            "document_status": document_status or "legacy",
+        },
+        reason="short-lived signed download URL issued after authorization",
+    )
     return {"url": url, "expires_in_seconds": 3600}
 
 

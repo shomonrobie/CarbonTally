@@ -618,6 +618,32 @@ service, preserving precedence and provenance; then update the SCM-004 trap asse
 `backend/tests/test_all_endpoints.py`. Do **not** solve this by renaming the table in code, and never
 by recreating the legacy table (forbidden by the canonical R1 guard).
 
+**STATUS UPDATE 2026-09-28 (CT-IMPLEMENT-04 — R-1 partial remediation).** Every
+non-decision-gated site in the table above is now repointed onto the canonical
+`emission_factors` table, and both legacy frontend factor embeds are removed —
+20 occurrences across 7 files (`report_generator.py`, `routes/emissions.py`,
+`routes/organizations/{data,dashboard,exports}.py`, `frontend/src/App.js`,
+`frontend/App_.js`). **19 occurrences remain in 3 backend files** (18 of them
+executable reads in 2 files), plus 9 occurrences in 3 `admin/src` files:
+
+| Residual file | Count | Class / why it was left |
+|---|---|---|
+| `backend/routes/admin/defra.py` | 16 | PD-3 / F-06 — the whole API is one PO decision |
+| `backend/routes/reports.py` | 2 | PD-3 factor import (`:1290`) + PD-5 factor catalogue read (`:279`) — F-05 residual |
+| `backend/routes/reference.py` | 1 | documentation comment only (no query) |
+| `admin/src/**` (3 files) | 9 | PD-3 / F-07 — Control-Plane factor administration |
+| `prisma/schema.prisma` (7), `seed.ts` (1), `frontend_backup_pre_v3_public_20260827/` (4), `e2e/environment/scripts/canonical_schema_verify.py` (1) | 13 | stale artefacts / deliberate absence assertions — F-13 |
+
+(The guard file itself names the retired table 5 times — 2 docstring mentions and 3 assertions that
+it is *absent*; `docs/**` mentions it 82 times. Both are intentional and are *not* residuals.)
+
+The SCM-004 trap assertions in `backend/tests/test_all_endpoints.py` are
+**unchanged**, because the two endpoints they assert
+(`GET /api/reports/defra-factors/{year}` and
+`POST /api/reports/admin/import-defra-factors`) are exactly the PD-3/PD-5-coupled
+residual. **PD-3, PD-4 and PD-5 remain unratified** in `docs/`. Evidence:
+`CT-IMPLEMENT-04-20260928-REPORT-FACTOR-READ-REPOINT.md`.
+
 ### R-2 — Report sharing / scheduling (PO DECISION)
 
 `report_history`-sharing (`POST /api/reports/{id}/share`, `GET /api/reports/shared`) and the three

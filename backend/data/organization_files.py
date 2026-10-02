@@ -49,15 +49,23 @@ class OrganizationFilesRepository(AbstractRepository[OrganizationFile]):
         bucket: str,
         uploaded_by: str,
         metadata: Optional[dict] = None,
+        status: Optional[str] = None,
     ) -> OrganizationFile:
+        """Insert one document row.
+
+        ``status`` (Storage Management Step 1) is the security-lifecycle state
+        produced by the upload gate — ``clean`` for an accepted document.  The
+        historical default ``'uploaded'`` is kept for callers that do not run the
+        lifecycle, so no existing behaviour changes.
+        """
         row = await self._fetch_one(
             f"""
             INSERT INTO public.organization_files (
                 organization_id, name, path, size_bytes, file_type, mime_type,
                 bucket, status, uploaded_by, uploaded_at, is_active,
                 access_count, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'uploaded', $8, NOW(),
-                      TRUE, 0, $9)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(),
+                      TRUE, 0, $10)
             RETURNING {_FILES_COLUMNS}
             """,
             org_id,
@@ -67,12 +75,14 @@ class OrganizationFilesRepository(AbstractRepository[OrganizationFile]):
             file_type,
             mime_type,
             bucket,
+            status or "uploaded",
             uploaded_by,
             dumps_jsonb(metadata or {}),
         )
         if row is None:
             raise RuntimeError("organization_files insert returned no row")
         return _row_to_file(row)
+
 
     async def get(self, file_id: str) -> Optional[OrganizationFile]:
         row = await self._fetch_one(
@@ -109,18 +119,29 @@ class OrganizationFilesRepository(AbstractRepository[OrganizationFile]):
         rows = await self._fetch_all(query, *args)
         return [_row_to_file(r) for r in rows]
 
-    async def update_status(self, file_id: str, status: str) -> Optional[OrganizationFile]:
+    async def update_status(
+        self, file_id: str, status: str, size_bytes: Optional[int] = None
+    ) -> Optional[OrganizationFile]:
+        """Advance the lifecycle status, optionally recording the verified size.
+
+        ``size_bytes`` (Storage Management Step 1) lets the direct-upload
+        completion path replace the browser-declared size with the size the
+        platform actually verified in storage.  ``None`` leaves it untouched.
+        """
         row = await self._fetch_one(
             f"""
             UPDATE public.organization_files
-            SET status = $2, status_updated_at = NOW()
+            SET status = $2, status_updated_at = NOW(),
+                size_bytes = COALESCE($3::bigint, size_bytes)
             WHERE id = $1
             RETURNING {_FILES_COLUMNS}
             """,
             file_id,
             status,
+            size_bytes,
         )
         return _row_to_file(row) if row is not None else None
+
 
     async def update_metadata(self, file_id: str, metadata: dict) -> Optional[OrganizationFile]:
         """Replace the ``metadata`` JSONB on an organization_files row.
@@ -173,6 +194,35 @@ class OrganizationFilesRepository(AbstractRepository[OrganizationFile]):
             cutoff,
         )
         return {"eligible": 0, "applied": int(row["n"]) if row else 0}
+
+    async def list_abandoned_pending_uploads(
+        self,
+        cutoff,
+        *,
+        status: str = "pending_upload",
+        limit: int = 500,
+    ) -> list[OrganizationFile]:
+        """Storage Management Step 2F — documents whose upload authorisation expired.
+
+        An upload is *abandoned* when the browser was given a signed upload URL
+        and never confirmed completion inside the completion window
+        (``services.storage.UPLOAD_COMPLETION_WINDOW_SECONDS``).  This is a
+        read-only query: the caller (``services.document_cleanup``) decides
+        whether to apply the terminal ``upload_expired`` state.  Rows already
+        soft-deleted by the platform retention rule are excluded — they are no
+        longer live records.
+        """
+        rows = await self._fetch_all(
+            f"""
+            SELECT {_FILES_COLUMNS} FROM public.organization_files
+            WHERE status = $1 AND uploaded_at < $2 AND deleted_at IS NULL
+            ORDER BY uploaded_at ASC
+            LIMIT {int(limit)}
+            """,
+            status,
+            cutoff,
+        )
+        return [_row_to_file(r) for r in rows]
 
     async def save(self, entity: OrganizationFile) -> OrganizationFile:
         return entity

@@ -16,6 +16,11 @@ import {
   FaTag
 } from 'react-icons/fa';
 import { supabase } from '../../supabaseClient';
+import {
+  fetchFactors,
+  fetchFactorYears,
+  deleteFactor,
+} from '../../services/factorAdminService';
 import toast from 'react-hot-toast';
 import DefraFactorModal from '../../components/admin/DefraFactorModal';
 import ImportDefraModal from '../../components/admin/ImportDefraModal';
@@ -31,32 +36,17 @@ const DefraFactors = () => {
   const pageSize = 20;
   const queryClient = useQueryClient();
 
-  // Fetch DEFRA factors
+  // Fetch canonical factors through the admin API (PD-3). Authorization is
+  // enforced server-side; the browser never reads a factor table directly.
   const { data: factorsData, isLoading: isLoadingFactors, refetch } = useQuery({
     queryKey: ['defraFactors', yearFilter, searchTerm, currentPage],
-    queryFn: async () => {
-      let query = supabase
-        .from('defra_conversion_factors')
-        .select('*', { count: 'exact' })
-        .order('reporting_year', { ascending: false })
-        .order('activity_type', { ascending: true });
-
-      if (yearFilter !== 'all') {
-        query = query.eq('reporting_year', parseInt(yearFilter));
-      }
-
-      if (searchTerm) {
-        query = query.ilike('activity_type', `%${searchTerm}%`);
-      }
-
-      const start = (currentPage - 1) * pageSize;
-      const end = start + pageSize - 1;
-      query = query.range(start, end);
-
-      const { data, error, count } = await query;
-      if (error) throw error;
-      return { data, count };
-    },
+    queryFn: () =>
+      fetchFactors({
+        year: yearFilter,
+        activity: searchTerm,
+        limit: pageSize,
+        offset: (currentPage - 1) * pageSize,
+      }),
   });
 
   // Fetch activity categories
@@ -73,33 +63,18 @@ const DefraFactors = () => {
     },
   });
 
-  // Get available years
+  // Get available years from the canonical factor set (admin API)
   const { data: yearsData } = useQuery({
     queryKey: ['defraYears'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('defra_conversion_factors')
-        .select('reporting_year')
-        .order('reporting_year', { ascending: false });
-
-      if (error) throw error;
-      const years = [...new Set(data.map(item => item.reporting_year))];
-      return years;
-    },
+    queryFn: () => fetchFactorYears(),
   });
 
-  // Delete factor mutation
+  // Delete factor mutation — server-side authority + provenance guard
   const deleteFactorMutation = useMutation({
-    mutationFn: async (id) => {
-      const { error } = await supabase
-        .from('defra_conversion_factors')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: async (id) => deleteFactor(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['defraFactors']);
-      toast.success('DEFRA factor deleted successfully!');
+      toast.success('Factor deleted successfully!');
     },
     onError: (error) => {
       toast.error('Failed to delete: ' + error.message);

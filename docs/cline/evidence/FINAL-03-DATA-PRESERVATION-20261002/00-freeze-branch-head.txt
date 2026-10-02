@@ -1,0 +1,21 @@
+### branch/head/remotes/log
+p8-release-reconciled
+cabdca8380415e73a25cf23eb393d0b15c0af391
+github	https://github.com/shomonrobie/CarbonTally.git (fetch)
+github	https://github.com/shomonrobie/CarbonTally.git (push)
+origin	/tmp/ct_step2 (fetch)
+origin	/tmp/ct_step2 (push)
+cabdca8 docs(CT-FINAL-01): final security-fix and verification report
+1eb078c CT-FINAL-01: follow the canonical factor resolver in the Step-2 legacy-import assertion
+5216c71 CT-FINAL-01: close the CT-VERIFY-06 blockers (D-0, D-2, D-3, D-5, D-6)
+23bf880 CT-REMEDIATE-01: make the enhanced-report request path work and be authorised
+dc3d78d CT-VERIFY-04: independent verification of CT-RELEASE-04 clean-checkout reproducibility
+61cf279 CT-RELEASE-04: record the third rebuild, executed at the final HEAD
+00af1a6 CT-RELEASE-04: record the implementation / report SHAs in the report
+5a0c5af CT-RELEASE-04: implementation report
+
+### status counts by class
+    115 ??
+     50  M
+### total
+165

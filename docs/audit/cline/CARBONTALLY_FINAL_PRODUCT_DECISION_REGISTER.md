@@ -811,6 +811,9 @@ canonical Work Item layer pending), D38 (assignment attribution), D05 (quality c
 # 19. Document/Storage Decisions
 
 D44 (private bucket + signed URLs), D07 (PE no-download), D10 (document lifecycle).
+**S-1/S-2/S-3** (§41.3, PO decisions 2026-09-30) — client organisation as storage tenancy anchor;
+hybrid backend-authorized short-lived signed-URL access with no service-role exposure; audit of
+significant document access events.
 **Document-state duality** (customer_documents vs organization_files vs dpq) is an unresolved
 engineering item (§32).
 
@@ -909,6 +912,11 @@ security boundary).
 | Manual-extraction multi-entity scoping ("multiple extraction companies") | ENGINEERING GAP | Actor Model §6.2 |
 | Name-string `require_admin`/`is_admin` over-grant hardening | REQUIRES ENGINEERING DECISION before entity provisioning at scale | Actor Model §35.5; reconciliation §27 |
 | Component/DataTable convergence scope | ENGINEERING DIRECTION (not yet a PO decision) | known decision #21 |
+
+> **Partially superseded (2026-09-30):** the consultant/client questions U-1…U-7 and the storage
+> decision-gate questions SG-7…SG-11 are **RESOLVED / CLOSED in substance** — see §41.1, §41.3,
+> §41.5. Consultant exclusivity is **decided** (U-1); only its *enforcement*, and the U-2 handover
+> atomicity/initiator, remain engineering items. The rows above remain open.
 
 # 33. Conflicting Historical Decisions
 
@@ -1125,6 +1133,282 @@ boundaries** (F-28). It must close the recorded implementation gaps (§34) as en
 **Timeline of decision eras (for the blueprint's history section):**
 - **V1 era (Jun–Jul 2026):** RC1 schema; Kimi audits; early proposals (`docs/Final`).
 - **V2.0 (Jul 2026):** changelog v2.0.0 route/tables additions.
+
+# 41. PRODUCT OWNER RECONCILIATION — CONSULTANT/CLIENT, ENTITLEMENT AND STORAGE (2026-09-30)
+
+**Status of this section:** RECORDED — the Product Owner's decisions on the consultant/client
+relationship, consultant client capacity and storage governance were reconciled into this register
+on 2026-09-30. The identifiers used below (**U-1…U-7, E-4, S-1…S-3**) are the identifiers under which
+those questions and their closures were reported; they are **not** D-numbers and do not extend the
+D-series of §7.
+
+**What this section closes:** the questions recorded as genuinely unanswered in
+`docs/cline/CARBONTALLY_CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 (U-1…U-7) and its
+storage decision gate §7.2 (SG-7…SG-11), plus the entitlement/storage questions recorded in
+`docs/architecture/CARBONTALLY_STORAGE_PO_EVIDENCE_REVIEW_20260930.md` §8 that these decisions answer.
+
+**Authority:** **L1 — explicit Product Owner decision (2026-09-30).** These are *recorded*, not
+recommended, inferred or implementation-derived. Nothing in §1–§40 is reopened. §19 is amended and
+§32 carries a status note; §31 and §38 are **deliberately left unchanged**, as recorded in §41.5.
+
+## 41.1 Consultant / client relationship decisions (U-1 … U-7)
+
+### U-1 — Active consultant relationship
+- **DECISION:** **Only one active consultant at a time.** A client organisation may have
+  historical/inactive consultant relationships, but only one consultant relationship may be
+  **active** at a time.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — the prior OPEN status (recovery report §6) is
+  **RESOLVED**. Extends D29/D30 (consultant model) and §35 item 8.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-1 (from C2); also
+  `…STORAGE_PO_EVIDENCE_REVIEW_20260930.md` §8 item 3.
+- **IMPLEMENTATION:** the ACTIVE relationship is the authoritative access basis
+  (`consultant_clients` lifecycle; `backend/data/consultants.py::get_client_by_org` pair lookup;
+  RLS scoping; only `active` grants authorise — proven by
+  `tests/unit/api/test_p6_2e_consultant_lifecycle.py`, `test_consultant_revocation.py`).
+- **GAP:** the schema still *permits* two active grants on one organisation
+  (`UNIQUE(consultant_id, organization_id)` = one row per pair; Actor Model §37.3). Exclusivity is
+  therefore **decided but not yet enforced**; enforcement is implementation work (not a new
+  decision) and was not performed by the reconciliation task.
+- **CONFIDENCE:** HIGH.
+
+### U-2 — Consultant handover
+- **DECISION:** **Sequential handover.** The existing consultant relationship ends first; only
+  after that relationship has ended may the new consultant relationship become active.
+  **Simultaneous active consultants must not be introduced.**
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — the prior OPEN status (recovery report §6) is
+  **RESOLVED**. Consistent with U-1.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-2 (from C12).
+- **IMPLEMENTATION:** the required ordering is reachable in two already-implemented, independent
+  steps — end-of-access enforcement for the outgoing firm (D15/D30, WS6/SEC-0003) and the controlled
+  P6-1C engagement for the incoming firm. Data and organisation identity are preserved throughout
+  (D30; AGENTS.md §11).
+- **GAP:** no single handover workflow exists. **Atomicity ("one act") and the initiating actor are
+  not addressed by this decision and are decided nowhere else** — they must not be inferred.
+- **CONFIDENCE:** HIGH.
+
+### U-3 — Consultant permissions
+- **DECISION:** **The same consultant permission configuration applies for every client of a
+  consultant.** Per-client bespoke consultant permission configuration is **not** invented; it is
+  required only where an existing authoritative decision explicitly requires it.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — the prior OPEN status (recovery report §6 U-3 /
+  gap G-4) is **RESOLVED** as a product question.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-3 (from C5 / G-4).
+- **IMPLEMENTATION:** the frozen firm/member-level capability set (`consultant_firm_members.can_*`,
+  `client_access`) is the configuration mechanism (`backend/domain/partners.py`,
+  `backend/api/consultant_auth.py`); no per-client capability structure exists or is created.
+- **GAP:** none added by this decision. Whether the *per-client difference* PO D2 §18 illustrates is
+  expressed through the existing engagement/`client_access` scoping is an engineering alignment
+  question; this decision forbids introducing a second capability model to express it.
+- **CONFIDENCE:** HIGH.
+
+### U-4 — Customer terminology / commercial relationship
+- **DECISION:** **Customer includes both Organizations and Consultants.** The conceptual
+  distinction is: organisations can be direct CarbonTally customers managing their own data;
+  consultants can be direct CarbonTally customers managing their clients through CarbonTally;
+  consultants may use CarbonTally branding, shared branding or white-label branding as already
+  established; **organisation identity and commercial customer status/relationship remain
+  conceptually distinct**; and a consultant-managed client can later become a direct CarbonTally
+  customer **without changing its organisation identity and without copying or moving its data**.
+  A competing organisation/customer classification system must **not** be invented; the existing
+  architecture and billing terminology are reused.
+- **STATUS:** CURRENT (PO CLARIFICATION 2026-09-30) — the terminology/commercial question recorded
+  in recovery report §6 U-4 (from K-3) is **RESOLVED**. Consistent with D31, D51 and §35 item 7.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner clarification, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-4 (from K-3) and §3 K-3.
+- **IMPLEMENTATION:** both informational columns exist today (`organizations.customer_type`
+  `direct|consultant_managed`; `organizations.organization_type`
+  `CUSTOMER|CONSULTANT|PROCESSING_ENTITY|CARBONTALLY_INTERNAL`), both already documented as
+  **informational/non-authorization**; commercial status lives in the existing billing/subscription
+  model (D41 / CT-BILL-001), not in organisation identity.
+- **GAP:** mechanical reconciliation of the two informational columns into one vocabulary (which
+  column is authoritative for *reporting* only, and how they are kept consistent) remains an
+  engineering alignment item — it does **not** create authorization behaviour and no new
+  classification system may be introduced to close it.
+- **CONFIDENCE:** HIGH.
+
+### U-5 — Consultant-generated artefacts
+- **DECISION:** **Consultant-generated artefacts remain associated with the client organisation and
+  retain consultant provenance.** Relationship termination does **not** imply object deletion,
+  movement, cloning, export/re-import or ownership transfer. **No physical deletion rule is to be
+  invented.**
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — the prior OPEN status (recovery report §6 U-5) is
+  **RESOLVED**; closes the recovery storage gate **SG-7** and **SG-10** (no destruction rule is
+  authorised).
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-5 (from C11) and §7.2 SG-7/SG-10.
+- **IMPLEMENTATION:** consultant uploads are written into the **client organisation's** namespace
+  with consultant provenance in application metadata and audit (`consultant_originated`, firm/member
+  id, uploader, timestamps); a relationship end removes access and moves nothing (D30;
+  `services/document_cleanup.py` records that no physical-disposition rule exists; the Step 1/2
+  suites assert no bytes are moved or deleted).
+- **GAP:** a *value/period* for any future destruction policy remains unset — destructive
+  enforcement stays deferred (D16/N3/D-P2-04; the Step 2 report §10 records the same in code).
+- **CONFIDENCE:** HIGH.
+
+### U-6 — Client workspace access
+- **DECISION:** **Normally, consultant-managed client users do not have normal CarbonTally workspace
+  access.** Under the existing **white-label** model, client users **may** have workspace access.
+  White-label workspace access does **not** transfer ownership of the organisation's data to the
+  consultant, and it does **not** prevent the client from later becoming a direct CarbonTally
+  customer.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — the prior OPEN status (recovery report §6 U-6) is
+  **RESOLVED**. Reconciles D31 (managed-service default; clients do not automatically use
+  CarbonTally) with D51/D21 (white-label).
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-6 (Actor Model §37.1).
+- **IMPLEMENTATION:** the managed-service default is implemented (D31; P6-1B membership/workspace
+  authorization) and the white-label foundation with workspace capability exists
+  (`features.consultant.workspace`; `api/v3_whitelabel`, `api/consultant_branding`). Ownership
+  remains with the client organisation in both modes.
+- **GAP:** none added. Which branding a client-side user sees in white-label mode remains governed
+  by D51 as implemented, and this decision does not extend white-label scope.
+- **CONFIDENCE:** HIGH.
+
+### U-7 — Commercial entitlement
+- **DECISION:** The **consultant is the direct commercial CarbonTally customer** and pays
+  CarbonTally. The consultant's subscription **covers its managed clients according to the
+  applicable configured capacity/limits**. When a managed client becomes a direct CarbonTally
+  customer, **that client's own direct entitlement/subscription applies**. A **parallel
+  subscription/entitlement system must not be created**; the existing billing/subscription
+  architecture is reused.
+- **STATUS:** CURRENT (PO CLARIFICATION 2026-09-30) — the prior OPEN status (recovery report §6 U-7 /
+  gap G-3) is **RESOLVED**; closes the recovery storage gate **SG-11** and PO evidence review §8
+  item 6 (no consultant-firm-level quota/entitlement dimension).
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner clarification, 2026-09-30; question recovered in
+  `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 U-7 (from G-3) and §7.2 SG-11.
+- **IMPLEMENTATION:** the existing commercial model already expresses this — the consultant is
+  billed through its own organisation subscription (`billing_subscriptions`); consultant capability
+  and client capacity come from its plan's feature block (`billing_plans.features.consultant`); and
+  organisation-level storage entitlement/usage is the existing `billing_plans.included_storage_bytes`
+  / `usage_tracking.total_storage_bytes` (`BillingService.get_entitlement`, `meter_storage`). Step 2
+  integrated with exactly these surfaces and built no second system.
+- **GAP:** entitlement *provisioning* on conversion remains the workflow gap already recorded
+  (recovery report G-2b/G-3) — implementation work, unchanged by this decision.
+- **CONFIDENCE:** HIGH.
+
+## 41.2 Entitlement / capacity decision (E-4)
+
+### E-4 — Consultant client capacity
+- **DECISION:** **CarbonTally Admin controls consultant client capacity/limits.** Capacity remains
+  **configurable through the existing administrative/billing architecture**; a new hard-coded
+  capacity model must **not** be introduced.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — resolves PO evidence review §8 item 6 (the
+  consultant-capacity half of it). Corroborated by frozen architecture: Blueprint v1.3
+  **CT-BILL-001** (server-authoritative commercial state incl. client capacity) and **CT-BILL-003**
+  (consultant plan/client-capacity configuration administrable from the Admin control plane and not
+  hard-coded); AGENTS.md §31/§43.
+- **AUTHORITY:** L1 (explicit PO decision; corroborated by L3 frozen architecture) · **SOURCE:**
+  Product Owner decision, 2026-09-30.
+- **IMPLEMENTATION:** already expressed as the admin-configurable plan feature
+  `billing_plans.features.consultant.client_capacity` (with `team_member_limit`, `white_label`,
+  `workspace`), projected by `BillingService.consultant_capability`
+  (`backend/services/billing.py`); consultant-managed client capacity is reported (not enforced) by
+  `backend/services/storage_metering.py`.
+- **GAP:** whether capacity is *enforced* at client-creation/engagement time (refusing an additional
+  managed client beyond the configured limit) is an implementation question; this decision fixes
+  where capacity is configured, not that it must block. No blocking behaviour is added by this
+  reconciliation.
+- **CONFIDENCE:** HIGH.
+
+## 41.3 Storage governance decisions (S-1 … S-3)
+
+### S-1 — Storage tenancy anchor
+- **DECISION:** **The client's organisation is the storage tenancy anchor.** There is **no separate
+  physical consultant storage tenancy**; consultant provenance is represented through
+  metadata/audit information.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — already entailed by ratified A-8/A-11/C5 and D44;
+  closes recovery storage gate **SG-4**, **SG-8** (segmentation is not keyed on the organisation-kind
+  vocabulary) and **SG-9** (no consultant-firm namespace, so no handover overlap namespace).
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; corroborated by D44/D32 and
+  `…STORAGE_PO_EVIDENCE_REVIEW_20260930.md` §1.1 items 4/8 (no `customer/` or `consultant/`
+  namespace exists anywhere).
+- **IMPLEMENTATION:** every object key is `uploads/{client_organization_id}/…` (plus the
+  `uploads/{org}/derived/…` derived namespace) in the private `documents` bucket; no consultant id
+  appears in any key. Verified by the Step 1/2 suites.
+- **CONFIDENCE:** HIGH.
+
+### S-2 — Storage access model
+- **DECISION:** **Hybrid storage access** — backend authorization **before** issuing access;
+  **short-lived signed URLs** for object transfer; **no direct exposure of service-role
+  credentials**; **authorization remains the authoritative access boundary**.
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — already entailed by D44/D32; restated as governing
+  policy for document storage.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; D44/D32; ADR-V3-010; AGENTS.md
+  §44/§68.
+- **IMPLEMENTATION:** implemented end-to-end by Storage Steps 1 + 2 and independently verified —
+  one authorization gate per ingress (`api/upload_gate`), signing only after authorization
+  (`services/storage.storage_signed_url`), service role used server-side only, no public URL is ever
+  constructed (`get_public_url` retired for documents).
+- **GAP:** signed-upload TTL is declarative rather than provider-enforced (a recorded non-blocking
+  observation); the backend still issues short-lived URLs.
+- **CONFIDENCE:** HIGH.
+
+### S-3 — Document access audit
+- **DECISION:** **Audit significant document access events.**
+- **STATUS:** CURRENT (PO DECISION 2026-09-30) — closes PO evidence review §8 item 8 (the
+  upload-audit and signed-URL/download-audit half of it), on top of D33.1 and the §23 audit family.
+- **AUTHORITY:** L1 · **SOURCE:** Product Owner decision, 2026-09-30; corroborated by D33.1 and the
+  existing `audit_logs` infrastructure.
+- **IMPLEMENTATION:** already satisfied by Storage Step 1/2 through the shared significant-document
+  audit emitter (`api/upload_gate.record_document_event`), covering
+  `document.upload_initiated`, `document.upload_completed`, `document.upload_denied`,
+  `document.upload_authorisation_expired`, `document.cleanup`, `document.security_scan_started`,
+  `document.security_scan_completed`, `document.security_scan_unavailable`,
+  `document.security_rejected`, `document.accepted`, `document.signed_url_issued`,
+  `document.download`, `document.deleted`, `document.derived_artefact_created`.
+- **GAP:** none. Audit is best-effort by design (an audit outage must not fail an upload); no secret
+  is ever persisted.
+- **CONFIDENCE:** HIGH.
+
+## 41.4 Storage Management — closure record
+
+**STORAGE MANAGEMENT STEPS 1 + 2 — CLOSED.**
+
+- **Implementation:** complete — `docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_STEP1_IMPLEMENTATION_20260930.md`
+  and `…STEP2_IMPLEMENTATION_20260930.md` (Step 2 §1, items 2A–2U); architecture:
+  `docs/architecture/CARBONTALLY_STORAGE_MANAGEMENT_ARCHITECTURE.md`.
+- **Independent verification:** complete — the combined verification of Storage Steps 1 + 2 returned
+  **"STORAGE MANAGEMENT — INDEPENDENTLY VERIFIED WITH NON-BLOCKING OBSERVATIONS"**: no security
+  bypass blocking closure, no tenant-isolation defect, no processing bypass, no false malware-scan
+  claim; direct-upload architecture, consultant authorization, the storage-key model,
+  original-evidence integrity, processing parity, auditability and entitlement/metering integration
+  verified. The verification report was supplied as an external report (there is no
+  `Pasted markdown.md` in this workspace), so its verdict is recorded as reported and its
+  observations are preserved — not hidden — in the Step 2 report §20.
+- **Blocking defects:** none.
+- **Deployment dependencies are separated from implementation closure:** the unapplied storage-limit
+  migrations, the uninstalled external malware scanner, the operational `report-artifacts`
+  provisioning and deployment itself remain deployment/operational items (Step 2 report §17), **not**
+  implementation gaps.
+- **Production deployment:** **NOT AUTHORIZED** — unchanged by this reconciliation.
+- **No Storage Step 3 is authorised:** the preserved observations are not converted into a Step 3 or
+  into new requirements.
+
+## 41.5 Status reconciliation (pointers only)
+
+| Where | Was | Now |
+|---|---|---|
+| `…CONSULTANT_CLIENT_DECISION_RECOVERY_20260930.md` §6 (U-1…U-7) | PO DECISION REQUIRED | **RESOLVED** — recorded in §41.1 above |
+| Same report §7.2 (SG-7…SG-11 storage gate) | blocked on U-1/U-2/U-4/U-5/U-7 | **CLOSED in substance** by S-1/S-2/S-3 with U-1/U-2/U-4/U-5/U-7; no namespace, migration or destruction rule is implied |
+| `…STORAGE_PO_EVIDENCE_REVIEW_20260930.md` §8 items 3, 6, 8 | PO decision required | **RESOLVED** by U-1/U-2 (item 3), E-4 + U-7 (item 6), S-3 (item 8) |
+| This register §19 (Document/Storage Decisions) | D44/D07/D10 only | **amended** — S-1/S-2/S-3 (§41.3) are the storage governance layer over D44 |
+| This register §31 (Decisions Intentionally Deferred) | retention destructive enforcement DEFERRED | **unchanged** — U-5 forbids inventing a destruction rule; the D-P2-04 deferral stands |
+| This register §32 (Decisions Still Unresolved) | — | consultant exclusivity is no longer undecided; **enforcement** of U-1 and the atomicity/initiator of U-2 remain implementation/engineering items |
+| This register §38 F-8 | consultant model statement | **unchanged**; U-1 (single active consultant), U-2 (sequential handover) and U-6 (client workspace access) now qualify it |
+
+## 41.6 Verification status of this section
+
+- **Recorded, not decided here:** every decision in §41.1–§41.3 is a Product Owner decision of
+  2026-09-30, captured with its meaning preserved; nothing was inferred from code, tests or audits.
+- **No new requirement invented:** the non-blocking observations that belong to the storage
+  verification are preserved as NON-BLOCKING / DEFERRED / FOLLOW-UP in the Step 2 report §20 and are
+  **not** turned into requirements or into a Storage Step 3.
+- **No production change:** this reconciliation changed documentation only. No code, migration,
+  bucket, credential, environment or shared data was modified; no commit, push or deployment was
+  performed, and the pre-existing dirty working tree was left untouched.
 
 ## Appendix — Evidence index
 

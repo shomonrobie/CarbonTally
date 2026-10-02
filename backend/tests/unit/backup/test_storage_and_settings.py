@@ -47,10 +47,19 @@ class TestSettings:
             )
 
     def test_invalid_store_and_compression_are_rejected(self) -> None:
+        # ``s3`` became a supported store in Phase 2 (BACKUP-01); an unknown
+        # store name must still be refused, because a typo would otherwise
+        # silently leave the deployment writing to the local default.
         with pytest.raises(BackupConfigurationError):
-            BackupSettings.from_env({"CT_BACKUP_OBJECT_STORE": "s3"})
+            BackupSettings.from_env({"CT_BACKUP_OBJECT_STORE": "gcs"})
         with pytest.raises(BackupConfigurationError):
             BackupSettings.from_env({"CT_BACKUP_COMPRESSION": "zstd"})
+
+    def test_the_s3_store_is_accepted(self) -> None:
+        assert (
+            BackupSettings.from_env({"CT_BACKUP_OBJECT_STORE": "s3"}).object_store
+            == "s3"
+        )
 
     def test_invalid_compression_level_is_rejected(self) -> None:
         with pytest.raises(BackupConfigurationError):

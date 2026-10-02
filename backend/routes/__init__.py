@@ -5,6 +5,7 @@ CarbonTally API Routes Package
 
 from . import emissions
 from . import waitlist
+from . import beta_access
 from . import upload
 from . import reports
 from . import glossary
@@ -43,6 +44,7 @@ __all__ = [
     # Public/General routes
     'emissions',
     'waitlist',
+    'beta_access',
     'upload',
     'reports',
     'glossary',

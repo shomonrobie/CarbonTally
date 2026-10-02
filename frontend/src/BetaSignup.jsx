@@ -5,6 +5,13 @@ import { supabase } from './supabaseClient';
 import { goToWorkspace } from './v3/api';
 import './css/BetaSignup.css';
 
+// CT-FINAL-03 (R-3 / package 09 §3) — `beta_access_codes` (invite + magic-token
+// material) and `beta_users` are fail-closed now (RLS enabled, ZERO policies),
+// so this page validates codes through the existing session-free backend
+// endpoint and redeems them through `POST /api/beta/redeem` with the caller's
+// own session token. It no longer touches either table directly.
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 export default function BetaSignup() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -32,14 +39,14 @@ export default function BetaSignup() {
       }
 
       try {
-        const { data, error } = await supabase
-          .from('beta_access_codes')
-          .select('code, email, status, expires_at')
-          .eq('code', betaCode)
-          .single();
+        const response = await fetch(
+          `${API_URL}/api/admin/beta/codes/validate/${encodeURIComponent(betaCode)}`
+        );
+        const body = response.ok ? await response.json() : null;
+        const data = body && body.valid ? body.data : null;
 
-        if (error || !data) {
-          setError('Invalid beta access code');
+        if (!data) {
+          setError((body && body.message) || 'Invalid beta access code');
           setCheckingCode(false);
           return;
         }
@@ -50,7 +57,7 @@ export default function BetaSignup() {
           return;
         }
 
-        if (new Date(data.expires_at) < new Date()) {
+        if (data.expires_at && new Date(data.expires_at) < new Date()) {
           setError('This beta code has expired');
           setCheckingCode(false);
           return;
@@ -79,20 +86,10 @@ export default function BetaSignup() {
     setError('');
 
     try {
-    // ✅ Check if user already exists
-      const { data: existingUser, error: checkError } = await supabase
-        .from('beta_users')
-        .select('email')
-        .eq('email', email)
-        .single();
-
-        if (existingUser) {
-            setError('This email is already registered for beta access. Please sign in.');
-            setLoading(false);
-            return;
-        }
-        
-    
+      // CT-FINAL-03 (package 09 §4.2) — the direct `beta_users` duplicate-email
+      // pre-check was removed: it duplicated data the backend owns, and the same
+      // condition is already handled by the signUp error branch below
+      // ('User already registered').
       // 1. Create user account
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email,
@@ -119,33 +116,29 @@ export default function BetaSignup() {
 
 
 
-      // 2. Mark beta code as used
-      await supabase
-        .from('beta_access_codes')
-        .update({ 
-          status: 'used', 
-          used_at: new Date().toISOString() 
-        })
-        .eq('code', betaCode);
-
-      // 3. Add to beta_users table
-      await supabase
-        .from('beta_users')
-        .insert({
-          user_id: authData.user.id,
-          email: email,
-          beta_code: betaCode,
-          access_level: 'beta'
-        });
-
-      // 4. Update waitlist status
-      await supabase
-        .from('waitlist')
-        .update({ 
-          status: 'active', 
-          activated_at: new Date().toISOString() 
-        })
-        .eq('email', email);
+      // 2.-4. CT-FINAL-03 (R-3 / package 09 §3-§4.2) — code redemption,
+      // `beta_users` provisioning and waitlist activation are performed by the
+      // backend from the caller's own verified session. The browser must not
+      // write `beta_access_codes`, `beta_users` (the self-grant path) or
+      // `waitlist` directly: all three are fail-closed now (RLS enabled, ZERO
+      // policies).
+      if (authData && authData.session) {
+        try {
+          await fetch(`${API_URL}/api/beta/redeem`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authData.session.access_token}`,
+            },
+            body: JSON.stringify({ beta_code: betaCode }),
+          });
+        } catch (redeemError) {
+          // Non-fatal: the account itself was created. A beta code can still be
+          // redeemed once a session exists (or an admin can provision the beta
+          // user from the existing admin endpoints).
+          console.error('Beta code redemption failed:', redeemError);
+        }
+      }
 
       setSuccess(true);
       // D35 — never land a customer on the legacy /dashboard. Route through

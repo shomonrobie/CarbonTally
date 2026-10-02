@@ -38,6 +38,34 @@ import './consultant.css';
 
 const YEAR = new Date().getFullYear();
 
+// Storage Management Step 2A — the consultant sees the same precise upload
+// outcomes the backend reports (never a generic "upload failed" that hides a
+// security rejection).
+function consultantUploadError(e) {
+  switch (e?.code) {
+    case 'UPLOAD_SECURITY_REJECTED':
+      return (
+        e.message ||
+        'The document was rejected by the security check, so it was not added to the client.'
+      );
+    case 'UPLOAD_TOO_LARGE':
+      return (
+        e.message ||
+        'That file is larger than the platform per-file limit. The original is never compressed server-side — please split the document.'
+      );
+    case 'UPLOAD_UNSUPPORTED_TYPE':
+      return e.message || 'That file type is not supported for client documents.';
+    case 'UPLOAD_AUTHORIZATION_EXPIRED':
+      return (
+        'The upload was not accepted — the upload authorisation expired or the client authorisation is no longer active. Nothing was added.'
+      );
+    case 'UPLOAD_STORAGE':
+      return 'Storage did not accept the file. Nothing was added to the client.';
+    default:
+      return e.message || 'Upload failed';
+  }
+}
+
 // CON-7 — business-first CO₂e formatting: "10.7 t CO₂e" / "8,850 kg CO₂e".
 function formatCo2(kg) {
   const value = Number(kg);
@@ -268,8 +296,10 @@ function ClientWorkspace({ client, clientId }) {
     try {
       const result = await uploadConsultantDocument(clientId, file, 'utility');
       const documentId = result?.document?.id;
+      // Step 2A — report the backend's REAL verdict. The document is only in the
+      // client's pipeline if the security gate accepted it.
       setUploadNotice(
-        `“${file.name}” uploaded — it has entered the client's processing pipeline. Track its progress in the pipeline below.`
+        `“${file.name}” uploaded — status ${result?.status || 'clean'}. It has entered the client's processing pipeline. Track its progress in the pipeline below.`
       );
       const [docs, itemList] = await Promise.all([
         getClientDocuments(clientId),
@@ -287,7 +317,7 @@ function ClientWorkspace({ client, clientId }) {
         );
       }
     } catch (e) {
-      setUploadError(e.message || 'Upload failed');
+      setUploadError(consultantUploadError(e));
     } finally {
       setUploading(false);
       event.target.value = '';

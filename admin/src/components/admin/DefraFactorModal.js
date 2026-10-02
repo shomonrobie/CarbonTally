@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaTimes, FaSave } from 'react-icons/fa';
-import { supabase } from '../../supabaseClient';
 import toast from 'react-hot-toast';
+import { createFactor, updateFactor } from '../../services/factorAdminService';
 
 const DefraFactorModal = ({ isOpen, onClose, factor, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -47,45 +47,20 @@ const DefraFactorModal = ({ isOpen, onClose, factor, onSuccess }) => {
         return;
       }
 
-      // Check for duplicates
-      const { data: existing } = await supabase
-        .from('defra_conversion_factors')
-        .select('id')
-        .eq('activity_type', formData.activity_type.trim())
-        .eq('reporting_year', formData.reporting_year)
-        .maybeSingle();
+      // PD-3: factor writes go through the admin API, so the SERVER makes the
+      // authorization and duplicate decisions against the canonical factor
+      // store. The browser never writes a factor table directly.
+      const payload = {
+        activity_type: formData.activity_type.trim(),
+        reporting_year: formData.reporting_year,
+        co2e_multiplier: formData.co2e_multiplier,
+      };
 
-      if (existing && (!factor || existing.id !== factor.id)) {
-        toast.error(`A factor for "${formData.activity_type}" in ${formData.reporting_year} already exists`);
-        setLoading(false);
-        return;
-      }
-
-      let error;
       if (factor) {
-        // Update
-        const { error: updateError } = await supabase
-          .from('defra_conversion_factors')
-          .update({
-            activity_type: formData.activity_type.trim(),
-            reporting_year: formData.reporting_year,
-            co2e_multiplier: formData.co2e_multiplier,
-          })
-          .eq('id', factor.id);
-        error = updateError;
+        await updateFactor(factor.id, payload);
       } else {
-        // Insert
-        const { error: insertError } = await supabase
-          .from('defra_conversion_factors')
-          .insert({
-            activity_type: formData.activity_type.trim(),
-            reporting_year: formData.reporting_year,
-            co2e_multiplier: formData.co2e_multiplier,
-          });
-        error = insertError;
+        await createFactor(payload);
       }
-
-      if (error) throw error;
 
       toast.success(factor ? 'Factor updated successfully!' : 'Factor added successfully!');
       onSuccess();

@@ -1,0 +1,55 @@
+=== P1 step 2 command ===
+grep -n "release|async with" backend/backup/jobs.py backend/backup/service.py
+
+=== lease sites (B7 fix) ===
+backend/backup/jobs.py:114:    "artifact_bytes, checksum_sha256, key_version, manifest, release_commit, "
+backend/backup/jobs.py:141:    release_commit: Optional[str] = None
+backend/backup/jobs.py:184:            "release_commit": self.release_commit,
+backend/backup/jobs.py:245:        release_commit=record["release_commit"],
+backend/backup/jobs.py:277:async def _pool_connection_factory() -> Any:
+backend/backup/jobs.py:283:    :meth:`BackupJobStore._connection` hand the connection back on every exit path
+backend/backup/jobs.py:285:    no release path at all, which is exactly how the backup worker starved the
+backend/backup/jobs.py:288:    Mirrors ``backup.service._pool_connection_factory`` — a caller that injects its
+backend/backup/jobs.py:311:                pool when the ``async with`` block exits. Defaults to the shared
+backend/backup/jobs.py:314:        self._connection_factory = connection_factory or _pool_connection_factory
+backend/backup/jobs.py:317:    async def _connection(self) -> AsyncIterator[Any]:
+backend/backup/jobs.py:318:        """Lease one connection for the statements inside the ``async with`` block.
+backend/backup/jobs.py:324:          ``async with``, so asyncpg returns the connection to the pool on the way
+backend/backup/jobs.py:331:        Before the B7 fix this method was ``return await self._connection_factory()``
+backend/backup/jobs.py:332:        and no call site ever released anything: one pooled connection was lost per
+backend/backup/jobs.py:336:        acquired = await self._connection_factory()
+backend/backup/jobs.py:338:            async with acquired as connection:
+backend/backup/jobs.py:349:        release_commit: Optional[str] = None,
+backend/backup/jobs.py:373:        async with self._connection() as connection:
+backend/backup/jobs.py:377:                    status, scope, requested_by, idempotency_key, release_commit,
+backend/backup/jobs.py:387:                release_commit,
+backend/backup/jobs.py:439:        async with self._connection() as connection:
+backend/backup/jobs.py:460:        * the stale-lock clause releases a job whose worker died mid-run, which
+backend/backup/jobs.py:467:        async with self._connection() as connection:
+backend/backup/jobs.py:510:    async def release_stale(
+backend/backup/jobs.py:522:        async with self._connection() as connection:
+backend/backup/jobs.py:564:        async with self._connection() as connection:
+backend/backup/jobs.py:629:        async with self._connection() as connection:
+backend/backup/jobs.py:692:        async with self._connection() as connection:
+backend/backup/jobs.py:720:        async with self._connection() as connection:
+backend/backup/jobs.py:735:        async with self._connection() as connection:
+backend/backup/jobs.py:750:        async with self._connection() as connection:
+backend/backup/jobs.py:779:        async with self._connection() as connection:
+backend/backup/jobs.py:813:        async with self._connection() as connection:
+backend/backup/jobs.py:833:        async with self._connection() as connection:
+backend/backup/jobs.py:855:        async with self._connection() as connection:
+backend/backup/jobs.py:866:        async with self._connection() as connection:
+backend/backup/jobs.py:889:    release_commit: Optional[str] = None,
+backend/backup/jobs.py:901:    commit = release_commit if release_commit is not None else job.release_commit
+backend/backup/jobs.py:919:        manifest_extra["release_commit"] = commit
+backend/backup/service.py:119:        self._connection_factory = connection_factory or _pool_connection_factory
+backend/backup/service.py:122:    async def _connection(self) -> AsyncIterator[Any]:
+backend/backup/service.py:123:        """Lease one connection for the statements inside the ``async with`` block.
+backend/backup/service.py:125:        An acquire context (the default factory) is entered with ``async with`` so
+backend/backup/service.py:131:        acquired = await self._connection_factory()
+backend/backup/service.py:133:            async with acquired as connection:
+backend/backup/service.py:180:            async with self._connection() as connection:
+backend/backup/service.py:203:        finally:
+backend/backup/service.py:414:async def _pool_connection_factory() -> Any:
+backend/backup/service.py:418:    back" context: the caller enters it with ``async with`` and the connection
+backend/backup/service.py:420:    connection (``await pool.acquire()``) leaves no release path at all — the leak

@@ -4,7 +4,14 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from database import get_supabase_client
-from auth import AuthUser, require_auth, require_org_member, require_org_admin
+from auth import (
+    AuthUser,
+    enforce_org_query_scope,
+    require_auth,
+    require_org_admin,
+    require_org_member,
+    require_org_member_or_internal_staff,
+)
 from supabase import Client
 router = APIRouter(prefix="/api", tags=["Emissions"])
 
@@ -332,6 +339,29 @@ async def delete_emission_record(
 # ==========================================
 # Emissions Update Endpoints
 # ==========================================
+#
+# F1 (D-7) — the five handlers below were the last emission routes gated only by
+# ``require_auth()``: any authenticated caller, including a member of a
+# SUSPENDED organisation, could read and write emission records here. They now
+# use the organisation guard, so membership AND the D-7 lifecycle decision are
+# enforced before the handler body runs — an INACTIVE organisation grants
+# nothing. Record-level exact-tenant ownership is unchanged: ``delete``/``put``
+# already resolve it and ``verify`` now does too.
+#
+# G2 — the guard is ``require_org_member_or_internal_staff()``, NOT the plain
+# ``require_org_member()``: that guard's membership test refused CarbonTally
+# INTERNAL staff, who are not organisation members and whom every other
+# organisation guard exempts, so the F1 migration had silently removed their
+# operational access to these five routes. Organisation principals get exactly
+# the decisions they got before; Processing Entity staff still get 403 (D20
+# scope-first).
+#
+# G1 — ``stats`` and ``export`` also accept ``?organization_id=``. That query
+# parameter WAS the entire scope decision on a service-role read, so it is now
+# authorised (``enforce_org_query_scope``) before it is applied, and a caller
+# whose memberships do not resolve is refused instead of degrading into an
+# unscoped, all-tenant read. Both handlers re-raise ``HTTPException`` ahead of
+# their generic handler so the denial stays a 403.
 
 class EmissionUpdate(BaseModel):
     start_date: Optional[str] = None
@@ -347,7 +377,7 @@ class BulkEmissionCreate(BaseModel):
 async def update_emission_record(
     record_id: str,
     update_data: EmissionUpdate,
-    current_user: AuthUser = Depends(require_auth())
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff())
 ):
     """Update an existing emission record."""
     try:
@@ -407,7 +437,7 @@ async def update_emission_record(
 @router.post("/emissions/bulk")
 async def bulk_create_emissions(
     bulk_data: BulkEmissionCreate,
-    current_user: AuthUser = Depends(require_auth())
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff())
 ):
     """Bulk create emission records."""
     try:
@@ -487,7 +517,7 @@ async def bulk_create_emissions(
 
 @router.get("/emissions/stats")
 async def get_emission_stats(
-    current_user: AuthUser = Depends(require_auth()),
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff()),
     organization_id: Optional[str] = None
 ):
     """Get emission statistics."""
@@ -497,17 +527,37 @@ async def get_emission_stats(
         query = supabase.from_('emissions_logs').select('*')
         
         if organization_id:
+            # G1 — the organisation named in the QUERY STRING is authorised
+            # before it becomes the only filter on a service-role read (RLS is
+            # bypassed): without this, any organisation member could read
+            # another tenant's emissions by changing one parameter.
+            await enforce_org_query_scope(organization_id, current_user)
             query = query.eq('organization_id', organization_id)
-        elif not current_user.is_admin:
+        elif current_user.is_internal_staff:
+            # G2 — internal CarbonTally oversight keeps the documented
+            # any-organisation view, stated explicitly and keyed on the D20
+            # scope dimension (``is_admin`` alone must never widen a read).
+            pass
+        else:
             # Get user's organizations
             orgs = supabase.from_('organization_members') \
                 .select('organization_id') \
                 .eq('user_id', current_user.user_id) \
                 .execute()
-            
-            if orgs.data:
-                org_ids = [o['organization_id'] for o in orgs.data]
-                query = query.in_('organization_id', org_ids)
+            org_ids = [o['organization_id'] for o in (orgs.data or [])]
+            if not org_ids:
+                # G1 — fail closed: a principal whose memberships do not resolve
+                # must never degrade into an unscoped, all-tenant read.
+                return {
+                    "success": True,
+                    "data": {
+                        "total_records": 0,
+                        "total_emissions_kg_co2e": 0,
+                        "by_scope": {},
+                        "by_year": {}
+                    }
+                }
+            query = query.in_('organization_id', org_ids)
         
         result = query.execute()
         
@@ -540,6 +590,11 @@ async def get_emission_stats(
         
         return {"success": True, "data": stats}
         
+    except HTTPException:
+        # G1 — the query-scope denial is a request-level refusal (403), not a
+        # failed stats read: ``HTTPException`` IS an ``Exception``, so it must be
+        # re-raised before the generic handler or the denial becomes HTTP 500.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -548,7 +603,7 @@ async def get_emission_stats(
 
 @router.get("/emissions/export")
 async def export_emissions(
-    current_user: AuthUser = Depends(require_auth()),
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff()),
     organization_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
@@ -561,16 +616,28 @@ async def export_emissions(
             .select('*, organizations!left(name), assets!left(name, type)')
         
         if organization_id:
+            # G1 — the same rule ``stats`` applies: the query parameter is
+            # authorised before it scopes a service-role read (RLS bypassed).
+            await enforce_org_query_scope(organization_id, current_user)
             query = query.eq('organization_id', organization_id)
-        elif not current_user.is_admin:
+        elif current_user.is_internal_staff:
+            # G2 — internal CarbonTally oversight export (any organisation),
+            # keyed on the D20 scope dimension (``is_admin`` alone must never
+            # widen a read).
+            pass
+        else:
             orgs = supabase.from_('organization_members') \
                 .select('organization_id') \
                 .eq('user_id', current_user.user_id) \
                 .execute()
-            
-            if orgs.data:
-                org_ids = [o['organization_id'] for o in orgs.data]
-                query = query.in_('organization_id', org_ids)
+            org_ids = [o['organization_id'] for o in (orgs.data or [])]
+            if not org_ids:
+                # G1 — fail closed: never an unscoped, all-tenant export.
+                return {
+                    "success": True,
+                    "message": "No data to export"
+                }
+            query = query.in_('organization_id', org_ids)
         
         if start_date:
             query = query.gte('start_date', start_date)
@@ -622,6 +689,10 @@ async def export_emissions(
             }
         )
         
+    except HTTPException:
+        # G1 — same reason as ``stats``: re-raise the query-scope denial (403)
+        # before the generic handler below turns it into HTTP 500.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -631,7 +702,7 @@ async def export_emissions(
 @router.post("/emissions/verify")
 async def verify_emissions(
     record_ids: List[str],
-    current_user: AuthUser = Depends(require_auth())
+    current_user: AuthUser = Depends(require_org_member_or_internal_staff())
 ):
     """Verify emission records (mark as verified)."""
     try:
@@ -659,6 +730,21 @@ async def verify_emissions(
                         'error': 'Record not found'
                     })
                     continue
+
+                # F1 (D-7) — exact-tenant ownership, the same rule ``put`` and
+                # ``delete`` already enforce on this table. This handler writes
+                # with the service-role client (RLS is bypassed), so the RECORD's
+                # organisation decides: a cross-tenant id is refused outright
+                # rather than counted as a per-record failure, so nothing of
+                # another tenant's is written and the caller sees the denial.
+                if (
+                    not current_user.is_admin
+                    and existing.data['organization_id'] != current_user.organization_id
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You don't have permission to verify this record"
+                    )
                 
                 # Update record
                 result = supabase.from_('emissions_logs') \
@@ -679,6 +765,12 @@ async def verify_emissions(
                         'error': 'Failed to verify'
                     })
                     
+            except HTTPException:
+                # F1 (D-7) — the ownership denial raised above must not be
+                # swallowed by the per-record failure collection: a cross-tenant
+                # record id is a request-level refusal (403), not a record that
+                # merely failed to verify.
+                raise
             except Exception as e:
                 results['failed'] += 1
                 results['errors'].append({
@@ -692,6 +784,12 @@ async def verify_emissions(
             "data": results
         }
         
+    except HTTPException:
+        # F1 (D-7) — the record-level ownership denial raised inside the loop is
+        # a request-level refusal (403). ``HTTPException`` IS an ``Exception``,
+        # so it must be re-raised BEFORE the generic handler below or the
+        # ownership denial would surface as HTTP 500.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

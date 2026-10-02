@@ -1,23 +1,22 @@
 # backend/services/email_service.py
 import os
-import resend
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-# Initialize Resend
-resend.api_key = os.environ.get("RESEND_API_KEY")
+# CT-FINAL-02 EMAIL-CONFIG-01: this module no longer talks to a delivery provider
+# directly and no longer mutates a provider SDK's global API key.  Every message
+# is delivered through the canonical platform mailer, which applies the
+# admin-configured provider (Resend or SMTP) and the admin-configured sender.
 
 FOUNDER_EMAIL = os.environ.get("FOUNDER_EMAIL", "admin@carbontally.co.uk")
 
 
-def send_beta_confirmation_email(email: str, full_name: Optional[str] = None) -> bool:
+async def send_beta_confirmation_email(email: str, full_name: Optional[str] = None) -> bool:
     """
     Send confirmation email when user requests beta access
     """
-    from supabase import create_client
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-        supabase_client = create_client(supabase_url, supabase_key)
+    from services.v3_email import send_platform_email
+
     try:
         name = full_name or email.split('@')[0]
         
@@ -183,9 +182,22 @@ def send_beta_confirmation_email(email: str, full_name: Optional[str] = None) ->
             """
         }
         
-        # Send both emails
-        resend.Emails.send(params)
-        resend.Emails.send(founder_email_params)
+        # Send both emails through the canonical, admin-configured provider.
+        # A provider that is not configured reports the failure honestly: this
+        # function must never claim an email was sent when it was not.
+        delivered, reason = await send_platform_email(
+            to_email=email,
+            subject=params["subject"],
+            html=params["html"],
+        )
+        founder_delivered, _founder_reason = await send_platform_email(
+            to_email=FOUNDER_EMAIL,
+            subject=founder_email_params["subject"],
+            html=founder_email_params["html"],
+        )
+        if not delivered:
+            print(f"Failed to send beta confirmation email: {reason}")
+        return bool(delivered and founder_delivered)
         
         return True
         
@@ -197,9 +209,10 @@ def log_email_status(email: str, email_type: str, status: str, error_message: Op
     """Log email delivery status to Supabase"""
     try:
         from supabase import create_client
-          supabase_url = os.getenv("SUPABASE_URL")
-          supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-          supabase_client = create_client(supabase_url, supabase_key)
+
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        supabase_client = create_client(supabase_url, supabase_key)
           
         supabase_client.from_('email_logs').insert({
             'email': email,
@@ -212,10 +225,12 @@ def log_email_status(email: str, email_type: str, status: str, error_message: Op
     except Exception as e:
         print(f"Failed to log email status: {e}")
 
-def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None) -> bool:
+async def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] = None) -> bool:
     """
     Send beta invite email with access code
     """
+    from services.v3_email import send_platform_email
+
     try:
         name = full_name or email.split('@')[0]
         signup_url = f"https://carbontally.co.uk/signup?code={beta_code}"
@@ -337,8 +352,14 @@ def send_beta_invite_email(email: str, beta_code: str, full_name: Optional[str] 
             "html": html_content,
         }
         
-        resend.Emails.send(params)
-        return True
+        delivered, reason = await send_platform_email(
+            to_email=email,
+            subject=params["subject"],
+            html=params["html"],
+        )
+        if not delivered:
+            print(f"Failed to send beta invite email: {reason}")
+        return delivered
         
     except Exception as e:
         print(f"Failed to send beta invite email: {e}")

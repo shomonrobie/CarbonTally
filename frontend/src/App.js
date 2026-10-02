@@ -727,12 +727,6 @@ function Dashboard({ user }){
           assets (
             id,
             name
-          ),
-          defra_conversion_factors (
-            id,
-            activity_type,
-            co2e_multiplier,
-            reporting_year
           )
         `)
         .eq('organization_id', organization.id)

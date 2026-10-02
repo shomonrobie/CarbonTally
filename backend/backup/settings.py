@@ -8,7 +8,17 @@ default**: an unset encryption key raises
 Environment contract (all optional except the encryption key, required when
 encryption is requested):
 
-``CT_BACKUP_OBJECT_STORE``   ``local`` (default) or ``memory``
+``CT_BACKUP_OBJECT_STORE``   ``local`` (default), ``memory`` or ``s3``
+``CT_BACKUP_S3_ENDPOINT``    S3-compatible endpoint base URL, for example
+                             ``https://<ref>.supabase.co/storage/v1/s3``
+                             (required when the store is ``s3``)
+``CT_BACKUP_S3_REGION``      signing region (default ``us-east-1``)
+``CT_BACKUP_S3_BUCKET``      destination bucket (required when the store is ``s3``)
+``CT_BACKUP_S3_ACCESS_KEY``  S3 access key id (required when the store is ``s3``)
+``CT_BACKUP_S3_SECRET_KEY``  S3 secret access key; **never** logged or defaulted
+``CT_BACKUP_S3_PREFIX``      optional key prefix inside the bucket (default none)
+``CT_BACKUP_S3_PATH_STYLE``  ``1`` (default) for path-style addressing — what
+                             Supabase Storage exposes; ``0`` for virtual-host
 ``CT_BACKUP_LOCAL_ROOT``     provider root for the local object store
                              (default ``/tmp/ct_backup_store``)
 ``CT_BACKUP_TEMP_ROOT``      parent directory for temporary export material
@@ -41,6 +51,11 @@ DEFAULT_COMPRESSION = "gzip"
 DEFAULT_COMPRESSION_LEVEL = 6
 DEFAULT_KEY_ID = "key-v1"
 DEFAULT_VERIFY_READBACK = True
+#: Signing region for the S3-compatible provider. Supabase Storage signs with
+#: ``us-east-1`` regardless of where the project runs.
+DEFAULT_S3_REGION = "us-east-1"
+#: Supabase Storage exposes its S3 API path-style (bucket in the path).
+DEFAULT_S3_PATH_STYLE = True
 
 #: Credential-bearing / provider-private schemas that must never be exported.
 #: Supabase keeps authentication credential material (``auth.users``), provider
@@ -64,7 +79,7 @@ DENIED_SCHEMAS: tuple[str, ...] = (
 #: deliberate administrative act.
 DENIED_SCHEMA_OVERRIDE_PHRASE = "I_UNDERSTAND_THIS_EXPORTS_CREDENTIAL_MATERIAL"
 
-_ALLOWED_STORES = ("local", "memory")
+_ALLOWED_STORES = ("local", "memory", "s3")
 _ALLOWED_COMPRESSION = ("gzip", "none")
 _FALSE_VALUES = ("0", "false", "no", "off")
 
@@ -113,6 +128,16 @@ class BackupSettings:
     object_store: str = DEFAULT_OBJECT_STORE
     local_root: str = DEFAULT_LOCAL_ROOT
     temp_root: Optional[str] = None
+    #: D2 / OID-3 — the S3-compatible provider (Supabase Storage). Every S3 value
+    #: is optional *unless* ``object_store == "s3"``; :meth:`require_s3` enforces
+    #: that, rather than ever falling back to a local directory in production.
+    s3_endpoint: str = ""
+    s3_region: str = DEFAULT_S3_REGION
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = field(default="", repr=False)
+    s3_prefix: str = ""
+    s3_path_style: bool = DEFAULT_S3_PATH_STYLE
     schemas: Sequence[str] = field(default_factory=lambda: DEFAULT_SCHEMAS)
     compression: str = DEFAULT_COMPRESSION
     compression_level: int = DEFAULT_COMPRESSION_LEVEL
@@ -129,9 +154,45 @@ class BackupSettings:
             f"object_store={self.object_store!r}, local_root={self.local_root!r}, "
             f"schemas={list(self.schemas)!r}, compression={self.compression!r}, "
             f"compression_level={self.compression_level}, key_id={self.key_id!r}, "
+            f"s3_endpoint={self.s3_endpoint!r}, s3_region={self.s3_region!r}, "
+            f"s3_bucket={self.s3_bucket!r}, s3_prefix={self.s3_prefix!r}, "
+            f"s3_path_style={self.s3_path_style}, "
+            f"s3_access_key={'<set>' if self.s3_access_key else None}, "
+            f"s3_secret_key={'<set>' if self.s3_secret_key else None}, "
             f"allow_denied_schemas={self.allow_denied_schemas}, "
             f"verify_readback={self.verify_readback}, "
             f"encryption_key={'<set>' if self.encryption_key else None})"
+        )
+
+    def require_s3(self) -> tuple[str, str, str, str, str]:
+        """Return ``(endpoint, region, bucket, access_key, secret_key)``.
+
+        Called by :class:`backup.s3store.S3ObjectStore`, so a half-configured S3
+        destination fails loudly *before* any request is signed — the provider
+        never guesses a region, bucket or credential.
+
+        Raises:
+            BackupConfigurationError: when the store is ``s3`` but a required
+                value is blank.
+        """
+        required = {
+            "CT_BACKUP_S3_ENDPOINT": self.s3_endpoint,
+            "CT_BACKUP_S3_BUCKET": self.s3_bucket,
+            "CT_BACKUP_S3_ACCESS_KEY": self.s3_access_key,
+            "CT_BACKUP_S3_SECRET_KEY": self.s3_secret_key,
+        }
+        missing = sorted(name for name, value in required.items() if not value)
+        if missing:
+            raise BackupConfigurationError(
+                "the s3 object store is selected but is not fully configured",
+                details={"missing": missing},
+            )
+        return (
+            self.s3_endpoint,
+            self.s3_region,
+            self.s3_bucket,
+            self.s3_access_key,
+            self.s3_secret_key,
         )
 
     def require_encryption_key(self) -> bytes:
@@ -202,6 +263,13 @@ class BackupSettings:
             readback_raw not in _FALSE_VALUES
         )
 
+        # S3-compatible provider (D2 / OID-3). Values are parsed here and
+        # *required* only when the store is "s3" — enforced by require_s3().
+        path_style_raw = (source.get("CT_BACKUP_S3_PATH_STYLE") or "").strip().lower()
+        s3_path_style = DEFAULT_S3_PATH_STYLE if not path_style_raw else (
+            path_style_raw not in _FALSE_VALUES
+        )
+
         # F2: fail closed on credential-bearing schemas before anything else runs.
         validate_schemas(schemas, allow_override=allow_denied)
 
@@ -209,6 +277,13 @@ class BackupSettings:
             object_store=object_store,
             local_root=(source.get("CT_BACKUP_LOCAL_ROOT") or DEFAULT_LOCAL_ROOT).strip(),
             temp_root=(source.get("CT_BACKUP_TEMP_ROOT") or "").strip() or None,
+            s3_endpoint=(source.get("CT_BACKUP_S3_ENDPOINT") or "").strip(),
+            s3_region=(source.get("CT_BACKUP_S3_REGION") or DEFAULT_S3_REGION).strip(),
+            s3_bucket=(source.get("CT_BACKUP_S3_BUCKET") or "").strip(),
+            s3_access_key=(source.get("CT_BACKUP_S3_ACCESS_KEY") or "").strip(),
+            s3_secret_key=(source.get("CT_BACKUP_S3_SECRET_KEY") or "").strip(),
+            s3_prefix=(source.get("CT_BACKUP_S3_PREFIX") or "").strip(),
+            s3_path_style=s3_path_style,
             schemas=schemas,
             compression=compression,
             compression_level=level,

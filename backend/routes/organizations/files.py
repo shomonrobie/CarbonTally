@@ -17,6 +17,14 @@ from utils.upload_limits import (
     resolve_policy,
 )
 from utils import classify_document
+from api.upload_gate import (
+    ACTION_SECURITY_SCAN_COMPLETED,
+    authorize_organization_upload,
+    record_document_event,
+)
+from services.document_security import rejection_detail, scan_document
+from services.storage import storage_signed_url
+from services.storage_keys import build_document_storage_key
 router = APIRouter(prefix="/api/organizations/files", tags=["Organization Files"])
 
 # ==========================================
@@ -531,12 +539,16 @@ async def upload_file(
     try:
         supabase = get_supabase_client()
         
-        # Verify user belongs to organization
-        if str(org_id) != str(current_user.organization_id):
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have access to this organization"
-            )
+        # Storage Management Step 2B — authorization is delegated to the single
+        # authoritative upload gate (organisation membership / internal-staff
+        # operational scope / Processing-Entity denial / the CL-42 viewer
+        # read-only rule), replacing the route-local equality check so this
+        # legacy ingress can never be weaker than the V3 ingresses.
+        actor = await authorize_organization_upload(
+            current_user=current_user,
+            organization_id=org_id,
+            repos=repos,
+        )
         
         # ✅ Verify asset belongs to organization if provided
         if asset_id:
@@ -571,19 +583,46 @@ async def upload_file(
             )
         except UploadLimitExceeded as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+        # Storage Management Step 2B/2D — the security gate runs BEFORE anything
+        # is written, and its verdict is recorded on the document row.
+        verdict = scan_document(
+            content=content,
+            filename=file.filename,
+            declared_mime=file.content_type or "",
+        )
+        if not verdict.accepted:
+            await record_document_event(
+                repos=repos,
+                action=ACTION_SECURITY_SCAN_COMPLETED,
+                actor=actor,
+                organization_id=actor.organization_id,
+                entity_id="",
+                changed_fields={
+                    "security_gate": verdict.as_metadata(),
+                    "ingress": "legacy_org_files_upload",
+                    "filename": file.filename,
+                },
+                reason=f"security gate verdict: {verdict.verdict}",
+                outcome="failure",
+            )
+            raise HTTPException(status_code=422, detail=rejection_detail(verdict))
         
         # Determine file type
         mime_type = file.content_type or 'application/octet-stream'
         file_type = get_file_type(file.filename, mime_type)
         
-        # Generate upload path
-        path = await get_organization_upload_path(supabase, org_id, file.filename)
+        # Storage Management Step 2B/2Q — the canonical, server-generated key in
+        # the client organisation's namespace.  New objects no longer use the
+        # legacy ``organizations/{org}/...`` prefix, which sat outside the
+        # ratified D32 storage-RLS predicate (``uploads/<org>/...``).
+        path = build_document_storage_key(org_id, file.filename)
         bucket = 'documents'
         
         # Upload to storage
         try:
             await file.seek(0)
-            upload_result = supabase.storage.from_(bucket).upload(
+            supabase.storage.from_(bucket).upload(
                 path,
                 content,
                 file_options={
@@ -591,7 +630,10 @@ async def upload_file(
                     "cache-control": "3600"
                 }
             )
-            public_url = supabase.storage.from_(bucket).get_public_url(path)
+            # Storage Management Step 2C — the bucket is private (D32): a
+            # customer document is served through a short-lived signed URL and
+            # never through a public URL.
+            download_url = storage_signed_url(path) or path
         except Exception as storage_error:
             print(f"❌ Storage upload error: {storage_error}")
             raise HTTPException(
@@ -625,7 +667,13 @@ async def upload_file(
                 'upload_timestamp': now,
                 'file_size_mb': file_size / (1024 * 1024),
                 'document_type_code': classification['document_type_code'],
-                'asset_id': asset_id
+                'asset_id': asset_id,
+                # Storage Management Step 2B — the security verdict and the
+                # uploader provenance are recorded on the document row.
+                'security_gate': verdict.as_metadata(),
+                'original_filename': file.filename,
+                'upload_actor_type': actor.actor_type,
+                'ingress': 'legacy_org_files_upload'
             },
             'is_active': True,
             'access_count': 0,
@@ -694,7 +742,10 @@ async def upload_file(
             "classification": classification,
             "document_type": classification['suggested_type'],
             "extraction_task": extraction_task,
-            "download_url": public_url
+            "download_url": download_url,
+            # Step 2C — the download URL is a short-lived signed URL, never a
+            # public URL for the private documents bucket.
+            "signed_url_is_short_lived": True,
         }
         
     except HTTPException:

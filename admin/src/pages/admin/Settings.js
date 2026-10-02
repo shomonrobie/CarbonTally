@@ -1,7 +1,7 @@
 // src/Settings.jsx
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient';
+import { adminFetch } from '../../services/adminApi';
 import toast from 'react-hot-toast';
 import { FaSave, FaSpinner, FaDatabase, FaUpload, FaShieldAlt, FaClock } from 'react-icons/fa';
 
@@ -60,52 +60,33 @@ const Settings = () => {
     fetchSettings();
   }, []);
 
+  // CT-FINAL-03 (R-1) — `system_settings` is fail-closed: RLS is enabled with
+  // ZERO policies (20261028000000_ct_final_03_rls_security_remediation.sql), so
+  // this page no longer reads or writes the table directly. The authoritative,
+  // admin-gated surface is /api/v3/settings/*. The direct writes removed here
+  // targeted columns that exist nowhere in the schema (`settings_json`,
+  // `max_file_size_mb`, `require_2fa`, …) so they could never have persisted,
+  // while the direct read disclosed the production email provider/sender
+  // configuration to any authenticated JWT.
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      
-      // First, try to get settings from system_settings table
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('*')
-        .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No settings found, create default settings
-          console.log('📝 No settings found, creating defaults...');
-          await createDefaultSettings();
-        } else {
-          console.error('❌ Error fetching settings:', error);
-          toast.error('Failed to load settings');
-        }
-        return;
-      }
+      const [uploadPolicy, retention] = await Promise.all([
+        adminFetch('/api/v3/settings/upload-policy'),
+        adminFetch('/api/v3/settings/retention'),
+      ]);
 
-      if (data) {
-        console.log('✅ Settings loaded:', data);
-        // Parse settings JSON if stored as JSON
-        if (data.settings_json) {
-          setSettings(prev => ({
-            ...prev,
-            ...data.settings_json
-          }));
-        } else {
-          // Fallback: use individual columns
-          setSettings(prev => ({
-            ...prev,
-            max_file_size_mb: data.max_file_size_mb || 50,
-            allowed_file_types: data.allowed_file_types || ['pdf', 'csv', 'xlsx', 'jpg', 'jpeg', 'png'],
-            enable_auto_repair: data.enable_auto_repair !== false,
-            max_batch_files: data.max_batch_files || 20,
-            max_total_batch_size_mb: data.max_total_batch_size_mb || 200,
-            data_retention_days: data.data_retention_days || 365,
-            require_2fa: data.require_2fa || false,
-            session_timeout_minutes: data.session_timeout_minutes || 60,
-            max_login_attempts: data.max_login_attempts || 5
-          }));
-        }
-      }
+      const policy = (uploadPolicy && uploadPolicy.settings && uploadPolicy.settings.effective) || {};
+      const retentionSettings = (retention && retention.settings) || {};
+
+      setSettings(prev => ({
+        ...prev,
+        max_file_size_mb: policy.max_file_size_mb ?? prev.max_file_size_mb,
+        max_batch_files: policy.max_files_per_batch ?? prev.max_batch_files,
+        max_total_batch_size_mb: policy.max_batch_size_mb ?? prev.max_total_batch_size_mb,
+        data_retention_days: retentionSettings.data_retention_days ?? prev.data_retention_days,
+      }));
     } catch (error) {
       console.error('❌ Error loading settings:', error);
       toast.error('Failed to load settings');
@@ -114,29 +95,9 @@ const Settings = () => {
     }
   };
 
-  const createDefaultSettings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('system_settings')
-        .insert({
-          settings_json: settings,
-          max_file_size_mb: settings.max_file_size_mb,
-          allowed_file_types: settings.allowed_file_types,
-          enable_auto_repair: settings.enable_auto_repair,
-          data_retention_days: settings.data_retention_days,
-          updated_at: new Date().toISOString(),
-          updated_by: (await supabase.auth.getUser()).data.user?.id
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      console.log('✅ Default settings created:', data);
-    } catch (error) {
-      console.error('❌ Error creating default settings:', error);
-      toast.error('Failed to create default settings');
-    }
-  };
+  // No `createDefaultSettings` here any more. Platform defaults are owned by the
+  // backend settings repository (backend/data/settings.py) and materialise on
+  // first write; a browser must never be able to seed platform configuration.
 
   const handleInputChange = (section, field, value) => {
     setSettings(prev => ({
@@ -152,39 +113,39 @@ const Settings = () => {
     }));
   };
 
+  // Only limits the backend genuinely persists are submitted. Every other field
+  // on this legacy screen has no column anywhere in the schema (package 09
+  // §1.1), so it stays local-only and is neither read from nor written to the
+  // platform settings store.
   const handleSaveSettings = async () => {
     try {
       setSaving(true);
-      
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Update settings in database
-      const { data, error } = await supabase
-        .from('system_settings')
-        .upsert({
-          settings_json: settings,
-          max_file_size_mb: settings.max_file_size_mb,
-          allowed_file_types: settings.allowed_file_types,
-          enable_auto_repair: settings.enable_auto_repair,
-          max_batch_files: settings.max_batch_files,
-          max_total_batch_size_mb: settings.max_total_batch_size_mb,
-          data_retention_days: settings.data_retention_days,
-          require_2fa: settings.require_2fa,
-          session_timeout_minutes: settings.session_timeout_minutes,
-          max_login_attempts: settings.max_login_attempts,
-          updated_at: new Date().toISOString(),
-          updated_by: user?.id
-        }, {
-          onConflict: 'id'
-        })
-        .select()
-        .single();
 
-      if (error) throw error;
-      
+      const policyPayload = {};
+      const addIfFinite = (key, value) => {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) policyPayload[key] = parsed;
+      };
+      addIfFinite('max_file_size_mb', settings.max_file_size_mb);
+      addIfFinite('max_files_per_batch', settings.max_batch_files);
+      addIfFinite('max_batch_size_mb', settings.max_total_batch_size_mb);
+
+      if (Object.keys(policyPayload).length > 0) {
+        await adminFetch('/api/v3/settings/upload-policy', {
+          method: 'PUT',
+          body: JSON.stringify(policyPayload),
+        });
+      }
+
+      const retentionDays = Number(settings.data_retention_days);
+      if (Number.isFinite(retentionDays)) {
+        await adminFetch('/api/v3/settings/retention', {
+          method: 'PUT',
+          body: JSON.stringify({ data_retention_days: retentionDays }),
+        });
+      }
+
       toast.success('✅ Settings saved successfully!');
-      console.log('✅ Settings saved:', data);
     } catch (error) {
       console.error('❌ Error saving settings:', error);
       toast.error('Failed to save settings: ' + error.message);

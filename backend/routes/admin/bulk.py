@@ -21,6 +21,18 @@ class BulkOrganizationStatusUpdate(BaseModel):
     status: str  # active, suspended, archived
     reason: Optional[str] = None
 
+#: D-7 Decision B — ``subscription_status`` alone does not stop a tenant: the
+#: organisation lifecycle flag ``organizations.is_active`` is what every
+#: organisation-scoped guard reads, so an admin activate/suspend/archive must
+#: move that flag in the same statement (admin activate → ``true``; suspend or
+#: archive → ``false``). A status outside this map keeps the historical
+#: ``subscription_status``-only behaviour instead of guessing a lifecycle.
+_ORG_STATUS_ACTIVE_STATE: Dict[str, bool] = {
+    'active': True,
+    'suspended': False,
+    'archived': False,
+}
+
 class BulkOperationResult(BaseModel):
     success_count: int
     failed_count: int
@@ -72,6 +84,11 @@ async def bulk_update_organization_status(
                     'subscription_status': request.status,
                     'updated_at': datetime.utcnow().isoformat()
                 }
+
+                # D-7 Decision B — the lifecycle flag the organisation guards
+                # enforce moves with the admin's status change.
+                if request.status in _ORG_STATUS_ACTIVE_STATE:
+                    update_data['is_active'] = _ORG_STATUS_ACTIVE_STATE[request.status]
                 
                 result = supabase.from_('organizations') \
                     .update(update_data) \
@@ -83,7 +100,8 @@ async def bulk_update_organization_status(
                     results['data'].append({
                         'organization_id': org_id,
                         'name': org_check.data.get('name', 'Unknown'),
-                        'new_status': request.status
+                        'new_status': request.status,
+                        'is_active': update_data.get('is_active'),
                     })
                     
                     # Log the action

@@ -1,0 +1,43 @@
+=== A. DATA-DESTROYING STATEMENTS targeting public objects (the preservation threats)
+(none listed above = no DELETE/TRUNCATE against public.* in the unapplied set)
+
+=== B. DROP TABLE / DROP COLUMN against public objects
+(none listed above = no unconditional DROP TABLE/COLUMN)
+
+=== C. UPDATE statements against business data
+== 20260930000000_p8_fs_adjudication_lifecycle.sql
+54:UPDATE public.activity_clarifications
+== 20261026000000_ct_backup_01_backup_jobs.sql
+181:UPDATE public.staff_roles
+(none = no backfill/UPDATE of existing rows)
+
+=== D. TABLES the unapplied set CREATES vs tables ALREADY in production
+distinct tables created by unapplied set: 17
+--- brand-new (will be added) — none of these exist in production today:
+comm: file 2 is not in sorted order
+comm: input is not in sorted order
+activity_clarifications backup_jobs carbontally_insight_conversations carbontally_insight_interactions carbontally_insight_messages carbontally_insight_tool_calls contractual_instruments estimation_records IF insight_concurrency_leases insight_rate_limit_buckets instrument_allocations report_schedule_definitions report_schedule_runs report_share_access_events report_shares scope3_categories 
+--- ALREADY EXIST in production (collision risk if not IF NOT EXISTS):
+comm: file 2 is not in sorted order
+comm: input is not in sorted order
+
+--- created WITHOUT "if not exists" (fails if the table already exists):
+(end D)
+
+=== E. POLICY COLLISION RISK: create policy vs drop policy if exists, per file
+20260928000000_p8_fs_activity_clarifications.sql               create=5   dropIfExists=5
+20261001000000_p8_i1_insight_persistence.sql                   create=4   dropIfExists=0
+20261002000000_p8_i2_insight_authorization.sql                 create=1   dropIfExists=0
+20261003000000_p8_i4_insight_interactions.sql                  create=4   dropIfExists=0
+20261011000000_p17c_contractual_instruments_and_allocations.sql create=8   dropIfExists=8
+20261012000000_p17d_scope3_category_taxonomy.sql               create=1   dropIfExists=1
+20261013000000_p17h_estimation_and_assumption_records.sql      create=4   dropIfExists=4
+20261022000000_ct02_report_sharing.sql                         create=4   dropIfExists=4
+20261023000000_ct02_scheduled_reporting.sql                    create=4   dropIfExists=4
+(create > dropIfExists in a file = that file can fail if the policy already exists)
+
+=== F. RLS ENABLEMENT: which tables get RLS switched on by the unapplied set
+ALTER TABLE public.activity_clarifications ENABLE ROW LEVEL SECURITY ALTER TABLE public.backup_jobs ENABLE ROW LEVEL SECURITY ALTER TABLE public.carbontally_insight_conversations ENABLE ROW LEVEL SECURITY ALTER TABLE public.carbontally_insight_interactions ENABLE ROW LEVEL SECURITY ALTER TABLE public.contractual_instruments ENABLE ROW LEVEL SECURITY ALTER TABLE public.estimation_records ENABLE ROW LEVEL SECURITY ALTER TABLE public.instrument_allocations ENABLE ROW LEVEL SECURITY ALTER TABLE public.report_schedule_definitions ENABLE ROW LEVEL SECURITY ALTER TABLE public.report_schedule_runs ENABLE ROW LEVEL SECURITY ALTER TABLE public.report_share_access_events ENABLE ROW LEVEL SECURITY ALTER TABLE public.report_shares ENABLE ROW LEVEL SECURITY ALTER TABLE public.scope3_categories ENABLE ROW LEVEL SECURITY 
+
+=== G. ADD COLUMN without IF NOT EXISTS (fails if column already exists)
+(end G)

@@ -1,0 +1,43 @@
+P1 count reconciliation — measured 2026-10-02 (second pass), working tree, backend/.venv
+
+FINAL-02 §16.1 / FINAL-03 §5 quote "275 unit + 22 integration".
+
+A) the FOUR-PATH unit composite of FINAL-02 §16.1:
+   tests/unit/backup (EXCLUDING the untracked B7 module) = 241   <- pre-fix figure
+   tests/unit/api/test_backup_admin_api.py               = 17
+   tests/unit/tools/test_backup_export.py                = 8
+   tests/unit/tools/test_backup_recovery_drill_guard.py  = 9
+   ----------------------------------------------------------
+   total                                                 = 275  <- the recorded "275"
+
+B) the B7 regression module (untracked, new in this remediation):
+   tests/unit/backup/test_b7_connection_lease.py         = 12
+
+C) therefore, POST-FIX, the SAME four-path composite is:
+   tests/unit/backup (now including the B7 module)       = 253
+   17 + 8 + 9                                            = 34
+   ----------------------------------------------------------
+   total                                                 = 287
+
+D) the TWO-PATH run used as the P1 suite evidence:
+   tests/unit/backup                                     = 253
+   tests/integration/backup                              = 22
+   ----------------------------------------------------------
+   total                                                 = 275
+
+E) WARNING — 275 appears in two different senses:
+   - FINAL-02 §16.1 / FINAL-03 §5 "275": the four-path UNIT composite (A), which is 287 post-fix.
+   - the two-path unit+integration total (D) is also numerically 275. Coincidence.
+   Always report the paths alongside the count.
+
+F) FINAL-02 §16.6 "314" is a third, different set (the seven §4.1 matrix files) and is unaffected.
+
+=== raw measurements ===
+== unit/backup WITHOUT the B7 module (pre-fix count) ==
+
+241 tests collected in 0.29s
+== git status of the B7 module ==
+?? backend/tests/unit/backup/test_b7_connection_lease.py
+== 4-path composite, post-fix ==
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+287 tests collected in 0.35s

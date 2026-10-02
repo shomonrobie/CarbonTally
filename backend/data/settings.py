@@ -43,6 +43,52 @@ _UPLOAD_POLICY_KEY = "upload_policy"
 
 _UPLOAD_POLICY_COLUMNS = "setting_value, updated_at, updated_by"
 
+#: Fixed key for the CT-FINAL-02 email delivery provider row (EMAIL-CONFIG-01).
+#: The row stores the provider selection and the NAME of the environment
+#: variable holding the credential — never the credential itself.
+_EMAIL_PROVIDER_KEY = "email_provider"
+
+_EMAIL_PROVIDER_COLUMNS = "setting_value, updated_at, updated_by"
+
+#: Fixed key for the BACKUP-02 operational policy row (architecture §16 / §9).
+#: This row is **configuration only**: the mandatory security properties
+#: (encryption, private storage, authorization, tenant isolation, integrity
+#: verification) are enforced in code and cannot be expressed here at all.
+#: Retention is deliberately NOT stored here — it stays in the existing
+#: ``backup_retention_days`` column so there is exactly one source of truth.
+_BACKUP_POLICY_KEY = "backup_policy"
+
+_BACKUP_POLICY_COLUMNS = "setting_value, updated_at, updated_by"
+
+
+def _backup_policy_from_row(row: Optional[Any]) -> dict:
+    """Map a ``system_settings`` row to the backup-policy configuration shape.
+
+    Only the allow-listed keys are surfaced: a hand-edited row can never inject a
+    field the API would then honour, and a malformed payload degrades to "not
+    configured" rather than raising on a settings read.
+    """
+    from backup.policy import POLICY_FIELDS
+
+    try:
+        value = loads_jsonb(row.get("setting_value")) if row is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if not isinstance(value, dict):
+        value = {}
+    policy = {field: value.get(field) for field in POLICY_FIELDS}
+    return {
+        **policy,
+        "updated_at": row.get("updated_at") if row is not None else None,
+        "updated_by": row.get("updated_by") if row is not None else None,
+    }
+
+#: Sentinel meaning "the caller did not supply this field".  An explicit
+#: ``None`` clears a field instead — an administrator must be able to remove an
+#: SMTP transport that is no longer used, and clearing must never silently
+#: restore the previous value (see ``update_email_provider``).
+_UNSET: Any = object()
+
 
 def _upload_policy_from_row(row: Optional[Any]) -> dict:
     """Map a ``system_settings`` row to the upload-policy configuration shape.
@@ -91,6 +137,36 @@ def _notification_from_row(row: Optional[Any]) -> dict:
         "updated_by": row.get("updated_by") if row is not None else None,
     }
 
+
+
+def _email_provider_from_row(row: Optional[Any]) -> dict:
+    """Map a ``system_settings`` row to the email-provider configuration shape.
+
+    A missing row, an unparseable payload or a malformed value fails closed to
+    the documented default provider: the runtime then uses ``resend`` with the
+    ``RESEND_API_KEY`` environment credential, exactly as an unconfigured
+    deployment does today.  A credential *value* is never read: the payload can
+    only ever contain the referenced environment variable name.
+    """
+    from services.email_provider import ALLOWED_CREDENTIAL_ENVS, PROVIDER_FIELDS
+
+    try:
+        value = loads_jsonb(row.get("setting_value")) if row is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if not isinstance(value, dict):
+        value = {}
+    config = {field: value.get(field) for field in PROVIDER_FIELDS}
+    # Defence in depth: a manually edited row can never widen the credential
+    # variable set beyond the allow-list.
+    credential_env = config.get("credential_env")
+    if isinstance(credential_env, str) and credential_env not in ALLOWED_CREDENTIAL_ENVS:
+        config["credential_env"] = None
+    return {
+        **config,
+        "updated_at": row.get("updated_at") if row is not None else None,
+        "updated_by": row.get("updated_by") if row is not None else None,
+    }
 
 
 def _analytics_from_row(row: Optional[Any]) -> dict:
@@ -368,6 +444,88 @@ class SettingsRepository(AbstractRepository[dict]):
         return _notification_from_row(row)
 
     # -----------------------------------------------------------------
+    # Backup policy — the ONLY configurable backup layer (BACKUP-02 / §16)
+    # -----------------------------------------------------------------
+
+    async def get_backup_policy(self) -> dict:
+        """Return the stored backup policy (never an invented value).
+
+        A missing row yields ``None`` for every field, so the effective policy is
+        computed from the documented defaults plus the retention setting, and
+        "not configured" is never presented as a decision somebody made.
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_BACKUP_POLICY_COLUMNS}
+            FROM public.system_settings
+            WHERE setting_key = $1
+            """,
+            _BACKUP_POLICY_KEY,
+        )
+        return _backup_policy_from_row(row)
+
+    async def update_backup_policy(
+        self,
+        *,
+        fields: dict,
+        updated_by: Optional[str],
+    ) -> dict:
+        """Persist the backup policy.
+
+        ``fields`` must already have been normalised by
+        ``backup.policy.validate_policy_update`` (the API layer does this), so an
+        unsupported or invariant-disabling key can never reach this write. Only
+        the allow-listed keys are merged; everything else is discarded rather than
+        stored and ignored.
+        """
+        from backup.policy import POLICY_FIELDS
+
+        allowed = {key: value for key, value in dict(fields).items() if key in POLICY_FIELDS}
+        current = await self.get_backup_policy()
+        snapshot = {
+            field: (
+                allowed[field]
+                if field in allowed
+                else current.get(field)
+            )
+            for field in POLICY_FIELDS
+        }
+        # Retention is owned by the retention row (single source of truth), so it
+        # is never mirrored into this payload.
+        snapshot.pop("retention_days", None)
+        if not snapshot:
+            # A converging no-op: the row must still exist so the admin surface can
+            # report who last touched the policy and when.
+            snapshot = {}
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.system_settings (
+                setting_key, setting_type, description, setting_value,
+                updated_by, updated_at, created_at
+            )
+            VALUES (
+                $1, 'backup',
+                'Backup operational policy (configuration only; security properties are enforced in code)',
+                $2::jsonb, $3, NOW(), NOW()
+            )
+            ON CONFLICT (setting_key)
+            DO UPDATE SET
+                setting_type = EXCLUDED.setting_type,
+                description = EXCLUDED.description,
+                setting_value = EXCLUDED.setting_value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+            RETURNING {_BACKUP_POLICY_COLUMNS}
+            """,
+            _BACKUP_POLICY_KEY,
+            dumps_jsonb(snapshot),
+            updated_by,
+        )
+        if row is None:
+            raise RuntimeError("system_settings upsert returned no row")
+        return _backup_policy_from_row(row)
+
+    # -----------------------------------------------------------------
     # Upload policy — canonical admin-configurable upload limits (CT-FINAL-01)
     # -----------------------------------------------------------------
 
@@ -439,3 +597,92 @@ class SettingsRepository(AbstractRepository[dict]):
         if row is None:
             raise RuntimeError("system_settings upsert returned no row")
         return _upload_policy_from_row(row)
+
+    # -----------------------------------------------------------------
+    # Email delivery provider — CT-FINAL-02 EMAIL-CONFIG-01
+    # -----------------------------------------------------------------
+
+    async def get_email_provider(self) -> dict:
+        """Return the configured email delivery provider (never a secret).
+
+        A missing row yields ``None`` for every field — the caller applies the
+        documented default provider (``services.email_provider``).  Only the
+        provider selection and the *name* of the environment variable holding
+        the credential are ever stored, so this row can never contain a secret.
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_EMAIL_PROVIDER_COLUMNS}
+            FROM public.system_settings
+            WHERE setting_key = $1
+            """,
+            _EMAIL_PROVIDER_KEY,
+        )
+        return _email_provider_from_row(row)
+
+    async def update_email_provider(
+        self,
+        *,
+        provider: Any = _UNSET,
+        smtp_host: Any = _UNSET,
+        smtp_port: Any = _UNSET,
+        smtp_username: Any = _UNSET,
+        smtp_use_tls: Any = _UNSET,
+        credential_env: Any = _UNSET,
+        updated_by: Optional[str] = None,
+    ) -> dict:
+        """Persist the email delivery provider configuration.
+
+        Values must already be validated by
+        ``services.email_provider.normalise_provider_config`` (the API layer
+        does this) so an unknown provider or an out-of-policy credential
+        variable can never reach this write.  A credential *value* is never
+        accepted by this method: only the referenced environment variable name.
+
+        An **omitted** field (left as :data:`_UNSET`) keeps its stored value,
+        while an explicit ``None`` clears it — reverting to the stored value on
+        an explicit clear would make an unused SMTP transport impossible to
+        remove.
+        """
+        from services.email_provider import normalise_provider_config
+
+        current = await self.get_email_provider()
+        merged = {}
+        for field, supplied in (
+            ("provider", provider),
+            ("smtp_host", smtp_host),
+            ("smtp_port", smtp_port),
+            ("smtp_username", smtp_username),
+            ("smtp_use_tls", smtp_use_tls),
+            ("credential_env", credential_env),
+        ):
+            merged[field] = current.get(field) if supplied is _UNSET else supplied
+        snapshot = normalise_provider_config(merged)
+
+        row = await self._fetch_one(
+            f"""
+            INSERT INTO public.system_settings (
+                setting_key, setting_type, description, setting_value,
+                updated_by, updated_at, created_at
+            )
+            VALUES (
+                $1, 'email_provider',
+                'Email delivery provider selection (credentials live in the environment)',
+                $2::jsonb, $3, NOW(), NOW()
+            )
+            ON CONFLICT (setting_key)
+            DO UPDATE SET
+                setting_type = EXCLUDED.setting_type,
+                description = EXCLUDED.description,
+                setting_value = EXCLUDED.setting_value,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+            RETURNING {_EMAIL_PROVIDER_COLUMNS}
+            """,
+            _EMAIL_PROVIDER_KEY,
+            dumps_jsonb(snapshot),
+            updated_by,
+        )
+        if row is None:
+            raise RuntimeError("system_settings upsert returned no row")
+        return _email_provider_from_row(row)
