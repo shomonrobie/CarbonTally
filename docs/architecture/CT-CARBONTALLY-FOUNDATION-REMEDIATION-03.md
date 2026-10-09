@@ -491,8 +491,29 @@ or force-push was used at any point.
   the exact commits being pushed. Result recorded verbatim:
 
 ```
-<COMMIT_RESULT_PLACEHOLDER>
+$ git commit -F <msg>                       # normal commit, no force, no rebase
+[p8-release-reconciled 926bdbc] fix(foundation-03): mileage-unit alias, hermetic/scope test fixes, local F-1 apply
+ 8 files changed, 664 insertions(+), 9 deletions(-)
+ create mode 100644 docs/architecture/CT-CARBONTALLY-FOUNDATION-REMEDIATION-03.md
+
+$ git push github p8-release-reconciled      # fast-forward, non-forced
+To https://github.com/shomonrobie/CarbonTally.git
+   fb88cde..926bdbc  p8-release-reconciled -> p8-release-reconciled
+PUSH_RC=0
+
+$ git ls-remote github p8-release-reconciled
+926bdbcd096c5224ca665ea765173b1c226c4670	refs/heads/p8-release-reconciled
+
+$ git rev-list --left-right --count github/p8-release-reconciled...HEAD
+0       0        # local HEAD == GitHub tip
 ```
+
+* `fb88cde` → `926bdbc` is a **fast-forward**; exactly one commit was published and every file in it
+  belongs to this task (§9.1).
+* The published range (`fb88cde..926bdbcd096c5224ca665ea765173b1c226c4670`) contains **only** this
+  task's change set — no unrelated work, and `.gitignore`/`frontend/App_.js` are absent from it.
+* A follow-up docs-only commit records this publication block (below), exactly as CLOSURE-02 did, so
+  the report carries its own verified SHAs.
 
 * **Post-push verification:** local `HEAD` and the GitHub remote tip were compared with
   `git ls-remote`; they must be equal for the push to count as verified (recorded above).
