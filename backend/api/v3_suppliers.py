@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from api.accounting_context_auth import ensure_record_owner_authorized
 from api.audit_helpers import record_acting_for_attribution
+from api.client_access_guard import require_client_operation
 from api.dependencies import (
     RepositoryBundle,
     ensure_org_access,
@@ -69,6 +70,14 @@ async def create_supplier(
     payload: SupplierCreate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    # I-02 (CT-CARBONTALLY-FOUNDATION-CLOSURE-02) — suppliers are the fourth
+    # master-data resource on the organisation plane. Facilities, assets and
+    # vehicles already bind the SAME client-access ceiling; suppliers did not, so
+    # a consultant-managed client whose profile denies `edit_master_data` could
+    # still write suppliers. The ceiling is a denial-only guard for that one
+    # case (direct customers, consultants and staff are unaffected) — see
+    # api/client_access_guard.py.
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     ensure_org_access(current_user, payload.organization_id)
     # P17-IMPLEMENT-03 — persist acting-for attribution on the supplier write.
@@ -127,6 +136,8 @@ async def update_supplier(
     payload: SupplierUpdate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    # I-02 — same client-access ceiling as create (see the note on create_supplier).
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     supplier = await repos.suppliers.get(supplier_id)
     if supplier is None:
@@ -145,6 +156,8 @@ async def remove_supplier(
     supplier_id: str,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    # I-02 — same client-access ceiling as create (see the note on create_supplier).
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     supplier = await repos.suppliers.get(supplier_id)
     if supplier is not None:

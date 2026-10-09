@@ -10,6 +10,23 @@ from __future__ import annotations
 
 from services.extraction_suggestions import suggest
 
+#: ``extraction_evidence`` is the P12-IMPL-01 provenance envelope and is
+#: deliberately carried inside ``suggested_data`` (asserted by
+#: ``tests/unit/services/test_p12_impl_01_invoice_extraction.py``). It is a
+#: record of HOW a value was (or was not) found, never a suggested VALUE, so the
+#: anti-fabrication assertions below compare only the actual suggested fields.
+_PROVENANCE_KEY = "extraction_evidence"
+
+
+def _suggested_fields(out):
+    """The fields the adapter actually suggests (provenance envelope excluded)."""
+    return {
+        key: value
+        for key, value in out["suggested_data"].items()
+        if key != _PROVENANCE_KEY
+    }
+
+
 _CLEAN = (
     "Supplier: Meridian Fuel Supplies Ltd\n"
     "Invoice number: INV-2026-0417\n"
@@ -27,11 +44,20 @@ def test_suggest_parses_clean_invoice():
     d = out["suggested_data"]
     assert d["supplier"] == "Meridian Fuel Supplies Ltd"
     assert d["invoice_number"] == "INV-2026-0417"
-    assert d["date"] == "15/01/2026"
+    # P12-IMPL-01 normalises the printed date to ISO and preserves the printed
+    # form separately (`date_raw`); see test_invoice_date_raw_is_preserved in
+    # tests/unit/services/test_p12_impl_01_invoice_extraction.py.
+    assert d["date"] == "2026-01-15"
+    assert d["date_raw"] == "15/01/2026"
     assert d["quantity"] == 12500.0
     assert d["unit"] == "kWh"
     assert d["activity"] == "Electricity"
-    assert out["unresolved"] == []
+    # The P12-IMPL-01 contract reports every canonical-invoice field it could not
+    # resolve into `unresolved`; this fixture prints no billing period, so
+    # `billing_period` is the only unresolved item (the field vocabulary was
+    # extended to period/VAT/customer by P12-IMPL-01). Every *value* the document
+    # supports is resolved — nothing else is listed.
+    assert out["unresolved"] == ["billing_period"]
 
 
 def test_suggest_gas_invoice_activity():
@@ -51,7 +77,8 @@ def test_suggest_missing_fields_leave_unresolved():
     # No supplier, no invoice number, no quantity/unit, no activity keyword.
     text = "We hope you enjoyed your stay. Please remit 42.00 soon.\n"
     out = suggest(text)
-    assert out["suggested_data"] == {}
+    # No suggested *field* is fabricated; only the provenance envelope is present.
+    assert _suggested_fields(out) == {}
     assert "supplier" in out["unresolved"]
     assert "invoice_number" in out["unresolved"]
     assert "date" in out["unresolved"]
@@ -78,7 +105,8 @@ def test_suggest_quantity_not_invented():
 def test_suggest_no_fabrication_on_garbage():
     text = "asdf qwerty !!!! 12345 zzz yyy"
     out = suggest(text)
-    assert out["suggested_data"] == {}
+    # Garbage yields no suggested field (the provenance envelope is not a value).
+    assert _suggested_fields(out) == {}
     assert len(out["unresolved"]) >= 4
 
 

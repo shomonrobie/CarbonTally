@@ -97,6 +97,12 @@ class _ConsultantRepo:
                 return grant
         return None
 
+    async def get_relationship_for_org(self, organization_id: str):
+        """Mirror of the real repository's method, consumed by the client-access
+        ceiling (``api/client_access_guard.py``) which the supplier write path now
+        binds (I-02). No consultant relationship exists in these fixtures."""
+        return None
+
 
 class _AuditRepo:
     def __init__(self) -> None:

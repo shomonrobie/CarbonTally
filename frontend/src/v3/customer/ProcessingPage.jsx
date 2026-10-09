@@ -21,11 +21,21 @@ import {
 import { formatBytes } from '../utils';
 import { Button, ErrorState, LoadingState, StatusBadge } from '../components/ui';
 import DataTable from '../components/ui/DataTable';
+// I-03 (CT-CARBONTALLY-FOUNDATION-CLOSURE-02) — the client-access view. A
+// consultant-managed client's own user reaches this same page but document
+// upload is bounded by the relationship's access profile (COLLABORATIVE only),
+// exactly as UploadDocumentsPanel.jsx already does. This hides the control; the
+// backend enforces the identical ceiling in api/upload_gate.py, so the UI is
+// never the security boundary (AGENTS §44).
+import { useClientAccess } from '../clientAccess';
 
 const STAGE_ORDER = ['source', 'extraction', 'mapping', 'validation', 'calculation', 'review', 'approval'];
 
 export default function ProcessingPage() {
   const navigate = useNavigate();
+  // I-03 — upload_document is offered only when the client-access profile admits
+  // it (absent view = direct customer / consultant / staff → unrestricted).
+  const canUpload = useClientAccess().can('upload_document');
   const [org, setOrg] = useState(null);
   const [status, setStatus] = useState(null);
   const [items, setItems] = useState([]);
@@ -312,26 +322,37 @@ export default function ProcessingPage() {
         </div>
       )}
 
-      <div className="v3-card">
-        <h2>Upload a document</h2>
-        <div className="v3-actions" style={{ marginTop: 0 }}>
-          <input
-            className="v3-input"
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
-          <select className="v3-input" value={dataType} onChange={(e) => setDataType(e.target.value)}>
-            <option value="utility">Utility</option>
-            <option value="fuel">Fuel</option>
-            <option value="scope3">Scope 3</option>
-          </select>
-          <Button variant="primary" onClick={onUpload} disabled={uploading || !file}>
-            {uploading ? 'Uploading...' : 'Upload & process'}
-          </Button>
+      {canUpload ? (
+        <div className="v3-card">
+          <h2>Upload a document</h2>
+          <div className="v3-actions" style={{ marginTop: 0 }}>
+            <input
+              className="v3-input"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+            <select className="v3-input" value={dataType} onChange={(e) => setDataType(e.target.value)}>
+              <option value="utility">Utility</option>
+              <option value="fuel">Fuel</option>
+              <option value="scope3">Scope 3</option>
+            </select>
+            <Button variant="primary" onClick={onUpload} disabled={uploading || !file}>
+              {uploading ? 'Uploading...' : 'Upload & process'}
+            </Button>
+          </div>
+          {file && <p className="v3-muted" style={{ margin: '8px 0 0' }}>{file.name} · {formatBytes(file.size)}</p>}
         </div>
-        {file && <p className="v3-muted" style={{ margin: '8px 0 0' }}>{file.name} · {formatBytes(file.size)}</p>}
-      </div>
+      ) : (
+        <div className="v3-card" data-testid="upload-unavailable-notice">
+          <h2>Upload a document</h2>
+          <p className="v3-muted" style={{ marginTop: 0 }}>
+            Your client access level does not include uploading documents. You can still
+            follow the items already in the pipeline below; your consultant can upload on
+            your behalf.
+          </p>
+        </div>
+      )}
 
       <div className="v3-card">
         <h2>Pipeline status</h2>

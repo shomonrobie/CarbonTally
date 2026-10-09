@@ -372,3 +372,166 @@ def test_no_document_specific_hard_coding():
     assert len(data["line_items"]) == 1
     assert data["line_items"][0]["unit"] == "tonnes"
 
+
+# ── B-02 (CT-CARBONTALLY-FOUNDATION-CLOSURE-02): real-corpus header + currency ─
+#
+# Evidence: the text layer of ``border_double_fuel.pdf`` in the local synthetic
+# corpus (read directly with the repository's own PDF text reader, pdfplumber,
+# on 2026-10-09) plus its ground truth (3 line items; 2,200 / 1,500 / 3,400
+# litres of diesel; printed unit prices 1.40 / 1.31 / 1.61; net 3,071.20 /
+# 1,965.00 / 5,491.00; currency GBP). Before this change the document extracted
+# **0** rows (baseline-01 B-02); after it, **3**.
+
+#: The exact item-table region of the real document (header, rows and footer).
+REAL_ITEM_HEADER_FUEL = (
+    "Item Quantity Unit Price Amount\n"
+    "Diesel supply - Premium 2,200 litres GBP1.40 GBP3,071.20\n"
+    "Diesel delivery - REF-65245 1,500 litres GBP1.31 GBP1,965.00\n"
+    "Diesel supply - Ultra Low Sulfur 3,400 litres GBP1.61 GBP5,491.00\n"
+    "Subtotal: GBP10,527.20\n"
+    "Tax (20%): GBP2,105.44\n"
+    "Total Due: GBP12,632.64\n"
+)
+
+
+def test_item_first_header_is_recognised():
+    """``Item …`` heads the item table in the real corpus, not ``Description …``."""
+    assert ix._TABLE_HEADER_RE.match("Item Quantity Unit Price Amount")
+    assert ix._TABLE_HEADER_RE.match("Item Description Qty Unit Price Amount")
+    # the previously supported header vocabulary is unchanged
+    assert ix._TABLE_HEADER_RE.match("Description Qty Unit Rate Amount")
+    assert ix._TABLE_HEADER_RE.match("Description Qty Unit Rate Subtotal")
+
+
+def test_header_without_the_amount_column_is_not_a_table():
+    """A partial label row must not open an item-table region."""
+    assert not ix._TABLE_HEADER_RE.match("Item Quantity Unit Price")
+    assert ix.extract_invoice_lines(
+        "Item Quantity Unit Price\nWaste disposal - Mixed 10 tonnes 100.00\n"
+    ) == []
+
+
+def test_real_item_header_invoice_extracts_every_row():
+    rows = ix.extract_invoice_lines(REAL_ITEM_HEADER_FUEL)
+    assert len(rows) == 3  # baseline-01 B-02 measured 0
+    assert [r["description"] for r in rows] == [
+        "Diesel supply - Premium",
+        "Diesel delivery - REF-65245",
+        "Diesel supply - Ultra Low Sulfur",
+    ]
+    assert [r["quantity"] for r in rows] == [2200.0, 1500.0, 3400.0]
+    assert [r["unit"] for r in rows] == ["litres", "litres", "litres"]
+    assert [r["unit_price"] for r in rows] == [1.4, 1.31, 1.61]
+    assert [r["net_amount"] for r in rows] == [3071.2, 1965.0, 5491.0]
+    assert all(r["arithmetic_ok"] is True for r in rows)
+    # provenance: the printed source line is preserved verbatim
+    assert rows[1]["source_line"] == (
+        "Diesel delivery - REF-65245 1,500 litres GBP1.31 GBP1,965.00"
+    )
+    # the Subtotal / Tax / Total Due footer is still excluded
+    assert not any("Subtotal" in r["description"] for r in rows)
+
+
+@pytest.mark.parametrize(
+    "currency", ["GBP", "EUR", "USD", "gbp", "eur", "usd", "£", "$", "€"]
+)
+def test_currency_prefix_forms_on_money_columns(currency):
+    """ISO codes (``GBP1.40``) and symbols (``£1.40``) are both accepted prefixes."""
+    text = (
+        "Item Quantity Unit Price Amount\n"
+        f"Waste disposal - Mixed 10 tonnes {currency}100.00 {currency}1,000.00\n"
+    )
+    rows = ix.extract_invoice_lines(text)
+    assert len(rows) == 1
+    assert (rows[0]["quantity"], rows[0]["unit_price"], rows[0]["net_amount"]) == (
+        10.0,
+        100.0,
+        1000.0,
+    )
+
+
+def test_currency_prefix_never_becomes_a_unit():
+    """B-02 adds a *prefix*; the measured P1 currency-is-not-a-unit guard holds."""
+    assert ix.canonical_unit("GBP") is None
+    text = (
+        "Item Quantity Unit Price Amount\n"
+        "Waste disposal - Mixed 10 GBP 100.00 1,000.00\n"
+    )
+    assert ix.extract_invoice_lines(text) == []
+
+
+def test_iso_currency_with_thousands_separators():
+    text = (
+        "Item Quantity Unit Price Amount\n"
+        "Recycling services - Mixed 90 tonnes GBP107.64 GBP9,687.51\n"
+    )
+    row = ix.extract_invoice_lines(text)[0]
+    assert row["unit_price"] == 107.64
+    assert row["net_amount"] == 9687.51
+
+
+def test_count_token_units_is_not_a_physical_unit():
+    """B-03 (open · PO-linked): ``units`` is a count token, not a physical unit.
+
+    ``canonical_unit`` returns a token only for a *physical* unit, and the
+    canonical unit model (``backend/core/units.py``) defines no ``units``
+    (count) unit — ``normalize_unit("units")`` deliberately passes an unknown
+    token through unchanged so the authoritative factor engine decides. Mapping
+    ``units`` to a unit here would therefore *invent* vocabulary the factor path
+    does not carry, and whether spend/count-unit documents are in scope is the
+    PO decision baseline-01 records as PD-C. The fail-closed behaviour is
+    pinned deliberately; it must change only *with* a ratified PD-C, never
+    before it.
+    """
+    assert ix.canonical_unit("units") is None
+    assert ix.canonical_unit("unit") is None
+    assert ix.canonical_unit("each") is None
+    # a row whose unit column is a count token is not emitted (fail-closed) ...
+    text = (
+        "Item Quantity Unit Price Amount\n"
+        "Professional services 600 units GBP29.24 GBP17,545.80\n"
+    )
+    assert ix.extract_invoice_lines(text) == []
+    # ... and the currency guard is independent of this question
+    assert ix.canonical_unit("GBP") is None
+
+
+
+def test_real_invoice_end_to_end_suggestion_is_complete():
+    """The whole adapter chain resolves the real document, fabricating nothing."""
+    text = (
+        "n\n"
+        "Pure Resources Group\n"
+        "40 Eco Drive\n"
+        "Edinburgh\n"
+        "ML24 4EV\n"
+        "UK\n"
+        "Since 2000\n"
+        "FUEL INVOICE\n"
+        "Invoice Number: INV-20279073\n"
+        "Date: 04/10/2025\n"
+        "Customer: Eco Resources PLC\n"
+        "Period: 01/09/2025 – 30/09/2025\n"
+        "VAT No: GB 590 2619 20\n"
+        + REAL_ITEM_HEADER_FUEL
+        + "Authorized Signature\n"
+        "For testing purposes only\n"
+    )
+    out = es.suggest(text)
+    data = out["suggested_data"]
+    assert data["supplier"] == "Pure Resources Group"
+    assert data["customer"] == "Eco Resources PLC"
+    assert data["invoice_number"] == "INV-20279073"
+    assert data["date"] == "2025-10-04"
+    assert data["date_raw"] == "04/10/2025"
+    assert data["billing_period_start"] == "2025-09-01"
+    assert data["billing_period_end"] == "2025-09-30"
+    assert len(data["line_items"]) == 3
+    assert out["unresolved"] == []
+    # quantity/unit live on the lines; no scalar quantity is fabricated
+    assert "quantity" not in data and "unit" not in data
+    assert data["net_amount"] == "GBP10,527.20"
+    assert data["gross_amount"] == "GBP12,632.64"
+
+
+

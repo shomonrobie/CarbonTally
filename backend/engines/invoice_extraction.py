@@ -210,16 +210,33 @@ def extract_supplier_header(text: str, max_header_lines: int = 12) -> tuple[Opti
 
 # ── item table ──────────────────────────────────────────────────────────────
 
+#: B-02 (CT-CARBONTALLY-FOUNDATION-CLOSURE-02). The header is anchored on the
+#: **first column label**. The measured real corpus prints either
+#: ``Description …`` or ``Item …`` — e.g. `border_double_fuel.pdf` (text layer,
+#: extracted 2026-10-09) prints exactly
+#: ``Item Quantity Unit Price Amount`` — so ``item`` is accepted as a first
+#: column label alongside ``description`` (and the ``item description`` /
+#: ``details`` spellings for the same column). Nothing else about the header
+#: vocabulary, the column order, or the trailing total-column set changes.
 _TABLE_HEADER_RE = re.compile(
-    r"(?i)^\s*description\s+(?:qty|quantity)\s+unit\s+"
+    r"(?i)^\s*(?:item\s+description|item|description|details)\s+"
+    r"(?:qty|quantity)\s+unit\s+"
     r"(?:rate|unit\s*price|price)\s+"
     r"(?:subtotal|net\s*amount|net\s*total|amount|total)\s*$"
 )
+#: B-02 — the currency token printed in front of a money column. The same real
+#: document prints the ISO code (``GBP1.40``, ``GBP3,071.20``) rather than, and
+#: as well as, the symbol (``£1.40``), so both forms are accepted. This is a
+#: *prefix* on the rate/amount columns only: a currency token in the unit column
+#: is still rejected by :func:`canonical_unit` (measured P1 defect guard, kept).
+_CURRENCY_PREFIX = r"(?:(?:[£$€]|(?i:gbp|eur|usd))\s*)?"
 _ROW_RE = re.compile(
     r"^(?P<desc>.+?)\s+(?P<qty>\d[\d,]*(?:\.\d+)?)\s+"
     r"(?P<unit>[A-Za-z][A-Za-z³]{0,5})\s+"
-    r"[£$€]?\s*(?P<rate>\d[\d,]*(?:\.\d+)?)\s+"
-    r"[£$€]?\s*(?P<amount>\d[\d,]*(?:\.\d+)?)$"
+    + _CURRENCY_PREFIX
+    + r"(?P<rate>\d[\d,]*(?:\.\d+)?)\s+"
+    + _CURRENCY_PREFIX
+    + r"(?P<amount>\d[\d,]*(?:\.\d+)?)$"
 )
 #: Lines that terminate the item-table region. Labels are matched on the printed
 #: prefix; the vocabulary covers the total/tax/payment/footer labels measured in
