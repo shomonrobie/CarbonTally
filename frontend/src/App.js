@@ -42,6 +42,8 @@ import OnboardingPage from './OnboardingPage';
 import BetaLogin from './BetaLogin';
 import Glossary from './Glossary';
 import MagicLink from './MagicLink';
+// CT-CONSULTANT-CLIENT-IDENTITY-04 (PD-1A) — the invitee's acceptance journey.
+import AcceptInvitation from './AcceptInvitation';
 import OrganizationMetadata from './OrganizationMetadata';
 import DocumentStatus from './DocumentStatus';
 import UploadManager from './UploadManager';
@@ -52,8 +54,15 @@ import ReportsPage from './v3/reports/ReportsPage';
 import ReportDetailPage from './v3/reports/ReportDetailPage';
 import AdminPage from './v3/admin/AdminPage';
 import BillingPage from './v3/customer/BillingPage';
+// CT-MP-SUB-004 — customer Manual Processing service state (CT-UX-MP-SUB-003 §3).
+import ManualProcessingPage from './v3/customer/ManualProcessingPage';
 import ConsultantPage from './v3/consultant/ConsultantPage';
 import ConsultantItemPage from './v3/consultant/ConsultantItemPage';
+// CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 — a consultant-managed
+// client renders as a NORMAL CarbonTally Organisation (PD-1/PD-3).
+import ClientOrgShell, { ClientOrgIndex } from './v3/consultant/ClientOrgShell';
+// CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-7) — Plane C, the CLIENT portal.
+import ClientPortal from './v3/portal/ClientPortal';
 import OperationsPage from './v3/ops/OperationsPage';
 import OperatorItemPage from './v3/ops/OperatorItemPage';
 import ReviewItemPage from './v3/ops/ReviewItemPage';
@@ -1878,6 +1887,8 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/services', '/processing-services', '/consultants', '/pricing', '/contact',
   '/faq', '/carbon-reduction-plan', '/signup', '/beta/signup', '/beta-login',
   '/glossary', '/auth/callback', '/auth/magic',
+  // CT04 (PD-1A) — an invitee may be unauthenticated when they open the link.
+  '/accept-invitation',
 ];
 
 function PublicAssistant() {
@@ -1888,6 +1899,24 @@ function PublicAssistant() {
     PUBLIC_ROUTE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   if (!isPublic) return null;
   return <AssistantWidget />;
+}
+
+// CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-1/PD-3/PD-9) — the
+// route wrapper for a consultant operating a MANAGED CLIENT. It reuses the
+// EXISTING customer Organisation pages inside the shared shell, prefixed by the
+// selected client, so a consultant-managed client IS the normal CarbonTally
+// Organisation product surface (same surface, different actor, different
+// authorisation context — never a reduced consultant mini-dashboard).
+// The client id in the URL grants nothing: every API call is re-authorised
+// server-side against the caller's ACTIVE consultant-client grant.
+function ClientOrgRoute({ children }) {
+  return (
+    <ProtectedRoute>
+      <RoleRoute requireConsultant>
+        <ClientOrgShell>{children}</ClientOrgShell>
+      </RoleRoute>
+    </ProtectedRoute>
+  );
 }
 
 export default function App() {
@@ -1977,6 +2006,11 @@ export default function App() {
             <Route path="/beta-login" element={<BetaLogin />} />
             <Route path="/glossary" element={<Glossary />} />
             <Route path="/auth/magic" element={<MagicLink />} />
+            {/* CT-CONSULTANT-CLIENT-IDENTITY-04 (PD-1A) — the invitee accepts a
+                single-use invitation. Public: the invitee may not yet have an
+                account; the backend still enforces email binding, expiry and
+                single-use on acceptance. */}
+            <Route path="/accept-invitation" element={<AcceptInvitation />} />
             <Route path="/onboarding" element={
               <ProtectedRoute>
                 <OnboardingPage />
@@ -2158,6 +2192,18 @@ export default function App() {
                 </RoleRoute>
               </ProtectedRoute>
             } />
+            {/* CT-MP-SUB-004 — customer Manual Processing service state
+                (CT-UX-MP-SUB-003 §3). Org-scoped + exact-tenant enforced
+                server-side (require_org_member); this route is navigation only. */}
+            <Route path="/manual-processing" element={
+              <ProtectedRoute>
+                <RoleRoute requireOrg>
+                  <V3Layout>
+                    <ManualProcessingPage />
+                  </V3Layout>
+                </RoleRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/organization" element={
               <ProtectedRoute>
                 <RoleRoute requireOrg>
@@ -2185,6 +2231,77 @@ export default function App() {
                 </RoleRoute>
               </ProtectedRoute>
             } />
+            {/* CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-1/PD-3/
+                PD-9) — a consultant-managed client is a NORMAL CarbonTally
+                Organisation. These routes reuse the EXISTING customer
+                Organisation pages under the selected client's prefix, so the
+                consultant operates the same product surface for their client
+                (the old reduced inline ClientWorkspace is no longer the primary
+                client experience). The client id in the URL is NOT an
+                authorisation: every request is re-authorised server-side. */}
+            {/* CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-7 / PO-8 A) — Plane C,
+                the CLIENT portal. The PO-8 binding route family is
+                /portal/:clientId/*; :clientId is the CLIENT ORGANISATION. The
+                id in the URL is NOT an authorisation — the server resolves the
+                authenticated client user's relationship, access profile and the
+                firm's entitlement, and denies generically on any mismatch. This
+                route family is ADDED alongside the live consultant workspace
+                (which remains consultant-context); it is not a silent rewrite of
+                existing routes. */}
+            <Route path="/portal/:clientId/*" element={<ClientPortal />} />
+            <Route path="/consultant/clients/:clientId" element={<ClientOrgIndex />} />
+            <Route path="/consultant/clients/:clientId/home" element={
+              <ClientOrgRoute><DashboardPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/documents" element={
+              <ClientOrgRoute><DocumentsPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/processing" element={
+              <ClientOrgRoute><ProcessingPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/processing/:itemId" element={
+              <ClientOrgRoute><ProcessingItemPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/review" element={
+              <ClientOrgRoute><ReviewPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/review/:itemId" element={
+              <ClientOrgRoute><ReviewDetailPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/manual-processing" element={
+              <ClientOrgRoute><ManualProcessingPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/emissions" element={
+              <ClientOrgRoute><EmissionsPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/reports" element={
+              <ClientOrgRoute><ReportsPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/reports/:id" element={
+              <ClientOrgRoute><ReportDetailPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/issues" element={
+              <ClientOrgRoute><IssuesPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/messaging" element={
+              <ClientOrgRoute><MessagingPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/insight" element={
+              <ClientOrgRoute><InsightPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/existing-data" element={
+              <ClientOrgRoute><ExistingDataDiscoveryPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/capabilities" element={
+              <ClientOrgRoute><CapabilitiesPage /></ClientOrgRoute>
+            } />
+            <Route path="/consultant/clients/:clientId/organization" element={
+              <ClientOrgRoute><AdminPage /></ClientOrgRoute>
+            } />
+            <Route
+              path="/consultant/clients/:clientId/evidence/line-items/:lineItemId"
+              element={<ClientOrgRoute><SourceEvidenceViewer /></ClientOrgRoute>}
+            />
             <Route path="/ops" element={
               <ProtectedRoute>
                 <RoleRoute requireInternalStaff>

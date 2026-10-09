@@ -24,6 +24,11 @@ import {
   v3ListEmissions,
 } from '../api';
 import { ErrorState } from '../components/StateViews';
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-08/AC-04) — this customer page
+// is reused inside the consultant Client Operating Plane. The plane context lets
+// the subtitle describe the workspace truthfully instead of calling the
+// consultant a "customer".
+import { useConsultantClientContext } from '../consultant/ConsultantClientContext';
 
 function StatCard({ label, value, to }) {
   return (
@@ -35,6 +40,7 @@ function StatCard({ label, value, to }) {
 }
 
 export default function DashboardPage() {
+  const consultantContext = useConsultantClientContext();
   const [org, setOrg] = useState(null);
   const [reports, setReports] = useState([]);
   const [documents, setDocuments] = useState([]);
@@ -120,7 +126,12 @@ export default function DashboardPage() {
     <div className="v3-page">
       <div className="v3-page-header">
         <h1>Home</h1>
-        <p className="v3-subtitle">{org.name} · V3 customer workspace</p>
+        {/* UX-08 — never call the consultant a "customer". A direct customer keeps
+            its own workspace wording; inside the client plane the same page states
+            that this is a consultant-operated client workspace. */}
+        <p className="v3-subtitle">
+          {org.name} · {consultantContext.active ? 'Consultant-operated client workspace' : 'V3 customer workspace'}
+        </p>
       </div>
 
       <div className="v3-stat-grid">

@@ -37,6 +37,7 @@ def test_customer_calculate_multiline_item_with_item_level_factor(client, world,
     _seed_ops_world(world)
     # FIN-06 precondition: customer manual processing requires the enable.
     world.manual_processing.seed_grant("organization", "org-a")
+    world.manual_processing.seed_entitlement("org-a")
     _batch, item = _seed_batch_with_item(world)
 
     user_provider.set_user(member_user("org-a", "member-1", "m@test"))

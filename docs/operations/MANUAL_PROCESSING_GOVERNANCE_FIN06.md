@@ -1,9 +1,53 @@
 # Manual Processing Governance — FIN-06 (CarbonTally Admin control plane)
 
-**Status:** implemented (P8-FINALIZATION-IMPLEMENT-001). Server-enforced.
+**Status:** implemented (P8-FINALIZATION-IMPLEMENT-001); extended with the
+subscription gate, persistent processor configuration and automatic fallback
+routing.
 **Owner of the policy:** CarbonTally Admin (internal staff).
 **Default:** **DISABLED** — absence of a governance row means manual processing is
 denied for that scope (fail closed).
+
+## 0. The decision chain (ratified business rule)
+
+Manual Processing is a **subscription-plan capability**, and its routing
+destination is an explicitly configured Processing Entity:
+
+```text
+subscription entitlement            eligibility      (active subscription -> plan)
+  -> Manual Processing eligibility
+    -> Admin Manual Processing enablement   activation (FIN-06 grant)
+      -> configured Processing Entity       destination (manual_processing_processors)
+        -> automatic fallback routing       (services/manual_processing_routing.py)
+          -> PE work item / assignment       (existing D38 work_item_assignments)
+```
+
+The effective value is always:
+
+```text
+manual_processing_effective = subscription_entitled AND governance_enabled
+```
+
+A customer who has **not** subscribed to a Manual-Processing plan:
+
+* is not eligible for Manual Processing;
+* cannot have Manual Processing enabled (the Admin API refuses `enabled=true`
+  with **409** and audits `manual_processing:grant_rejected_not_entitled`);
+* cannot have a Processing Entity configured (the Admin API refuses with **409**
+  and audits `manual_processing:processor_rejected_not_entitled`);
+* never has extraction failures automatically routed to a Processing Entity.
+
+Entitlement and activation are **separate**: subscribing does not enable
+anything, and an enabled grant with no entitlement is denied server-side (a
+stale/manual grant can never bypass the rule).
+
+**Entitlement source (existing commercial model — no parallel subscription
+table):** the organisation's ACTIVE `customer_subscriptions` row →
+`billing_plans`. A plan is entitled when its `features.manual_processing.enabled`
+is true, or (when that explicit key is absent) when
+`assisted_processing_available` is true. Entitlement is resolved **server-side,
+per organisation**, so for a consultant client the CLIENT organisation's own
+active subscription applies (never the firm's) — the same rule as the existing
+commercial entitlement (P6-2 P0-1).
 
 ## 1. What "Manual Processing" means here
 
@@ -112,7 +156,11 @@ value + its level, new value, reason, cancelled batch ids, and the request
 identifier (`x-request-id`/`x-correlation-id` when supplied).
 
 Actions: `manual_processing:grant_set`, `manual_processing:grant_removed`,
-`manual_processing:queued_batches_cancelled`.
+`manual_processing:queued_batches_cancelled`, `manual_processing:grant_rejected_not_entitled`,
+`manual_processing:processor_set`, `manual_processing:processor_removed`,
+`manual_processing:processor_rejected_not_entitled`,
+`manual_processing:auto_routed`, `manual_processing:auto_route_denied`,
+`manual_processing:auto_route_blocked_no_processor`.
 
 ## 7. Migration
 
@@ -122,7 +170,71 @@ constraint, the scope vocabulary CHECK, RLS enabled + zero policies, and both
 client roles revoked. Applied twice in the disposable rehearsal clone (`rc=0`
 both passes).
 
-## 8. Open PO confirmations
+## 7.1 Migration (routing)
+
+`supabase/migrations/20261030000000_manual_processing_routing.sql` creates
+exactly one table — `public.manual_processing_processors` (`scope_type`,
+`scope_id`, `processing_entity_id` FK → `public.processing_entities`,
+`active`, audit metadata; `UNIQUE (scope_type, scope_id)`; the ratified scope
+vocabulary CHECK; RLS enabled + zero policies; `anon`/`authenticated` revoked,
+`service_role` granted). It is additive, idempotent and reversible (the rollback
+is documented in the file). It creates **no** subscription table and **no**
+second assignment table.
+
+## 8. Processor configuration (routing destination)
+
+| Surface | Purpose |
+|---|---|
+| `GET /api/v3/admin/manual-processing/processors` | list configured processors |
+| `PUT /api/v3/admin/manual-processing/processors` | assign/change the Processing Entity for one scope |
+| `DELETE /api/v3/admin/manual-processing/processors/{scope_type}/{scope_id}` | remove a scope's configuration |
+| `GET /api/v3/admin/manual-processing/state?scope_type=&scope_id=` | entitlement + governance + processor + the effective decision |
+
+* Scope vocabulary and precedence are the **same** as FIN-06 governance
+  (`consultant_client > consultant_firm > organization`); there is no second
+  scope taxonomy.
+* The Processing Entity must exist and be **active**.
+* Configuring a processor does **not** enable Manual Processing.
+* Absence of a configuration means **no destination**: routing is denied and
+  surfaced as the explicit `no_processor_configured` state. No arbitrary,
+  random, round-robin or workload-balanced Processing Entity is ever selected,
+  and the legacy `queue_settings.auto_assign_enabled` flag is not used for this
+  pipeline.
+
+## 8.1 Automatic extraction-failure routing
+
+`services/manual_processing_routing.py` is invoked by the automatic-processing
+worker **after** a job ends in `blocked` (manual-review gate) or `failed` (stage
+error). Detection rules are unchanged — only the routing at that boundary is new.
+
+When Manual Processing is effective, the configured Processing Entity is opened
+as the item's **single open D38 item-level assignment**
+(`work_item_assignments`, `assignee_kind='processing_entity'`), so the work
+appears in the existing PE workspace and flows into the existing manual
+extraction → mapping → validation → calculation → review workflow unchanged. The
+original failure stage and reason are preserved on the job and recorded in the
+audit entry.
+
+**Idempotency:** the decision is derived from the persisted single-open
+assignment — if the configured entity already holds it, routing is a no-op. A
+worker retry, re-queue, repeated failure observation or worker restart therefore
+never creates a second assignment.
+
+When Manual Processing is **not** effective, nothing is routed; the decision is
+recorded (`auto_route_denied` / `auto_route_blocked_no_processor`) so the
+behaviour is never silent.
+
+## 8.2 Upload-time behaviour
+
+The item created at document upload is the **shared-ingestion** carrier the
+automatic job references (`document_processing_queue.source_item_id`) and must
+exist for provenance; it is not manual-processing work and is never placed in a
+Processing Entity queue at upload. The upload records the customer's server-side
+routing posture (`manual_processing: {entitled, enabled, effective, configured,
+outcome}`) on the document metadata so a non-entitled customer's handling is
+explicit rather than silent.
+
+## 9. Open PO confirmations
 
 See the implementation report §G: the definition boundary of "Manual Processing",
 enablement authority (permission vs dedicated role), whether a narrow scope may

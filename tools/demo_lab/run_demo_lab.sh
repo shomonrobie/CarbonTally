@@ -5,6 +5,9 @@
 #   ./tools/demo_lab/run_demo_lab.sh --backend  # also start the release backend
 #   ./tools/demo_lab/run_demo_lab.sh --factors  # also load the DEMO-T2-C factor datasets
 #   ./tools/demo_lab/run_demo_lab.sh --backend --factors
+#   ./tools/demo_lab/run_demo_lab.sh --supervise  # keep backend + frontend running
+#                                                # (auto-restart, survives the
+#                                                #  terminal; supersedes --backend)
 #
 # Everything is LOCAL: a dedicated database inside the developer's local Supabase
 # cluster, two local containers, and localhost-only ports. Nothing contacts
@@ -21,11 +24,13 @@ PY="${PYTHON:-python3}"
 
 BACKEND=0
 FACTORS=0
+SUPERVISE=0
 for arg in "$@"; do
   case "${arg}" in
     --backend) BACKEND=1 ;;
     --factors) FACTORS=1 ;;
-    *) echo "unknown option: ${arg} (use --backend, --factors)" >&2; exit 2 ;;
+    --supervise) SUPERVISE=1 ;;
+    *) echo "unknown option: ${arg} (use --backend, --factors, --supervise)" >&2; exit 2 ;;
   esac
 done
 
@@ -63,7 +68,12 @@ if [[ "${FACTORS}" == "1" ]]; then
   fi
 fi
 
-if [[ "${BACKEND}" == "1" ]]; then
+if [[ "${SUPERVISE}" == "1" ]]; then
+  echo "── 4b/5 starting the supervised Demo Lab (backend + frontend, auto-restart)"
+  echo "     backend : http://127.0.0.1:${BACKEND_PORT}"
+  echo "     frontend: http://localhost:3000  (must be :3000 — DR-003)"
+  "${PY}" tools/demo_lab/supervise_demo_lab.py start --wait 300 --takeover || exit 1
+elif [[ "${BACKEND}" == "1" ]]; then
   echo "── 4b/5 starting the release backend on 127.0.0.1:${BACKEND_PORT}"
   pkill -f "uvicorn main:app --host 127.0.0.1 --port ${BACKEND_PORT}" 2>/dev/null || true
   (
@@ -92,6 +102,10 @@ echo "  gateway : http://127.0.0.1:54430  (/auth/v1, /rest/v1)"
 echo "  database: carbontally_demo_local on 127.0.0.1:54426"
 echo "  actors  : ${STATE_DIR}/credentials.local.json"
 echo "  evidence: ${STATE_DIR}/evidence/"
+if [[ "${SUPERVISE}" == "1" ]]; then
+  echo "  backend : http://127.0.0.1:${BACKEND_PORT}   frontend: http://localhost:3000"
+  echo "  persist : python3 tools/demo_lab/supervise_demo_lab.py status | logs | restart | stop"
+fi
 if [[ "${FACTORS}" == "1" ]]; then
   echo "  factors : DEFRA 2025 (7,029) + SEAI 2025 (20) — see evidence/t2c_seed_latest.json"
 else

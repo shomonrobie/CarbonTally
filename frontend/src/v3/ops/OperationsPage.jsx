@@ -9,6 +9,13 @@ import { LoadingState } from '../components/ui';
 import OpsDashboard from './OpsDashboard';
 import OperatorQueue from './OperatorQueue';
 import ProcessingEntitiesTab from './ProcessingEntitiesTab';
+// FIN-06 / Manual Processing — Admin control plane (subscription entitlement ->
+// activation -> configured Processing Entity -> automatic fallback routing).
+import ManualProcessingTab from './ManualProcessingTab';
+// CT-MP-SUB-004 — the COMMERCIAL COVERAGE half of the same control plane
+// (CT-UX-MP-SUB-003 §2/§8): who purchased what + who is covered, kept visibly
+// separate from the operational routing view above.
+import ManualProcessingCoverageTab from './ManualProcessingCoverageTab';
 import ReviewQueue from './ReviewQueue';
 import CtQcTab from './CtQcTab';
 import QcQueue from './QcQueue';
@@ -103,6 +110,21 @@ export default function OperationsPage() {
       { id: 'settings', label: 'Settings', component: SettingsTab },
     );
   }
+  // FIN-06 / Manual Processing — the governance + routing control plane. The
+  // backend gate is the existing admin-grade `can_manage_organizations`
+  // permission (server-enforced); this only decides whether the tab is shown.
+  if (p.can_manage_organizations) {
+    TABS.push({
+      id: 'manual-processing-coverage',
+      label: 'Commercial Coverage',
+      component: ManualProcessingCoverageTab,
+    });
+    TABS.push({
+      id: 'manual-processing',
+      label: 'Manual Processing',
+      component: ManualProcessingTab,
+    });
+  }
   if (isGlobalAdmin) TABS.push({ id: 'issues', label: 'Issues', component: IssuesTriageTab });
   // BACKUP-01/02 — Admin Backups. Navigation only: every backup route requires
   // admin authority AND the `can_manage_backups` capability server-side (§9), so
@@ -121,6 +143,12 @@ export default function OperationsPage() {
 
   const Active = TABS.find((t) => t.id === tab)?.component || TABS[0].component;
   const activeId = TABS.find((t) => t.id === tab) ? tab : TABS[0].id;
+  // The capability each surface actually requires (server-enforced; this only
+  // influences whether controls are enabled in the UI).
+  const activeCanManage =
+    activeId === 'manual-processing' || activeId === 'manual-processing-coverage'
+      ? !!p.can_manage_organizations
+      : !!p.can_manage_staff;
 
   return (
     <div className="v3-ops-page">
@@ -140,7 +168,7 @@ export default function OperationsPage() {
           </button>
         ))}
       </div>
-      {loading ? <LoadingState label="Loading operations…" /> : <Active canManage={!!p.can_manage_staff} />}
+      {loading ? <LoadingState label="Loading operations…" /> : <Active canManage={activeCanManage} />}
     </div>
   );
 }

@@ -15,7 +15,7 @@ from utils.emissions import extract_issues_from_result
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.dependencies import (
     RepositoryBundle,
@@ -173,6 +173,18 @@ def _pdf_page_count(content: bytes) -> int:
 class BatchCreate(BaseModel):
     batch_name: str
     metadata: dict = {}
+
+
+class BatchProgressUpdate(BaseModel):
+    """Real per-file progress for a batch upload (CT-PO-UPLOAD-BATCH-REMEDIATION-001).
+
+    The uploading client reports what the backend already decided per file — this
+    payload never invents an outcome.  ``processed_files`` counts files whose real
+    outcome is known (accepted OR refused); ``status`` is the batch lifecycle.
+    """
+
+    processed_files: int = Field(ge=0)
+    status: str = Field(pattern="^(pending|processing|completed|partial|failed)$")
 
 
 def _classify(filename: str, mime: str) -> str:
@@ -597,6 +609,30 @@ async def enqueue_document_processing(
             "enqueue_error": f"registration: {exc}"[:300],
         }
 
+    # MANUAL PROCESSING — record the SERVER-SIDE routing posture for this upload.
+    #
+    # The item created above is the SHARED-INGESTION carrier the automatic job
+    # references (`source_item_id`) and must therefore always exist for
+    # provenance; it is NOT a manual-processing work item and is never placed in
+    # a Processing Entity queue here. Whether a later automatic-extraction FAILURE
+    # may route to a Processing Entity is decided entirely server-side by the
+    # entitlement + FIN-06 governance + configured-processor chain
+    # (services.manual_processing_routing) and is recorded below so the customer's
+    # routing posture is never silent. Best-effort: never fails the upload.
+    try:
+        from services.manual_processing_routing import ManualProcessingRouter
+
+        routing = await ManualProcessingRouter(repos).resolve(organization_id)
+        enqueue_state["manual_processing"] = {
+            "entitled": routing.entitled,
+            "enabled": routing.enabled,
+            "effective": routing.effective,
+            "configured": routing.configured,
+            "outcome": routing.outcome,
+        }
+    except Exception as exc:  # noqa: BLE001 - posture recording is best-effort
+        print(f"⚠️ manual-processing posture recording failed for {filename}: {exc!r}")
+
     # CT-STEP2-FINAL-STABILIZATION-012 (WS-C) — persist the enqueue outcome on the
     # document record (best-effort, no schema change). A document that was stored but
     # never queued is now visible as `automatic_processing: enqueue_failed` with the
@@ -955,3 +991,64 @@ async def get_batch(
         raise HTTPException(status_code=404, detail="batch not found")
     ensure_org_access(current_user, batch.organization_id)
     return batch
+
+
+@router.patch("/batches/{batch_id}", status_code=200)
+async def update_batch_progress(
+    batch_id: str,
+    payload: BatchProgressUpdate,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Record real progress for a restored V3 batch upload.
+
+    CT-PO-UPLOAD-BATCH-REMEDIATION-001 — a batch upload groups several real,
+    individually-completed document uploads.  As each file's true outcome is known
+    the client advances ``processed_files``/``status`` through the repository's
+    EXISTING lifecycle methods (:meth:`UploadBatchesRepository.update_progress` and
+    :meth:`UploadBatchesRepository.complete`) so the batch record is never a
+    permanently-``pending`` tombstone.  Org-scoped: the batch's organisation must
+    match the caller, and the change is written to the append-only audit trail.
+    """
+    batch = await repos.batches.get(batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+    ensure_org_access(current_user, batch.organization_id)
+
+    updated = await repos.batches.update_progress(
+        batch_id, payload.processed_files, payload.status
+    )
+    if payload.status == "completed":
+        # ``complete`` is the only writer of ``completed_at`` (existing method).
+        updated = await repos.batches.complete(batch_id) or updated
+    if updated is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+
+    # Append-only audit (ids/counts only; never a signed URL or file content).
+    from datetime import datetime, timezone
+
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id=str(uuid4()),
+                correlation_id=batch_id,
+                entity_type="upload_batches",
+                entity_id=batch_id,
+                action="batch.progress",
+                actor=current_user.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={
+                    "organization_id": str(batch.organization_id),
+                    "processed_files": payload.processed_files,
+                    "status": payload.status,
+                },
+                reason="batch upload progress reported by the uploading client",
+                organization_id=str(batch.organization_id),
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit must never break the write path
+        pass
+
+    return updated

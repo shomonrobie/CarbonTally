@@ -1,5 +1,36 @@
 # PE Validation Workflow Decision — Design/Decision Record
 
+> **SUPERSEDED (Implementation status): IMPLEMENTED — Option A.**
+>
+> This file was written as a **pre-implementation** decision record. Its proposal
+> was subsequently approved and implemented, so the following statements in the
+> body below are **historical, not current**:
+>
+> * the status line immediately below ("DESIGN ONLY — no implementation …");
+> * §1 ("PE-origin work cannot legally reach calculation through the real PE UI …
+>   `backend/api/v3_pe.py` exposes … no validate action");
+> * §12–20 "PO DECISION REQUIRED — Adopt Option A/B/C" (resolved as **Option A —
+>   PE Reviewer performs validation**).
+>
+> **Current, implemented behaviour (authoritative source = the code):**
+> `POST /api/v3/pe/items/{item_id}/validate`
+> (`backend/api/v3_pe.py:268-315`) — PE-scoped, gated by the frozen PE `review`
+> capability (PE Reviewer / PE Admin), taking `mapped → validated` (or
+> `mapped → mapping` when findings block), reusing the canonical
+> `validate_processing_item` engine and recording the immutable `pe_validate:*`
+> audit event. The PE workbench surfaces the control only at `mapped`, and
+> `mapped → calculate` is no longer offered.
+>
+> **Evidence of the implementation** is recorded in the appended
+> "IMPLEMENTATION RESULT (Option A — approved & implemented)" section at the end
+> of this file (files changed, browser E2E PV1–PV12, live-authorization
+> negatives). The drift this banner closes is recorded as **G3** in
+> `Research/CT-PO-PRODUCT-MODEL-RECONCILIATION-01/CT-PO-PRODUCT-MODEL-RECONCILIATION-01.md`.
+>
+> The original design record below (Option A/B/C analysis, separation-of-duties,
+> security and audit reasoning, rejected alternatives) is **preserved unaltered**
+> as the historical rationale. Read it as the *pre-implementation* record only.
+
 Status: DESIGN ONLY — no implementation. WS4 remains open pending PO approval.
 
 ## 1. Current state

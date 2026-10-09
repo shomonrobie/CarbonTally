@@ -112,9 +112,13 @@
       "local_part": "consultant.owner",
       "entity": "consultant",
       "firm_role": "owner",
-      "purpose": "Consultant firm owner (firm identity holder)",
+      "purpose": "Consultant firm owner (firm identity holder, admission + final approval)",
       "expect": { "actor_type": "consultant", "destination": "/consultant", "role": "owner" },
-      "firm_owner": true
+      "firm_owner": true,
+      "capabilities": {
+        "can_view_client": true,
+        "can_approve": true
+      }
     },
     {
       "key": "consultant_member",
@@ -124,6 +128,8 @@
       "purpose": "Consultant firm member with restricted capabilities (least privilege)",
       "expect": { "actor_type": "consultant", "destination": "/consultant", "role": "consultant" },
       "capabilities": {
+        "can_view_client": true,
+        "can_approve": false,
         "can_manage_clients": false,
         "can_upload_documents": false,
         "can_generate_reports": false,

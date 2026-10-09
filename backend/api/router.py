@@ -45,6 +45,8 @@ from api.v3_billing import router as v3_billing_router
 from api.v3_review import router as v3_review_router
 from api.v3_verifications import router as v3_verifications_router
 from api.v3_consultants import router as v3_consultants_router
+# CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-7) — Plane C client portal family.
+from api.v3_client_portal import router as v3_client_portal_router
 from api.v3_manual_extraction import router as v3_manual_extraction_router
 from api.v3_operations import router as v3_operations_router
 from api.v3_processing import router as v3_processing_router
@@ -64,6 +66,12 @@ from api.v3_disclosure import router as v3_disclosure_router
 from api.v3_discovery import router as v3_discovery_router
 from api.v3_messaging import router as v3_messaging_router
 from api.manual_processing_admin import router as manual_processing_admin_router
+# CT-CONSULTANT-PLATFORM-FULL-IMPLEMENTATION-03 (PO-1) — CarbonTally Admin
+# consultant commercial decision surface (mode-change approve/reject).
+from api.admin_consultant_commercial import router as admin_consultant_commercial_router
+from api.v3_manual_processing_coverage import (
+    router as v3_manual_processing_coverage_router,
+)
 from api.v3_vehicles import router as v3_vehicles_router
 from api.v3_whitelabel import router as v3_whitelabel_router
 from api.v3_reporting import router as v3_reporting_router
@@ -220,6 +228,8 @@ router.include_router(v3_verifications_router)
 router.include_router(v3_notifications_router)
 router.include_router(v3_exports_router)
 router.include_router(v3_consultants_router)
+# CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-7) — Plane C client portal.
+router.include_router(v3_client_portal_router)
 router.include_router(v3_processing_router)
 router.include_router(v3_processing_workflow_router)
 router.include_router(v3_automatic_processing_router)
@@ -239,6 +249,12 @@ router.include_router(v3_discovery_router)
 router.include_router(v3_messaging_router)
 # FIN-06 — CarbonTally Admin Manual Processing governance (admin-gated).
 router.include_router(manual_processing_admin_router)
+# CT-CONSULTANT-PLATFORM-FULL-IMPLEMENTATION-03 (PO-1) — admin consultant
+# commercial decision surface (mode-change approve/reject; admin-gated).
+router.include_router(admin_consultant_commercial_router)
+# CT-MP-SUB-004 — customer/consultant Manual Processing coverage surfaces
+# (org-scoped / consultant-self-scoped; the Admin control plane is above).
+router.include_router(v3_manual_processing_coverage_router)
 router.include_router(v3_vehicles_router)
 router.include_router(v3_whitelabel_router)
 router.include_router(v3_reporting_router)

@@ -1,0 +1,162 @@
+/* frontend/src/css/AcceptInvitation.css
+   CT-CONSULTANT-CLIENT-IDENTITY-04 (PD-1A) — the invitee's acceptance page.
+   D21: semantic `ct-*` tokens only; no page-specific visual system. */
+.ct-accept-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--ct-color-primary-dark) 0%, #1e293b 100%);
+  padding: 2rem;
+}
+
+.ct-accept-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--ct-color-surface);
+  border-radius: 18px;
+  padding: 2.25rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.ct-accept-brand {
+  margin: 0 0 1.25rem;
+  text-align: center;
+  font-size: 1.5rem;
+  color: var(--ct-color-primary-dark);
+}
+
+.ct-accept-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  color: var(--ct-color-text);
+}
+
+.ct-accept-muted {
+  margin: 0 0 1.25rem;
+  color: var(--ct-color-text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.ct-accept-google {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--ct-color-border-strong);
+  border-radius: 10px;
+  background: var(--ct-color-surface);
+  color: var(--ct-color-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ct-accept-google:disabled { opacity: 0.6; cursor: default; }
+
+.ct-accept-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  color: var(--ct-color-text-muted);
+  font-size: 0.8rem;
+}
+
+.ct-accept-divider::before,
+.ct-accept-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ct-color-border);
+}
+
+.ct-accept-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ct-accept-form label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-accept-form input {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--ct-color-border-strong);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.ct-accept-form input:focus {
+  outline: none;
+  border-color: var(--ct-color-focus-border);
+  box-shadow: 0 0 0 3px var(--ct-color-focus-ring);
+}
+
+.ct-accept-submit {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--ct-color-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.ct-accept-submit:hover:not(:disabled) { background: var(--ct-color-primary-hover); }
+.ct-accept-submit:disabled { opacity: 0.6; cursor: default; }
+
+.ct-accept-toggle {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--ct-color-text-secondary);
+}
+
+.ct-accept-toggle button {
+  background: none;
+  border: none;
+  color: var(--ct-color-accent);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ct-accept-error {
+  margin: 0.5rem 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--ct-color-error-border);
+  border-radius: 10px;
+  background: var(--ct-color-error-bg-soft);
+  color: var(--ct-color-error-text);
+  font-size: 0.9rem;
+}
+
+.ct-accept-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ct-color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.ct-accept-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ct-color-border-strong);
+  border-top-color: var(--ct-color-primary);
+  border-radius: 50%;
+  animation: ct-accept-spin 0.8s linear infinite;
+}
+
+@keyframes ct-accept-spin { to { transform: rotate(360deg); } }
+
+.ct-accept-link {
+  color: var(--ct-color-accent);
+  font-weight: 600;
+  text-decoration: none;
+}

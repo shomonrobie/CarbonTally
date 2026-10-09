@@ -3,7 +3,9 @@
 //
 // BL-7: the client directory + lifecycle management now lives in a dedicated,
 // always-available "Clients" tab instead of rendering below the workspace
-// content; selection stays on the top-level switcher.
+// content. CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-01/AC-01): the
+// Consultant Plane represents the FIRM and has no global "Active client"; a
+// client is chosen via Clients → Open workspace (the Client Operating Plane).
 // BL-6: the upload notice reports the uploaded document's REAL pipeline stage
 // from the refreshed items, and the workspace polls the backend stage state
 // while any item is still in flight (no fake progress).
@@ -77,9 +79,6 @@ function mockWorkspaceEndpoints(status = 'pending') {
 beforeEach(() => {
   jest.clearAllMocks();
   window.confirm = jest.fn(() => true);
-  // A returning consultant has a remembered active client; this also avoids the
-  // CON-6 auto-select double-load flicker in the tests.
-  localStorage.setItem('v3_consultant_active_client', 'client-1');
   api.getConsultantProfile.mockResolvedValue(PROFILE);
   api.listConsultantClients.mockResolvedValue({ clients: CLIENTS });
   api.getConsultantDashboard.mockResolvedValue({});
@@ -88,11 +87,24 @@ beforeEach(() => {
 });
 
 describe('Consultant workspace IA (BL-7)', () => {
-  test('renders the active-client context banner and a Clients tab', async () => {
+  test('renders the firm context banner and a Clients tab, with NO global Active client', async () => {
     render(<ConsultantPage />);
     expect(await screen.findByText('Acme Consulting · multi-client portal')).toBeInTheDocument();
-    expect(screen.getByText(/current organization/i)).toBeInTheDocument();
+    // CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-02/AC-04) — the actor is the
+    // consultant firm; the old "Current organization / <client> / Client" wording
+    // (which implied impersonation) is gone.
+    expect(screen.getByText('Consultant')).toBeInTheDocument();
+    expect(screen.getByText(/you operate your clients on their behalf/i)).toBeInTheDocument();
+    expect(screen.queryByText(/current organization/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /clients/i })).toBeInTheDocument();
+    // UX-03/AC-02 — "Client workspace" no longer competes as a consultant-plane tab.
+    expect(screen.queryByRole('button', { name: /client workspace/i })).not.toBeInTheDocument();
+    // CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-01/AC-01) — the Consultant
+    // Plane represents the FIRM and has NO global Active client selector.
+    expect(screen.queryByLabelText(/select active client/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Active client')).not.toBeInTheDocument();
+    expect(screen.queryByText(/no client selected/i)).not.toBeInTheDocument();
+    expect(document.querySelector('.v3-client-switcher')).toBeNull();
   });
 
   test('client directory + lifecycle actions live in the Clients tab', async () => {
@@ -104,7 +116,7 @@ describe('Consultant workspace IA (BL-7)', () => {
     expect(screen.queryByRole('button', { name: /suspend/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /clients/i }));
-    // The directory renders one row per client (the switcher options are not rows).
+    // The directory renders one row per client.
     expect(container.querySelectorAll('.v3-client-list-item')).toHaveLength(2);
     expect(screen.getAllByText(/ACTIVE|SUSPENDED/).length).toBe(2);
     // Lifecycle actions reachable from the tab (was previously buried at the bottom).
@@ -139,68 +151,10 @@ describe('Consultant workspace IA (BL-7)', () => {
   });
 });
 
-
-
-describe('Consultant upload / processing feedback (BL-6)', () => {
-  const renderWorkspace = async () => {
-    const { container } = render(<ConsultantPage />);
-    await screen.findByText('Acme Consulting · multi-client portal');
-    fireEvent.click(screen.getByRole('button', { name: /client workspace/i }));
-    await waitFor(() => expect(screen.getByText(/processing pipeline/i)).toBeInTheDocument());
-    return { container };
-  };
-
-  test('upload notice reports the document real pipeline stage', async () => {
-    mockWorkspaceEndpoints('pending');
-    api.uploadConsultantDocument.mockResolvedValue({
-      document: { id: 'doc-1', name: 'bill.pdf', organization_id: 'org-1', client_id: 'client-1' },
-    });
-    const { container } = await renderWorkspace();
-
-    const fileInput = container.querySelector('input[type="file"]');
-    const file = new File(['data'], 'bill.pdf', { type: 'application/pdf' });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    expect(api.uploadConsultantDocument).toHaveBeenCalledWith('client-1', file, 'utility');
-    await waitFor(() => {
-      expect(screen.getByText(/current stage: pending/i)).toBeInTheDocument();
-    });
-  });
-
-  test('failed upload surfaces an error and does not claim completion', async () => {
-    mockWorkspaceEndpoints('pending');
-    api.uploadConsultantDocument.mockRejectedValue(new Error('storage unavailable'));
-    const { container } = await renderWorkspace();
-
-    const fileInput = container.querySelector('input[type="file"]');
-    fireEvent.change(fileInput, { target: { files: [new File(['x'], 'bad.pdf', { type: 'application/pdf' })] } });
-
-    await waitFor(() => {
-      expect(screen.getByText(/storage unavailable/i)).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/current stage:/i)).not.toBeInTheDocument();
-  });
-
-  test('polls the real backend stage while items are in flight', async () => {
-    jest.useFakeTimers();
-    try {
-      mockWorkspaceEndpoints('extracting');
-      render(<ConsultantPage />);
-      // Flush the initial load promises (all mockResolvedValue).
-      await act(async () => {});
-      await act(async () => {});
-      fireEvent.click(screen.getByRole('button', { name: /client workspace/i }));
-      await act(async () => {});
-      await act(async () => {});
-
-      const callsBefore = api.getClientProcessingItems.mock.calls.length;
-      await act(async () => {
-        jest.advanceTimersByTime(10000);
-      });
-      expect(api.getClientProcessingItems.mock.calls.length).toBeGreaterThan(callsBefore);
-      expect(api.getClientProcessingStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-});
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-03/AC-02) — the legacy inline
+// "Client workspace" mini-dashboard and its BL-6 upload/polling feedback were
+// removed from the consultant hub: a client's workspace is now the Client Org
+// plane (/consultant/clients/:clientId/*), reached via "Open workspace". Those
+// behaviours live on the shared customer Documents/Processing surfaces, so the
+// BL-6 consultant-hub tests were deleted with the component rather than left
+// asserting removed UI.

@@ -84,7 +84,7 @@ def _seed_entitlement(world, org_id="org-a", *, key="sub-ent-1") -> None:
                 included_credits=500,
                 version=1,
                 is_active=True,
-                features={},
+                features={"manual_processing": {"enabled": True}},
                 effective_from=datetime.now(timezone.utc),
             ),
             created_by="admin-1",

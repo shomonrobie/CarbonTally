@@ -59,6 +59,15 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 — actor/subject context prose in the
+   consultant active-client banner (not monospace: it is a sentence, not an id). */
+.v3-active-client .note {
+  font-size: 12px;
+  opacity: 0.82;
+  margin-top: 2px;
+  max-width: 46ch;
+}
+
 .v3-client-switcher {
   margin-left: auto;
   display: flex;
@@ -271,4 +280,83 @@
 .v3-btn-primary:disabled {
   background: #9fb3b0;
   cursor: not-allowed;
+}
+
+/* CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 — client operating-plane context bar.
+   Persistent actor (consultant firm) + subject (client organisation) + return to
+   the Consultant Plane + switch client. D21 tokens; must not rely on colour alone. */
+.v3-client-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  padding: 10px 16px;
+  margin-bottom: 18px;
+  border-radius: 10px;
+  background: #0d2b3e;
+  color: var(--ct-color-surface);
+}
+
+.v3-client-context-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  flex: 1 1 auto;
+}
+
+.v3-client-context-actor,
+.v3-client-context-subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.v3-client-context-key {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.v3-client-context-firm,
+.v3-client-context-client {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.v3-client-context-actor .v3-client-context-firm {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.v3-client-context-rel,
+.v3-client-context-portal {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.v3-client-context-rel::before {
+  content: '· ';
+}
+
+.v3-client-context-switch {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.v3-client-context-switch select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ct-color-surface);
+  font-size: 13px;
+}
+
+.v3-client-context-switch select option {
+  color: #0d2b3e;
 }

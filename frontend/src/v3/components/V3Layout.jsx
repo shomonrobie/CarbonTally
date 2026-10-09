@@ -13,7 +13,8 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { getMeContext } from '../api';
+import { getMeContext, getClientWorkspaceContext } from '../api';
+import { ClientAccessProvider } from '../clientAccess';
 import Icon from './ui/Icon';
 import Drawer from './ui/Drawer';
 import SearchBox from './SearchBox';
@@ -27,6 +28,9 @@ const CUSTOMER_LINKS = [
   { to: '/home', label: 'Home', icon: 'home', end: true },
   { to: '/documents', label: 'Documents', icon: 'documents' },
   { to: '/processing', label: 'Processing', icon: 'processing' },
+  // CT-MP-SUB-004 — one added entry in the existing D18 customer model
+  // (CT-UX-MP-SUB-003 §8): the customer's OWN Manual Processing service state.
+  { to: '/manual-processing', label: 'Manual processing', icon: 'processing' },
   { to: '/review', label: 'Review & approve', icon: 'checkCircle', end: true },
   { to: '/emissions', label: 'Emissions', icon: 'emissions' },
   { to: '/reports', label: 'Reports', icon: 'reports' },
@@ -45,7 +49,7 @@ const CUSTOMER_LINKS = [
   { to: '/capabilities', label: 'Capabilities', icon: 'list' },
 ];
 
-export default function V3Layout({ children }) {
+export default function V3Layout({ children, navPrefix = '', clientId = null }) {
   const navigate = useNavigate();
   const [org, setOrg] = useState(null);
   const [isStaff, setIsStaff] = useState(false);
@@ -54,6 +58,11 @@ export default function V3Layout({ children }) {
   const [trayOpen, setTrayOpen] = useState(false);
   const [contextError, setContextError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05 — the presentation-only
+  // client-access view (profile/state/capabilities) for a consultant-managed
+  // client's own user; null (unrestricted) for a direct customer, consultant
+  // and staff. The backend enforces the identical ceiling regardless.
+  const [clientAccess, setClientAccess] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -78,9 +87,36 @@ export default function V3Layout({ children }) {
           navigate('/pe', { replace: true });
           return;
         }
-        setOrg(context.actor_type === 'customer' ? context.organization || null : null);
+        if (context.actor_type === 'customer') {
+          setOrg(context.organization || null);
+        } else if (context.actor_type === 'consultant' && clientId) {
+          // PD-1/PD-3 — a consultant-managed client renders as a NORMAL
+          // CarbonTally Organisation. Resolve the selected client's
+          // organisation so the shared Organisation navigation is available;
+          // the backend re-authorises the active consultant-client grant on
+          // every request, so this context grants nothing on its own.
+          try {
+            const clientContext = await getClientWorkspaceContext(clientId);
+            const client = clientContext?.client || null;
+            setOrg(
+              client?.organization_id
+                ? {
+                  id: client.organization_id,
+                  name: clientContext?.organization?.name || client.client_name,
+                }
+                : null,
+            );
+          } catch (_e) {
+            setOrg(null);
+          }
+        } else {
+          setOrg(null);
+        }
         setIsStaff(context.actor_type === 'staff' || context.actor_type === 'entity_staff');
         setIsConsultant(context.actor_type === 'consultant');
+        setClientAccess(
+          context.actor_type === 'customer' ? (context.client_access || null) : null,
+        );
         setContextError(false);
         setLoaded(true);
       } catch (_e) {
@@ -93,7 +129,7 @@ export default function V3Layout({ children }) {
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt]);
+  }, [attempt, clientId]);
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -102,9 +138,33 @@ export default function V3Layout({ children }) {
 
   const links = [];
   if (org) {
-    CUSTOMER_LINKS.forEach((link) => links.push({ ...link }));
+    // When a consultant is operating a managed client, the SAME Organisation
+    // destinations are rendered under the selected client's route prefix (PD-1:
+    // same product surface, different actor/authorisation context).
+    // PD-6 — Billing is deliberately NOT carried into the client Organisation
+    // context: CarbonTally bills consultant FIRMS, so a managed client's billing
+    // is not the consultant's billing and must not be offered as if it were.
+    CUSTOMER_LINKS
+      .filter((link) => !(navPrefix && link.to === '/billing'))
+      .forEach((link) => links.push({ ...link, to: `${navPrefix}${link.to}` }));
   }
-  if (isConsultant) links.push({ to: '/consultant', label: 'Consultant', icon: 'briefcase' });
+  if (isConsultant) {
+    // CT-CONSULTANT-PLATFORM-CLOSURE-01 §11 — inside a managed client's
+    // operating plane (navPrefix set) the ONLY return path to the Consultant
+    // Plane is the context bar's single "← Back to Consultant" (ClientOrgShell).
+    // The shared nav therefore shows the plain "Consultant" hub entry ONLY on
+    // the firm plane; inside the client plane it is removed so there is exactly
+    // one consultant return/context affordance and no duplicated hub item. The
+    // prior UX-NAV-01A rationale (keep a plain hub entry) is superseded here by
+    // the client-plane nav-cleanup decision.
+    if (!navPrefix) {
+      links.push({
+        to: '/consultant',
+        label: 'Consultant',
+        icon: 'briefcase',
+      });
+    }
+  }
   if (isStaff) links.push({ to: '/ops', label: 'Operations', icon: 'tool' });
   links.push({ to: '/notifications', label: 'Notifications', icon: 'notifications' });
 
@@ -126,6 +186,7 @@ export default function V3Layout({ children }) {
   );
 
   return (
+    <ClientAccessProvider value={clientAccess}>
     <div className="v3-shell">
       {contextError && (
         <div
@@ -169,9 +230,8 @@ export default function V3Layout({ children }) {
         </button>
         <div className="v3-nav-brand">
           <span className="v3-nav-logo">CarbonTally</span>
-          <span className="v3-nav-tag">V3</span>
         </div>
-        <nav className="v3-nav-links" aria-label="V3 navigation">
+        <nav className="v3-nav-links" aria-label="Primary navigation">
           {linkMarkup()}
           {loaded && links.length === 0 && (
             <span className="v3-nav-link" style={{ cursor: 'default', opacity: 0.7 }}>
@@ -181,7 +241,11 @@ export default function V3Layout({ children }) {
         </nav>
         <div className="v3-nav-context">
           {org && <SearchBox organizationId={org.id} />}
-          {org && <span className="v3-nav-org" title={org.id}>{org.name}</span>}
+          {org && (
+            <span className="v3-nav-org" title={org.id}>
+              {isConsultant && navPrefix ? `Working on: ${org.name}` : org.name}
+            </span>
+          )}
           {isStaff && <span className="v3-nav-badge">Staff</span>}
           {isConsultant && <span className="v3-nav-badge consultant">Consultant</span>}
           {loaded && (
@@ -194,7 +258,7 @@ export default function V3Layout({ children }) {
 
       {/* Tablet/mobile tray navigation (D20) */}
       <Drawer open={trayOpen} onClose={() => setTrayOpen(false)} title="Navigation" side="left">
-        <nav className="v3-tray-nav" aria-label="V3 tray navigation">
+        <nav className="v3-tray-nav" aria-label="Tray navigation">
           {linkMarkup()}
           {org && (
             <div className="v3-tray-org">
@@ -216,6 +280,7 @@ export default function V3Layout({ children }) {
         © {new Date().getFullYear()} CarbonTally (UK) Ltd. All rights reserved.
       </footer>
     </div>
+    </ClientAccessProvider>
   );
 }
 

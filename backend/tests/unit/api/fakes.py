@@ -686,6 +686,56 @@ class MemoryOrganizations:
         member = self._members.get(member_id)
         return dict(member) if member is not None else None
 
+    # -- CT04 (PD-1A) invitation-acceptance surface -------------------------
+    async def get_member_by_user(
+        self, org_id: str, user_id: str
+    ) -> Optional[dict[str, Any]]:
+        """The (org, user) membership joined with the user's email, or None."""
+        for member in self._members.values():
+            if str(member["organization_id"]) == str(org_id) and str(
+                member.get("user_id")
+            ) == str(user_id):
+                return dict(member)
+        return None
+
+    async def accept_invited_membership(
+        self, *, org_id: str, user_id: str, email: str, role: str
+    ) -> OrganizationMember:
+        """Create (or re-activate) the membership for an accepting invitee."""
+        for member in self._members.values():
+            if str(member["organization_id"]) == str(org_id) and str(
+                member.get("user_id")
+            ) == str(user_id):
+                if not member.get("is_active", True):
+                    member["is_active"] = True
+                    member["role"] = role
+                    member["updated_at"] = datetime.now(timezone.utc).isoformat()
+                return OrganizationMember(
+                    id=str(member["id"]),
+                    organization_id=str(member["organization_id"]),
+                    user_id=str(member["user_id"]),
+                    role=str(member["role"]),
+                    is_active=bool(member.get("is_active", True)),
+                )
+        member = {
+            "id": str(uuid.uuid4()),
+            "organization_id": org_id,
+            "user_id": user_id,
+            "email": email,
+            "role": role,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._members[member["id"]] = member
+        return OrganizationMember(
+            id=member["id"],
+            organization_id=org_id,
+            user_id=user_id,
+            role=role,
+            is_active=True,
+        )
+
     # -- D35 self-service onboarding surface --------------------------------
     async def get_active_memberships_for_user(self, user_id: str) -> list[OrganizationMember]:
         """Every ACTIVE organisation membership for ``user_id``."""
@@ -808,6 +858,10 @@ class MemoryOrganizations:
             rows = [o for o in rows if o.is_active]
         total = len(rows)
         return rows[offset:offset + limit], total
+
+    async def get_many(self, ids: list[str]) -> dict:
+        """Batch organisation lookup mirroring the repository surface (NV-9)."""
+        return {str(i): self._orgs[str(i)] for i in ids if str(i) in self._orgs}
 
 
 class MemoryImports:
@@ -1327,6 +1381,8 @@ class MemoryInvitations:
         invited_by: Optional[str] = None,
         status: str = "pending",
         expires_at: Any = None,
+        role: Optional[str] = None,
+        invited_by_firm_id: Optional[str] = None,
     ) -> dict[str, Any]:
         row = {
             "id": str(uuid.uuid4()),
@@ -1341,6 +1397,13 @@ class MemoryInvitations:
             ),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            # CT04 (PD-1A/PD-2A) additive columns — mirror the real repository.
+            "role": role,
+            "invited_by_firm_id": invited_by_firm_id,
+            "accepted_at": None,
+            "accepted_by": None,
+            "revoked_at": None,
+            "revoked_by": None,
         }
         self._rows[row["id"]] = row
         return dict(row)
@@ -1354,11 +1417,50 @@ class MemoryInvitations:
         rows.sort(key=lambda r: r["created_at"], reverse=True)
         return rows
 
-    async def revoke(self, invitation_id: str) -> Optional[dict[str, Any]]:
+    async def get_by_token(self, token: str) -> Optional[dict[str, Any]]:
+        """CT04 (PD-1A) — fetch a single invitation by its UNIQUE token."""
+        return next(
+            (dict(r) for r in self._rows.values() if r.get("token") == token), None
+        )
+
+    async def consume(
+        self, token: str, *, accepted_by: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
+        """CT04 (PD-1A) — atomically accept a still-pending, unexpired token.
+
+        Mirrors the real conditional UPDATE: a second attempt (or an expired
+        token) matches no row and returns ``None``.
+        """
+        from datetime import datetime as _dt, timezone as _tz
+
+        row = next((r for r in self._rows.values() if r.get("token") == token), None)
+        if row is None or row.get("status") != "pending":
+            return None
+        expires_at = row.get("expires_at")
+        if expires_at is not None:
+            try:
+                parsed = _dt.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=_tz.utc)
+                if _dt.now(_tz.utc) >= parsed:
+                    return None
+            except ValueError:
+                pass
+        row["status"] = "accepted"
+        row["accepted_at"] = _dt.now(_tz.utc).isoformat()
+        row["accepted_by"] = accepted_by
+        row["updated_at"] = row["accepted_at"]
+        return dict(row)
+
+    async def revoke(
+        self, invitation_id: str, *, revoked_by: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         row = self._rows.get(invitation_id)
         if row is None:
             return None
         row["status"] = "revoked"
+        row["revoked_at"] = row.get("revoked_at") or datetime.now(timezone.utc).isoformat()
+        row["revoked_by"] = row.get("revoked_by") or revoked_by
         return dict(row)
 
     async def save(self, entity):
@@ -1605,9 +1707,10 @@ class MemoryConsultants:
         self._tasks: list[object] = []
         self._brandings: dict[str, object] = {}
 
-    def seed_profile(self, profile_id, user_id, company_name="Acme Consultants", *, is_active=True):
+    def seed_profile(self, profile_id, user_id, company_name="Acme Consultants", *, is_active=True, organization_id=None):
         profile = self._profile_type(
-            id=profile_id, user_id=user_id, company_name=company_name, is_active=is_active
+            id=profile_id, user_id=user_id, company_name=company_name,
+            is_active=is_active, organization_id=organization_id,
         )
         self._profiles[profile_id] = profile
         return profile
@@ -1628,6 +1731,17 @@ class MemoryConsultants:
         can_calculate=False,
         can_confirm_automation=False,
         can_submit=False,
+        # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2). ``can_view_client``
+        # defaults True here because this helper seeds a member that ALREADY
+        # EXISTS in a provisioned firm — the same state the IMPL-1 backfill in
+        # migration 20261102000000_ct_consultant_model_02 grants (existing active
+        # members keep the scope they de-facto had). A brand-new membership is
+        # deny-by-default in the DATABASE; tests covering F-1/F-10 pass
+        # ``can_view_client=False`` explicitly to exercise the denial.
+        # ``can_approve`` has no backfill at all (no consultant could give final
+        # approval before F-2), so it stays False unless a test grants it.
+        can_view_client=True,
+        can_approve=False,
         client_access=None,
         is_active=True,
     ):
@@ -1647,22 +1761,212 @@ class MemoryConsultants:
             can_calculate=can_calculate,
             can_confirm_automation=can_confirm_automation,
             can_submit=can_submit,
+            can_view_client=can_view_client,
+            can_approve=can_approve,
             client_access=list(client_access or []),
         )
         self._members.append(member)
         return member
 
-    def seed_client(self, client_id, consultant_id, organization_id, client_name, status="active", relationship_origin="consultant_created_customer"):
+    def seed_client(
+        self,
+        client_id,
+        consultant_id,
+        organization_id,
+        client_name,
+        status="active",
+        relationship_origin="consultant_created_customer",
+        created_by=None,
+        # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-3/F-4) — the client access
+        # profile ceiling and the PO-10 retained-read-only flag. Deny-by-default
+        # (matching the DB default) so a seeded relationship grants no plane
+        # unless a test asks for one explicitly.
+        client_access_profile="off",
+        retained_read_only=False,
+    ):
         client = self._client_type(
             id=client_id,
             consultant_id=consultant_id,
             organization_id=organization_id,
             client_name=client_name,
             status=status,
+            created_by=created_by,
             relationship_origin=relationship_origin,
+            client_access_profile=client_access_profile,
+            retained_read_only=retained_read_only,
         )
         self._clients.append(client)
         return client
+
+    # -- CT03 (F-3/F-4/F-6): relationship access + request persistence ------
+    async def get_relationship_for_org(self, organization_id: str):
+        """The active relationship, else a retained ended one (Plane C lookup)."""
+        candidates = [
+            c
+            for c in self._clients
+            if c.organization_id == organization_id
+            and (
+                c.status == "active"
+                or (
+                    (c.status or "").lower() in ("ended", "terminated")
+                    and getattr(c, "retained_read_only", False)
+                )
+            )
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda c: c.status != "active")
+        return candidates[0]
+
+    async def set_relationship_access(
+        self, client_id, *, profile=None, retained_read_only=None
+    ):
+        from dataclasses import replace
+
+        for i, client in enumerate(self._clients):
+            if client.id == client_id:
+                changes = {}
+                if profile is not None:
+                    changes["client_access_profile"] = profile
+                if retained_read_only is not None:
+                    changes["retained_read_only"] = bool(retained_read_only)
+                updated = replace(client, **changes) if changes else client
+                self._clients[i] = updated
+                return updated
+        return None
+
+    async def create_relationship_request(
+        self,
+        *,
+        organization_id,
+        consultant_id,
+        request_type,
+        initiated_by,
+        initiated_capacity,
+        reason=None,
+        contact_email=None,
+    ):
+        from datetime import datetime, timezone
+
+        if request_type not in ("change_consultant", "end_relationship"):
+            raise ValueError(f"unknown request_type {request_type!r}")
+        if initiated_capacity not in ("client", "consultant", "support"):
+            raise ValueError(f"unknown initiated_capacity {initiated_capacity!r}")
+        if not hasattr(self, "_rel_requests"):
+            self._rel_requests = []
+        record = {
+            "id": f"relreq-{len(self._rel_requests) + 1}",
+            "organization_id": organization_id,
+            "consultant_id": consultant_id,
+            "request_type": request_type,
+            "initiated_by": initiated_by,
+            "initiated_capacity": initiated_capacity,
+            "reason": reason,
+            "contact_email": contact_email,
+            "status": "requested",
+            "created_at": datetime.now(timezone.utc),
+        }
+        self._rel_requests.append(record)
+        return record
+
+    async def create_mode_change_request(
+        self,
+        *,
+        firm_id,
+        requested_by,
+        current_mode,
+        requested_mode,
+        reason=None,
+    ):
+        from datetime import datetime, timezone
+
+        if not hasattr(self, "_mode_requests"):
+            self._mode_requests = []
+        record = {
+            "id": f"modereq-{len(self._mode_requests) + 1}",
+            "firm_id": firm_id,
+            "requested_by": requested_by,
+            "current_mode": current_mode,
+            "requested_mode": requested_mode,
+            "reason": reason,
+            "status": "requested",
+            "requested_at": datetime.now(timezone.utc),
+        }
+        self._mode_requests.append(record)
+        return record
+
+    async def list_relationship_requests(self, consultant_id):
+        """CT-CONSULTANT-PLATFORM-CLOSURE-01 §7 — firm-scoped read surface."""
+        rows = getattr(self, "_rel_requests", [])
+        return [r for r in rows if str(r.get("consultant_id")) == str(consultant_id)]
+
+    async def list_mode_change_requests(self, firm_id):
+        """CT-CONSULTANT-PLATFORM-CLOSURE-01 §7 — firm-scoped read surface."""
+        rows = getattr(self, "_mode_requests", [])
+        return [r for r in rows if str(r.get("firm_id")) == str(firm_id)]
+
+    # -- CT-CONSULTANT-PLATFORM-FULL-IMPLEMENTATION-03 (PD-5 / PO-1) ----------
+    async def get_relationship_request(self, request_id):
+        return next(
+            (r for r in getattr(self, "_rel_requests", []) if r["id"] == request_id),
+            None,
+        )
+
+    async def decide_relationship_request(
+        self, request_id, *, status, decided_by, decision_note=None
+    ):
+        from datetime import datetime, timezone
+
+        for r in getattr(self, "_rel_requests", []):
+            if r["id"] == request_id and r.get("status") == "requested":
+                now = datetime.now(timezone.utc)
+                r["status"] = status
+                r["decided_by"] = decided_by
+                r["decided_at"] = now
+                r["decision_note"] = decision_note
+                if status in ("confirmed", "completed"):
+                    r["confirmed_by"] = decided_by
+                    r["confirmed_at"] = now
+                return r
+        return None
+
+    async def get_mode_change_request(self, request_id):
+        return next(
+            (r for r in getattr(self, "_mode_requests", []) if r["id"] == request_id),
+            None,
+        )
+
+    async def list_pending_mode_change_requests(self):
+        return [
+            r for r in getattr(self, "_mode_requests", [])
+            if r.get("status") == "requested"
+        ]
+
+    async def decide_mode_change_request(
+        self, request_id, *, status, decided_by, decision_note=None, effective_at=None
+    ):
+        from datetime import datetime, timezone
+
+        for r in getattr(self, "_mode_requests", []):
+            if r["id"] == request_id and r.get("status") == "requested":
+                r["status"] = status
+                r["decided_by"] = decided_by
+                r["decided_at"] = datetime.now(timezone.utc)
+                r["decision_note"] = decision_note
+                r["effective_at"] = effective_at
+                return r
+        return None
+
+    async def set_commercial_mode(self, firm_id, mode):
+        from dataclasses import replace
+
+        from domain.branding import ConsultantBranding
+
+        branding = self._brandings.get(firm_id)
+        if branding is None:
+            branding = ConsultantBranding(profile_id=firm_id)
+        self._brandings[firm_id] = replace(branding, commercial_mode=mode)
+        return mode
 
     # -- profiles -----------------------------------------------------------
     async def get_profile_by_user(self, user_id: str):
@@ -1721,6 +2025,45 @@ class MemoryConsultants:
         for i, member in enumerate(self._members):
             if member.firm_id == firm_id and member.id == member_id:
                 updated = replace(member, is_active=is_active)
+                self._members[i] = updated
+                return updated
+        return None
+
+    async def set_firm_member_capabilities(
+        self, firm_id: str, member_id: str, capabilities: dict
+    ):
+        """CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-10) — MERGE semantics.
+
+        Mirrors ``ConsultantsRepository.set_firm_member_capabilities``: only the
+        keys actually supplied are changed, the rest of the capability set is
+        preserved, and a non-capability column can never be addressed.
+        """
+        from dataclasses import replace
+
+        capability_columns = (
+            "can_view_client",
+            "can_approve",
+            "can_manage_clients",
+            "can_upload_documents",
+            "can_generate_reports",
+            "can_manage_team",
+            "can_extract",
+            "can_map",
+            "can_validate",
+            "can_calculate",
+            "can_confirm_automation",
+            "can_submit",
+        )
+        unknown = sorted(set(capabilities) - set(capability_columns))
+        if unknown:
+            raise ValueError(
+                f"unknown consultant capability column(s): {', '.join(unknown)}"
+            )
+        for i, member in enumerate(self._members):
+            if member.firm_id == firm_id and member.id == member_id:
+                updated = replace(
+                    member, **{k: bool(v) for k, v in capabilities.items()}
+                )
                 self._members[i] = updated
                 return updated
         return None
@@ -1929,8 +2272,14 @@ class MemoryManualExtraction:
         *,
         status: str = "pending",
         batch_id: Optional[str] = None,
+        file_id: Optional[str] = None,
     ) -> "ManualExtractionItem":
-        """Seed a work item under an org batch (consultant/ops tests)."""
+        """Seed a work item under an org batch (consultant/ops tests).
+
+        ``file_id`` mirrors the D33 item -> source-document link
+        (``manual_extraction_items.file_id``) so uploader provenance tests can
+        resolve ``organization_files.uploaded_by`` exactly as production does.
+        """
         from domain.partners import ManualExtractionItem
 
         batch = self._batches.get(batch_id) if batch_id else None
@@ -1955,6 +2304,7 @@ class MemoryManualExtraction:
             file_url=f"/uploads/{org_id}/{file_name}",
             page_count=1,
             status=status,
+            file_id=file_id,
             created_at=datetime.now(timezone.utc),
         )
         self._items[item.id] = item
@@ -3837,18 +4187,93 @@ class MemoryManualProcessing:
 
         self._grant_type = ManualProcessingGrant
         self._grants: dict[tuple[str, str], Any] = {}
+        self._processors: dict[tuple[str, str], Any] = {}
         self._batches = batches
         self.scope_org_override: dict[str, list[str]] = {}
+        #: org_id -> (consultant_client_id, consultant_firm_id) for the
+        #: server-side relationship context used by the routing resolver.
+        self.org_context_override: dict[str, tuple] = {}
+        self._subscriptions = None
+        self._plans = None
+        # -- CT-MP-SUB-003 consultant-sponsored coverage state --------------
+        #: firm_id -> the firm's OWN organisation (commercial coverage source).
+        self._firm_org: dict[str, str] = {}
+        #: org_id -> [{"id": consultant_client_id, "consultant_id": firm_id}].
+        self._client_grants: dict[str, list[dict]] = {}
+        #: firm_id -> [{"id": consultant_client_id, "organization_id": org}].
+        self._eligible: dict[str, list[dict]] = {}
+        #: allocation_id -> ConsultantAllocation.
+        self._allocations: dict[str, Any] = {}
+        self._allocation_seq = 0
+
+    def bind_billing(self, subscriptions: Any, plans: Any) -> None:
+        """Attach the shared billing doubles (entitlement resolution)."""
+        self._subscriptions = subscriptions
+        self._plans = plans
+
+    def _ensure_entitlement(self, organization_id: str) -> None:
+        """Seed an ACTIVE subscription on a Manual-Processing-entitled plan.
+
+        Manual Processing is a subscription-plan capability (PO decision), so an
+        "enabled" test precondition is only valid together with entitlement.
+        """
+        if self._subscriptions is None or self._plans is None:
+            return
+        from datetime import datetime, timezone
+
+        from domain.billing import BillingPlan, Subscription
+
+        plan_code = "manual-processing-test"
+        if not any(
+            getattr(p, "plan_code", None) == plan_code for p in self._plans._plans
+        ):
+            self._plans._plans.append(
+                BillingPlan(
+                    id="plan-manual-processing-test",
+                    plan_code=plan_code,
+                    name="Manual Processing (test)",
+                    price=0,
+                    features={"manual_processing": {"enabled": True}},
+                    is_active=True,
+                )
+            )
+        existing = [
+            s
+            for s in self._subscriptions._subs
+            if s.organization_id == organization_id
+            and s.lifecycle_status in ("trial", "active", "past_due", "suspended")
+        ]
+        if existing:
+            return
+        self._subscriptions._subs.append(
+            Subscription(
+                id=f"sub-mp-{organization_id}",
+                organization_id=organization_id,
+                plan_code=plan_code,
+                lifecycle_status="active",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+
+    def seed_entitlement(self, organization_id: str) -> None:
+        """Seed the Manual Processing subscription entitlement for one org."""
+        self._ensure_entitlement(organization_id)
 
     def seed_grant(
-        self, scope_type: str = "organization", scope_id: str = "org-a", *, enabled: bool = True
+        self,
+        scope_type: str = "organization",
+        scope_id: str = "org-a",
+        *,
+        enabled: bool = True,
     ) -> Any:
         """Seed one explicit governance row (test precondition).
 
         FIN-06 is OFF by default, so every suite that exercises manual
         processing (organisation or consultant capacity) must express the
-        enablement precondition it relies on. Suites that verify the OFF
-        behaviour itself simply do not call this.
+        enablement precondition it relies on. This seeds GOVERNANCE only — the
+        subscription entitlement is a SEPARATE gate (PO decision) and is seeded
+        explicitly with :meth:`seed_entitlement`, so a suite can still verify
+        that an enabled grant does NOT confer entitlement.
         """
         grant = self._grant_type(
             scope_type=scope_type,
@@ -3917,6 +4342,356 @@ class MemoryManualProcessing:
             for batch in rows.values()
             if batch.organization_id in wanted and getattr(batch, "status", None) == "open"
         ]
+
+    # -- server-side relationship context (routing resolver) ----------------
+    def set_org_context(
+        self, organization_id: str, *, consultant_client_id=None, consultant_firm_id=None
+    ) -> None:
+        self.org_context_override[organization_id] = (
+            consultant_client_id,
+            consultant_firm_id,
+        )
+
+    async def org_context_for_organization(self, organization_id):
+        from domain.manual_processing import OrgContext
+
+        client_id, firm_id = self.org_context_override.get(
+            organization_id, (None, None)
+        )
+        return OrgContext(
+            organization_id=organization_id,
+            consultant_client_id=client_id,
+            consultant_firm_id=firm_id,
+        )
+
+    # -- processor configuration (routing destination) ---------------------
+    def seed_processor(
+        self,
+        scope_type: str = "organization",
+        scope_id: str = "org-a",
+        *,
+        processing_entity_id: str = "pe-1",
+        active: bool = True,
+    ) -> Any:
+        from domain.manual_processing import ManualProcessingProcessor
+
+        processor = ManualProcessingProcessor(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            processing_entity_id=processing_entity_id,
+            active=active,
+            reason="test precondition",
+            set_by="u-admin",
+        )
+        self._processors[(scope_type, scope_id)] = processor
+        return processor
+
+    async def list_processors(self, *, scope_type=None):
+        rows = list(self._processors.values())
+        if scope_type is not None:
+            rows = [p for p in rows if p.scope_type == scope_type]
+        return sorted(rows, key=lambda p: (p.scope_type, p.scope_id))
+
+    async def get_processor(self, *, scope_type, scope_id):
+        return self._processors.get((scope_type, scope_id))
+
+    async def processors_for_context(self, context):
+        ids = {
+            value
+            for value in (
+                context.consultant_client_id,
+                context.consultant_firm_id,
+                context.organization_id,
+            )
+            if value
+        }
+        return [p for p in self._processors.values() if p.scope_id in ids]
+
+    async def resolve_processor_for_context(self, context):
+        from domain.manual_processing import resolve_processor
+
+        return resolve_processor(await self.processors_for_context(context), context)
+
+    async def set_processor(
+        self,
+        *,
+        scope_type,
+        scope_id,
+        processing_entity_id,
+        active=True,
+        reason,
+        actor_id,
+    ):
+        from domain.manual_processing import ManualProcessingProcessor
+
+        processor = ManualProcessingProcessor(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            processing_entity_id=processing_entity_id,
+            active=bool(active),
+            reason=reason,
+            set_by=actor_id,
+        )
+        self._processors[(scope_type, scope_id)] = processor
+        return processor
+
+    async def delete_processor(self, *, scope_type, scope_id):
+        return self._processors.pop((scope_type, scope_id), None) is not None
+
+    # -- CT-MP-SUB-003 consultant-sponsored coverage ------------------------
+    def seed_firm_organization(self, firm_id, organization_id) -> None:
+        """Link a consultant firm to its OWN organisation (coverage source)."""
+        self._firm_org[firm_id] = organization_id
+
+    def seed_active_client_grant(
+        self, organization_id, consultant_id, consultant_client_id=None
+    ) -> None:
+        self._client_grants.setdefault(organization_id, []).append(
+            {
+                "id": consultant_client_id or f"cc-{organization_id}-{consultant_id}",
+                "consultant_id": consultant_id,
+            }
+        )
+
+    def seed_eligible_client(
+        self, firm_id, organization_id, consultant_client_id=None
+    ) -> None:
+        self._eligible.setdefault(firm_id, []).append(
+            {
+                "id": consultant_client_id or f"cc-{organization_id}",
+                "organization_id": organization_id,
+            }
+        )
+
+    def seed_firm_coverage(
+        self, firm_id, *, mode, capacity=None, enabled=True, plan_code=None
+    ):
+        """Seed the firm's own org subscription on a consultant-coverage plan."""
+        from datetime import datetime, timezone
+
+        from domain.billing import BillingPlan, Subscription
+
+        firm_org = self._firm_org.get(firm_id)
+        if firm_org is None or self._subscriptions is None or self._plans is None:
+            return None
+        code = plan_code or f"consultant-mp-{firm_id}"
+        if not any(p.plan_code == code for p in self._plans._plans):
+            self._plans._plans.append(
+                BillingPlan(
+                    id=f"plan-{code}",
+                    plan_code=code,
+                    name="Consultant Manual Processing (test)",
+                    price=0,
+                    features={
+                        "consultant_manual_processing": {
+                            "enabled": enabled,
+                            "mode": mode,
+                            "selected_capacity": capacity,
+                        }
+                    },
+                    is_active=True,
+                )
+            )
+        if not any(s.organization_id == firm_org for s in self._subscriptions._subs):
+            self._subscriptions._subs.append(
+                Subscription(
+                    id=f"sub-{firm_org}",
+                    organization_id=firm_org,
+                    plan_code=code,
+                    lifecycle_status="active",
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        return code
+
+    def set_firm_coverage(self, firm_id, *, mode, capacity=None, enabled=True):
+        """Change the firm's purchased coverage (simulates a plan/subscription change).
+
+        Allocations are NOT touched: a mode change never creates or deletes
+        allocation history (PO spec §7, §9).
+        """
+        from datetime import datetime, timezone
+
+        from domain.billing import BillingPlan, Subscription
+
+        firm_org = self._firm_org.get(firm_id)
+        if firm_org is None or self._subscriptions is None or self._plans is None:
+            return None
+        code = f"consultant-mp-{firm_id}-{mode}-{capacity}"
+        if not any(p.plan_code == code for p in self._plans._plans):
+            self._plans._plans.append(
+                BillingPlan(
+                    id=f"plan-{code}",
+                    plan_code=code,
+                    name="Consultant Manual Processing (test)",
+                    price=0,
+                    features={
+                        "consultant_manual_processing": {
+                            "enabled": enabled,
+                            "mode": mode,
+                            "selected_capacity": capacity,
+                        }
+                    },
+                    is_active=True,
+                )
+            )
+        subs = self._subscriptions._subs
+        for i, sub in enumerate(subs):
+            if sub.organization_id == firm_org:
+                subs[i] = Subscription(
+                    id=sub.id,
+                    organization_id=firm_org,
+                    plan_code=code,
+                    lifecycle_status=sub.lifecycle_status or "active",
+                    created_at=sub.created_at,
+                )
+                break
+        else:
+            subs.append(
+                Subscription(
+                    id=f"sub-{firm_org}",
+                    organization_id=firm_org,
+                    plan_code=code,
+                    lifecycle_status="active",
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        return code
+
+
+    def seed_allocation(
+        self,
+        consultant_id,
+        organization_id,
+        *,
+        consultant_client_id=None,
+        state="active",
+        reason=None,
+    ):
+        from domain.manual_processing import ConsultantAllocation
+
+        self._allocation_seq += 1
+        alloc = ConsultantAllocation(
+            id=f"alloc-{self._allocation_seq}",
+            consultant_id=consultant_id,
+            consultant_client_id=consultant_client_id or f"cc-{organization_id}",
+            organization_id=organization_id,
+            state=state,
+            reason=reason,
+        )
+        self._allocations[alloc.id] = alloc
+        return alloc
+
+    async def active_client_grants(self, organization_id):
+        return list(self._client_grants.get(organization_id, []))
+
+    async def firm_organization_id(self, firm_id):
+        return self._firm_org.get(firm_id)
+
+    async def eligible_clients(self, firm_id):
+        return list(self._eligible.get(firm_id, []))
+
+    def end_client_relationship(self, organization_id, consultant_id) -> None:
+        """Simulate a consultant-client relationship ending (grant removed).
+
+        The eligible population is derived from LIVE active grants, so removing
+        the grant immediately removes commercial eligibility.
+        """
+        self._client_grants[organization_id] = [
+            g
+            for g in self._client_grants.get(organization_id, [])
+            if g.get("consultant_id") != consultant_id
+        ]
+        self._eligible[consultant_id] = [
+            e
+            for e in self._eligible.get(consultant_id, [])
+            if e.get("organization_id") != organization_id
+        ]
+
+
+    async def list_allocations(
+        self, *, consultant_id=None, organization_id=None, state=None
+    ):
+        rows = list(self._allocations.values())
+        if consultant_id is not None:
+            rows = [a for a in rows if a.consultant_id == consultant_id]
+        if organization_id is not None:
+            rows = [a for a in rows if a.organization_id == organization_id]
+        if state is not None:
+            rows = [a for a in rows if a.state == state]
+        return rows
+
+    async def get_active_allocation(self, *, consultant_id, organization_id):
+        return next(
+            (
+                a
+                for a in self._allocations.values()
+                if a.consultant_id == consultant_id
+                and a.organization_id == organization_id
+                and a.state == "active"
+            ),
+            None,
+        )
+
+    async def count_active_allocations(self, consultant_id) -> int:
+        return sum(
+            1
+            for a in self._allocations.values()
+            if a.consultant_id == consultant_id and a.state == "active"
+        )
+
+    async def create_allocation(
+        self,
+        *,
+        consultant_id,
+        consultant_client_id,
+        organization_id,
+        reason,
+        actor_id,
+        capacity=None,
+    ):
+        from domain.manual_processing import (
+            CapacityExceededError,
+            DuplicateActiveAllocationError,
+        )
+
+        existing = await self.get_active_allocation(
+            consultant_id=consultant_id, organization_id=organization_id
+        )
+        if existing is not None:
+            # F-7 — the EXPECTED duplicate refusal is a TYPED error, so the API
+            # maps exactly this to 409 and lets anything else become a 500.
+            raise DuplicateActiveAllocationError("duplicate active allocation")
+        if capacity is not None:
+            active = await self.count_active_allocations(consultant_id)
+            if active >= int(capacity):
+                raise CapacityExceededError("selected-client capacity is exhausted")
+        return self.seed_allocation(
+            consultant_id,
+            organization_id,
+            consultant_client_id=consultant_client_id,
+            reason=reason,
+        )
+
+    async def release_allocation(self, *, allocation_id, reason, actor_id):
+        from domain.manual_processing import ConsultantAllocation
+
+        alloc = self._allocations.get(allocation_id)
+        if alloc is None or alloc.state != "active":
+            return None
+        released = ConsultantAllocation(
+            id=alloc.id,
+            consultant_id=alloc.consultant_id,
+            consultant_client_id=alloc.consultant_client_id,
+            organization_id=alloc.organization_id,
+            state="released",
+            reason=reason or alloc.reason,
+            released_by=actor_id,
+        )
+        self._allocations[alloc.id] = released
+        return released
+
+
 
 
 class MemoryWhiteLabel:
@@ -4756,6 +5531,11 @@ class InMemoryWorld:
         self.billing_payments = MemoryPaymentRecords()
         self.billing_idempotency = MemoryIdempotency()
         self.billing_usage = MemoryUsageTracking()
+        # Manual Processing entitlement is resolved from the SAME billing doubles
+        # the commercial surface uses (no separate subscription source).
+        self.manual_processing.bind_billing(
+            self.billing_subscriptions, self.billing_plans
+        )
         # Phase A (CL-56) — durable automatic processing repository (stub for
         # API tests that never touch document-processing jobs directly).
         self.processing = _StubRepo()

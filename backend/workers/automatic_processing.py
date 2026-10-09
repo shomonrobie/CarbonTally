@@ -28,6 +28,9 @@ from engines.matching_stages import RepositoryAliasResolver
 from infra.audit_logger import AuditLogger
 from infra.event_bus import get_event_bus
 from infra.search_index import FactorSearchIndex
+#: The automatic-processing failure boundary that triggers Manual Processing
+#: fallback routing (``blocked`` = manual-review gate, ``failed`` = stage error).
+from services.manual_processing_routing import FAILURE_STAGES
 
 logger = get_logger(__name__)
 
@@ -197,7 +200,7 @@ class AutomaticProcessingWorker:
           attempt can never continue into persistence).
         """
         try:
-            await self._service.process_job(job, token)
+            final = await self._service.process_job(job, token)
         except asyncio.CancelledError:
             try:
                 await asyncio.shield(
@@ -213,6 +216,45 @@ class AutomaticProcessingWorker:
                     "could not release interrupted claim for job %s: %r", job.id, exc
                 )
             raise
+        # MANUAL PROCESSING — automatic fallback routing (the missing workflow
+        # the forensic audit identified). Once the automatic pipeline has ended
+        # a job in a failure state (``blocked``/``failed``), route it to the
+        # customer's configured Processing Entity IFF Manual Processing is
+        # effective for that customer (subscription-entitled AND admin-enabled).
+        # Applies the existing FIN-06 governance + entitlement + configured PE;
+        # idempotent, so retries/requeues/restarts never create a second task.
+        await self._route_manual_processing_fallback(final)
+
+    async def _route_manual_processing_fallback(self, job) -> None:
+        """Best-effort automatic fallback routing for a failed/blocked job.
+
+        Never raises into the worker loop, and never touches a job that did not
+        fail (a successful automatic run is never routed).
+        """
+        if job is None or getattr(job, "stage", None) not in FAILURE_STAGES:
+            return
+        try:
+            from services.manual_processing_routing import ManualProcessingRouter
+
+            outcome = await ManualProcessingRouter(self._repos).route_failed_job(job)
+            if outcome.get("routed"):
+                logger.info(
+                    "manual-processing fallback routed job %s -> entity %s "
+                    "(idempotent=%s)",
+                    job.id,
+                    outcome.get("processing_entity_id"),
+                    outcome.get("idempotent"),
+                )
+            else:
+                logger.info(
+                    "manual-processing fallback skipped job %s (reason=%s)",
+                    job.id,
+                    outcome.get("reason"),
+                )
+        except Exception:  # noqa: BLE001 — routing must never break the loop
+            logger.exception(
+                "manual-processing fallback routing failed for job %s", job.id
+            )
 
     # -- wiring -------------------------------------------------------------
 

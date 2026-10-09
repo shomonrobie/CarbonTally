@@ -138,7 +138,7 @@ def seed_commercial(world, org="org-a", *, key="p62c-sub"):
         BillingPlan(id=str(uuid.uuid4()), plan_code="professional",
                     name="Professional", price=149, currency="GBP",
                     included_credits=500, version=1, is_active=True,
-                    features={}, effective_from=datetime.now(timezone.utc)),
+                    features={"manual_processing": {"enabled": True}}, effective_from=datetime.now(timezone.utc)),
         created_by="admin-1"))
     asyncio.run(world.billing_subscriptions.upsert_active(
         Subscription(id=str(uuid.uuid4()), organization_id=org,
@@ -187,6 +187,7 @@ def seed_consultant(world, *, firm="firm-c1", user="u-c1", client="cc-1",
     )
     # FIN-06 precondition: manual processing is enabled for the client org.
     world.manual_processing.seed_grant("organization", org)
+    world.manual_processing.seed_entitlement(org)
     world.consultants.seed_client(client, firm, org, "Client Org", status="active")
 
 
@@ -502,6 +503,7 @@ def test_org_member_stage_claim_behaviour_unchanged(client, world, user_provider
     item = seed_item(world, status="calculated", item_id="item-member")
     # FIN-06 precondition: the member's manual stage claim requires the enable.
     world.manual_processing.seed_grant("organization", "org-a")
+    world.manual_processing.seed_entitlement("org-a")
     install_automatic_job(world, item)
     user_provider.set_user(member_user("org-a", "m1", "m@test"))
     resp = claim(client, item.id, "review")
@@ -526,6 +528,7 @@ def test_reviewed_cannot_reach_customer_review(client, world, user_provider):
     # FIN-06 precondition: so the assertion under test is the 409 state-machine
     # protection, not the governance boundary.
     world.manual_processing.seed_grant("organization", "org-a")
+    world.manual_processing.seed_entitlement("org-a")
     user_provider.set_user(member_user("org-a", "m1", "m@test"))
     resp = claim(client, item.id, "review")
     assert resp.status_code == 409, resp.text

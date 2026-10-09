@@ -45,6 +45,12 @@ python3 tools/demo_lab/seed_factors.py             # load DEFRA 2025 + SEAI 2025
 python3 tools/demo_lab/seed_factors.py --reset      # remove ONLY the T2-C factors + batches
 ./tools/demo_lab/reset_demo_lab.sh            # remove lab DB + containers (+ lab auth users)
 ./tools/demo_lab/reset_demo_lab.sh --purge-state   # also delete local credentials/evidence
+
+# CT-MP-SUB-004 PD-5 — Manual Processing coverage QA fixture (lab only)
+python3 tools/demo_lab/fixture_mp_coverage.py           # apply (idempotent, converging)
+python3 tools/demo_lab/fixture_mp_coverage.py --verify  # states, server-side (live API)
+python3 tools/demo_lab/fixture_mp_coverage_browser.py   # states, real browser (headless)
+python3 tools/demo_lab/fixture_mp_coverage.py --reset   # remove ONLY the fixture rows/users
 ```
 
 Every step is idempotent: re-running creates nothing twice and destroys no lab data.
@@ -159,3 +165,157 @@ python3 tools/demo_lab/seed_factors.py --db-url postgresql://…/carbontally_dem
    grants, clarification cases or reconciliation data are created — those belong to later demo
    workstreams. Factor datasets are loaded **only** when explicitly requested
    (`run_demo_lab.sh --factors` or `seed_factors.py`); customer factors remain out of scope.
+
+## 8. CT-MP-SUB-004 PD-5 — Manual Processing coverage QA fixture
+
+A **deterministic, resettable QA fixture** (`fixture_mp_coverage.py`,
+`fixture_mp_coverage_browser.py`) that makes the POSITIVE Manual Processing
+coverage states browser-verifiable. It exists because the CT-MP-SUB-004
+independent verification (finding **F-5**, NV-1…NV-4, NV-8) could not exercise
+them: no firm reported `enabled:true`, no plan carried
+`features.consultant_manual_processing`, and `capacity` was `null`.
+
+Authority: `docs/architecture/CT-MP-SUB-004-PO-decision-record.md` §7 (**PD-5**),
+which authorises **QA-fixture work only** — no application code, no product
+behaviour, no schema/migration/RLS change, no production access, no deployment.
+
+| state | representation | fixture identity |
+|---|---|---|
+| customer **direct** | subscription → plan `MP-FX-DIRECT` (`features.manual_processing.enabled`) | `mp.owner.direct@demo-lab.carbontally.local` |
+| customer **direct + sponsored** | direct plan **and** an active allocation under the SELECTED firm | `mp.owner.dual@demo-lab.carbontally.local` |
+| customer **sponsored** | ALL_ELIGIBLE_CLIENTS coverage of the ALL firm | `mp.owner.sponsored@demo-lab.carbontally.local` |
+| customer **negative** | provisioned customer, no subscription, no relationship | `owner.b@demo-lab.carbontally.local` |
+| consultant **SELECTED_CLIENTS** | firm plan `MP-FX-FIRM-SELECTED`, capacity 3, one client pre-allocated | `mp.consultant.selected@demo-lab.carbontally.local` |
+| consultant **ALL_ELIGIBLE_CLIENTS** | firm plan `MP-FX-FIRM-ALL`, populated eligible view | `mp.consultant.allel@demo-lab.carbontally.local` |
+| **eligible-but-unallocated** (negative) | active relationship, no allocation → `not_allocated` | (no login; admin / client-state) |
+
+Commercial coverage is expressed **only** through the existing D37 org-scoped
+model (`consultant_profiles.organization_id` → the firm's own organisation
+subscription → `billing_plans.features`); eligibility is the existing
+`consultant_clients` relationship. No parallel subscription/coverage/consultant
+/PE model is introduced, and FIN-06 governance + the processor row for the
+Direct+Sponsored client reuse `manual_processing_grants` /
+`manual_processing_processors`.
+
+
+Properties:
+
+* **Deterministic** — every fixture row uses `lab.deterministic_uuid("mpfix:…")`
+  and is written `INSERT … ON CONFLICT (id) DO UPDATE`, so fixture ids and row
+  counts are identical on every re-run.
+* **Converging** — `apply` also removes any *fixture* allocation it does not
+  declare, so an allocate performed through the UI converges back to the
+  declared baseline on the next `apply`.
+* **Resettable** — `--reset` deletes exactly the fixture rows (by deterministic
+  id and `MP-FX-*` plan code) plus the fixture `mp.*` lab GoTrue users. It never
+  touches provisioned DEMO-T1 identities, the investor demo dataset, other lab
+  data, production or Render.
+* **Labelled** — organisation `metadata.fixture = "ct-mp-sub-004-pd5"`, names
+  prefixed `MP-FX`, plan codes prefixed `MP-FX-`, e-mail local-parts `mp.`.
+* **Fail-closed** — if a prerequisite table is missing the fixture **stops and
+  names the migration** instead of applying one (PD-6 gate).
+* Auth **user ids are GoTrue-assigned**, so a full `--reset` + re-`apply` issues
+  fresh auth ids; the fixture mirrors whatever GoTrue returns, and no check
+  depends on the auth-id values.
+
+Evidence is written outside the repository:
+`<state dir>/evidence/mp_fixture_{apply,verify,browser,reset}_*.json` (plus
+`_latest.json`) and `<state dir>/evidence/browser/mp_fixture_*.png`.
+
+Known limitation: the lab gateway does not proxy Supabase Realtime, so the
+browser console logs `WebSocket … /realtime/v1/websocket` errors during these
+runs. They are environmental and unrelated to Manual Processing coverage.
+
+## 9. Keeping the Demo Lab running (persistence)
+
+The Demo Lab is made of two very different layers, and only one of them was
+durable before this section existed.
+
+| layer | who owns it | durability |
+|---|---|---|
+| local Supabase stack + the three lab containers | Docker | already durable — every container is created `--restart unless-stopped` and the Docker daemon is enabled at boot |
+| release backend (`127.0.0.1:8070`) + frontend (`http://localhost:3000`) | host processes | **was not durable** — `run_demo_lab.sh --backend` used a bare `nohup`, and the frontend was started by hand; neither survived a crash or the terminal that launched it |
+
+`tools/demo_lab/supervise_demo_lab.py` closes the second gap. It is stdlib-only,
+adds no dependency, and writes only inside the existing state dir
+(`~/ct_local_env/demo_lab/`).
+
+```bash
+python3 tools/demo_lab/supervise_demo_lab.py start      # containers + supervised backend & frontend
+python3 tools/demo_lab/supervise_demo_lab.py status     # health report; exit 0 only when healthy
+python3 tools/demo_lab/supervise_demo_lab.py restart
+python3 tools/demo_lab/supervise_demo_lab.py stop
+python3 tools/demo_lab/supervise_demo_lab.py logs [backend|frontend|supervisor]
+
+./tools/demo_lab/run_demo_lab.sh --supervise            # stack+provision+verify, then the above
+```
+
+* `start` is idempotent and detaches the supervisor (new session, `stdin`/`stdout`
+  redirected, no controlling terminal), so closing the terminal or the IDE does
+  not stop the Demo Lab.
+* Either process is restarted automatically after an ordinary failure (2 s base
+  delay, backing off to 30 s only while a process keeps dying young).
+* The frontend is started with `PORT=3000` **overriding** `frontend/.env.local`
+  (`PORT=3100`): the lab accepts only `http://localhost:3000` (DR-003 — CORS,
+  GoTrue site URL and the backend allow-list all agree on it, and `:3100` looks
+  like a failed login).
+* The supervisor also repairs a lab gateway that has gone stale: nginx resolves
+  `supabase_auth_carbon_ledger` / the lab PostgREST / the lab storage API **at
+  start-up**, so when a Supabase container is recreated with a new IP the
+  restart policy keeps everything "running" while the gateway returns 502 for
+  that route. `ensure_gateway_upstreams()` detects the route failure, restarts
+  the disposable `carbontally_demo_lab_gateway`, and re-checks (also once a
+  minute from the supervisor loop).
+* `stop` leaves the containers alone (restart policy owns them); the next
+  `start` reuses them.
+* Logs: `<state dir>/logs/supervisor.log` (structured), `backend.log`,
+  `frontend.log`, `supervisor.console.log`; state: `supervisor.status.json`,
+  `supervisor.pid`.
+
+### Surviving a reboot
+
+Containers return by themselves (Docker restart policy + daemon enabled at boot).
+The release processes are brought back by a **`systemd --user` unit** that ships
+in the repository and is **installed and enabled** on this workstation:
+
+```
+tools/demo_lab/systemd/carbontally-demo-lab.service   # the tracked source
+~/.config/systemd/user/carbontally-demo-lab.service   # the installed copy
+```
+
+It runs `supervise_demo_lab.py run --ensure-containers` (foreground supervision,
+so systemd owns the process tree) and `Restart=always` retries until the Docker
+daemon and the local Supabase containers are up. `--ensure-containers` starts any
+stopped *disposable* lab container; the Supabase containers return by their own
+restart policy.
+
+```bash
+# install (once)
+mkdir -p ~/.config/systemd/user
+cp tools/demo_lab/systemd/carbontally-demo-lab.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+loginctl enable-linger "$USER"            # start at BOOT, not merely at login
+systemctl --user enable --now carbontally-demo-lab.service
+
+# operate
+systemctl --user status  carbontally-demo-lab.service
+systemctl --user restart carbontally-demo-lab.service
+systemctl --user stop    carbontally-demo-lab.service
+systemctl --user disable carbontally-demo-lab.service
+systemctl --user enable --now carbontally-demo-lab.service
+journalctl --user -u carbontally-demo-lab.service -f
+python3 tools/demo_lab/supervise_demo_lab.py status | logs
+```
+
+Boundaries: localhost only; the backend environment comes from
+`~/ct_local_env/demo_lab/backend.env` (generated locally, `0600`, outside the
+repo). No production configuration or secrets are referenced. Idempotency: the
+supervisor's pid file is a single lock, so systemd and a manual `start` cannot
+create duplicate backends/frontends.
+
+If the unit is disabled/not installed, the one-liner still works after a reboot:
+
+```bash
+python3 tools/demo_lab/supervise_demo_lab.py start
+```
+

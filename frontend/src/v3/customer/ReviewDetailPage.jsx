@@ -10,6 +10,7 @@ import {
   resolveV3Membership,
   submitCustomerReview,
 } from '../api';
+import { useClientAccess } from '../clientAccess';
 import WorkbenchShell from '../components/workbench/WorkbenchShell';
 import { LoadingState, ErrorState, ConfirmationDialog, Alert, Button, StatusBadge } from '../components/ui';
 import EvidenceRecordPanel from '../components/EvidenceRecordPanel';
@@ -70,6 +71,14 @@ export default function ReviewDetailPage() {
   const item = workspace?.item || {};
   const status = item.status;
   const isApprover = APPROVER_ROLES.includes(role);
+  // CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the client-access PROFILE
+  // ceiling for FINAL approval (§8.2 ``approve_final``). Presentation only: the
+  // server denies a MANAGED / READ_ONLY / OFF / RETAINED client regardless of
+  // what this renders. A direct customer, a consultant and staff are
+  // UNRESTRICTED here, so their surface is unchanged.
+  const clientAccess = useClientAccess();
+  const profileAllowsApproval = clientAccess.can('approve_final');
+  const canApprove = isApprover && profileAllowsApproval;
   const data = workspace?.data || {};
   const source = workspace?.source || {};
 
@@ -146,7 +155,7 @@ export default function ReviewDetailPage() {
           </div>
         )}
 
-        {isApprover && !alreadyDecided && (
+        {canApprove && !alreadyDecided && (
           <div style={{ marginTop: 18 }}>
             <label className="ct-field__label" htmlFor="review-notes">Notes (optional)</label>
             <textarea
@@ -171,6 +180,13 @@ export default function ReviewDetailPage() {
         {!isApprover && (
           <p className="ct-field__hint" style={{ marginTop: 16 }}>
             You can review this item and its evidence. Approval is reserved for organisation owners and administrators.
+          </p>
+        )}
+
+        {isApprover && !profileAllowsApproval && (
+          <p className="ct-field__hint" style={{ marginTop: 16 }}>
+            Your client access level does not permit final approval. Your consultant operates the approval step for this
+            workspace; you can still review this item, its evidence and its reports.
           </p>
         )}
 

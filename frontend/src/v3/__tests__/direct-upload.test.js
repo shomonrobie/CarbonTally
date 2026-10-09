@@ -200,14 +200,40 @@ describe('Storage Management Step 2A — direct upload client', () => {
     ).rejects.toMatchObject({ code: 'UPLOAD_SECURITY_REJECTED' });
   });
 
-  test('an expired authorisation is reported and completion is not attempted', async () => {
-    global.fetch = jest.fn(async () => jsonResponse(201, START_PAYLOAD));
+  test('an expired authorisation is reported and the abandonment is recorded', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(201, START_PAYLOAD))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          document_id: 'doc-1',
+          status: 'upload_expired',
+          abandoned: true,
+          idempotent: false,
+        })
+      );
     FakeXHR.nextStatus = 403;
     await expect(
       v3UploadDocumentDirect({ organization_id: 'org-a', data_type: 'utility', file })
     ).rejects.toMatchObject({ code: 'UPLOAD_AUTHORIZATION_EXPIRED' });
-    // Only the start call was made — no completion was attempted.
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    // Start + abandonment only — the bytes never landed, so completion is not
+    // attempted and the pending row is moved to its terminal state.
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const [abandonUrl, abandonOptions] = global.fetch.mock.calls[1];
+    expect(abandonUrl).toContain('/api/v3/documents/doc-1/upload-abandon');
+    expect(abandonOptions.method).toBe('POST');
+  });
+
+  test('the abandonment record is best-effort and never masks the real failure', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(201, START_PAYLOAD))
+      .mockRejectedValueOnce(new Error('abandon endpoint unreachable'));
+    FakeXHR.nextStatus = 403;
+    await expect(
+      v3UploadDocumentDirect({ organization_id: 'org-a', data_type: 'utility', file })
+    ).rejects.toMatchObject({ code: 'UPLOAD_AUTHORIZATION_EXPIRED' });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   test('an authorisation that carries no upload URL is refused', async () => {
@@ -274,6 +300,29 @@ describe('Storage Management Step 2A — consultant client', () => {
     expect(FakeXHR.instances[0].url).toContain('/object/upload/sign/documents/');
     // Exactly two backend calls: authorisation and completion.
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('a consultant PUT failure records the abandonment for the client document', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(201, CONSULTANT_START))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          document_id: 'doc-1',
+          status: 'upload_expired',
+          abandoned: true,
+          idempotent: false,
+        })
+      );
+    FakeXHR.nextStatus = 403;
+    await expect(
+      v3UploadConsultantDocumentDirect({ clientId: 'client-a', file, data_type: 'utility' })
+    ).rejects.toMatchObject({ code: 'UPLOAD_AUTHORIZATION_EXPIRED' });
+    const [abandonUrl, abandonOptions] = global.fetch.mock.calls[1];
+    expect(abandonUrl).toContain(
+      '/api/v3/consultants/clients/client-a/documents/doc-1/upload-abandon'
+    );
+    expect(abandonOptions.method).toBe('POST');
   });
 });
 

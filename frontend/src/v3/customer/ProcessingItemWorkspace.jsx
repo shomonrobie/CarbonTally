@@ -23,6 +23,7 @@ import {
 } from '../api';
 import WorkbenchShell from '../components/workbench/WorkbenchShell';
 import EvidenceTrail from '../components/EvidenceTrail';
+import { useClientAccess } from '../clientAccess';
 import {
   Alert,
   Button,
@@ -206,13 +207,26 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
   const issues = workspace?.issues || [];
   const status = item.status || 'pending';
   const isApprover = APPROVER_ROLES.includes(role);
+  // CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the client-access PROFILE
+  // ceiling for the two actions this workbench performs on the organisation's own
+  // data (§8.2): correcting submitted data and giving FINAL approval.
+  // PRESENTATION ONLY — the server enforces the identical ceiling on
+  // ``/processing/items/{id}/extract`` and ``/customer-review``, so hiding a
+  // control here never grants or withholds access on its own (AGENTS.md §44).
+  // A direct customer, a consultant and staff are UNRESTRICTED, so their
+  // surfaces are unchanged.
+  const clientAccess = useClientAccess();
+  const profileAllowsCorrection = clientAccess.can('correct_submitted_data');
+  const profileAllowsApproval = clientAccess.can('approve_final');
 
-  const editableExtraction = EXTRACT_EDITABLE.includes(status);
+  const editableExtraction =
+    EXTRACT_EDITABLE.includes(status) && profileAllowsCorrection;
   const editableMapping = MAP_EDITABLE.includes(status);
   const canValidate = VALIDATE_RUNNABLE.includes(status);
   const canCalculate = CALCULATE_RUNNABLE.includes(status);
   const canSendReview = REVIEW_SENDABLE.includes(status);
-  const canDecide = isApprover && DECIDABLE.includes(status);
+  const canDecide =
+    isApprover && DECIDABLE.includes(status) && profileAllowsApproval;
 
   const hasLines = (workspace?.data?.extracted_data || {}).line_items?.length > 0;
   const findings = (workspace?.validation && (workspace.validation.findings || [])) || [];
@@ -456,6 +470,11 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
       {editableExtraction ? (
         <p className="v3-muted" style={{ margin: '4px 0 8px' }}>
           Confirm or correct the fields extracted from the source document. OCR suggestions are pre-filled for review.
+        </p>
+      ) : !profileAllowsCorrection ? (
+        <p className="v3-muted" style={{ margin: '4px 0 8px' }}>
+          Your client access level does not permit correcting submitted data. Your consultant applies corrections for this
+          workspace; you can still read the extracted data, its evidence and its reports.
         </p>
       ) : (
         <p className="v3-muted" style={{ margin: '4px 0 8px' }}>
@@ -757,7 +776,7 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
           <Button variant="secondary" size="sm" onClick={() => onRetryJob()} disabled={busy}>
             Retry job
           </Button>
-          {job.stage === 'blocked' && (
+          {job.stage === 'blocked' && profileAllowsCorrection && (
             <Button
               variant="secondary"
               size="sm"
@@ -806,6 +825,12 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
         <p className="ct-field__hint" style={{ marginTop: 0 }}>
           You can work this item through extraction, mapping, validation and calculation. Approving or rejecting is reserved for
           an organisation owner or administrator.
+        </p>
+      )}
+      {isApprover && !profileAllowsApproval && (
+        <p className="ct-field__hint" style={{ marginTop: 0 }}>
+          Your client access level does not permit final approval. Your consultant operates the approval step for this
+          workspace; you can still review this item, its evidence and its reports.
         </p>
       )}
       {canSendReview && (

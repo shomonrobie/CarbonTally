@@ -140,8 +140,12 @@ export default function ConsultantItemPage() {
             {workspace.item?.file_name || '—'} · {STATUS_LABELS[status] || status}
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => navigate(`/consultant?client=${encodeURIComponent(clientId)}&view=workspace`)}>
-          ← Back to client workspace
+        {/* CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-01/UX-05) — the item
+            workspace belongs to the CLIENT OPERATING PLANE, so the return path
+            goes back into that plane (processing list for the same client),
+            which itself carries the persistent "Back to Consultant" context. */}
+        <Button variant="secondary" size="sm" onClick={() => navigate(`/consultant/clients/${encodeURIComponent(clientId)}/processing`)}>
+          ← Back to client processing
         </Button>
       </div>
 

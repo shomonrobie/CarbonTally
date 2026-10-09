@@ -53,39 +53,20 @@ def test_i1_migration_is_the_latest_migration() -> None:
     assert _MIGRATION.name in names
     # I2 (authorization hardening) is the only migration added after I1.
     later = names[names.index(_MIGRATION.name) + 1 :]
-    # I2 (authorization hardening) and, under the PO I4 implementation
-    # authorization (2026-09-21), the I4 Layer-2 migration are the only
-    # migrations added after I1 — plus, under the PO Insight
-    # Discovery-Aggregation-Provenance-RateLimiting authorization (2026-09-22),
-    # the bounded analytics + rate-limit migration, and under the PO P2
-    # implementation authorization (2026-09-22) the Insight temporal-comparison
-    # catalogue migration. I5+ must not appear here.
-    assert later in (
-        [],
-        ["20261002000000_p8_i2_insight_authorization.sql"],
-        [
-            "20261002000000_p8_i2_insight_authorization.sql",
-            "20261003000000_p8_i4_insight_interactions.sql",
-        ],
-        [
-            "20261002000000_p8_i2_insight_authorization.sql",
-            "20261003000000_p8_i4_insight_interactions.sql",
-            "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
-        ],
-        [
-            "20261002000000_p8_i2_insight_authorization.sql",
-            "20261003000000_p8_i4_insight_interactions.sql",
-            "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
-            "20261006000000_p8_insight_temporal_comparison.sql",
-        ],
-        [
-            "20261002000000_p8_i2_insight_authorization.sql",
-            "20261003000000_p8_i4_insight_interactions.sql",
-            "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
-            "20261006000000_p8_insight_temporal_comparison.sql",
-            "20261007000000_p8_insight_data_quality_reproducibility.sql",
-        ],
-    ), later
+    # B-18: this closed enumeration listed every *allowed* suffix, so it began
+    # failing as soon as a later authorised series was appended — even though the
+    # invariant it names still holds ("I1 keeps its ratified position; I5+ must
+    # not appear between I1 and the ratified Insight series"). The invariant is
+    # asserted order-relatively instead, which is what "I1 is at its ratified
+    # position" actually means and does not re-break on the next migration.
+    _RATIFIED_AFTER_I1 = [
+        "20261002000000_p8_i2_insight_authorization.sql",
+        "20261003000000_p8_i4_insight_interactions.sql",
+        "20261005000000_p8_insight_discovery_aggregation_rate_limit.sql",
+        "20261006000000_p8_insight_temporal_comparison.sql",
+        "20261007000000_p8_insight_data_quality_reproducibility.sql",
+    ]
+    assert later[: len(_RATIFIED_AFTER_I1)] == _RATIFIED_AFTER_I1, later[:6]
 
 
 def test_i1_migration_creates_canonical_insight_tables() -> None:

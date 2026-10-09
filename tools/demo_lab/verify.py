@@ -144,6 +144,17 @@ def probe_specs(state: dict) -> list[dict]:
          "expect": (403, 404), "isolation": "Org A → Org B audit"},
         {"name": "consultant owner /consultants/me", "actor": "consultant_owner",
          "path": "/api/v3/consultants/me", "expect": (200,)},
+        # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1 / F-2) — the two capability
+        # flags the admission and FINAL-approval gates resolve, surfaced by the
+        # server so a UI control can never be the authority. The firm owner holds
+        # both; the member holds admission but NOT approval (the negative control
+        # that keeps "engagement alone = approval" impossible).
+        {"name": "consultant owner holds CAP-VIEW-CLIENT + CAP-APPROVE",
+         "actor": "consultant_owner", "path": "/api/v3/consultants/me",
+         "expect": (200,), "body": {"can_view_client": True, "can_approve": True}},
+        {"name": "consultant member holds CAP-VIEW-CLIENT, not CAP-APPROVE",
+         "actor": "consultant_member", "path": "/api/v3/consultants/me",
+         "expect": (200,), "body": {"can_view_client": True, "can_approve": False}},
         {"name": "consultant member /consultants/me", "actor": "consultant_member",
          "path": "/api/v3/consultants/me", "expect": (200,)},
         {"name": "org_a_owner /consultants/me (DENY)", "actor": "org_a_owner",
@@ -215,9 +226,18 @@ def run_probes(specs: list[dict], tokens: dict) -> list[dict]:
         detail = f"status={status} expected={list(spec['expect'])}"
         if status in (403, 404) and isinstance(payload, dict) and payload.get("detail"):
             detail += f" reason={str(payload['detail'])[:70]}"
+        # Optional body expectation (CT-CONSULTANT-MODEL-IMPLEMENTATION-02): the
+        # capability flags the server must expose for the admission/approval gates.
+        body = payload if isinstance(payload, dict) else {}
+        body_problems = [f"{field}={body.get(field)!r}!={want!r}"
+                         for field, want in (spec.get("body") or {}).items()
+                         if body.get(field) != want]
+        if body_problems:
+            detail += f" body:{'; '.join(body_problems)}"
         results.append({"probe": spec["name"], "actor": spec["actor"], "path": spec["path"],
                         "status": status, "expected": list(spec["expect"]),
-                        "ok": status in spec["expect"], "isolation": spec.get("isolation"),
+                        "ok": status in spec["expect"] and not body_problems,
+                        "isolation": spec.get("isolation"),
                         "defect": spec.get("defect"), "detail": detail})
     return results
 

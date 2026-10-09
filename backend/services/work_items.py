@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.audit import AuditEntry
+from services.manual_processing_notifications import notify_pe_item_assignment
 
 INTERNAL_STAFF = "internal_staff"
 PROCESSING_ENTITY = "processing_entity"
@@ -217,6 +218,17 @@ async def ops_assign_item(
             repos, user_id=assigned_to,
             event_key=f"work_item:{action}:{item_id}:{new_row['id']}",
             item_id=item_id, action=action, actor_domain=actor_domain,
+        )
+    elif pe_id is not None:
+        # N1 (PO-authorised, NOTIFICATION-IMPLEMENT-04) — a Processing Entity
+        # assignment notifies the assigned entity's ACTIVE staff. This branch
+        # previously notified nobody (the ledger's assignee-shape constraint
+        # forces ``assigned_to IS NULL`` for a PE assignment). The disk/audit
+        # mutation above is already committed, so a notification failure is
+        # logged and never invalidates the assignment.
+        await notify_pe_item_assignment(
+            repos, item_id=item_id, entity_id=pe_id,
+            assignment_id=(new_row or {}).get("id"), actor_domain=actor_domain,
         )
     return {"item_id": item_id, "current": new_row, "changed": True}
 

@@ -664,6 +664,12 @@ def test_org_scoped_guard_surface_is_frozen():
 #: or ``require_org_admin()`` at CT-FINAL-01 (87 distinct METHOD+path entries;
 #: 102 route declarations share them). Exact-tenant enforcement for all of them
 #: is provided centrally by ``auth.enforce_org_path_scope``.
+#:
+#: CT-MP-SUB-004 — DELIBERATE addition (exactly the act this register exists to
+#: require): the customer Manual Processing entitlement read
+#: (``GET /api/v3/organizations/{organization_id}/manual-processing``) is
+#: organisation-path-scoped and guarded by ``require_org_member()``, so it
+#: enforces F-05-R1 exact-tenant authorization and belongs in this set.
 FROZEN_ORG_SCOPED_GUARDED_ROUTES: frozenset = frozenset({
     "DELETE /api/organizations/files/{org_id}/files/{file_id}/comments/{comment_id}",
     "DELETE /api/organizations/files/{org_id}/files/{file_id}/permanent",
@@ -716,6 +722,9 @@ FROZEN_ORG_SCOPED_GUARDED_ROUTES: frozenset = frozenset({
     "GET /api/v3/organizations/{org_id}/profile",
     "GET /api/v3/organizations/{org_id}/roles",
     "GET /api/v3/organizations/{organization_id}/applicability",
+    # CT-MP-SUB-004 — customer Manual Processing entitlement (require_org_member,
+    # F-05-R1 exact-tenant enforced).
+    "GET /api/v3/organizations/{organization_id}/manual-processing",
     "GET /api/{org_id}/emissions",
     "PATCH /api/organizations/team/{org_id}/members/{member_id}",
     "PATCH /api/organizations/{org_id}/facilities/{facility_id}",

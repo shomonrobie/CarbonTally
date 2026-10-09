@@ -69,6 +69,10 @@ def _grant_org(client, world, user_provider, *, scope_id: str = "org-a", enabled
     """Grant (or deny) Manual Processing for an organisation as CarbonTally Admin."""
     _seed_internal_admin(world)
     user_provider.set_user(staff_user("u-admin", role_name="admin"))
+    # SUBSCRIPTION IS THE FIRST GATE (PO decision): the customer must be
+    # subscribed to a plan that includes Manual Processing before it can be
+    # enabled (and before any manual work is permitted).
+    world.manual_processing.seed_entitlement(scope_id)
     resp = client.put(
         f"{ADMIN_BASE}/grants",
         json={

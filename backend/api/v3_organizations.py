@@ -7,6 +7,7 @@ field read/written is a real V3M2 column; org isolation is enforced via
 """
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import date, datetime, timezone, timedelta
 from typing import Any, Optional
@@ -20,8 +21,21 @@ from api.dependencies import (
     get_repositories,
 )
 from auth import AuthUser, require_auth, require_org_member, require_org_admin
+from api.client_access_guard import require_client_operation
 from domain.audit import AuditEntry
+from domain.client_identity import (
+    INVITATION_EXPIRY_DAYS,
+    ClientIdentityError,
+    normalise_email,
+    resolve_invitation_state,
+    validate_client_role,
+)
 from services.billing import resolve_registration_mode
+from services.client_invitations import (
+    describe_invitation,
+    parse_invitation_expiry,
+    send_invitation_email,
+)
 from services.v3_email import (
     render_simple_html,
     send_transactional_email,
@@ -40,7 +54,10 @@ ORG_ROLE_DESCRIPTIONS: dict[str, str] = {
     "viewer": "Customer Viewer — read-only access",
 }
 
-_INVITATION_EXPIRY_DAYS = 7
+#: CT04 (PD-1A) — the invitation validity window has a single source in the
+#: pure policy module (``domain.client_identity``); this historical private name
+#: is kept as an alias so no caller duplicates the number.
+_INVITATION_EXPIRY_DAYS = INVITATION_EXPIRY_DAYS
 
 
 async def _record_audit(
@@ -325,6 +342,14 @@ class InvitationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class InvitationAccept(BaseModel):
+    """The single-use token an authenticated invitee presents to join (PD-1A)."""
+
+    token: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ProfileUpdate(BaseModel):
     """Customer-admin editable organisation profile fields (real V3M2 columns)."""
 
@@ -402,16 +427,30 @@ class MetadataUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def validate_org_role(role: str) -> None:
-    """Reject roles outside the real ``organization_members.role`` CHECK set."""
-    if role not in ORG_ROLES:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"invalid organization role {role!r}; "
-                f"expected one of {', '.join(ORG_ROLES)}"
-            ),
-        )
+def validate_org_role(role: str) -> str:
+    """Validate a client role against the PDT-2A boundary (single source).
+
+    Delegates to ``domain.client_identity.validate_client_role`` so the
+    owner/admin/member/viewer vocabulary is defined in exactly one place, and
+    converts the policy's ``ValueError`` into the API's ``422`` contract (a
+    ``ClientIdentityError`` must never surface as a 500).
+
+    Returns the normalised (lower-cased) role.
+    """
+    try:
+        return validate_client_role(role)
+    except ClientIdentityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    """Delegate to the shared expiry parser (single implementation)."""
+    return parse_invitation_expiry(value)
+
+
+def _invitation_view(invitation: dict, *, include_accept_url: bool = False) -> dict:
+    """Delegate to the shared state/link projection (single implementation)."""
+    return describe_invitation(invitation, include_accept_url=include_accept_url)
 
 
 def model_to_settable(model: BaseModel) -> dict[str, Any]:
@@ -476,9 +515,15 @@ async def update_member(
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    if payload.role is not None:
-        validate_org_role(payload.role)
-    member = await repos.tenant.update_member(member_id, payload.role, payload.is_active)
+    # CT04 (PD-2A): the organisation owner/admin administer their OWN
+    # organisation's client users. The role vocabulary is the single client-role
+    # policy, and the target member is org-scope-checked so an admin of one
+    # tenant can never mutate another tenant's member by id (AGENTS.md §44).
+    target = await repos.organizations.get_member(member_id)
+    if target is not None:
+        ensure_org_access(current_user, target["organization_id"])
+    role = validate_org_role(payload.role) if payload.role is not None else None
+    member = await repos.tenant.update_member(member_id, role, payload.is_active)
     if member is None:
         raise HTTPException(status_code=404, detail="member not found")
     return member
@@ -586,7 +631,10 @@ async def list_invitations(
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     ensure_org_access(current_user, org_id)
-    return {"invitations": await repos.invitations.list_for_org(org_id)}
+    rows = await repos.invitations.list_for_org(org_id)
+    return {
+        "invitations": [_invitation_view(r, include_accept_url=True) for r in rows]
+    }
 
 
 @router.post("/{org_id}/invitations", status_code=201)
@@ -596,21 +644,126 @@ async def create_invitation(
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    """Create a single-use client-user invitation (PD-1A / PD-2A).
+
+    The requested role is now PERSISTED on the invitation (previously discarded)
+    so acceptance creates the membership with exactly the role the inviter was
+    authorised to assign. A branded invitation email is dispatched best-effort;
+    ``email_delivered`` reports the honest delivery outcome so a mail failure
+    never masquerades as success.
+    """
     ensure_org_access(current_user, org_id)
-    validate_org_role(payload.role)
-    role_row = await repos.roles.get_by_name(payload.role)
-    token = str(uuid.uuid4())
+    role = validate_org_role(payload.role)
+    role_row = await repos.roles.get_by_name(role)
+    token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=_INVITATION_EXPIRY_DAYS)
     invitation = await repos.invitations.create(
         org_id=org_id,
-        email=payload.email.strip().lower(),
+        email=normalise_email(payload.email),
         token=token,
         role_id=role_row["id"] if role_row is not None else None,
         invited_by=current_user.user_id,
         status="pending",
         expires_at=expires_at,
+        role=role,
+        invited_by_firm_id=None,
     )
-    return invitation
+    org = await repos.organizations.get(org_id)
+    org_name = getattr(org, "name", None) or "your organisation"
+    delivered = False
+    reason = "email not attempted"
+    try:
+        delivered, reason = await send_invitation_email(
+            repos,
+            to_email=invitation["email"],
+            organization_name=org_name,
+            role=role,
+            token=token,
+        )
+    except Exception:  # noqa: BLE001 — a mail failure never breaks the invitation
+        delivered = False
+        reason = "email delivery failed"
+    return {
+        **_invitation_view(invitation, include_accept_url=True),
+        "email_delivered": delivered,
+        "email_status": reason,
+    }
+
+
+@router.post("/invitations/accept")
+async def accept_invitation(
+    payload: InvitationAccept,
+    current_user: AuthUser = Depends(require_auth()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Accept a single-use client-user invitation (PD-1A).
+
+    The authenticated invitee exchanges a still-pending, unexpired, unrevoked
+    token for a real organisation membership:
+
+    1. the token is looked up and its EFFECTIVE state resolved (expiry is
+       derived, never stored);
+    2. the authenticated identity's email must match the invited address (an
+       invitation is bound to a person, not merely a token);
+    3. the invitation is CONSUMED with an atomic conditional update (single-use
+       — a second attempt matches no row); and only then
+    4. the membership is created (or re-activated) with the invited role.
+
+    The consultant/org planes never bypass this step, so a client Workspace user
+    can only ever appear through an authorised invitation.
+    """
+    token = (payload.token or "").strip()
+    invitation = await repos.invitations.get_by_token(token)
+    if invitation is None:
+        raise HTTPException(status_code=404, detail="invitation not found")
+
+    state = resolve_invitation_state(
+        invitation.get("status"), _parse_dt(invitation.get("expires_at"))
+    )
+    if state == "accepted":
+        raise HTTPException(
+            status_code=409, detail="invitation has already been accepted"
+        )
+    if state == "revoked":
+        raise HTTPException(status_code=409, detail="invitation has been revoked")
+    if state == "expired":
+        raise HTTPException(status_code=410, detail="invitation has expired")
+
+    if normalise_email(invitation.get("email", "")) != normalise_email(
+        current_user.email or ""
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="invitation was issued to a different email address",
+        )
+
+    # Single-use consumption: the conditional UPDATE is the guarantee.
+    consumed = await repos.invitations.consume(
+        token, accepted_by=current_user.user_id
+    )
+    if consumed is None:
+        # Lost a race, or expired between the check and the update.
+        raise HTTPException(status_code=409, detail="invitation is no longer valid")
+
+    # The invited role is policy-checked defensively before it is written, so a
+    # legacy/None role can never create an out-of-vocabulary membership.
+    try:
+        role = validate_client_role(consumed.get("role") or "member")
+    except ClientIdentityError:
+        role = "member"
+
+    member = await repos.organizations.accept_invited_membership(
+        org_id=consumed["organization_id"],
+        user_id=current_user.user_id,
+        email=normalise_email(current_user.email or consumed.get("email", "")),
+        role=role,
+    )
+    return {
+        "status": "accepted",
+        "organization_id": consumed["organization_id"],
+        "membership_id": getattr(member, "id", None),
+        "role": role,
+    }
 
 
 @router.delete("/invitations/{invitation_id}", status_code=204)
@@ -623,7 +776,7 @@ async def revoke_invitation(
     if invitation is None:
         raise HTTPException(status_code=404, detail="invitation not found")
     ensure_org_access(current_user, invitation["organization_id"])
-    await repos.invitations.revoke(invitation_id)
+    await repos.invitations.revoke(invitation_id, revoked_by=current_user.user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -813,6 +966,7 @@ async def add_facility(
     payload: FacilityCreate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     ensure_org_access(current_user, org_id)
     # MD-1/FAC-1 — the schema enforces ``postcode IS NOT NULL OR eircode IS NOT
@@ -833,6 +987,7 @@ async def update_facility(
     payload: FacilityUpdate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     """Edit a facility (MD-1 — the edit endpoint was missing)."""
     facility = await repos.tenant.get_facility(facility_id)
@@ -860,6 +1015,7 @@ async def remove_facility(
     facility_id: str,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     facility = await repos.tenant.get_facility(facility_id)
     if facility is not None:
@@ -897,6 +1053,7 @@ async def add_asset(
     payload: AssetCreate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     ensure_org_access(current_user, org_id)
     # ISC-4 — ``assets.facility_id`` is NOT NULL; validate at the API layer so
@@ -923,6 +1080,7 @@ async def update_asset(
     payload: AssetUpdate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     """Edit an asset (ISC-4 — asset must be viewable and editable)."""
     existing = await repos.tenant.get_asset(asset_id)
@@ -951,5 +1109,6 @@ async def remove_asset(
     asset_id: str,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     await repos.tenant.remove_asset(asset_id)

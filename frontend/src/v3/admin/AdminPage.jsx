@@ -9,6 +9,12 @@ import { listOrgRoles, resolveV3Membership, resolveV3Organization } from '../api
 import { ErrorState } from '../components/StateViews';
 import ProfileTab from './ProfileTab';
 import MembersTab from './MembersTab';
+// CT-CONSULTANT-CLIENT-ACCESS-UX-01 — a consultant operating a managed client
+// must use the consultant-plane "Client Access" surface (server-gated CT-04
+// consultant endpoints), NOT the Organisation-admin Members & Invitations tab
+// (which is org-member/org-admin gated and returns 403 for a consultant).
+import ClientAccessTab from '../consultant/ClientAccessTab';
+import { useConsultantClientContext } from '../consultant/ConsultantClientContext';
 import SuppliersTab from './SuppliersTab';
 import FacilitiesTab from './FacilitiesTab';
 import LocationsTab from './LocationsTab';
@@ -44,6 +50,14 @@ export default function AdminPage() {
   const [retryCount, setRetryCount] = useState(0);
   const [searchParams] = useSearchParams();
 
+  // CT-CONSULTANT-CLIENT-ACCESS-UX-01 — are we operating a managed client FOR a
+  // consultant firm? The id is presentation context only; the backend re-checks
+  // every request. Outside the client plane this is inactive and the direct
+  // customer Members & Invitations surface is unchanged.
+  const consultantCtx = useConsultantClientContext();
+  const consultantClientId =
+    consultantCtx && consultantCtx.active ? consultantCtx.clientId : null;
+
   // CL-44/CL-47 — the mapping workspace deep-links to the Custom Factors tab
   // (?tab=factors) when the user chooses the "create a customer factor" path.
   const requestedTab = searchParams.get('tab');
@@ -66,14 +80,21 @@ export default function AdminPage() {
       setOrganization(org);
       const membership = await resolveV3Membership().catch(() => null);
       setMyRole(membership?.role || null);
-      const roleResult = await listOrgRoles(org.id).catch(() => ({ roles: [] }));
-      setRoles(roleResult.roles || []);
+      // A consultant is not an organisation member, so the org-scoped roles list
+      // is not available/needed in the client plane (and probing it would emit a
+      // 403). The consultant-plane Client Access tab carries its own role model.
+      if (!consultantClientId) {
+        const roleResult = await listOrgRoles(org.id).catch(() => ({ roles: [] }));
+        setRoles(roleResult.roles || []);
+      } else {
+        setRoles([]);
+      }
     } catch (e) {
       setError(e.message || 'Failed to load organization');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [consultantClientId]);
 
   useEffect(() => { load(); }, [load, retryCount]);
 
@@ -95,17 +116,28 @@ export default function AdminPage() {
 
   const isAdmin = ['owner', 'admin'].includes(myRole);
 
+  // CT-CONSULTANT-CLIENT-ACCESS-UX-01 — in the client plane the members surface
+  // is presented as the consultant-appropriate "Client Access" (same tab id so
+  // ?tab=members deep links keep working).
+  const tabs = consultantClientId
+    ? TABS.map((tab) => (tab.id === 'members' ? { ...tab, label: 'Client Access' } : tab))
+    : TABS;
+
   return (
     <div className="v3-admin-page">
       <div className="v3-admin-header">
         <div>
           <h1>Organisation administration</h1>
-          <p className="subtitle">{organization.name} · V3 customer administration</p>
+          <p className="subtitle">
+            {consultantClientId
+              ? `${organization.name} · managed client organisation`
+              : `${organization.name} · Customer administration`}
+          </p>
         </div>
       </div>
 
       <div className="v3-tabs">
-        {TABS.filter((tab) => !tab.adminOnly || isAdmin).map((tab) => (
+        {tabs.filter((tab) => !tab.adminOnly || isAdmin).map((tab) => (
           <button
             key={tab.id}
             className={`v3-tab ${activeTab === tab.id ? 'active' : ''}`}
@@ -118,7 +150,11 @@ export default function AdminPage() {
 
       {activeTab === 'profile' && <ProfileTab organization={organization} />}
       {activeTab === 'members' && (
-        <MembersTab organization={organization} roles={roles} />
+        consultantClientId ? (
+          <ClientAccessTab clientId={consultantClientId} />
+        ) : (
+          <MembersTab organization={organization} roles={roles} />
+        )
       )}
       {activeTab === 'suppliers' && <SuppliersTab organization={organization} />}
       {activeTab === 'facilities' && <FacilitiesTab organization={organization} />}

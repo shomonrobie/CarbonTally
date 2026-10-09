@@ -22,6 +22,7 @@ from api.dependencies import (
     get_repositories,
 )
 from auth import AuthUser, require_org_admin, require_org_member
+from api.client_access_guard import require_client_operation
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v3/vehicles", tags=["V3 — Vehicles"])
@@ -81,6 +82,7 @@ async def add_vehicle(
     payload: VehicleCreate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     ensure_org_access(current_user, payload.organization_id)
     return await repos.tenant.add_vehicle(
@@ -103,6 +105,7 @@ async def update_vehicle(
     payload: VehicleUpdate,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     existing = await repos.tenant.get_vehicle(vehicle_id)
     if existing is None:
@@ -131,6 +134,7 @@ async def remove_vehicle(
     vehicle_id: str,
     current_user: AuthUser = Depends(require_org_admin()),
     repos: RepositoryBundle = Depends(get_repositories),
+    _client_ceiling: AuthUser = Depends(require_client_operation("edit_master_data")),
 ):
     vehicle = await repos.tenant.get_vehicle(vehicle_id)
     if vehicle is not None:

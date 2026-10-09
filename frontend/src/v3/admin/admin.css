@@ -198,3 +198,26 @@
 }
 
 .v3-confirm-modal .v3-modal h2 { margin-bottom: 8px; }
+
+/* CT-CONSULTANT-CLIENT-ACCESS-UX-01 — consultant-plane "Client Access" tab (D21).
+   Reuses the existing admin card/table primitives; only the stacking of cards and
+   the invite form's labelled field stack are new. */
+.v3-client-access .v3-admin-card { margin-bottom: 16px; }
+
+.v3-client-access .v3-admin-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v3-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.v3-field .v3-search-input,
+.v3-field .v3-role-select { width: 100%; }

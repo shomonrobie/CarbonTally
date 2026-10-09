@@ -255,6 +255,31 @@ async def authorize_organization_upload(
             action_reason="organisation scope check failed",
         )
 
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05 — the CLIENT-ACCESS PROFILE
+    # CEILING (PO-CONSOLIDATION-01 §8.2/§8.3; design report §8: "Plane C … is
+    # Plane B rendered for the client's own users, with … profile-driven
+    # capabilities"). A consultant-managed client's own user reaches this SAME
+    # organisation surface but is bounded by the relationship's access profile
+    # (MANAGED/READ_ONLY/OFF/RETAINED may NOT upload; only COLLABORATIVE may). A
+    # direct customer, a consultant principal and internal/PE staff are
+    # unaffected — the ceiling applies only to a client user of a
+    # consultant-managed organisation.
+    from api.client_access_guard import enforce_client_operation
+
+    try:
+        await enforce_client_operation(
+            current_user, repos, organization_id, "upload_document"
+        )
+    except HTTPException as exc:
+        await _deny(
+            repos=repos,
+            status_code=exc.status_code,
+            detail=str(exc.detail),
+            organization_id=str(organization_id),
+            user_id=current_user.user_id,
+            action_reason="client access profile does not permit upload_document",
+        )
+
     return UploadActor(
         user_id=current_user.user_id,
         organization_id=str(organization_id),

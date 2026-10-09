@@ -168,7 +168,12 @@ def ensure_org_access(current_user: AuthUser, organization_id: str) -> None:
     * Processing Entity staff (``entity_id IS NOT NULL``) NEVER receive
       customer-organisation access (work-scoped only).
     * Organisation members may only act on their own organisation.
-    * Any other user (no org membership, not internal staff) is denied.
+    * A consultant principal admitted by ``require_org_member()`` (PD-3/PD-7) may
+      act on the organisations held in its server-resolved ACTIVE
+      consultant-client grants (``managed_org_ids``) — the SAME organisation
+      surfaces, a different authorisation context, never a parallel product.
+    * Any other user (no org membership, not internal staff, not an admitted
+      consultant) is denied.
     """
     if not organization_id:
         raise HTTPException(
@@ -186,16 +191,38 @@ def ensure_org_access(current_user: AuthUser, organization_id: str) -> None:
     if current_user.is_internal_staff:
         return
     bound_org = getattr(current_user, "organization_id", None)
-    if not bound_org:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Organization access denied",
-        )
-    if bound_org != organization_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Organization access denied",
-        )
+    if bound_org:
+        if bound_org != organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization access denied",
+            )
+        return
+    # CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-3/PD-7) — a
+    # consultant principal admitted by ``require_org_member()`` reaches exactly
+    # the organisations held in its server-resolved ACTIVE consultant-client
+    # grants (``managed_org_ids``). ``None`` = not a consultant context, so a
+    # principal with no organisation is still denied exactly as before; an empty
+    # or non-matching grant set is denied too. Knowing an organisation id never
+    # grants access.
+    managed = getattr(current_user, "managed_org_ids", None)
+    if managed is not None and organization_id in managed:
+        # D-7 Decision B — an INACTIVE client tenant grants its consultant
+        # nothing. This surface often names its organisation as a QUERY/BODY
+        # parameter (``/api/v3/emissions/dashboard?organization_id=...``), where
+        # ``enforce_org_path_scope`` is a deliberate no-op, so the lifecycle
+        # decision must also be taken here. ``is_organization_active`` fails
+        # closed: an unanswerable store is a denial, never an implicit allow.
+        if is_organization_active(organization_id) is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=ORGANIZATION_SUSPENDED_DETAIL,
+            )
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Organization access denied",
+    )
 
 
 async def ensure_processing_org_access(

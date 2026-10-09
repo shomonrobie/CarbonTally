@@ -46,13 +46,13 @@ export const v3Fetch = async (path, options = {}) => {
     response = await fetch(`${API_URL}${path}`, { ...options, headers, signal: controller.signal });
   } catch (e) {
     if (e && e.name === 'AbortError') {
-      console.error(`[CarbonTally V3] ${options.method || 'GET'} ${path} → timed out after ${REQUEST_TIMEOUT_MS}ms`);
+      console.error(`[CarbonTally] ${options.method || 'GET'} ${path} → timed out after ${REQUEST_TIMEOUT_MS}ms`);
       const err = new Error('The request took too long and timed out. Please try again.');
       err.status = 0;
       err.raw = 'timeout';
       throw err;
     }
-    console.error(`[CarbonTally V3] ${options.method || 'GET'} ${path} → network error:`, e);
+    console.error(`[CarbonTally] ${options.method || 'GET'} ${path} → network error:`, e);
     const err = new Error('Network error — please check your connection and try again.');
     err.status = 0;
     err.raw = 'network';
@@ -72,19 +72,54 @@ export const v3Fetch = async (path, options = {}) => {
     // caller explicitly opts into a quiet probe — CL-49: expected 403 role
     // probes must not produce console noise on normal page loads).
     if (!options.quiet) {
-      console.error(`[CarbonTally V3] ${options.method || 'GET'} ${path} → ${response.status}:`, raw);
+      console.error(`[CarbonTally] ${options.method || 'GET'} ${path} → ${response.status}:`, raw);
     }
     const error = new Error(friendlyError(raw, response.status));
     error.status = response.status;
     error.raw = raw;
     throw error;
   }
+  // 204 No Content (revoke/remove-style endpoints) has nothing to parse — return
+  // null instead of rejecting on an empty body.
+  if (response.status === 204) return null;
   return response.json();
+};
+
+// CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 — the consultant's
+// currently selected MANAGED CLIENT. This is presentation context only: it lets
+// the shared Organisation pages resolve which organisation they are rendering.
+// It is never an authorisation — every request is re-authorised server-side
+// against the ACTIVE consultant-client grant (PD-1/PD-3/PD-9).
+const ACTIVE_CLIENT_KEY = 'v3_consultant_active_client';
+
+export const getActiveConsultantClientId = () => {
+  try {
+    return localStorage.getItem(ACTIVE_CLIENT_KEY) || null;
+  } catch (_e) {
+    return null;
+  }
+};
+
+export const setActiveConsultantClientId = (clientId) => {
+  try {
+    if (clientId) localStorage.setItem(ACTIVE_CLIENT_KEY, clientId);
+    else localStorage.removeItem(ACTIVE_CLIENT_KEY);
+  } catch (_e) {
+    /* storage unavailable — the route param remains authoritative */
+  }
 };
 
 // Resolve the caller's primary organisation using the existing legacy
 // membership endpoint (same pattern as the Dashboard) so every V3 request is
 // org-scoped and org-isolated.
+//
+// CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-1/PD-3) — a
+// consultant managing a client is NOT an organisation member, so the membership
+// endpoint yields nothing for them. When the consultant has an active managed
+// client context, this resolves THAT client's organisation through the
+// consultant engagement context endpoint (which re-authorises the active grant
+// server-side). The SAME Organisation pages then run unchanged: same product
+// surface, different actor, different authorisation context.
 export const resolveV3Organization = async () => {
   const token = await getV3Token();
   if (!token) return null;
@@ -94,9 +129,27 @@ export const resolveV3Organization = async () => {
     `${API_URL}/api/organizations/members/user/${user.id}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  if (!response.ok) return null;
-  const data = await response.json();
-  return data?.primary_organization || data?.organization || null;
+  if (response.ok) {
+    const data = await response.json();
+    const org = data?.primary_organization || data?.organization || null;
+    if (org) return org;
+  }
+  const clientId = getActiveConsultantClientId();
+  if (clientId) {
+    try {
+      const ctx = await getClientWorkspaceContext(clientId);
+      const client = ctx?.client || null;
+      if (client?.organization_id) {
+        return {
+          id: client.organization_id,
+          name: ctx?.organization?.name || client.client_name,
+        };
+      }
+    } catch (_e) {
+      return null;
+    }
+  }
+  return null;
 };
 
 // D29/F5 — resolve the authenticated actor's landing workspace from the SINGLE
@@ -111,7 +164,7 @@ export const getMeContext = async () => {
   const data = await v3Fetch('/api/v3/me/context');
   const destination = data && (data.destination || data.primary_workspace);
   if (!destination) {
-    console.error('[CarbonTally V3] /api/v3/me/context returned no destination');
+    console.error('[CarbonTally] /api/v3/me/context returned no destination');
     const err = new Error('Unable to resolve your workspace. Please try again.');
     err.status = 0;
     err.raw = 'empty-me-context';
@@ -348,6 +401,41 @@ export const createInvitation = (organizationId, payload) =>
 export const revokeInvitation = (invitationId) =>
   v3Fetch(`/api/v3/organizations/invitations/${invitationId}`, { method: 'DELETE' });
 
+// CT-CONSULTANT-CLIENT-IDENTITY-04 (PD-1A) — accept a single-use invitation.
+export const acceptInvitation = (token) =>
+  v3Fetch('/api/v3/organizations/invitations/accept', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+
+// CT04 (PD-1A / PD-2A) — consultant-plane client-user invitations + role admin.
+export const listClientInvitations = (clientId) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/invitations`);
+
+export const createClientInvitation = (clientId, payload) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/invitations`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const revokeClientInvitation = (clientId, invitationId) =>
+  v3Fetch(
+    `/api/v3/consultants/clients/${clientId}/invitations/${invitationId}/revoke`,
+    { method: 'POST' },
+  );
+
+// CT-CONSULTANT-PLATFORM-CLOSURE-01 §6.1 (PO-2) — the consultant-side READ of a
+// managed client's users (re-authorised server-side against the ACTIVE
+// consultant-client grant; never an organisation membership).
+export const listClientUsers = (clientId) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/users`);
+
+export const updateClientUser = (clientId, memberId, payload) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/users/${memberId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
 export const listFacilities = (organizationId) =>
   v3Fetch(`/api/v3/organizations/${organizationId}/facilities`);
 
@@ -440,10 +528,15 @@ export const getConsultantDashboard = () => v3Fetch('/api/v3/consultants/me/dash
 // CL-61 — consultant team + internal tasks.
 export const getConsultantTeam = () => v3Fetch('/api/v3/consultants/me/team');
 
-export const addConsultantTeamMember = (userId, role = 'consultant') =>
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-11/AC-14) — add a member by a
+// human-readable identity. `{ email }` is the normal path (the backend resolves
+// it to an existing CarbonTally user); `{ user_id }` remains supported for
+// programmatic callers. The backend is the boundary: the email is matched
+// server-side under the manage_team permission, and an unknown email is refused.
+export const addConsultantTeamMember = ({ email, user_id: userId, role = 'consultant' }) =>
   v3Fetch('/api/v3/consultants/me/team', {
     method: 'POST',
-    body: JSON.stringify({ user_id: userId, role }),
+    body: JSON.stringify(email ? { email, role } : { user_id: userId, role }),
   });
 
 // CL-61 close-out — revoke (deactivate) / reactivate a team member.
@@ -468,6 +561,69 @@ export const updateConsultantTaskStatus = (taskId, status) =>
   v3Fetch(`/api/v3/consultants/tasks/${taskId}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
+  });
+
+// ---------------------------------------------------------------------------
+// CT-CONSULTANT-MODEL-IMPLEMENTATION-03 — the remaining consultant-model UI.
+// The backend is the security boundary; every call here is re-authorised
+// server-side (capability ∩ profile ∩ entitlement).
+// ---------------------------------------------------------------------------
+
+// P1/P5 — firm capability administration (the CT02 PATCH route, now wired).
+export const updateConsultantTeamMemberCapabilities = (memberId, capabilities) =>
+  v3Fetch(`/api/v3/consultants/me/team/${memberId}/capabilities`, {
+    method: 'PATCH',
+    body: JSON.stringify(capabilities),
+  });
+
+// F-3 — set a managed client's access profile (the Plane C ceiling).
+export const setConsultantClientAccessProfile = (clientId, profile) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/access-profile`, {
+    method: 'POST',
+    body: JSON.stringify({ profile }),
+  });
+
+// F-4 / PO-10 — apply/lift retained read-only on an ended relationship.
+export const setConsultantClientRetention = (clientId, retainedReadOnly) =>
+  v3Fetch(`/api/v3/consultants/clients/${clientId}/retention`, {
+    method: 'POST',
+    body: JSON.stringify({ retained_read_only: retainedReadOnly }),
+  });
+
+// F-6 / PO-1 — request a product-mode change (CarbonTally decides).
+export const requestConsultantModeChange = (requestedMode, reason) =>
+  v3Fetch('/api/v3/consultants/me/mode-change-requests', {
+    method: 'POST',
+    body: JSON.stringify({ requested_mode: requestedMode, reason: reason || null }),
+  });
+
+// ---------------------------------------------------------------------------
+// Plane C — the CLIENT portal (/portal/:clientId/*). These calls only ever
+// succeed for an authenticated CLIENT user whose own organisation is served by
+// a consultant firm and whose access profile admits the operation. A client
+// can never read another organisation, and the mapping/recalculation
+// capabilities have no client-plane endpoint at all (PO-9).
+// ---------------------------------------------------------------------------
+export const getPortalContext = (clientId) =>
+  v3Fetch(`/api/v3/portal/${clientId}/context`);
+
+export const getPortalOrganization = (clientId) =>
+  v3Fetch(`/api/v3/portal/${clientId}/organization`);
+
+export const postPortalAnnotation = (clientId, message) =>
+  v3Fetch(`/api/v3/portal/${clientId}/annotations`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+
+export const requestPortalRelationshipChange = (clientId, requestType, reason) =>
+  v3Fetch(`/api/v3/portal/${clientId}/relationship-requests`, {
+    method: 'POST',
+    body: JSON.stringify({
+      request_type: requestType,
+      reason: reason || null,
+      confirmed: true,
+    }),
   });
 
 export const getConsultantClient = (clientId) =>
@@ -975,6 +1131,27 @@ export const v3UploadDocument = async ({ organization_id, data_type, file }) => 
 export const v3ListUploadBatches = (organizationId) =>
   v3Fetch(`/api/v3/batches?organization_id=${encodeURIComponent(organizationId)}`);
 
+/**
+ * CT-PO-UPLOAD-BATCH-REMEDIATION-001 — create the grouping record for a batch of
+ * real document uploads (existing POST /api/v3/batches endpoint).
+ */
+export const v3CreateUploadBatch = (organizationId, { batch_name, metadata = {} }) =>
+  v3Fetch(`/api/v3/batches?organization_id=${encodeURIComponent(organizationId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ batch_name, metadata }),
+  });
+
+/**
+ * Report the batch's REAL per-file progress after each upload resolves. The
+ * backend persists it through its existing upload_batches lifecycle methods — the
+ * client never invents a status the backend did not produce.
+ */
+export const v3UpdateUploadBatchProgress = (batchId, { processed_files, status }) =>
+  v3Fetch(`/api/v3/batches/${encodeURIComponent(batchId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ processed_files, status }),
+  });
+
 // ---------------------------------------------------------------------------
 // Storage Management Step 2A — direct-to-storage upload (signed upload URL)
 // ---------------------------------------------------------------------------
@@ -1035,6 +1212,25 @@ export const v3CompleteDirectUpload = (documentId) =>
   v3Fetch(`/api/v3/documents/${encodeURIComponent(documentId)}/upload-complete`, {
     method: 'POST',
   });
+
+/**
+ * CT-PO-UPLOAD-BATCH-REMEDIATION-001 — record that a direct upload never reached
+ * storage, so the backend moves its row to the terminal `upload_expired` state
+ * instead of leaving an unreachable `pending_upload` record behind.
+ */
+export const v3AbandonDirectUpload = (documentId) =>
+  v3Fetch(`/api/v3/documents/${encodeURIComponent(documentId)}/upload-abandon`, {
+    method: 'POST',
+  });
+
+/** Best-effort abandonment record: it must never mask the real upload failure. */
+export const recordAbandonedUpload = async (abandon) => {
+  try {
+    await abandon();
+  } catch (_e) {
+    /* the abandonment record is best-effort; the upload failure is what matters */
+  }
+};
 
 /** PUT the bytes straight to private storage (progress-reporting, abortable). */
 export const putBytesToSignedUrl = (authorization, file, { onProgress, signal } = {}) =>
@@ -1115,7 +1311,14 @@ export const v3UploadDocumentDirect = async ({
       503
     );
   }
-  await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  try {
+    await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  } catch (e) {
+    // The bytes never reached storage: record the abandonment so the pending
+    // row becomes terminal instead of lingering as a ghost document.
+    await recordAbandonedUpload(() => v3AbandonDirectUpload(started?.document_id));
+    throw e;
+  }
   try {
     return await v3CompleteDirectUpload(started.document_id);
   } catch (e) {
@@ -1145,6 +1348,14 @@ export const v3CompleteConsultantDirectUpload = (clientId, documentId) =>
     { method: 'POST' }
   );
 
+/** Consultant equivalent of `v3AbandonDirectUpload` (records an abandoned upload). */
+export const v3AbandonConsultantDirectUpload = (clientId, documentId) =>
+  v3Fetch(
+    `/api/v3/consultants/clients/${encodeURIComponent(clientId)}/documents/` +
+      `${encodeURIComponent(documentId)}/upload-abandon`,
+    { method: 'POST' }
+  );
+
 /**
  * Consultant equivalent of `v3UploadDocumentDirect`. The completion payload is
  * returned in the same shape the previous multipart helper produced (a
@@ -1171,7 +1382,14 @@ export const v3UploadConsultantDocumentDirect = async ({
       503
     );
   }
-  await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  try {
+    await putBytesToSignedUrl(authorization, file, { onProgress, signal });
+  } catch (e) {
+    await recordAbandonedUpload(() =>
+      v3AbandonConsultantDirectUpload(clientId, started?.document_id)
+    );
+    throw e;
+  }
   let completed;
   try {
     completed = await v3CompleteConsultantDirectUpload(clientId, started.document_id);
@@ -1275,6 +1493,127 @@ export const markAllNotificationsRead = () =>
   v3Fetch('/api/v3/notifications/read-all', { method: 'POST' });
 
 // ---------------------------------------------------------------------------
+// FIN-06 / Manual Processing — Admin control plane (/api/v3/admin/manual-processing)
+// ---------------------------------------------------------------------------
+// Subscription entitlement is the FIRST gate (PO decision): a customer must be
+// subscribed to a plan that includes Manual Processing before it can be enabled
+// or have a Processing Entity configured. Every rule below is enforced
+// server-side; these calls are convenience only.
+
+export const getManualProcessingGrants = (scopeType) => {
+  const qs = scopeType ? `?scope_type=${encodeURIComponent(scopeType)}` : '';
+  return v3Fetch(`/api/v3/admin/manual-processing/grants${qs}`);
+};
+
+export const setManualProcessingGrant = (payload) =>
+  v3Fetch('/api/v3/admin/manual-processing/grants', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteManualProcessingGrant = (scopeType, scopeId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/grants/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`,
+    { method: 'DELETE' },
+  );
+
+// The complete server-side Manual Processing state for one scope (entitlement +
+// governance + configured processor + the resulting effective answer).
+export const getManualProcessingState = (scopeType, scopeId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/state?scope_type=${encodeURIComponent(scopeType)}&scope_id=${encodeURIComponent(scopeId)}`,
+  );
+
+export const getManualProcessingProcessors = (scopeType) => {
+  const qs = scopeType ? `?scope_type=${encodeURIComponent(scopeType)}` : '';
+  return v3Fetch(`/api/v3/admin/manual-processing/processors${qs}`);
+};
+
+export const setManualProcessingProcessor = (payload) =>
+  v3Fetch('/api/v3/admin/manual-processing/processors', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteManualProcessingProcessor = (scopeType, scopeId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/processors/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeId)}`,
+    { method: 'DELETE' },
+  );
+
+// ---------------------------------------------------------------------------
+// CT-MP-SUB-004 — Manual Processing commercial coverage (Admin control plane)
+// ---------------------------------------------------------------------------
+// These WIRE the CT-MP-SUB-003 Admin endpoints; no new commercial rule is added.
+// Every capacity/eligibility decision is re-checked server-side.
+
+export const getAdminManualProcessingCoverage = (consultantId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/coverage/${encodeURIComponent(consultantId)}`,
+  );
+
+// F-11 — searchable client-organisation lookup for the Manual Processing
+// coverage surface. READ-ONLY: choosing a result performs no state change.
+// Server-gated by the existing Manual Processing admin capability.
+export const searchAdminManualProcessingOrganizations = (query, { limit = 20, offset = 0 } = {}) => {
+  const params = new URLSearchParams();
+  if (query && query.trim()) params.set('q', query.trim());
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return v3Fetch(`/api/v3/admin/manual-processing/organizations?${params.toString()}`);
+};
+
+// The FULL per-client commercial + operational state (direct, sponsored,
+// effective, governance, configured PE) — deliberately NOT collapsed.
+export const getAdminManualProcessingClientState = (organizationId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/clients/${encodeURIComponent(organizationId)}`,
+  );
+
+export const allocateAdminManualProcessingClient = (payload) =>
+  v3Fetch('/api/v3/admin/manual-processing/coverage/allocations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const releaseAdminManualProcessingAllocation = (allocationId) =>
+  v3Fetch(
+    `/api/v3/admin/manual-processing/coverage/allocations/${encodeURIComponent(allocationId)}`,
+    { method: 'DELETE' },
+  );
+
+// ---------------------------------------------------------------------------
+// CT-MP-SUB-004 — Manual Processing coverage (Consultant self-service)
+// ---------------------------------------------------------------------------
+// Firm identity is resolved server-side from the authenticated consultant
+// context; a consultant can never read or change another firm's coverage.
+
+export const getConsultantManualProcessingCoverage = () =>
+  v3Fetch('/api/v3/consultants/me/manual-processing/coverage');
+
+export const allocateConsultantManualProcessingClient = (payload) =>
+  v3Fetch('/api/v3/consultants/me/manual-processing/allocations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const releaseConsultantManualProcessingAllocation = (allocationId) =>
+  v3Fetch(
+    `/api/v3/consultants/me/manual-processing/allocations/${encodeURIComponent(allocationId)}`,
+    { method: 'DELETE' },
+  );
+
+// ---------------------------------------------------------------------------
+// CT-MP-SUB-004 — Manual Processing entitlement (Customer, own organisation)
+// ---------------------------------------------------------------------------
+// Org-scoped + exact-tenant enforced server-side (require_org_member).
+
+export const getMyManualProcessing = (organizationId) =>
+  v3Fetch(
+    `/api/v3/organizations/${encodeURIComponent(organizationId)}/manual-processing`,
+  );
+
+
 // SLA settings (D25) — /api/v3/ops/sla/settings (staff admin writes)
 // ---------------------------------------------------------------------------
 

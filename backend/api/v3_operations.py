@@ -83,6 +83,11 @@ from services.operational_intelligence import OperationalIntelligenceService
 from services.api_metrics import ApiMetricsService
 from data.api_metrics import ApiMetricsRepository
 from services.storage import signed_item
+from services.manual_processing_notifications import (
+    notify_manual_processing_completion,
+    notify_pe_batch_assignment,
+    notify_validator_batch_assignment,
+)
 
 router = APIRouter(prefix="/api/v3/ops", tags=["V3 — Operations"])
 
@@ -2195,6 +2200,16 @@ async def ct_qc_decision_endpoint(
     await notify_qc_outcome(repos, item=item, approved=bool(payload.approved))
     if not payload.approved:
         await notify_rework(repos, item=item, source=REWORK_SOURCE_CT_QC_REJECTED)
+    # N4 (PO-authorised, NOTIFICATION-IMPLEMENT-04) — the TERMINAL
+    # successful/validated Manual Processing state is the CarbonTally CT-QC
+    # approval (``ct_qc_approved``): the single point at which the required
+    # validation/review of manually processed work is satisfied. This is the
+    # only place the state is written, so PE completion, PE release, an
+    # intermediate extraction stage or a closed work-item assignment can never
+    # produce a false "finished" notification. The recipient is the durable
+    # original uploader; no client organisation user is notified.
+    if payload.approved:
+        await notify_manual_processing_completion(repos, item=updated)
     return {"item": updated}
 
 
@@ -2313,6 +2328,26 @@ async def assign_batch(
         before=previous_party,
         reason=payload.reason,
     )
+    # N1 / N2 (PO-authorised, NOTIFICATION-IMPLEMENT-04) — a governed MP batch
+    # assignment now notifies the assignee. The D22 assignment + its audit row
+    # above are already committed and remain authoritative: a notification
+    # failure is logged and can never reverse the assignment.
+    if updated.entity_id:
+        await notify_pe_batch_assignment(
+            repos,
+            batch_id=batch_id,
+            entity_id=str(updated.entity_id),
+            actor_domain="internal_staff",
+        )
+    elif updated.assigned_to and str(updated.assigned_to) != context.profile.user_id:
+        # Self-assignment deliberately emits nothing (matches the existing
+        # item-level ``work_item.assigned`` convention).
+        await notify_validator_batch_assignment(
+            repos,
+            batch_id=batch_id,
+            user_id=str(updated.assigned_to),
+            actor_domain="internal_staff",
+        )
     return {"batch": updated}
 
 

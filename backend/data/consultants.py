@@ -5,6 +5,7 @@ Persistence for the consultant surface: ``consultant_profiles``,
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional
 
 from data.base import AbstractRepository, dumps_jsonb, loads_jsonb
@@ -25,7 +26,10 @@ _PROFILE_COLUMNS = (
 _BRANDING_COLUMNS = (
     "id AS profile_id, brand_name, logo_url, primary_color, secondary_color, "
     "footer_text, email_from, website, support_email, support_phone, "
-    "support_hours, client_portal_url, white_label_enabled, co_branding_enabled"
+    "support_hours, client_portal_url, white_label_enabled, co_branding_enabled, "
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-5) — the authoritative product
+    # mode; the legacy boolean flags above are capped by it at presentation.
+    "commercial_mode"
 )
 
 #: The only columns the D21 branding self-service may write (partner_*,
@@ -51,6 +55,9 @@ _MEMBER_COLUMNS = (
     "can_upload_documents, can_generate_reports, can_manage_team, "
     "can_extract, can_map, can_validate, can_calculate, "
     "can_confirm_automation, can_submit, "
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2) — admission + approval
+    # capabilities (see the migration 20261102000000_ct_consultant_model_02).
+    "can_view_client, can_approve, "
     "client_access, invited_at, joined_at"
 )
 
@@ -59,7 +66,10 @@ _CLIENT_COLUMNS = (
     "client_contact_email, client_contact_name, status, billing_plan, notes, "
     "created_by, created_at, suspended_at, ended_at, ended_by, "
     "lifecycle_updated_at, relationship_origin, engagement_requested_at, "
-    "engagement_decided_by, engagement_decided_at"
+    "engagement_decided_by, engagement_decided_at, "
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-3/F-4) — the client access profile
+    # ceiling + the PO-10 retained-read-only flag.
+    "client_access_profile, retained_read_only"
 )
 
 _TASK_COLUMNS = (
@@ -85,6 +95,7 @@ def _row_to_branding(row: Any) -> ConsultantBranding:
         client_portal_url=r.get("client_portal_url"),
         white_label_enabled=bool(r.get("white_label_enabled", False)),
         co_branding_enabled=bool(r.get("co_branding_enabled", False)),
+        commercial_mode=r.get("commercial_mode"),
     )
 
 
@@ -129,6 +140,11 @@ def _row_to_member(row: Any) -> ConsultantFirmMember:
         can_calculate=bool(r.get("can_calculate", False)),
         can_confirm_automation=bool(r.get("can_confirm_automation", False)),
         can_submit=bool(r.get("can_submit", False)),
+        # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2) — deny-by-default so a
+        # pre-migration row read through an older column list can never be
+        # interpreted as holding admission or approval authority.
+        can_view_client=bool(r.get("can_view_client", False)),
+        can_approve=bool(r.get("can_approve", False)),
         client_access=list(r.get("client_access") or []),
         invited_at=r.get("invited_at"),
         joined_at=r.get("joined_at"),
@@ -158,6 +174,10 @@ def _row_to_client(row: Any) -> ConsultantClient:
         engagement_requested_at=r.get("engagement_requested_at"),
         engagement_decided_by=str(r["engagement_decided_by"]) if r.get("engagement_decided_by") else None,
         engagement_decided_at=r.get("engagement_decided_at"),
+        # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-3/F-4) — deny-by-default so a
+        # projection that predates the columns can never grant client access.
+        client_access_profile=str(r.get("client_access_profile") or "off"),
+        retained_read_only=bool(r.get("retained_read_only", False)),
     )
 
 
@@ -358,6 +378,69 @@ class ConsultantsRepository(AbstractRepository[dict]):
         )
         return _row_to_member(row) if row is not None else None
 
+    async def set_firm_member_capabilities(
+        self,
+        firm_id: str,
+        member_id: str,
+        capabilities: dict[str, bool],
+    ) -> Optional[ConsultantFirmMember]:
+        """F-10 (§7.3) — update a firm member's CAPABILITY SET (merge, not replace).
+
+        The member's capability set is a set of independently grantable/revocable
+        flags. An administrative write therefore MERGES the supplied flags onto
+        the stored set: a flag that is not named in ``capabilities`` keeps its
+        stored value. Replacing the whole set would silently revoke capabilities
+        a caller never mentioned (the F-10 hazard), and a caller cannot revoke a
+        capability by simply omitting it.
+
+        Only an explicit allowlist of capability columns can be written, so the
+        caller can never address a non-capability column (``role``,
+        ``client_access``, ``is_active`` …) through this path.
+
+        Returns the updated member, or ``None`` when no such member exists in the
+        given firm (the caller maps that to 404). Callers MUST have enforced
+        firm-scoped authority (owner/admin + CAP-MANAGE-TEAM) before invoking it.
+        """
+        _CAPABILITY_COLUMNS = (
+            "can_view_client",
+            "can_approve",
+            "can_manage_clients",
+            "can_upload_documents",
+            "can_generate_reports",
+            "can_manage_team",
+            "can_extract",
+            "can_map",
+            "can_validate",
+            "can_calculate",
+            "can_confirm_automation",
+            "can_submit",
+        )
+        unknown = sorted(set(capabilities) - set(_CAPABILITY_COLUMNS))
+        if unknown:
+            raise ValueError(
+                f"unknown consultant capability column(s): {', '.join(unknown)}"
+            )
+
+        # Deterministic column order keeps the statement (and its evidence)
+        # stable regardless of the caller's key order.
+        assignments = ["updated_at = NOW()"]
+        params: list[Any] = [firm_id, member_id]
+        for column in _CAPABILITY_COLUMNS:
+            if column in capabilities:
+                params.append(bool(capabilities[column]))
+                assignments.append(f"{column} = ${len(params)}")
+
+        row = await self._fetch_one(
+            f"""
+            UPDATE public.consultant_firm_members
+               SET {', '.join(assignments)}
+             WHERE firm_id = $1 AND id = $2
+             RETURNING {_MEMBER_COLUMNS}
+            """,
+            *params,
+        )
+        return _row_to_member(row) if row is not None else None
+
     # -- clients -----------------------------------------------------------
     async def list_clients(self, consultant_id: str) -> list[ConsultantClient]:
         rows = await self._fetch_all(
@@ -465,6 +548,304 @@ class ConsultantsRepository(AbstractRepository[dict]):
             list(statuses),
         )
         return [_row_to_client(r) for r in rows]
+
+    # -- CT03: client access profile + Plane C relationship resolution ---------
+    async def get_relationship_for_org(
+        self, organization_id: str
+    ) -> Optional[ConsultantClient]:
+        """The single client-plane relationship for an organisation (Plane C).
+
+        Prefers an ACTIVE relationship; otherwise the most recent ENDED row that
+        carries PO-10 retained-read-only access. Returns ``None`` when the org
+        has no consultant relationship (a direct customer / unlinked org) — the
+        caller must treat that as "no client plane", never as an error that
+        discloses existence.
+        """
+        rows = await self._fetch_all(
+            f"SELECT {_CLIENT_COLUMNS} FROM public.consultant_clients "
+            "WHERE organization_id = $1 AND (status = 'active' "
+            "OR (status IN ('ended', 'terminated') AND retained_read_only)) "
+            "ORDER BY (status = 'active') DESC, created_at",
+            organization_id,
+        )
+        return _row_to_client(rows[0]) if rows else None
+
+    async def set_relationship_access(
+        self,
+        client_id: str,
+        *,
+        profile: Optional[str] = None,
+        retained_read_only: Optional[bool] = None,
+    ) -> Optional[ConsultantClient]:
+        """Set the client access profile and/or PO-10 retained flag.
+
+        Only the two supplied fields are written, so setting the profile can
+        never silently clear retention and vice-versa (mirrors the F-10 merge
+        rule for capability writes).
+        """
+        pairs: list[str] = []
+        values: list[Any] = [client_id]
+        if profile is not None:
+            pairs.append(f"client_access_profile = ${len(values) + 1}::text")
+            values.append(profile)
+        if retained_read_only is not None:
+            pairs.append(f"retained_read_only = ${len(values) + 1}")
+            values.append(bool(retained_read_only))
+        if not pairs:
+            return await self.get_client(client_id)
+        pairs.append("lifecycle_updated_at = NOW()")
+        pairs.append("updated_at = NOW()")
+        row = await self._fetch_one(
+            f"UPDATE public.consultant_clients SET {', '.join(pairs)} "
+            f"WHERE id = $1 RETURNING {_CLIENT_COLUMNS}",
+            *values,
+        )
+        return _row_to_client(row) if row is not None else None
+
+    async def create_relationship_request(
+        self,
+        *,
+        organization_id: str,
+        consultant_id: Optional[str],
+        request_type: str,
+        initiated_by: Optional[str],
+        initiated_capacity: str,
+        reason: Optional[str] = None,
+        contact_email: Optional[str] = None,
+    ) -> dict:
+        """Persist an OQ-1 / OQ-3 relationship change/end REQUEST (non-destructive)."""
+        row = await self._fetch_one(
+            """
+            INSERT INTO public.consultant_relationship_requests (
+                organization_id, consultant_id, request_type, initiated_by,
+                initiated_capacity, reason, contact_email, status,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'requested', NOW(), NOW())
+            RETURNING id, organization_id, consultant_id, request_type,
+                      initiated_by, initiated_capacity, reason, contact_email,
+                      status, created_at
+            """,
+            organization_id,
+            consultant_id,
+            request_type,
+            initiated_by,
+            initiated_capacity,
+            reason,
+            contact_email,
+        )
+        return dict(row) if row is not None else {}
+
+    async def create_mode_change_request(
+        self,
+        *,
+        firm_id: str,
+        requested_by: Optional[str],
+        current_mode: str,
+        requested_mode: str,
+        reason: Optional[str] = None,
+    ) -> dict:
+        """Persist a PO-1 mode-change REQUEST (CarbonTally-controlled; never a
+        consultant self-upgrade)."""
+        row = await self._fetch_one(
+            """
+            INSERT INTO public.consultant_mode_change_requests (
+                firm_id, requested_by, current_mode, requested_mode, reason,
+                status, requested_at, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, 'requested', NOW(), NOW(), NOW())
+            RETURNING id, firm_id, requested_by, current_mode, requested_mode,
+                      reason, status, requested_at
+            """,
+            firm_id,
+            requested_by,
+            current_mode,
+            requested_mode,
+            reason,
+        )
+        return dict(row) if row is not None else {}
+
+    async def list_relationship_requests(
+        self, consultant_id: str
+    ) -> list[dict]:
+        """CT-CONSULTANT-PLATFORM-CLOSURE-01 §7 — the firm's inbound relationship
+        change/end requests, scoped to the firm (tenant isolation). Read-only.
+        """
+        rows = await self._fetch_all(
+            """
+            SELECT id, organization_id, consultant_id, request_type, initiated_by,
+                   initiated_capacity, contact_email, reason, status,
+                   confirmed_by, confirmed_at, decided_by, decided_at,
+                   decision_note, created_at, updated_at
+              FROM public.consultant_relationship_requests
+             WHERE consultant_id = $1
+             ORDER BY created_at DESC
+            """,
+            consultant_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def list_mode_change_requests(self, firm_id: str) -> list[dict]:
+        """CT-CONSULTANT-PLATFORM-CLOSURE-01 §7 — the firm's product-mode change
+        requests (PO-1), scoped to the firm. Read-only.
+        """
+        rows = await self._fetch_all(
+            """
+            SELECT id, firm_id, requested_by, current_mode, requested_mode,
+                   reason, status, decided_by, decided_at, decision_note,
+                   effective_at, requested_at, created_at, updated_at
+              FROM public.consultant_mode_change_requests
+             WHERE firm_id = $1
+             ORDER BY requested_at DESC
+            """,
+            firm_id,
+        )
+        return [dict(r) for r in rows]
+
+    # -- CT-CONSULTANT-PLATFORM-FULL-IMPLEMENTATION-03 (PD-5 / PO-1) ----------
+    async def get_relationship_request(self, request_id: str) -> Optional[dict]:
+        """One relationship change/end request (PD-5).
+
+        The firm-side decision route MUST re-check the returned
+        ``consultant_id`` against its own firm before acting (tenant isolation);
+        this method performs no authorization by itself.
+        """
+        row = await self._fetch_one(
+            """
+            SELECT id, organization_id, consultant_id, request_type, initiated_by,
+                   initiated_capacity, contact_email, reason, status,
+                   confirmed_by, confirmed_at, decided_by, decided_at,
+                   decision_note, created_at, updated_at
+              FROM public.consultant_relationship_requests
+             WHERE id = $1
+            """,
+            request_id,
+        )
+        return dict(row) if row is not None else None
+
+    async def decide_relationship_request(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        decided_by: Optional[str],
+        decision_note: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Record the firm-side DECISION on a relationship change/end request.
+
+        PD-5 (party-controlled). ``status`` is ``confirmed`` (approved),
+        ``cancelled`` (rejected) or ``completed`` (approved AND effected). The
+        ``WHERE ... status = 'requested'`` guard makes the decision atomic: a
+        second decision returns ``None`` (the route maps that to 409), so a
+        request can never be decided twice. This method does NOT itself change
+        relationship state — the caller performs the non-destructive termination
+        through :meth:`transition_client_lifecycle`.
+        """
+        if status not in ("confirmed", "cancelled", "completed"):
+            raise ValueError(f"unknown relationship-request decision {status!r}")
+        row = await self._fetch_one(
+            """
+            UPDATE public.consultant_relationship_requests
+               SET status = $2::text,
+                   decided_by = $3,
+                   decided_at = NOW(),
+                   confirmed_by = CASE WHEN $2 IN ('confirmed', 'completed')
+                                       THEN $3 ELSE confirmed_by END,
+                   confirmed_at = CASE WHEN $2 IN ('confirmed', 'completed')
+                                       THEN NOW() ELSE confirmed_at END,
+                   decision_note = $4,
+                   updated_at = NOW()
+             WHERE id = $1 AND status = 'requested'
+            RETURNING id, organization_id, consultant_id, request_type,
+                      initiated_by, initiated_capacity, contact_email, reason,
+                      status, confirmed_by, confirmed_at, decided_by, decided_at,
+                      decision_note, created_at, updated_at
+            """,
+            request_id,
+            status,
+            decided_by,
+            decision_note,
+        )
+        return dict(row) if row is not None else None
+
+    async def get_mode_change_request(self, request_id: str) -> Optional[dict]:
+        """One PO-1 mode-change request (CarbonTally Admin decision surface)."""
+        row = await self._fetch_one(
+            """
+            SELECT id, firm_id, requested_by, current_mode, requested_mode,
+                   reason, status, decided_by, decided_at, decision_note,
+                   effective_at, requested_at, created_at, updated_at
+              FROM public.consultant_mode_change_requests
+             WHERE id = $1
+            """,
+            request_id,
+        )
+        return dict(row) if row is not None else None
+
+    async def list_pending_mode_change_requests(self) -> list[dict]:
+        """CarbonTally Admin queue — every firm's UNDECIDED mode-change request."""
+        rows = await self._fetch_all(
+            """
+            SELECT id, firm_id, requested_by, current_mode, requested_mode,
+                   reason, status, requested_at, created_at
+              FROM public.consultant_mode_change_requests
+             WHERE status = 'requested'
+             ORDER BY requested_at
+            """
+        )
+        return [dict(r) for r in rows]
+
+    async def decide_mode_change_request(
+        self,
+        request_id: str,
+        *,
+        status: str,
+        decided_by: Optional[str],
+        decision_note: Optional[str] = None,
+        effective_at: Optional[datetime] = None,
+    ) -> Optional[dict]:
+        """Record the CarbonTally Admin DECISION on a PO-1 mode-change request.
+
+        ``status`` is ``approved`` / ``rejected`` / ``cancelled``. The guard
+        ``WHERE ... status = 'requested'`` makes it atomic (a second decision
+        returns ``None`` -> 409). Applying the mode is a separate, admin-only
+        write (:meth:`set_commercial_mode`).
+        """
+        if status not in ("approved", "rejected", "cancelled"):
+            raise ValueError(f"unknown mode-change decision {status!r}")
+        row = await self._fetch_one(
+            """
+            UPDATE public.consultant_mode_change_requests
+               SET status = $2::text,
+                   decided_by = $3,
+                   decided_at = NOW(),
+                   decision_note = $4,
+                   effective_at = $5,
+                   updated_at = NOW()
+             WHERE id = $1 AND status = 'requested'
+            RETURNING id, firm_id, requested_by, current_mode, requested_mode,
+                      reason, status, decided_by, decided_at, decision_note,
+                      effective_at, requested_at, created_at, updated_at
+            """,
+            request_id,
+            status,
+            decided_by,
+            decision_note,
+            effective_at,
+        )
+        return dict(row) if row is not None else None
+
+    async def set_commercial_mode(self, firm_id: str, mode: str) -> Optional[str]:
+        """Apply an approved product mode (PO-1) to a firm's profile.
+
+        The ONLY writer of ``consultant_profiles.commercial_mode`` is the
+        CarbonTally Admin decision route; there is no consultant write path.
+        """
+        row = await self._fetch_one(
+            "UPDATE public.consultant_profiles SET commercial_mode = $2::text "
+            "WHERE id = $1 RETURNING commercial_mode",
+            firm_id,
+            mode,
+        )
+        return row["commercial_mode"] if row is not None else None
 
     async def add_client(
         self,

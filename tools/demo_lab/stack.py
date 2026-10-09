@@ -155,6 +155,13 @@ def _cors_headers() -> str:
     always does); the lab storage API behaves the same way. Serving preflight and the
     response headers here keeps the allowed origin explicit and deterministic without
     touching the shared auth/storage containers (DR-003).
+
+    CT-PO-UPLOAD-BATCH-REMEDIATION-001 — the list MUST also allow `x-upsert`: the
+    release's signed-direct document upload (``api/v3_document_uploads._start_upload``)
+    hands the browser ``headers: {x-upsert: "false", content-type: …}`` and the
+    browser PUT cannot be sent unless the preflight permits it.  (The upstream
+    storage API does permit it, but this gateway hides the upstream CORS and answers
+    the preflight itself, so the omission here silently blocked every direct upload.)
     """
     return ("    proxy_hide_header Access-Control-Allow-Origin;\n"
             "    proxy_hide_header Vary;\n"
@@ -167,7 +174,8 @@ def _cors_headers() -> str:
             "      add_header Access-Control-Allow-Methods"
             " \"GET, POST, PUT, PATCH, DELETE, OPTIONS\" always;\n"
             "      add_header Access-Control-Allow-Headers \"authorization, apikey,"
-            " content-type, accept, x-client-info, x-supabase-api-version\" always;\n"
+            " content-type, accept, x-client-info, x-supabase-api-version,"
+            " x-upsert\" always;\n"
             "      add_header Access-Control-Max-Age 86400 always;\n"
             "      add_header Vary \"Origin, Access-Control-Request-Method,"
             " Access-Control-Request-Headers\" always;\n"

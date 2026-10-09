@@ -29,6 +29,19 @@ from fastapi import Depends, HTTPException
 
 from api.dependencies import RepositoryBundle, get_repositories
 from auth import AuthUser, get_current_user
+
+# CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-2) — the FINAL-approval authority
+# question is "organisation RBAC OR consultant CAP-APPROVE". These four names are
+# the platform's existing organisation-administration decision plus the D-7
+# suspended-organisation rule; they are imported rather than re-implemented so
+# approval keeps exactly the behaviour the ``require_org_admin`` dependency had
+# (no second, drifting definition of "may administer this organisation").
+from auth import (  # noqa: F401  (documented re-use of the shared decision)
+    ADMIN_ROLE_NAMES,
+    ORGANIZATION_SUSPENDED_DETAIL,
+    _caller_organization_inactive,
+    _org_admin_authority,
+)
 from domain.partners import ConsultantFirmMember, ConsultantProfile
 
 #: The consultant role names the schema/seed uses (informational only — the
@@ -54,6 +67,12 @@ CONSULTANT_PERMISSIONS: dict[str, str] = {
     "calculate": "can_calculate",
     "confirm_automation": "can_confirm_automation",
     "submit": "can_submit",
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2, §7.3) — the two capabilities
+    # the binding PO consultant model adds. Neither is inferred from having the
+    # relationship (§7.4), from the client access profile (that is the CEILING,
+    # §6.1) or from the processing flags above.
+    "view_client": "can_view_client",
+    "approve": "can_approve",
 }
 
 #: ``consultant_clients.status`` values used by the existing repository surface.
@@ -131,6 +150,44 @@ async def resolve_consultant_context(
     if current_user is None:
         return None
     return await _resolve_context(current_user, repos)
+
+
+async def resolve_managed_org_ids(
+    current_user: AuthUser, repos: RepositoryBundle
+) -> tuple[str, ...]:
+    """The organisation ids this CONSULTANT principal may act on (PD-3/PD-7).
+
+    Returns the organisation ids the caller reaches through ACTIVE
+    ``consultant_clients`` grants for the caller's own firm. Only
+    ``status='active'`` grants are included (D15): a pending, suspended, ended
+    or deactivated relationship grants nothing. Returns ``()`` for every
+    non-consultant caller (customer, internal staff, Processing Entity staff,
+    brand-new user) and for a consultant with no active engagement.
+
+    This is the single server-side source of a consultant's organisation scope;
+    it is resolved from authoritative membership rows and never from
+    client-supplied input. It is consumed by the organisation guard family
+    (``backend/auth.py`` / ``backend/api/dependencies.py``) so a consultant can
+    be admitted into the SAME organisation surfaces a customer uses, with main
+    isolation rather than a parallel consultant product surface
+    (CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01, PD-1/PD-3).
+    """
+    if current_user is None:
+        return ()
+    context = await _resolve_context(current_user, repos)
+    if context is None:
+        return ()
+    # F-1 (§7.2/§7.4) — ADMISSION is capability-gated, not relationship-gated.
+    # CAP-VIEW-CLIENT is the capability that admits a member to a client's
+    # workspace; without it the member's reachable organisation scope is EMPTY,
+    # so every route of the organisation-guard family (``ensure_org_access``)
+    # denies. The relationship row alone never admits.
+    if not context.firm_member.can_view_client:
+        return ()
+    clients = await repos.consultants.list_clients(context.profile.id)
+    return tuple(
+        sorted({c.organization_id for c in clients if c.status == "active"})
+    )
 
 
 async def require_consultant(
@@ -240,6 +297,131 @@ async def ensure_consultant_org_access(
             ),
         )
     return context
+
+
+async def ensure_consultant_approval_authorized(
+    current_user: AuthUser,
+    repos: "RepositoryBundle",
+    *,
+    organization_id: str,
+) -> None:
+    """F-2 / §13.1 — the CONSULTANT-capacity half of the approval contract.
+
+    Admissible ONLY when the acting firm member holds BOTH:
+
+      * an ACTIVE ``consultant_clients`` relationship for ``organization_id``
+        (the firm link must be live — ``pending``/``ended``/``suspended`` grants
+        nothing, D15); and
+      * the CAP-APPROVE capability (``can_approve``) on their own firm-membership
+        row.
+
+    PO-6 (B+C) makes a consultant approval *admissible* for a managed
+    organisation, and §7.4/A-2 require that admissibility to come from a real
+    capability — so an engagement WITHOUT ``can_approve`` is denied here just as
+    firmly as a capability without an engagement (NT-10/NT-11/NT-12).
+
+    The organisation id is always the SERVER-DERIVED organisation of the loaded
+    resource; it is never taken from the request body. Callers that must also
+    admit the organisation's own role or internal staff use
+    :func:`ensure_customer_approval_authority`, which composes this contract.
+    """
+    context = await _resolve_context(current_user, repos)
+    if context is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Consultant approval requires an active consultant membership",
+        )
+    client = await repos.consultants.get_client_by_org(
+        context.profile.id, organization_id
+    )
+    if client is None or client.status != "active":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Consultant is not authorized for this client organization "
+                "(active consultant-client grant required)"
+            ),
+        )
+    ensure_consultant_permission(context, "approve")
+
+
+async def ensure_customer_approval_authority(
+    current_user: AuthUser,
+    repos: "RepositoryBundle",
+    *,
+    organization_id: str,
+) -> str:
+    """F-2 / §13.1 — who may give FINAL approval for ``organization_id``.
+
+    Returns the CAPACITY the decision is taken in — ``"internal_staff"``,
+    ``"organisation"`` or ``"consultant"`` — so the caller can record and display
+    which capacity approved (§13.2 A-1, DELTA-16: "Approved by <actor>
+    (Consultant — Firm Name)" vs "(Client Owner — Client Ltd)").
+
+    Three admissible capacities, evaluated independently and failing CLOSED:
+
+      1. CarbonTally INTERNAL staff holding an administrative role — the platform's
+         existing operational authority, preserved exactly (AGENTS.md §13/§14:
+         the distinction between administrative and operational staff roles is
+         not widened here).
+      2. The organisation's OWN authorised role (D5: owner/admin) via the shared
+         ``_org_admin_authority`` decision, including D-7 Decision B (an INACTIVE
+         organisation strips administrative authority, reported with the
+         platform's standard suspended-organisation detail).
+      3. The CONSULTANT capacity (PO-6 B+C) — but only through
+         :func:`ensure_consultant_approval_authorized`, i.e. an ACTIVE engagement
+         AND CAP-APPROVE. The blanket "customer-owner-only" rule does NOT apply to
+         a consultant-managed organisation, and equally a relationship alone does
+         NOT confer the right to approve.
+
+    Anything else → 403 (the same detail the previous ``require_org_admin``
+    dependency produced, so no new information is disclosed).
+    """
+    # 1. Internal CarbonTally staff (operational bypass — unchanged).
+    permissions = getattr(current_user, "permissions", None) or {}
+    if getattr(current_user, "is_internal_staff", False) and (
+        current_user.role in ADMIN_ROLE_NAMES
+        or (current_user.role_name or "") in ADMIN_ROLE_NAMES
+        or bool(permissions.get("is_superuser", False))
+    ):
+        return "internal_staff"
+
+    # 2. The organisation's own authorised role (D5) — unchanged behaviour.
+    if _org_admin_authority(current_user, organization_id):
+        return "organisation"
+
+    # 2b. Preserve the suspended-organisation denial for a caller whose OWN
+    # organisation is inactive: the old dependency answered this from the token
+    # state, before any tenant data was read, and returning 403 with the standard
+    # detail keeps that contract (D-7 Decision B).
+    if (
+        getattr(current_user, "is_org_member", False)
+        and current_user.organization_id == organization_id
+        and _caller_organization_inactive(current_user)
+    ):
+        raise HTTPException(
+            status_code=403, detail=ORGANIZATION_SUSPENDED_DETAIL
+        )
+
+    # 3. Consultant capacity — the PO-6 (B+C) path, capability-checked.
+    is_staff = getattr(current_user, "is_internal_staff", False) or getattr(
+        current_user, "is_entity_staff", False
+    )
+    if not is_staff and not getattr(current_user, "is_org_member", False):
+        context = await _resolve_context(current_user, repos)
+        if context is not None:
+            client = await repos.consultants.get_client_by_org(
+                context.profile.id, organization_id
+            )
+            if client is not None and client.status == "active":
+                # Raises 403 (with an explicit capability detail) when the member
+                # holds the engagement but not CAP-APPROVE.
+                ensure_consultant_permission(context, "approve")
+                return "consultant"
+
+    raise HTTPException(
+        status_code=403, detail="Organization admin privileges required"
+    )
 
 
 async def ensure_consultant_processing_authorized(

@@ -126,6 +126,10 @@ class TestGrantLifecycle:
     ) -> None:
         _seed_internal_admin(world)
         user_provider.set_user(staff_user("u-admin", role_name="admin"))
+        # SUBSCRIPTION IS THE FIRST GATE (PO decision): the organisation must be
+        # subscribed to a plan that includes Manual Processing before the Admin
+        # can enable it.
+        world.manual_processing.seed_entitlement("org-a")
 
         grant = client.put(
             f"{ADMIN_BASE}/grants",
@@ -183,6 +187,7 @@ class TestGrantLifecycle:
     ) -> None:
         _seed_internal_admin(world)
         user_provider.set_user(staff_user("u-admin", role_name="admin"))
+        world.manual_processing.seed_entitlement("org-a")
         client.put(
             f"{ADMIN_BASE}/grants",
             json={"scope_type": "organization", "scope_id": "org-a", "enabled": True},
@@ -208,6 +213,11 @@ class TestGrantLifecycle:
     ) -> None:
         _seed_internal_admin(world)
         user_provider.set_user(staff_user("u-admin", role_name="admin"))
+        # A consultant-firm scope covers its ACTIVE client organisations; each
+        # covered organisation must itself be subscription-entitled (no invented
+        # subscription inheritance).
+        world.manual_processing.scope_org_override["firm-1"] = ["org-a"]
+        world.manual_processing.seed_entitlement("org-a")
         client.put(
             f"{ADMIN_BASE}/grants",
             json={"scope_type": "consultant_firm", "scope_id": "firm-1", "enabled": True},

@@ -173,6 +173,18 @@ class ConsultantFirmMember:
     can_calculate: bool = False
     can_confirm_automation: bool = False
     can_submit: bool = False
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2, §7.3) — the two capabilities
+    # the binding PO consultant model requires beyond the P6-2A processing set.
+    # Both are deny-by-default and grantable/revocable per member:
+    #   can_view_client (CAP-VIEW-CLIENT) — firm-roster / client-workspace
+    #     ADMISSION. Consultant admission must be capability ∩ profile ∩
+    #     entitlement; relationship existence alone never admits (§7.4, F-1).
+    #   can_approve (CAP-APPROVE) — FINAL approval on behalf of a
+    #     consultant-managed organisation (PO-6 B+C, §13.1). Deliberately
+    #     SEPARATE from extract/map/validate/calculate/submit so one person need
+    #     not both produce and approve.
+    can_view_client: bool = False
+    can_approve: bool = False
     client_access: list = field(default_factory=list)
     invited_at: Optional[datetime] = None
     joined_at: Optional[datetime] = None
@@ -300,6 +312,14 @@ class ConsultantClient:
     engagement_requested_at: Optional[datetime] = None
     engagement_decided_by: Optional[str] = None
     engagement_decided_at: Optional[datetime] = None
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-3/F-4, §8.1/§15) — the CLIENT
+    # ACCESS PROFILE (the Plane C CEILING: off|read_only|collaborative|managed)
+    # and the PO-10 retained-read-only flag that turns an ENDED relationship into
+    # a read-only history state. Both default to the deny-by-default value so a
+    # row read through an older projection can never be interpreted as granting
+    # more than OFF / no retention.
+    client_access_profile: str = "off"
+    retained_read_only: bool = False
 
 
 

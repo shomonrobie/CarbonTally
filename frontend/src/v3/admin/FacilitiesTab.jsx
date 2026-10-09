@@ -12,8 +12,16 @@ import {
   updateAsset,
   updateFacility,
 } from '../api';
+import { useClientAccess } from '../clientAccess';
 
 export default function FacilitiesTab({ organization }) {
+  // CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05 — a consultant-managed
+  // client's own user reaches the SAME Organisation surface but its master-data
+  // WRITE affordances are bounded by the client access profile. This hides the
+  // controls; the backend enforces the identical ceiling (upload_gate +
+  // client_access_guard) regardless of what the UI shows. Unrestricted for a
+  // direct customer, a consultant and staff.
+  const canEditMasterData = useClientAccess().can('edit_master_data');
   const [facilities, setFacilities] = useState([]);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,11 +129,19 @@ export default function FacilitiesTab({ organization }) {
     <div>
       {error && <div className="v3-error" style={{ marginBottom: 14 }}>{error}</div>}
       {notice && <div className="v3-note">{notice}</div>}
+      {!canEditMasterData && (
+        <div className="v3-note" style={{ marginBottom: 14 }}>
+          Your client access level is read-only for organisation master data. Your
+          consultant manages facilities and assets on your behalf.
+        </div>
+      )}
 
       <div className="v3-admin-card">
         <div className="v3-admin-actions" style={{ marginTop: 0 }}>
           <h2 style={{ margin: 0, flex: 1 }}>Facilities</h2>
-          <button className="v3-btn v3-btn-primary" onClick={() => setShowFacility(true)}>+ New facility</button>
+          {canEditMasterData && (
+            <button className="v3-btn v3-btn-primary" onClick={() => setShowFacility(true)}>+ New facility</button>
+          )}
         </div>
         {loading ? (
           <div className="v3-loading"><div className="spinner" />Loading facilities…</div>
@@ -139,6 +155,7 @@ export default function FacilitiesTab({ organization }) {
               { key: 'type', header: 'Type', accessor: 'type', render: (r) => <span className="v3-muted">{r.type || '—'}</span> },
               { key: 'assets', header: 'Assets', accessor: 'id', render: (r) => assetCount(r.id) },
               { key: 'actions', header: 'Actions', accessor: 'id', render: (r) => (
+                  canEditMasterData ? (
                   <>
                     <button
                       className="v3-btn v3-btn-sm"
@@ -159,6 +176,7 @@ export default function FacilitiesTab({ organization }) {
                       Remove
                     </button>
                   </>
+                  ) : (<span className="v3-muted">—</span>)
                 ) },
             ]}
             rows={facilities}
@@ -171,7 +189,9 @@ export default function FacilitiesTab({ organization }) {
       <div className="v3-admin-card">
         <div className="v3-admin-actions" style={{ marginTop: 0 }}>
           <h2 style={{ margin: 0, flex: 1 }}>Assets</h2>
-          <button className="v3-btn v3-btn-primary" onClick={() => setShowAsset(true)}>+ New asset</button>
+          {canEditMasterData && (
+            <button className="v3-btn v3-btn-primary" onClick={() => setShowAsset(true)}>+ New asset</button>
+          )}
         </div>
         {loading ? (
           <div className="v3-loading"><div className="spinner" />Loading assets…</div>
@@ -183,6 +203,7 @@ export default function FacilitiesTab({ organization }) {
               { key: 'facility', header: 'Facility', accessor: 'facility_name', render: (r) => <span className="v3-muted">{r.facility_name || '—'}</span> },
               { key: 'type', header: 'Type', accessor: 'type', render: (r) => <span className="v3-muted">{r.type || r.asset_type || '—'}</span> },
               { key: 'actions', header: 'Actions', accessor: 'id', render: (r) => (
+                  canEditMasterData ? (
                   <>
                     <button
                       className="v3-btn v3-btn-sm"
@@ -202,6 +223,7 @@ export default function FacilitiesTab({ organization }) {
                       Remove
                     </button>
                   </>
+                  ) : (<span className="v3-muted">—</span>)
                 ) },
             ]}
             rows={assets}

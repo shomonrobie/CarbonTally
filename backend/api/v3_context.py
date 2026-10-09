@@ -29,6 +29,50 @@ from auth import AuthUser, get_current_user
 
 router = APIRouter(prefix="/api/v3", tags=["Context"])
 
+#: CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05 — the operations reported to
+#: the UI for a consultant-managed client user. PRESENTATION ONLY: enforcement
+#: is server-side (``api.client_access_guard`` / ``domain.relationship_access``).
+_CLIENT_UI_OPERATIONS: tuple[str, ...] = (
+    "read_data",
+    "read_reports",
+    "read_evidence",
+    "comment",
+    "upload_document",
+    "edit_master_data",
+    "correct_submitted_data",
+    "approve_final",
+    "map_factors",
+    "recalculate",
+)
+
+
+async def _client_access_view(
+    current_user: AuthUser, repos: RepositoryBundle
+) -> dict | None:
+    """The client-access ceiling view for the authenticated customer, or ``None``.
+
+    Returns ``None`` for a direct customer, a consultant and staff — i.e.
+    whenever the client-access ceiling does not apply — so the frontend treats
+    an absent view as "no client restriction" (the historical behaviour).
+    """
+    from api.client_access_guard import resolve_client_ceiling
+    from domain.relationship_access import profile_allows
+
+    ceiling = await resolve_client_ceiling(
+        current_user, repos, getattr(current_user, "organization_id", None)
+    )
+    if ceiling is None:
+        return None
+    return {
+        "profile": ceiling.profile,
+        "state": ceiling.state,
+        "capabilities": {
+            op: profile_allows(op, ceiling.profile, ceiling.state)
+            for op in _CLIENT_UI_OPERATIONS
+        },
+    }
+
+
 
 @router.get("/me/context")
 async def me_context(
@@ -114,6 +158,11 @@ async def me_context(
             },
             "staff": None,
             "consultant": None,
+            # CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05 — a presentation-only
+            # client-access view (profile/state/capabilities) for a
+            # consultant-managed client's own user; ``None`` for a direct
+            # customer. Never a security boundary.
+            "client_access": await _client_access_view(current_user, repos),
         }
 
     # 4. Authenticated but no org/staff/consultant relationship → brand-new

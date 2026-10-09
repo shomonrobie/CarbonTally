@@ -9,7 +9,7 @@ import {
 } from '../api';
 import { useConversationRealtime } from '../messaging/useConversationRealtime';
 
-export default function ClientMessagingTab({ client }) {
+export default function ClientMessagingTab({ client, firmName = null }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -109,10 +109,15 @@ export default function ClientMessagingTab({ client }) {
 
   return (
     <div className="v3-admin-card">
-      <h2>Client messaging — {client?.client_name}</h2>
+      {/* CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-11/UX-02, AC-04) — the
+          actor (consultant firm) and the subject (client organisation) are named
+          explicitly; never present the client as if the consultant has become it. */}
+      <h2>Client messages</h2>
       <p className="v3-muted">
-        Messages with this client are exchanged through CarbonTally (Supabase
-        Realtime). Processing entities never participate in these conversations.
+        Conversation between <strong>{firmName || 'your firm'}</strong>
+        {' '}and <strong>{client?.client_name || 'the selected client'}</strong>.
+        Messages are exchanged through CarbonTally (Supabase Realtime). Processing
+        entities never participate in these conversations.
       </p>
       {error && <div className="v3-error" style={{ marginBottom: 12 }}>{error}</div>}
 

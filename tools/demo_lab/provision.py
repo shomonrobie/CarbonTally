@@ -104,6 +104,20 @@ def ensure_staff_roles(manifest: dict, failures: list) -> dict[str, str]:
     ``operator`` and ``pe_manager`` are produced by the release migrations; the
     internal ``admin`` role is **demo-lab data** (created here, never in a
     migration) because the release's seeded vocabulary does not include it.
+
+    CAPABILITY OWNERSHIP (G1 — CT-PO-PRODUCT-MODEL-IMPLEMENTATION-01):
+    ``staff_roles.permissions`` is the release's **authoritative** permission
+    catalogue (see migrations/20260828010000_v3m8_system_admin_role_model.sql
+    and 20261026000000_ct_backup_01_backup_jobs.sql:173-177), so this function
+    **merges** its own flags into an existing row and never replaces the column
+    wholesale. A wholesale ``SET permissions = <map>`` erased migration-granted
+    capabilities on every provisioning run — ``can_qc``
+    (20260902020000_v1_2_dual_origin_workflow.sql:102-105),
+    ``can_manage_billing`` (20260824020000_d37_0…:300-304) and
+    ``can_manage_backups`` (20261026000000…:181-185) on ``admin``, and
+    ``can_review``/``can_view_all`` on the migration-seeded ``pe_manager`` row
+    (20260828020000_v3m8_pe_manager_role.sql:22-33). The DEMO LAB is not a
+    source of product permissions; it only adds its own ``demo_lab`` marker.
     """
     defaults = {
         # `can_manage_organizations` is the release's own admin permission key
@@ -127,9 +141,18 @@ def ensure_staff_roles(manifest: dict, failures: list) -> dict[str, str]:
         #     admin    -> validate   (can_review)   <-- this grant
         #     operator -> calculate  (can_process)
         # No new permission name is invented and no other role is broadened.
+        # G1 (CT-PO-PRODUCT-MODEL-IMPLEMENTATION-01): `can_qc` is the release's
+        # CarbonTally-QC capability and the migration that introduces it grants it
+        # BY NAME to `staff_roles.name IN ('qc_specialist', 'admin')`
+        # (migrations/20260902020000_v1_2_dual_origin_workflow.sql:102-105). It is
+        # named here for migration parity only — the manifest has no
+        # `qc_specialist` actor, so without this line no identity in the lab holds
+        # `can_qc` and the CT-QC queue and decision surface (/api/v3/ops/qc/*,
+        # guarded by `ensure_staff_permission(context, "can_qc")`, internal-only)
+        # is unreachable. No new permission name and no new role are introduced.
         "admin": {"is_superuser": True, "is_staff_admin": True,
                   "can_manage_organizations": True, "can_manage_staff": True,
-                  "can_review": True,
+                  "can_review": True, "can_qc": True,
                   "demo_lab": True},
         "operator": {"can_process": True, "demo_lab": True},
         "pe_manager": {"can_process": True, "can_manage_team": True, "demo_lab": True},
@@ -147,7 +170,12 @@ def ensure_staff_roles(manifest: dict, failures: list) -> dict[str, str]:
         permissions = defaults.get(name, {"demo_lab": True})
         if existing:
             role_ids[name] = existing
-            sql(f"UPDATE staff_roles SET permissions = {go(permissions)}::jsonb "
+            # MERGE, never replace (G1): the release migrations own a staff
+            # role's capability catalogue, so the lab's flags are unioned into
+            # whatever the migrations granted (`coalesce` guards a NULL column).
+            # This is idempotent: re-applying the same map is a no-op.
+            sql("UPDATE staff_roles SET permissions = "
+                f"COALESCE(permissions, '{{}}'::jsonb) || {go(permissions)} "
                 f"WHERE id = {go(existing)}", label=f"staff_role:{name}:update",
                 failures=failures)
         else:
@@ -273,6 +301,20 @@ def ensure_actor_relationships(manifest: dict, entities: dict, role_ids: dict,
                 "can_calculate": capabilities.get("can_calculate", True),
                 "can_confirm_automation": capabilities.get("can_confirm_automation", True),
                 "can_submit": capabilities.get("can_submit", True),
+                # F-1 / F-2 (CT-CONSULTANT-MODEL-IMPLEMENTATION-02). ADMISSION
+                # (``can_view_client``) defaults TRUE so a freshly provisioned lab
+                # keeps the consultant operating flow that already existed — the
+                # roster and the client workspace (``verify.py``: "consultant owner
+                # enters Client A/B"). That mirrors the migration's IMPL-1 backfill,
+                # which preserves the de-facto scope of already-provisioned members
+                # rather than silently revoking it. APPROVAL (``can_approve``)
+                # defaults FALSE and is granted ONLY where the manifest declares
+                # it: the migration deliberately does not backfill it (no consultant
+                # path could previously give final approval), so the lab must not
+                # invent that authority by omission either — the negative control
+                # ("a firm member without CAP-APPROVE cannot approve") stays real.
+                "can_view_client": capabilities.get("can_view_client", True),
+                "can_approve": capabilities.get("can_approve", False),
             }
             column_names = ["id", "firm_id", "user_id", "role", "client_access", "is_active",
                             "joined_at", *flags]

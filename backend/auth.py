@@ -86,6 +86,17 @@ class AuthUser(BaseModel):
     # ``True`` also covers principals with no organisation at all.
     organization_is_active: bool = True
 
+    # CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-3/PD-7) — the
+    # organisation ids this CONSULTANT principal may act on through ACTIVE
+    # consultant-client grants. ``None`` = not a consultant context (customer,
+    # internal staff, Processing Entity staff, brand-new user), so every
+    # historical membership rule applies unchanged. Populated ONLY by
+    # ``require_org_member()`` from authoritative server-side grant rows — never
+    # from client-supplied input — and consumed by ``ensure_org_access`` and
+    # ``enforce_org_path_scope`` so a consultant reaches the SAME organisation
+    # surfaces a customer uses (PD-1/PD-3) with exact-tenant isolation.
+    managed_org_ids: Optional[List[str]] = None
+
     # D20 (APPROVED 2026-08-20) — scope-aware authorization dimension:
     # ``staff_profiles.entity_id IS NULL`` = CarbonTally internal staff;
     # ``entity_id IS NOT NULL`` = Processing Entity staff. Role names are NOT
@@ -615,6 +626,24 @@ async def enforce_org_path_scope(
                     detail=ORGANIZATION_SUSPENDED_DETAIL,
                 )
             continue
+        if getattr(current_user, "managed_org_ids", None) is not None:
+            # PD-3/PD-7 — consultant principal admitted by require_org_member():
+            # every organisation named by the path must be one of the caller's
+            # ACTIVE consultant-client grants. The grant set is resolved
+            # server-side (never from client input), so knowing an organisation
+            # id grants nothing. An INACTIVE client tenant grants its consultant
+            # nothing either (D-7 Decision B).
+            if org_id not in current_user.managed_org_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have access to this organization",
+                )
+            if is_organization_active(org_id) is False:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=ORGANIZATION_SUSPENDED_DETAIL,
+                )
+            continue
         if get_active_org_role(current_user.user_id, org_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -903,6 +932,54 @@ def require_staff():
     
     return staff_checker
 
+async def _admit_consultant_principal(
+    current_user: AuthUser, repos: Any, request: Optional[Request]
+) -> None:
+    """PD-3/PD-7 — admit an authorised consultant into the organisation guard family.
+
+    A consultant-managed client is a NORMAL CarbonTally Organisation
+    (CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01): the consultant is a
+    different ACTOR with a different AUTHORIZATION CONTEXT, not a different
+    product surface. This helper is the single circulation point that admits
+    such an actor into the existing organisation guard family.
+
+    The consultant's organisation scope is resolved server-side
+    (``resolve_managed_org_ids`` → ACTIVE ``consultant_clients`` grants only) and
+    carried on the principal, so the existing organisation checks
+    (``ensure_org_access``, ``enforce_org_path_scope``) authorise the exact
+    tenant. A caller who is NOT an active consultant principal — and a
+    consultant with no active engagement — is denied exactly as before.
+
+    Note: broad organisation service access is NOT organisation OWNERSHIP or
+    approval authority. The role-based authorizers (report lifecycle approval,
+    disclosure write, schedule authority) still see no organisation role for a
+    consultant and therefore continue to deny owner/admin-only actions
+    (PD-4 customer final approval, PD-5 ownership/security actions).
+    """
+    from api.consultant_auth import resolve_managed_org_ids  # cycle-safe
+
+    # A direct (unit-test) invocation of the checker without the injected
+    # repository bundle must fail closed with the historical denial rather than
+    # raising AttributeError — the guard is never allowed to become an implicit
+    # allow, and it must never surface an internal error.
+    if getattr(repos, "consultants", None) is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization member access required",
+        )
+
+    managed = await resolve_managed_org_ids(current_user, repos)
+    if not managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization member access required",
+        )
+    current_user.managed_org_ids = list(managed)
+    # Exact-tenant enforcement for every organisation named by the path, using
+    # the consultant-aware branch of enforce_org_path_scope.
+    await enforce_org_path_scope(request, current_user)
+
+
 def require_org_member():
     """
     Dependency factory for organization membership.
@@ -920,9 +997,14 @@ def require_org_member():
     itself as the dependency, never run the check, and inject the checker
     function into the handler (verified against FastAPI 0.141.1).
     """
+    # CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 — cycle-safe local
+    # import (``api.dependencies`` imports ``auth`` at module scope).
+    from api.dependencies import get_repositories
+
     async def org_member_checker(
         current_user: AuthUser = Depends(get_current_user),
         request: Request = None,  # type: ignore[assignment]
+        repos: Any = Depends(get_repositories),
     ) -> AuthUser:
         if not current_user:
             raise HTTPException(
@@ -930,12 +1012,16 @@ def require_org_member():
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         if not current_user.is_org_member:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Organization member access required"
-            )
+            # PD-3/PD-7 — a consultant managing this client is NOT an
+            # organisation member. Admit the ACTIVE-grant consultant principal
+            # into this SAME guard family (exact-tenant enforced downstream by
+            # ``ensure_org_access`` / ``enforce_org_path_scope``) instead of a
+            # parallel consultant product surface. Every other non-member is
+            # denied with exactly the historical 403.
+            await _admit_consultant_principal(current_user, repos, request)
+            return current_user
 
         # D-7 Decision B — organisation activation is INDEPENDENT of membership
         # activation: an INACTIVE organisation denies every organisation-scoped

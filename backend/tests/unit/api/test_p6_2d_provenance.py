@@ -85,6 +85,7 @@ def _seed_consultant(
     # FIN-06 precondition: the consultant manual work under test requires the
     # organisation to have Manual Processing enabled (OFF by default).
     world.manual_processing.seed_grant("organization", org_id)
+    world.manual_processing.seed_entitlement(org_id)
     world.consultants.seed_profile(firm_id, user_id, "C1 Advisory", is_active=is_active)
     world.consultants.seed_firm_member(
         firm_id,
@@ -119,7 +120,7 @@ def _seed_entitlement(world, org_id="org-a", *, key="sub-p62d-1") -> None:
                 included_credits=500,
                 version=1,
                 is_active=True,
-                features={},
+                features={"manual_processing": {"enabled": True}},
                 effective_from=_dt.datetime.now(_dt.timezone.utc),
             ),
             created_by="admin-1",
@@ -411,6 +412,7 @@ def test_org_member_action_records_no_consultant_firm_provenance(
     # FIN-06 precondition: an organisation member performing manual extraction
     # requires the enable (the assertion under test is about provenance only).
     world.manual_processing.seed_grant("organization", "org-a")
+    world.manual_processing.seed_entitlement("org-a")
     _batch, item = _seed_batch_with_item(world)
     user_provider.set_user(member_user("org-a", "user-a", "a@example.test"))
     response = _extract(client, item)
@@ -426,6 +428,7 @@ def test_internal_staff_action_records_no_consultant_firm_provenance(
     # by the fixture world (no seeded staff profile), so the organisation is
     # explicitly enabled; the assertion under test is about provenance only.
     world.manual_processing.seed_grant("organization", "org-a")
+    world.manual_processing.seed_entitlement("org-a")
     _batch, item = _seed_batch_with_item(world)
     user_provider.set_user(admin_user())
     response = _extract(client, item)

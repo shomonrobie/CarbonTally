@@ -1,0 +1,55 @@
+# CarbonTally — local Demo Lab auto-start (LOCAL DEVELOPMENT ONLY)
+#
+# Installed as a user-level systemd unit so the local Demo Lab comes back by
+# itself after a PC restart/reboot, with no manual terminal commands.
+#
+#   install :  mkdir -p ~/.config/systemd/user
+#              cp tools/demo_lab/systemd/carbontally-demo-lab.service \
+#                 ~/.config/systemd/user/
+#              systemctl --user daemon-reload
+#              systemctl --user enable --now carbontally-demo-lab.service
+#              loginctl enable-linger "$USER"      # start at BOOT (not just login)
+#
+#   status  :  systemctl --user status carbontally-demo-lab.service
+#              python3 tools/demo_lab/supervise_demo_lab.py status
+#   logs    :  journalctl --user -u carbontally-demo-lab.service -f
+#              python3 tools/demo_lab/supervise_demo_lab.py logs
+#   restart :  systemctl --user restart carbontally-demo-lab.service
+#   stop    :  systemctl --user stop carbontally-demo-lab.service
+#   disable :  systemctl --user disable carbontally-demo-lab.service
+#   enable  :  systemctl --user enable --now carbontally-demo-lab.service
+#
+# Boundaries: localhost only (backend 127.0.0.1:8070, frontend
+# http://localhost:3000, gateway 127.0.0.1:54430). No production configuration
+# and no production secrets are referenced: the backend environment is read from
+# ~/ct_local_env/demo_lab/backend.env (generated locally, mode 0600, outside the
+# repository). The local Supabase/PostgreSQL containers return on their own via
+# their Docker restart policy (docker.service is enabled at boot); a stopped
+# disposable lab container is started by `--ensure-containers`.
+#
+# Idempotency / no duplicates: the supervisor's pid file is the single lock —
+# a second supervisor refuses to start, so systemd + a manual `start` cannot
+# produce two backends or two frontends.
+
+[Unit]
+Description=CarbonTally local Demo Lab supervisor (backend :8070 + frontend :3000)
+Documentation=file:%h/ct_93d5cdd/tools/demo_lab/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ct_93d5cdd
+# The supervisor is stdlib-only, so the system interpreter is sufficient and
+# avoids depending on the developer's shell/venv activation.
+ExecStart=/usr/bin/python3 %h/ct_93d5cdd/tools/demo_lab/supervise_demo_lab.py run --ensure-containers
+# Restart after an ordinary crash. At boot this also transparently retries
+# until the Docker daemon and the local Supabase containers are up.
+Restart=always
+RestartSec=10
+# SIGTERM the supervisor first so it can stop its children cleanly.
+KillMode=mixed
+TimeoutStopSec=40
+
+[Install]
+WantedBy=default.target

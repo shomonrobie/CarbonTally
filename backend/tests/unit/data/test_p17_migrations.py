@@ -105,13 +105,35 @@ def test_p17_migration_timestamps_follow_the_p16_baseline_and_increase() -> None
 
 
 def test_p17_does_not_reuse_or_edit_a_historical_timestamp() -> None:
+    """P17 introduces NEW timestamps and never adopts or edits a historical one.
+
+    B-18: the original body asserted that nothing at all may sit after the P16
+    baseline except the P17 series. Later authorised series (CT02 hardening,
+    CT-FINAL-01/03, CT-BACKUP, the consultant series) legitimately do, so that
+    form measured "no migration has been added since P16" rather than the
+    invariant this test names. The invariant itself — timestamp uniqueness
+    across the directory, and no P17 re-use of a pre-existing stamp — is
+    asserted directly here and needs no maintenance as migrations accumulate.
+    """
     p17_names = {p.name for p in P17_MIGRATIONS}
+    p17_stamps = {p.name.split("_")[0] for p in P17_MIGRATIONS}
+
+    # (1) every P17 timestamp sits strictly after the P16 baseline.
+    for stamp in sorted(p17_stamps):
+        assert stamp > _P16_BASELINE, stamp
+
+    by_stamp: dict[str, list[str]] = {}
     for existing in _MIGRATIONS_DIR.glob("*.sql"):
-        stamp = existing.name.split("_")[0]
-        if stamp > _P16_BASELINE:
-            assert existing.name in p17_names, (
-                f"unexpected migration after the P16 baseline: {existing.name}"
-            )
+        by_stamp.setdefault(existing.name.split("_")[0], []).append(existing.name)
+
+    # (2) no version number is shared by two migrations (historical immutability).
+    duplicates = {s: n for s, n in by_stamp.items() if len(n) > 1}
+    assert duplicates == {}, duplicates
+
+    # (3) P17 never took a stamp a pre-existing migration already owned.
+    for stamp in sorted(p17_stamps):
+        foreign = [n for n in by_stamp[stamp] if n not in p17_names]
+        assert foreign == [], f"P17 re-used the historical timestamp {stamp}: {foreign}"
 
 
 # ---------------------------------------------------------------------------

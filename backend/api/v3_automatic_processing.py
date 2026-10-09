@@ -27,6 +27,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from api.client_access_guard import enforce_client_operation
 from api.dependencies import (
     RepositoryBundle,
     ensure_processing_org_access,
@@ -36,6 +37,10 @@ from auth import AuthUser, require_auth, require_org_admin
 from core.logging import get_logger
 from domain.audit import AuditEntry
 from domain.automatic_processing import STAGE_LABELS, AutomaticProcessingJob
+from domain.relationship_access import (
+    OP_APPROVE_FINAL,
+    OP_CORRECT_SUBMITTED_DATA,
+)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v3/processing", tags=["V3 - Automatic Processing"])
@@ -311,6 +316,17 @@ async def confirm_job(
     await _authorize_consultant_job_action(
         current_user, repos, job, permission="confirm_automation"
     )
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the CLIENT-ACCESS CEILING for
+    # correcting the organisation's own submitted data (§8.2
+    # ``correct_submitted_data``). A job confirmation is the human rework gate: it
+    # persists human corrections onto the source item and re-enters the pipeline,
+    # so a consultant-managed client's own user is bounded by the profile here
+    # exactly as on the item workbench. Evaluated AFTER identity/tenant/consultant
+    # authorization and BEFORE the state checks, the correction writes,
+    # `reenqueue` and the audit entry — a denied request mutates nothing.
+    await enforce_client_operation(
+        current_user, repos, job.organization_id, OP_CORRECT_SUBMITTED_DATA
+    )
     if job.stage not in ("blocked", "failed"):
         raise HTTPException(
             status_code=409,
@@ -477,6 +493,16 @@ async def review_job(
     manual-review gate with the customer's reason.
     """
     job = await _checked_job(current_user, repos, job_id)
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the CLIENT-ACCESS PROFILE
+    # ceiling for FINAL approval (§8.2 ``approve_final``). This route is the
+    # automatic-processing mirror of ``/{item_id}/customer-review``: it records the
+    # same customer decision on the durable job AND stamps the underlying item, so
+    # the approved client profiles are identical. Evaluated AFTER the org-scope
+    # load and the ``require_org_admin`` client-role gate, and BEFORE the stage
+    # check, `complete_review`, the item stamp and the audit entry.
+    await enforce_client_operation(
+        current_user, repos, job.organization_id, OP_APPROVE_FINAL
+    )
     if job.stage != "review":
         raise HTTPException(
             status_code=409,

@@ -98,9 +98,22 @@ def _seed_grant(
     firm_id: str = FIRM,
     org_id: str = "org-a",
     status: str = "active",
+    profile: str = "collaborative",
 ):
+    """Seed the consultant↔client relationship.
+
+    CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the client ACCESS PROFILE is
+    now ceiling-bound on the Organisation plane (``approve_final`` on
+    ``/items/{id}/customer-review``), so this fixture states the profile the
+    lifecycle scenarios assume instead of inheriting the deny-by-default seed
+    (``off`` in ``fakes.seed_client``). ``collaborative`` is the only profile the
+    ratified §8.2 matrix admits for ``approve_final``: it models the client org
+    that operates its own approval step, which every customer-decision event test
+    here depends on. Negative/profile-specific cases pass their own value.
+    """
     # FIN-06 precondition: manual processing is enabled for the client org.
     world.manual_processing.seed_grant("organization", org_id)
+    world.manual_processing.seed_entitlement(org_id)
     return world.consultants.seed_client(
         client_id,
         firm_id,
@@ -108,6 +121,7 @@ def _seed_grant(
         "Client Org",
         status=status,
         relationship_origin="consultant_created_customer",
+        client_access_profile=profile,
     )
 
 
@@ -135,7 +149,7 @@ def _seed_commercial(world, org_id: str = "org-a", *, key: str | None = None) ->
                 included_credits=500,
                 version=1,
                 is_active=True,
-                features={},
+                features={"manual_processing": {"enabled": True}},
                 effective_from=datetime.now(timezone.utc),
             ),
             created_by="admin-1",

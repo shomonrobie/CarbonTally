@@ -290,7 +290,6 @@ export default function OnboardingPage() {
       <header className="v3-nav">
         <div className="v3-nav-brand">
           <span className="v3-nav-logo">CarbonTally</span>
-          <span className="v3-nav-tag">V3</span>
         </div>
         <nav className="v3-nav-links" aria-label="Onboarding">
           <span className="v3-nav-link" style={{ cursor: 'default', opacity: 0.7 }}>

@@ -35,6 +35,7 @@ from api.consultant_auth import (
     ensure_consultant_review_authorized,
     ensure_consultant_submission_authorized,
 )
+from api.client_access_guard import enforce_client_operation
 from api.contracts import calculation_out
 from api.dependencies import (
     RepositoryBundle,
@@ -45,12 +46,17 @@ from api.dependencies import (
 )
 from api.manual_processing_auth import ensure_manual_processing_allowed
 from api.v3_operations import _run_line_calculation
-from auth import AuthUser, require_auth, require_org_admin
+from api.consultant_auth import ensure_customer_approval_authority
+from auth import AuthUser, get_current_user, require_auth, require_org_admin
 from core.units import (
     mapping_no_factors_reason,
     relevant_customer_factors,
     resolve_unit_for_factor,
     spend_mapping_suggestion,
+)
+from domain.relationship_access import (
+    OP_APPROVE_FINAL,
+    OP_CORRECT_SUBMITTED_DATA,
 )
 from domain.issue import Issue
 from domain.partners import (
@@ -464,6 +470,19 @@ async def extract_item(
     item, batch = await _get_checked_item(
         current_user, repos, item_id, permission="extract",
         enforce_manual_processing=True,
+    )
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the CLIENT-ACCESS CEILING for
+    # correcting the organisation's own submitted data (§8.2
+    # ``correct_submitted_data``: ✗ OFF / ✗ READ_ONLY / ✓ COLLABORATIVE / ✗ MANAGED
+    # / ✗ RETAINED). A consultant-managed client's own user reaches this
+    # Organisation-plane route exactly like a direct customer (CT-05 §1), so the
+    # ceiling is applied here — evaluated AFTER identity/tenant/consultant/
+    # entitlement authorization and BEFORE the state-machine check and the
+    # `save_extracted_data` mutation, so a denied request has no side effect. It
+    # is a CEILING only: a direct customer, a consultant principal, internal
+    # staff and PE staff are never affected (`api.client_access_guard`).
+    await enforce_client_operation(
+        current_user, repos, batch.organization_id, OP_CORRECT_SUBMITTED_DATA
     )
     _require_transition(item, "extracted")
     await _record_consultant_provenance(repos, item=item, current_user=current_user)
@@ -951,7 +970,7 @@ async def calculate_item(
 async def customer_review_item(
     item_id: str,
     payload: CustomerReviewPayload,
-    current_user: AuthUser = Depends(require_org_admin()),
+    current_user: AuthUser = Depends(get_current_user),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """Customer verification: approve or reject a processed item.
@@ -959,9 +978,20 @@ async def customer_review_item(
     A rejection records the reason and routes the item back to ``mapping``
     (rework loop). The verification decision is stamped with reviewer/time.
 
-    D5 — the approval gate is org OWNER/ADMIN only (``require_org_admin``).
-    Review (read) stays open to all org members; the approval action is the
-    distinct approver responsibility and is never a frontend-only decision.
+    D5 (preserved) — the approval authority is the organisation's OWN
+    authorized role, i.e. OWNER/ADMIN. Review (read) stays open to all org
+    members; the approval action is the distinct approver responsibility and is
+    never a frontend-only decision.
+
+    CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-2, PO-6 B+C, §13.1) — for a
+    CONSULTANT-MANAGED organisation the blanket "customer-owner-only" rule does
+    NOT apply: a consultant firm member holding CAP-APPROVE (``can_approve``)
+    together with an ACTIVE engagement may give FINAL approval, in the
+    CONSULTANT capacity. The authority is resolved by
+    ``ensure_customer_approval_authority`` against the item's SERVER-DERIVED
+    organisation — which is why the gate now runs immediately after the resource
+    is loaded instead of being a route-level dependency that could not see it.
+    The relationship alone never admits (§7.4/A-2).
 
     D37: an APPROVAL of a subscribed organisation's item triggers the
     authoritative credit consumption BEFORE the item is marked approved
@@ -969,6 +999,28 @@ async def customer_review_item(
     charge). Pre-commercial orgs (no active subscription) are not charged.
     """
     item, batch = await _get_checked_item(current_user, repos, item_id)
+    # F-2 / §13.1 — FINAL-approval authority, evaluated against the item's
+    # SERVER-DERIVED organisation: organisation OWNER/ADMIN (D5, unchanged),
+    # internal staff (unchanged), OR a consultant holding CAP-APPROVE on an
+    # ACTIVE engagement (PO-6 B+C). Raised BEFORE any state change, so a denied
+    # request is zero workflow/billing mutation (same ordering property the
+    # previous route-level dependency had).
+    approval_capacity = await ensure_customer_approval_authority(
+        current_user, repos, organization_id=batch.organization_id
+    )
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the CLIENT-ACCESS PROFILE
+    # ceiling for FINAL approval (§8.2 ``approve_final``: ✗ OFF / ✗ READ_ONLY /
+    # ✓ COLLABORATIVE (additionally client-role gated) / ✗ MANAGED / ✗ RETAINED).
+    # This is an ADDITIONAL restriction on top of the authority decided above —
+    # the existing client-role gate is preserved untouched. It runs immediately
+    # after the authority decision (so the existing organisation-role,
+    # suspended-organisation and consultant-capacity semantics are unchanged) and
+    # BEFORE the CT-QC prerequisite, the D37 charge and the
+    # `customer_review`/issue/audit writes, so a denied request is zero
+    # workflow, billing, issue, audit or notification mutation.
+    await enforce_client_operation(
+        current_user, repos, batch.organization_id, OP_APPROVE_FINAL
+    )
     # V1.2 / CT-QC-002/005 — Customer Approval must not bypass required
     # CarbonTally QC. PE-originated work may only be submitted for customer
     # review AFTER the late CarbonTally QC gate (ct_qc_approved). Internal
@@ -1056,6 +1108,33 @@ async def customer_review_item(
     await notify_customer_decision(
         repos, item=item, approved=bool(payload.approved), batch=batch
     )
+    # §13.2 (A-1/A-6) — record WHICH capacity took the final decision, so the
+    # consequential approval is auditable as "Client Owner — Client" vs
+    # "Consultant — Firm" (§13.1). Best-effort, exactly like the other human
+    # audit writes in this module: an audit failure never breaks the decision.
+    try:
+        from datetime import datetime, timezone
+        from domain.audit import AuditEntry
+
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id=item.id,
+                entity_type="manual_extraction_item",
+                entity_id=item.id,
+                action="processing.customer_review",
+                actor=current_user.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={
+                    "decision": "approved" if payload.approved else "rejected",
+                    "capacity": approval_capacity,
+                },
+                before=None,
+                after=None,
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the decision
+        pass
     return updated
 
 

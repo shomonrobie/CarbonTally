@@ -47,6 +47,7 @@ from api.upload_gate import (
     ACTION_SECURITY_SCAN_COMPLETED,
     ACTION_SECURITY_SCAN_STARTED,
     ACTION_UPLOAD_COMPLETED,
+    ACTION_UPLOAD_EXPIRED,
     ACTION_UPLOAD_INITIATED,
     UploadActor,
     authorize_consultant_upload,
@@ -68,6 +69,7 @@ from services.document_security import (
     STATUS_PENDING_UPLOAD,
     STATUS_PROCESSING,
     STATUS_REJECTED,
+    STATUS_UPLOAD_EXPIRED,
     rejection_detail,
     scan_document,
 )
@@ -89,6 +91,7 @@ from services.storage_keys import (
     sanitize_display_name,
     split_extension,
 )
+from utils.document_classifier import classify_document
 from utils.upload_limits import effective_file_limit_bytes, resolve_policy
 
 router = APIRouter(prefix="/api/v3", tags=["V3 — Document uploads (signed)"])
@@ -109,6 +112,11 @@ class OrganizationUploadRequest(BaseModel):
     size_bytes: int = Field(ge=0)
     content_type: str = "application/octet-stream"
     data_type: str = "utility"
+    #: Optional explicit ``document_types.code``.  Omitted (the normal case):
+    #: the file is auto-classified.  Supplied: the uploader's choice becomes the
+    #: authoritative classification and is recorded as ``user_selected``, so an
+    #: override is auditable and never indistinguishable from an auto result.
+    document_type_code: Optional[str] = Field(default=None, max_length=64)
 
 
 class ConsultantUploadRequest(BaseModel):
@@ -118,6 +126,8 @@ class ConsultantUploadRequest(BaseModel):
     size_bytes: int = Field(ge=0)
     content_type: str = "application/octet-stream"
     data_type: str = "utility"
+    #: Optional explicit ``document_types.code`` (see ``OrganizationUploadRequest``).
+    document_type_code: Optional[str] = Field(default=None, max_length=64)
 
 
 class UploadCompleteRequest(BaseModel):
@@ -187,6 +197,57 @@ def _upload_window_expired(record: Any) -> bool:
     return age > UPLOAD_COMPLETION_WINDOW_SECONDS
 
 # ---------------------------------------------------------------------------
+# advisory document-type classification
+# ---------------------------------------------------------------------------
+#
+# Every uploaded file is classified against the EXISTING CarbonTally document
+# taxonomy (``utils.document_classifier`` over the ``document_types`` reference
+# table) so the user is told what CarbonTally believes the document is — without
+# an upload-blocking "Data type" choice.
+#
+# The verdict is advisory and best-effort. The authoritative decision is still
+# made downstream by extraction → mapping → validation, and an upload is never
+# refused because the taxonomy could not be consulted.
+#
+# The processing pipeline is deliberately NOT influenced by this value:
+# ``data_type`` (the processing hint passed to ``enqueue_document_processing``)
+# keeps its existing value and behaviour.
+
+
+def _unavailable_classification() -> dict:
+    """The honest "not classified" verdict (never a fabricated type)."""
+    return {
+        "document_type_code": None,
+        "document_type_id": None,
+        "confidence": 0.0,
+        "suggested_type": None,
+        "category": None,
+        "source": "unavailable",
+        "alternative_types": [],
+    }
+
+
+async def _classify_upload(
+    filename: str, document_type_code: Optional[str] = None
+) -> dict:
+    """Classify one uploaded file against the existing document taxonomy.
+
+    ``document_type_code`` is an optional explicit choice; the classifier records
+    it as ``source="user_selected"`` so an override is auditable.  When omitted
+    the classifier decides from the document itself.
+
+    Best-effort by design: the taxonomy is reference data that may not be
+    configured in a given deployment, so a classification failure degrades to
+    ``source="unavailable"`` rather than failing the upload.
+    """
+    try:
+        return await classify_document(filename, None, document_type_code)
+    except Exception as exc:  # noqa: BLE001 - classification is advisory
+        print(f"⚠️ document classification unavailable for {filename}: {exc!r}")
+        return _unavailable_classification()
+
+
+# ---------------------------------------------------------------------------
 # initiation
 # ---------------------------------------------------------------------------
 
@@ -201,6 +262,7 @@ async def _start_upload(
     data_type: str,
     completion_path: str,
     client_id: Optional[str] = None,
+    document_type_code: Optional[str] = None,
 ) -> dict:
     """Validate, record the pending document, and issue the signed upload URL."""
     if not is_safe_filename(filename):
@@ -239,6 +301,9 @@ async def _start_upload(
         raise HTTPException(status_code=422, detail=f"invalid upload target: {exc}")
     mime_type = _renderable_content_type(filename, file_type, content_type)
     provenance = actor.provenance()
+    # Advisory, best-effort document-type verdict.  It never gates the upload and
+    # never changes what the processing pipeline is asked to do.
+    classification = await _classify_upload(filename, document_type_code)
     record = await repos.files.create(
         org_id=actor.organization_id,
         name=sanitize_display_name(filename),
@@ -255,6 +320,9 @@ async def _start_upload(
             "original_filename": filename,
             "upload_mode": "signed_direct",
             "security_gate": {"verdict": "pending", "scanner": None},
+            # The classification verdict is persisted so it survives the upload and
+            # is auditable even if the bytes never arrive (see abandon).
+            "classification": classification,
             **provenance,
         },
     )
@@ -307,6 +375,9 @@ async def _start_upload(
         "status": STATUS_PENDING_UPLOAD,
         "upload_mode": "signed_direct",
         "max_size_bytes": limit_bytes,
+        # CT-PO-UPLOAD-UNIFY-001 — the caller is told what CarbonTally classified
+        # the document as, so a multi-file upload can report it per file.
+        "classification": classification,
         # Step 2D — the caller is told exactly what will scan the bytes.  The
         # platform never implies a vendor malware scan it will not perform.
         "security_gate": external_scan_status(),
@@ -364,6 +435,10 @@ async def _complete_upload(
             "status": current_status,
             "idempotent": True,
             "client_id": client_id,
+            # The verdict recorded when the upload was started, so a re-entrant
+            # completion reports the same classification as the first one.
+            "classification": dict(_attr(doc, "metadata") or {}).get("classification")
+            or _unavailable_classification(),
         }
     if current_status != STATUS_PENDING_UPLOAD:
         raise HTTPException(
@@ -545,6 +620,10 @@ async def _complete_upload(
     merged_metadata = dict(_attr(doc, "metadata") or {})
     merged_metadata["security_gate"] = verdict.as_metadata()
     merged_metadata["verified_size_bytes"] = actual_size
+    # CT-PO-UPLOAD-UNIFY-001 — the classification decided at initiation is carried
+    # through to the completion payload.  It is metadata only: the processing
+    # pipeline is enqueued with exactly the same arguments as before.
+    classification = merged_metadata.get("classification") or _unavailable_classification()
     try:
         await repos.files.update_metadata(document_id, merged_metadata)
     except Exception as exc:  # noqa: BLE001 - metadata write is best-effort
@@ -594,6 +673,113 @@ async def _complete_upload(
         "external_scan_available": verdict.external_scan_available,
         "virus_scanned": verdict.external_scan_claimed(),
         "storage_metering": metering,
+        "classification": classification,
+        "idempotent": False,
+    }
+
+
+# ---------------------------------------------------------------------------
+# abandonment (the terminal half of an upload that never completed)
+# ---------------------------------------------------------------------------
+
+
+async def _abandon_pending_upload(
+    *,
+    actor: UploadActor,
+    repos: Any,
+    document_id: str,
+    client_id: Optional[str] = None,
+) -> dict:
+    """Move an abandoned ``pending_upload`` row to the terminal ``upload_expired`` state.
+
+    CT-PO-UPLOAD-BATCH-REMEDIATION-001 — a direct upload creates its
+    ``organization_files`` row *before* the browser PUTs the bytes, so a transport
+    failure (the browser could not send the PUT, the tab was closed, the network
+    dropped) leaves the row in ``pending_upload`` with no object behind it.  The
+    24-hour completion window (:data:`services.storage.UPLOAD_COMPLETION_WINDOW_SECONDS`)
+    already refuses to complete such a row later, and ``services.document_cleanup``
+    already reaps it — but only when that pass runs.  This endpoint lets the *client
+    that knows the upload failed* record the truth immediately, using the SAME
+    terminal state and the SAME audit action the reaper uses:
+
+    * the row is retained (never hard-deleted) — evidence is not destroyed;
+    * ``pending_upload -> upload_expired`` is the existing ratified edge of
+      :data:`services.document_security.STATUS_TRANSITIONS` (no invented state);
+    * nothing is enqueued for processing and no object is touched;
+    * it is refused (409) if an object actually exists at the upload target, so a
+      real upload can never be mis-labelled as abandoned;
+    * it is idempotent: an already-expired row returns ``idempotent: True``.
+    """
+    doc = await repos.files.get(document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    doc_organization = str(_attr(doc, "organization_id") or "")
+    if doc_organization != actor.organization_id:
+        await record_document_event(
+            repos=repos,
+            action=ACTION_UPLOAD_EXPIRED,
+            actor=actor,
+            organization_id=actor.organization_id,
+            entity_id=document_id,
+            changed_fields={"document_organization_id": doc_organization},
+            reason="upload abandonment refused: document belongs to another organisation",
+            outcome="failure",
+        )
+        raise HTTPException(status_code=403, detail="Organization access denied")
+
+    current_status = _attr(doc, "status")
+    if current_status == STATUS_UPLOAD_EXPIRED:
+        return {
+            "document_id": document_id,
+            "status": STATUS_UPLOAD_EXPIRED,
+            "abandoned": True,
+            "idempotent": True,
+            "client_id": client_id,
+        }
+    if current_status != STATUS_PENDING_UPLOAD:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"document is in status '{current_status}' and is not an abandoned "
+                "upload; only a pending upload can be abandoned"
+            ),
+        )
+
+    path = str(_attr(doc, "path") or "")
+    if path and object_info(path) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "an object exists at the upload target; this upload was not "
+                "abandoned — confirm its completion instead"
+            ),
+        )
+
+    await _set_document_status(repos, document_id, STATUS_UPLOAD_EXPIRED)
+    await record_document_event(
+        repos=repos,
+        action=ACTION_UPLOAD_EXPIRED,
+        actor=actor,
+        organization_id=doc_organization,
+        entity_id=document_id,
+        changed_fields={
+            "from_status": STATUS_PENDING_UPLOAD,
+            "to_status": STATUS_UPLOAD_EXPIRED,
+            "storage_path": path,
+            "abandoned_by": "client",
+        },
+        reason=(
+            "the browser reported that the direct upload did not reach storage; the "
+            "row is retained but can no longer be completed, downloaded or processed"
+        ),
+    )
+    return {
+        "document_id": document_id,
+        "organization_id": doc_organization,
+        "client_id": client_id,
+        "status": STATUS_UPLOAD_EXPIRED,
+        "abandoned": True,
         "idempotent": False,
     }
 
@@ -622,6 +808,7 @@ async def start_organization_upload(
         size_bytes=payload.size_bytes,
         content_type=payload.content_type,
         data_type=payload.data_type,
+        document_type_code=payload.document_type_code,
         completion_path="/api/v3/documents/{document_id}/upload-complete",
     )
 
@@ -643,6 +830,26 @@ async def complete_organization_upload(
         repos=repos,
     )
     return await _complete_upload(actor=actor, repos=repos, document_id=document_id)
+
+
+@router.post("/documents/{document_id}/upload-abandon", status_code=200)
+async def abandon_organization_upload(
+    document_id: str,
+    current_user: AuthUser = Depends(require_org_member()),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Record that a direct upload never reached storage (CT-PO-UPLOAD-BATCH-REMEDIATION-001)."""
+    document = await repos.files.get(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="document not found")
+    actor = await authorize_organization_upload(
+        current_user=current_user,
+        organization_id=str(_attr(document, "organization_id") or ""),
+        repos=repos,
+    )
+    return await _abandon_pending_upload(
+        actor=actor, repos=repos, document_id=document_id
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -678,6 +885,7 @@ async def start_consultant_upload(
         size_bytes=payload.size_bytes,
         content_type=payload.content_type,
         data_type=payload.data_type,
+        document_type_code=payload.document_type_code,
         client_id=client_id,
         completion_path=(
             f"/api/v3/consultants/clients/{client_id}/documents/"
@@ -706,5 +914,28 @@ async def complete_consultant_upload(
         repos=repos,
     )
     return await _complete_upload(
+        actor=actor, repos=repos, document_id=document_id, client_id=client_id
+    )
+
+
+@router.post(
+    "/consultants/clients/{client_id}/documents/{document_id}/upload-abandon",
+    status_code=200,
+)
+async def abandon_consultant_upload(
+    client_id: str,
+    document_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Record that a consultant direct upload never reached storage."""
+    actor = await authorize_consultant_upload(
+        current_user=current_user,
+        consultant_context=context,
+        client_id=client_id,
+        repos=repos,
+    )
+    return await _abandon_pending_upload(
         actor=actor, repos=repos, document_id=document_id, client_id=client_id
     )

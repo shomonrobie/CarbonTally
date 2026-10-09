@@ -69,7 +69,7 @@ describe('V3 customer administration API client', () => {
       'getOrganizationProfile', 'updateOrganizationProfile',
       'getOrganizationMetadata', 'updateOrganizationMetadata',
       'listMembers', 'addMember', 'updateMember', 'removeMember',
-      'listInvitations', 'createInvitation', 'revokeInvitation',
+      'listInvitations', 'createInvitation', 'revokeInvitation', 'acceptInvitation',
       'listFacilities', 'createFacility', 'removeFacility',
       'listAssets', 'createAsset', 'removeAsset',
       'listSuppliers', 'createSupplier', 'removeSupplier',
@@ -147,8 +147,44 @@ describe('V3 consultant API client', () => {
       'getClientProcessingStatus', 'getClientIssues',
       'getConsultantBranding', 'getConsultantBrandingContext',
       'updateConsultantBranding',
+      // CT04 (PD-1A / PD-2A) — client-user invitations + role administration.
+      'listClientInvitations', 'createClientInvitation',
+      'revokeClientInvitation', 'updateClientUser',
     ];
     methods.forEach((name) => expect(typeof api[name]).toBe('function'));
+  });
+});
+
+describe('V3 CT04 client-identity API client (PD-1A / PD-2A)', () => {
+  test('acceptInvitation POSTs the single-use token', async () => {
+    const api = require('../api');
+    const calls = [];
+    global.fetch = jest.fn((url, options) => {
+      calls.push({ url: String(url), options });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'accepted', organization_id: 'org-a', role: 'viewer' }),
+      });
+    });
+    const result = await api.acceptInvitation('tok-123');
+    expect(calls[0].url).toContain('/api/v3/organizations/invitations/accept');
+    expect(calls[0].options.method).toBe('POST');
+    expect(JSON.parse(calls[0].options.body).token).toBe('tok-123');
+    expect(result.role).toBe('viewer');
+  });
+
+  test('createClientInvitation POSTs to the consultant client surface', async () => {
+    const api = require('../api');
+    const calls = [];
+    global.fetch = jest.fn((url, options) => {
+      calls.push({ url: String(url), options });
+      return Promise.resolve({ ok: true, status: 201, json: async () => ({ state: 'pending' }) });
+    });
+    await api.createClientInvitation('cc-a', { email: 'x@example.test', role: 'member' });
+    expect(calls[0].url).toContain('/api/v3/consultants/clients/cc-a/invitations');
+    expect(calls[0].options.method).toBe('POST');
+    expect(JSON.parse(calls[0].options.body).role).toBe('member');
   });
 });
 

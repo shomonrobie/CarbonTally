@@ -37,8 +37,18 @@ from api.dependencies import (
     get_request_context,
 )
 from auth import AuthUser, get_current_user
+from domain.client_identity import (
+    INVITATION_EXPIRY_DAYS,
+    ClientIdentityError,
+    normalise_email,
+    validate_client_role,
+)
 from infra.audit_logger import AuditLogger
 from services.billing import resolve_registration_mode
+from services.client_invitations import (
+    describe_invitation,
+    send_invitation_email,
+)
 
 router = APIRouter(prefix="/api/v3/consultants", tags=["V3 — Consultants"])
 
@@ -174,8 +184,87 @@ class ClientStatusUpdate(BaseModel):
 
 
 class FirmMemberCreate(BaseModel):
-    user_id: str
+    """CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-11/AC-14) — a member is
+    identified by ``user_id`` OR by ``email`` (resolved server-side to an existing
+    CarbonTally user). The email path is the human-facing workflow: a consultant
+    never needs to know an internal UUID. Authorization is unchanged — the
+    manage_team permission still governs the write.
+    """
+
+    user_id: Optional[str] = None
+    email: Optional[str] = None
     role: str = "consultant"
+
+
+class FirmMemberCapabilitiesUpdate(BaseModel):
+    """CT-CONSULTANT-MODEL-IMPLEMENTATION-02/03 (F-10, P5, §7.3/§20.4) — PARTIAL
+    capability map for a firm member.
+
+    Deliberately partial: only the capabilities actually supplied are changed,
+    so granting/revoking one capability can never silently reset the others
+    (F-10 = a capability write must MERGE, never REPLACE).
+
+    CT03 (P1/P5) — the firm administration surface exposes EVERY operational
+    capability that genuinely exists on ``consultant_firm_members`` so a firm
+    admin (CAP-MANAGE-TEAM) can administer the whole set, not just the two the
+    CT02 increment introduced:
+
+    * ``can_view_client`` / ``can_approve`` — CAP-VIEW-CLIENT / CAP-APPROVE;
+    * ``can_manage_clients`` / ``can_upload_documents`` /
+      ``can_generate_reports`` / ``can_manage_team`` — the D21 firm capabilities;
+    * ``can_extract`` / ``can_map`` / ``can_validate`` / ``can_calculate`` /
+      ``can_confirm_automation`` / ``can_submit`` — the P6-2A processing set.
+
+    NO COMMERCIAL ENTITLEMENT is addressable here (P5, §6.3): plan, seats, mode,
+    white-label or custom-domain entitlement are CarbonTally-Admin-controlled and
+    deliberately have no field on this model. ``extra="forbid"`` turns any
+    unknown/forged capability name — including an attempted entitlement or a
+    non-capability column such as ``is_active``/``role`` — into a 422 validation
+    error rather than a silent no-op.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    can_view_client: Optional[bool] = None
+    can_approve: Optional[bool] = None
+    can_manage_clients: Optional[bool] = None
+    can_upload_documents: Optional[bool] = None
+    can_generate_reports: Optional[bool] = None
+    can_manage_team: Optional[bool] = None
+    can_extract: Optional[bool] = None
+    can_map: Optional[bool] = None
+    can_validate: Optional[bool] = None
+    can_calculate: Optional[bool] = None
+    can_confirm_automation: Optional[bool] = None
+    can_submit: Optional[bool] = None
+
+
+class AccessProfileUpdate(BaseModel):
+    """CT03 (F-3, §8.1/§8.3 P-4) — the client access profile of a relationship.
+
+    Set by the firm (CAP-MANAGE-CLIENTS) per client; it is the Plane C CEILING.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+
+
+class ModeChangeRequestBody(BaseModel):
+    """CT03 (F-6, PO-1) — a firm's REQUEST for a product-mode change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    requested_mode: str
+    reason: Optional[str] = None
+
+
+class RetentionBody(BaseModel):
+    """CT03 (F-4, PO-10) — apply/lift retained read-only on an ended relationship."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retained_read_only: bool
 
 
 class TaskCreate(BaseModel):
@@ -184,6 +273,29 @@ class TaskCreate(BaseModel):
     priority: Optional[str] = None
     client_id: Optional[str] = None
     metadata: dict = {}
+
+
+class ClientInvitationCreate(BaseModel):
+    """CT04 (PD-1A / PD-2A) — a consultant firm invites a client user.
+
+    The consultant assigns the CLIENT organisation role the invitation carries.
+    The firm does NOT thereby become a member of the client organisation and
+    receives no client-plane data access (PD-2A).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    role: str = "member"
+
+
+class ClientUserRoleUpdate(BaseModel):
+    """CT04 (PD-2A) — the consultant's assignment of a client user's role."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    is_active: Optional[bool] = None
 
 
 async def _checked_client(
@@ -230,6 +342,13 @@ async def get_my_profile(
     base["can_upload_documents"] = bool(context.firm_member.can_upload_documents)
     base["can_generate_reports"] = bool(context.firm_member.can_generate_reports)
     base["can_manage_team"] = bool(context.firm_member.can_manage_team)
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2, §7.3) — the admission and
+    # approval capabilities, exposed so the UI can gate the approve control the
+    # way the backend already enforces it. The UI is never the security boundary
+    # (§7.4 / AGENTS.md §44): these flags mirror server state, they do not create
+    # authority.
+    base["can_view_client"] = bool(context.firm_member.can_view_client)
+    base["can_approve"] = bool(context.firm_member.can_approve)
 
     def _iso(value):
         return value.isoformat() if value else None
@@ -392,6 +511,222 @@ async def update_my_branding(
             await resolve_consultant_branding(repos, context.profile)
         ).to_dict(),
         "can_manage_branding": True,
+    }
+
+
+async def _ct03_audit(
+    repos: RepositoryBundle,
+    *,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    actor: str,
+    before: Optional[dict] = None,
+    after: Optional[dict] = None,
+) -> None:
+    """Append-only audit for CT03 firm-side relationship/mode actions."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                action=action,
+                actor=actor or "",
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"before": before, "after": after},
+                before=before,
+                after=after,
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the firm action
+        pass
+
+
+async def _ct03_firm_mode(repos: RepositoryBundle, firm_id: str) -> str:
+    from domain.consultant_entitlement import resolve_mode
+
+    branding = await repos.consultants.get_branding(firm_id)
+    return resolve_mode(
+        getattr(branding, "commercial_mode", None) if branding else None,
+        bool(getattr(branding, "white_label_enabled", False)) if branding else False,
+        bool(getattr(branding, "co_branding_enabled", False)) if branding else False,
+    )
+
+
+@router.post("/me/mode-change-requests", status_code=201)
+async def request_mode_change(
+    payload: ModeChangeRequestBody,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """F-6 / PO-1 (B+D) — a firm REQUESTS a product-mode change.
+
+    A consultant can NEVER write ``commercial_mode`` directly (PO-5/§6.3; there
+    is no consultant write path for it at all). This records a REQUEST that
+    CarbonTally Admin decides; the change becomes effective at the billing/
+    renewal boundary unless an immediate transition is explicitly approved.
+    """
+    from domain.consultant_entitlement import PRODUCT_MODES
+
+    ensure_consultant_permission(context, "manage_team")
+    requested = (payload.requested_mode or "").strip().lower()
+    if requested not in PRODUCT_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"requested_mode must be one of {', '.join(PRODUCT_MODES)}",
+        )
+    current = await _ct03_firm_mode(repos, context.profile.id)
+    if requested == current:
+        raise HTTPException(
+            status_code=422, detail="the firm is already in the requested mode"
+        )
+    record = await repos.consultants.create_mode_change_request(
+        firm_id=context.profile.id,
+        requested_by=current_user.user_id,
+        current_mode=current,
+        requested_mode=requested,
+        reason=payload.reason,
+    )
+    await _ct03_audit(
+        repos,
+        entity_type="consultant_mode_change_request",
+        entity_id=str(record.get("id") or context.profile.id),
+        action="consultant.mode_change_requested",
+        actor=current_user.user_id,
+        before={"mode": current},
+        after={"requested_mode": requested},
+    )
+    return {"request": record, "current_mode": current}
+
+
+@router.post("/clients/{client_id}/access-profile")
+async def set_client_access_profile(
+    client_id: str,
+    payload: AccessProfileUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """F-3 / §8.3 P-4 — set a client's ACCESS PROFILE (the Plane C ceiling).
+
+    Firm-administered (CAP-MANAGE-CLIENTS), server-side, entitlement-checked:
+    MANAGED is refused unless the firm's product mode permits it (PO-4), and a
+    non-OFF profile is refused entirely for a STANDARD firm (no client plane).
+    A profile change is audited and never deletes client data or users (P-7/P-8).
+    """
+    from domain.consultant_entitlement import (
+        client_plane_available,
+        managed_profile_available,
+    )
+    from domain.relationship_access import (
+        ACCESS_PROFILES,
+        PROFILE_MANAGED,
+        PROFILE_OFF,
+        normalise_profile,
+    )
+
+    ensure_consultant_permission(context, "manage_clients")
+    client = await repos.consultants.get_client(client_id)
+    if client is None or str(client.consultant_id) != str(context.profile.id):
+        raise HTTPException(status_code=404, detail="client not found")
+
+    raw = (payload.profile or "").strip().lower()
+    if raw not in ACCESS_PROFILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"profile must be one of {', '.join(ACCESS_PROFILES)}",
+        )
+    profile = normalise_profile(raw)
+
+    mode = await _ct03_firm_mode(repos, context.profile.id)
+    if profile != PROFILE_OFF and not client_plane_available(mode):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "The client portal is not available in this firm's product mode "
+                "(STANDARD) — request a mode change first (PO-1/PO-4)."
+            ),
+        )
+    if profile == PROFILE_MANAGED and not managed_profile_available(mode):
+        raise HTTPException(
+            status_code=403,
+            detail="MANAGED is not available in this firm's product mode (PO-4)",
+        )
+
+    before = getattr(client, "client_access_profile", "off")
+    updated = await repos.consultants.set_relationship_access(client_id, profile=profile)
+    await _ct03_audit(
+        repos,
+        entity_type="consultant_clients",
+        entity_id=client_id,
+        action="consultant.client_access_profile_updated",
+        actor=current_user.user_id,
+        before={"profile": before},
+        after={"profile": profile},
+    )
+    return {
+        "client": {
+            "id": client_id,
+            "organization_id": str(getattr(client, "organization_id", "")),
+            "client_access_profile": profile,
+        },
+    }
+
+
+@router.post("/clients/{client_id}/retention")
+async def set_client_retention(
+    client_id: str,
+    payload: RetentionBody,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """F-4 / PO-10 — apply or lift RETAINED read-only on an ENDED relationship.
+
+    Non-destructive: this only toggles the retained flag. The Organisation, its
+    id, documents, emissions, calculations, reports, evidence and audit history
+    are all preserved. Only an ENDED / TERMINATED relationship may be retained.
+    """
+    ensure_consultant_permission(context, "manage_clients")
+    client = await repos.consultants.get_client(client_id)
+    if client is None or str(client.consultant_id) != str(context.profile.id):
+        raise HTTPException(status_code=404, detail="client not found")
+    status_value = (getattr(client, "status", "") or "").strip().lower()
+    if payload.retained_read_only and status_value not in ("ended", "terminated"):
+        raise HTTPException(
+            status_code=409,
+            detail="only an ended relationship can be marked retained read-only",
+        )
+    updated = await repos.consultants.set_relationship_access(
+        client_id, retained_read_only=payload.retained_read_only
+    )
+    await _ct03_audit(
+        repos,
+        entity_type="consultant_clients",
+        entity_id=client_id,
+        action=(
+            "consultant.relationship_retained_read_only"
+            if payload.retained_read_only
+            else "consultant.relationship_retention_lifted"
+        ),
+        actor=current_user.user_id,
+        before={"retained_read_only": not payload.retained_read_only},
+        after={"retained_read_only": payload.retained_read_only},
+    )
+    return {
+        "client": {
+            "id": client_id,
+            "status": status_value,
+            "retained_read_only": bool(
+                getattr(updated, "retained_read_only", payload.retained_read_only)
+            ),
+        }
     }
 
 
@@ -796,6 +1131,35 @@ async def _audit_client_lifecycle(
         pass
 
 
+async def _resolve_owner_identity_by_email(email: str) -> Optional[str]:
+    """Resolve an EXISTING auth identity by email (GoTrue admin, service key).
+
+    CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-11/AC-14) — resolve-only
+    counterpart of ``_resolve_or_create_owner_identity`` (which also PROVISIONS a
+    new customer owner). Used for firm team membership, where a member must
+    already have a CarbonTally account. Returns the user id, or None when no
+    identity matches. Never creates an account and never returns a credential.
+    """
+    import os
+
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    service_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    if not supabase_url or not service_key:
+        return None
+    admin_headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+    async with httpx.AsyncClient(timeout=30) as http:
+        list_resp = await http.get(
+            f"{supabase_url}/auth/v1/admin/users?per_page=1000", headers=admin_headers
+        )
+        if list_resp.status_code == 200:
+            for u in list_resp.json().get("users", []):
+                if str(u.get("email", "")).lower() == email:
+                    return str(u["id"])
+    return None
+
+
 async def _resolve_or_create_owner_identity(
     owner_email: str, owner_name: Optional[str]
 ) -> Optional[str]:
@@ -949,6 +1313,11 @@ async def list_my_team(
                 "can_upload_documents": m.can_upload_documents,
                 "can_generate_reports": m.can_generate_reports,
                 "can_manage_team": m.can_manage_team,
+                # CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-1/F-2) — the firm
+                # administers these two capabilities (§7.3), so the roster must
+                # report them for the grant/revoke control to be usable.
+                "can_view_client": bool(m.can_view_client),
+                "can_approve": bool(m.can_approve),
                 "client_access": m.client_access,
                 "joined_at": m.joined_at,
                 "invited_at": m.invited_at,
@@ -985,18 +1354,38 @@ async def add_team_member(
             status_code=422,
             detail=f"role must be one of {list(CONSULTANT_ROLES)}",
         )
-    if payload.user_id == current_user.user_id:
+    # CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-11/AC-14) — resolve the
+    # member's identity. An explicit user_id is honoured; otherwise the email is
+    # resolved to an EXISTING CarbonTally user (resolve-only — a team member must
+    # already have an account; no silent provisioning). Authorization is
+    # unchanged: the manage_team permission above still governs this write.
+    user_id = (payload.user_id or "").strip()
+    email = (payload.email or "").strip().lower()
+    if not user_id and not email:
+        raise HTTPException(status_code=422, detail="provide either user_id or email")
+    if not user_id:
+        resolved = await _resolve_owner_identity_by_email(email)
+        if resolved is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "No CarbonTally user exists with that email address. "
+                    "They must sign up to CarbonTally first."
+                ),
+            )
+        user_id = resolved
+    if user_id == current_user.user_id:
         raise HTTPException(
             status_code=422,
             detail="a consultant cannot add themselves to their own firm",
         )
     existing = await repos.consultants.get_firm_member_by_user(
-        context.profile.id, payload.user_id
+        context.profile.id, user_id
     )
     if existing is not None:
         raise HTTPException(status_code=409, detail="user is already a member of this firm")
     created = await repos.consultants.add_firm_member(
-        context.profile.id, payload.user_id, role
+        context.profile.id, user_id, role
     )
     # Server-authoritative actor for the security-sensitive membership mutation.
     from datetime import datetime, timezone
@@ -1012,9 +1401,9 @@ async def add_team_member(
                 action="consultant.team.added",
                 actor=current_user.user_id,
                 occurred_at=datetime.now(timezone.utc),
-                changed_fields={"user_id": payload.user_id, "role": role},
+                changed_fields={"user_id": user_id, "role": role},
                 before=None,
-                after={"user_id": payload.user_id, "role": role, "is_active": True},
+                after={"user_id": user_id, "role": role, "is_active": True},
             )
         )
     except Exception:  # noqa: BLE001 — audit never breaks the team action
@@ -1067,6 +1456,111 @@ async def reactivate_team_member(
     return {"member": updated, "is_active": True}
 
 
+@router.patch("/me/team/{member_id}/capabilities")
+async def update_team_member_capabilities(
+    member_id: str,
+    payload: FirmMemberCapabilitiesUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-10, §7.3, §20.4) — grant/revoke a
+    firm member's capabilities.
+
+    Server-authoritative throughout: the FIRM is resolved from the authenticated
+    context (``context.profile.id``), never from the request; the target member
+    must belong to that firm; and the caller must hold CAP-MANAGE-TEAM
+    (``manage_team``) — the firm decides who holds which capability (§7.3).
+
+    The write is a MERGE (F-10): capabilities absent from the payload keep their
+    current value, so granting/revoking one capability can never silently reset
+    another. A member cannot change their OWN capability set (no silent
+    self-escalation to CAP-APPROVE, mirroring the existing self-deactivate
+    guard), and every change is written to the append-only audit trail (§13.2).
+    """
+    ensure_consultant_permission(context, "manage_team")
+    member = await repos.consultants.get_firm_member(context.profile.id, member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="team member not found")
+    if member.user_id == current_user.user_id:
+        raise HTTPException(
+            status_code=422,
+            detail="a consultant cannot change their own capabilities",
+        )
+    requested = payload.model_dump(exclude_unset=True)
+    if not requested:
+        raise HTTPException(
+            status_code=422, detail="at least one capability must be supplied"
+        )
+    if any(value is None for value in requested.values()):
+        raise HTTPException(
+            status_code=422, detail="capabilities must be true or false"
+        )
+    requested = {name: bool(value) for name, value in requested.items()}
+    before = {name: bool(getattr(member, name)) for name in requested}
+    updated = await repos.consultants.set_firm_member_capabilities(
+        context.profile.id, member_id, requested
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="team member not found")
+    await _audit_team_member_capability_change(
+        repos, context, member_id, before, requested
+    )
+    # CT03 (P5) — return the member's FULL capability set (UI reflects server
+    # state), not only the two CT02 flags.
+    return {
+        "member": {
+            "id": updated.id,
+            "user_id": updated.user_id,
+            "role": updated.role,
+            "is_active": bool(updated.is_active),
+            "can_view_client": bool(updated.can_view_client),
+            "can_approve": bool(updated.can_approve),
+            "can_manage_clients": bool(updated.can_manage_clients),
+            "can_upload_documents": bool(updated.can_upload_documents),
+            "can_generate_reports": bool(updated.can_generate_reports),
+            "can_manage_team": bool(updated.can_manage_team),
+            "can_extract": bool(updated.can_extract),
+            "can_map": bool(updated.can_map),
+            "can_validate": bool(updated.can_validate),
+            "can_calculate": bool(updated.can_calculate),
+            "can_confirm_automation": bool(updated.can_confirm_automation),
+            "can_submit": bool(updated.can_submit),
+        },
+        "changed": requested,
+    }
+
+
+async def _audit_team_member_capability_change(
+    repos: RepositoryBundle,
+    context: ConsultantContext,
+    member_id: str,
+    before: dict,
+    after: dict,
+) -> None:
+    """Append-only audit for capability grant/revoke (§13.1/§13.2 A-1, A-6)."""
+    from datetime import datetime, timezone
+    from domain.audit import AuditEntry
+
+    try:
+        await repos.audit.record(
+            AuditEntry(
+                id="",
+                correlation_id="",
+                entity_type="consultant_firm_member",
+                entity_id=member_id,
+                action="consultant.team.capabilities_updated",
+                actor=context.profile.user_id,
+                occurred_at=datetime.now(timezone.utc),
+                changed_fields={"before": before, "after": after},
+                before=before,
+                after=after,
+            )
+        )
+    except Exception:  # noqa: BLE001 — audit never breaks the team action
+        pass
+
+
 async def _audit_team_member_change(
     repos: RepositoryBundle,
     context: ConsultantContext,
@@ -1105,20 +1599,221 @@ async def list_my_tasks(
     return {"tasks": await repos.consultants.list_tasks(context.profile.id, status)}
 
 
+async def _ensure_task_client_link_authorized(
+    repos: RepositoryBundle,
+    context: ConsultantContext,
+    client_id: str,
+) -> None:
+    """CT-CONSULTANT-PLATFORM-CLOSURE-01 §10 (F-IND-1 / PD-3A) — server-side
+    validation of a firm task's OPTIONAL ``client_id`` link.
+
+    A firm task may reference a client ONLY when that client is one the firm
+    ACTIVELY operates. The acceptable identifiers are the firm's own
+    ``consultant_clients.id`` (the relationship row the UI submits) or the
+    linked ``organization_id``; both resolve from the firm's AUTHORITATIVE
+    client set, never from the request.
+
+    A nonexistent, foreign or inactive id is rejected with ONE uniform response
+    so task creation can never be used as an access oracle (AGENTS.md §7/§44):
+    the caller cannot tell "not mine" from "does not exist". A firm-wide task
+    (no ``client_id``) is unaffected.
+    """
+    clients = await repos.consultants.list_clients(context.profile.id)
+    allowed: set[str] = set()
+    for client in clients:
+        if (getattr(client, "status", "") or "").strip().lower() != "active":
+            continue
+        for attr in ("id", "organization_id"):
+            value = getattr(client, attr, None)
+            if value:
+                allowed.add(str(value))
+    if client_id not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail="client_id must reference one of your active clients",
+        )
+
+
 @router.post("/me/tasks", status_code=201)
 async def create_task(
     payload: TaskCreate,
     context: ConsultantContext = Depends(require_consultant),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
+    # CT-CONSULTANT-PLATFORM-CLOSURE-01 §10 — the optional client link is
+    # validated server-side before the task is written.
+    client_id = (payload.client_id or "").strip() or None
+    if client_id is not None:
+        await _ensure_task_client_link_authorized(repos, context, client_id)
     return await repos.consultants.create_task(
         context.profile.id,
         payload.task_title,
         payload.task_type,
         payload.priority,
-        payload.client_id,
+        client_id,
         payload.metadata,
     )
+
+
+# ---------------------------------------------------------------------------
+# CT-CONSULTANT-PLATFORM-CLOSURE-01 §7 — REQUEST REVIEW surfaces.
+#
+# CT03 created the durable request records (consultant_relationship_requests,
+# consultant_mode_change_requests) and the endpoints that CREATE them, but no
+# consumer. These endpoints give the authorised party a READ/review surface and
+# expose the request's authoritative ``status``.
+#
+# The APPROVE/REJECT decision authority is deliberately NOT implemented here:
+#   * a client-initiated relationship request — PD-5 ("who confirms it, within
+#     what SLA") is an OPEN Product-Owner decision (see
+#     CT-CONSULTANT-MODEL-IMPLEMENTATION-03 §38);
+#   * a mode change — PO-1 makes it a CarbonTally (commercial-boundary) decision.
+# Both FAIL CLOSED: there is no approve/reject route, so nothing is invented.
+# ---------------------------------------------------------------------------
+@router.get("/me/relationship-requests")
+async def list_relationship_requests(
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Review the firm's inbound relationship change/end requests.
+
+    Scoped to the caller's firm — never another firm's requests (cross-tenant
+    isolation). Read-only: the decision workflow remains gated by PD-5.
+    """
+    return {
+        "requests": await repos.consultants.list_relationship_requests(
+            context.profile.id
+        )
+    }
+
+
+@router.get("/me/mode-change-requests")
+async def list_mode_change_requests(
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """Review the firm's product-mode change requests (PO-1).
+
+    Scoped to the caller's own firm. Read-only: the decision workflow remains a
+    CarbonTally Admin decision (PO-1) and is not implemented here.
+    """
+    return {
+        "requests": await repos.consultants.list_mode_change_requests(
+            context.profile.id
+        )
+    }
+
+
+class RelationshipRequestDecision(BaseModel):
+    """PD-5 — a PARTY's decision on an inbound relationship change/end request.
+
+    ``decision`` is ``approve`` | ``reject``. Approving an ``end_relationship``
+    request requires an explicit ``confirmed=True`` (T-1: no single-click
+    termination).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str
+    decision_note: Optional[str] = None
+    confirmed: bool = False
+
+
+@router.post("/me/relationship-requests/{request_id}/decision")
+async def decide_relationship_request(
+    request_id: str,
+    payload: RelationshipRequestDecision,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """PD-5 — the firm (a party) decides an inbound client change/end request.
+
+    The register resolves PD-5 as PARTY-CONTROLLED with CarbonTally arbitration:
+    a request the CLIENT raised against this firm is decided by the firm. The
+    route is firm-scoped — a request belonging to another firm is a 404 (no
+    existence oracle). Rejection records the decision; approval of an
+    ``end_relationship`` performs the NON-DESTRUCTIVE termination
+    (``transition_client_lifecycle`` -> ``ended``); the Organisation, its data,
+    history and provenance are never deleted, and the PO-10 retained-read-only
+    flag is a separate consultant action.
+    """
+    ensure_consultant_permission(context, "manage_clients")
+    request = await repos.consultants.get_relationship_request(request_id)
+    if request is None or str(request.get("consultant_id")) != str(context.profile.id):
+        raise HTTPException(status_code=404, detail="relationship request not found")
+    if (request.get("status") or "requested") != "requested":
+        raise HTTPException(
+            status_code=409, detail="this request has already been decided"
+        )
+    decision = (payload.decision or "").strip().lower()
+    if decision not in ("approve", "reject"):
+        raise HTTPException(status_code=422, detail="decision must be approve or reject")
+
+    if decision == "reject":
+        updated = await repos.consultants.decide_relationship_request(
+            request_id,
+            status="cancelled",
+            decided_by=current_user.user_id,
+            decision_note=payload.decision_note,
+        )
+        if updated is None:
+            # Lost the atomic race — another decision landed first.
+            raise HTTPException(
+                status_code=409, detail="this request has already been decided"
+            )
+        await _ct03_audit(
+            repos,
+            entity_type="consultant_relationship_request",
+            entity_id=request_id,
+            action="consultant.relationship_request_rejected",
+            actor=current_user.user_id,
+            after={"status": "cancelled", "decision_note": payload.decision_note},
+        )
+        return {"request": updated, "ended_client_id": None}
+
+    # Approve — an explicit confirmation is required (T-1).
+    if not payload.confirmed:
+        raise HTTPException(
+            status_code=428,
+            detail="Explicit confirmation is required to approve this request",
+        )
+
+    ended_client_id = None
+    final_status = "confirmed"
+    if (request.get("request_type") or "") == "end_relationship":
+        client = await repos.consultants.get_client_by_org(
+            context.profile.id, request.get("organization_id")
+        )
+        if client is not None and (getattr(client, "status", "") or "") == "active":
+            await repos.consultants.transition_client_lifecycle(
+                client.id, "ended", actor_id=current_user.user_id
+            )
+            ended_client_id = client.id
+        final_status = "completed"
+
+    updated = await repos.consultants.decide_relationship_request(
+        request_id,
+        status=final_status,
+        decided_by=current_user.user_id,
+        decision_note=payload.decision_note,
+    )
+    if updated is None:
+        # Lost the atomic race after the (idempotent) termination step; the
+        # request itself is untouched, so report the conflict rather than
+        # returning a null body.
+        raise HTTPException(
+            status_code=409, detail="this request has already been decided"
+        )
+    await _ct03_audit(
+        repos,
+        entity_type="consultant_relationship_request",
+        entity_id=request_id,
+        action=f"consultant.relationship_request_{final_status}",
+        actor=current_user.user_id,
+        after={"status": final_status, "ended_client_id": ended_client_id},
+    )
+    return {"request": updated, "ended_client_id": ended_client_id}
 
 
 @router.put("/tasks/{task_id}/status")
@@ -1155,6 +1850,186 @@ async def _authorized_client_org(
         current_user, repos, client.organization_id
     )
     return client.organization_id
+
+
+@router.get("/clients/{client_id}/users")
+async def list_client_users(
+    client_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT-CONSULTANT-PLATFORM-CLOSURE-01 §6.1 (PO-2) — consultant-side VIEW of a
+    managed client's users.
+
+    PO-2 makes inviting/managing/removing CLIENT users a consultant-side
+    responsibility. This endpoint implements the READ half: the consultant sees
+    the client Organisation's members, tenant-scoped and gated on an ACTIVE
+    consultant-client relationship (``_authorized_client_org``).
+
+    The invite/add/manage/revoke half is implemented by
+    CT-CONSULTANT-CLIENT-IDENTITY-04 (PD-1A/PD-2A) — see the
+    ``/clients/{client_id}/invitations`` and ``/clients/{client_id}/users``
+    routes below. Client users are ALWAYS provisioned through the single-use
+    invitation step; no route self-inserts an identity.
+    """
+    organization_id = await _authorized_client_org(
+        client_id, current_user, context, repos
+    )
+    return {
+        "organization_id": organization_id,
+        "users": await repos.organizations.list_members_with_email(organization_id),
+    }
+
+
+# -- client-user invitations + role administration (CT04: PD-1A / PD-2A) -----
+
+
+def _validate_client_role(role: str) -> str:
+    """HTTP-facing wrapper over the single client-role policy (422, not 500)."""
+    try:
+        return validate_client_role(role)
+    except ClientIdentityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/clients/{client_id}/invitations")
+async def list_client_invitations(
+    client_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT04 (PD-2A) — the firm VIEWS a managed client's invitations.
+
+    Gated on CAP-MANAGE-CLIENTS plus an ACTIVE consultant-client relationship
+    (``_authorized_client_org``, D15). Each row carries the DERIVED ``state``.
+    """
+    ensure_consultant_permission(context, "manage_clients")
+    organization_id = await _authorized_client_org(
+        client_id, current_user, context, repos
+    )
+    rows = await repos.invitations.list_for_org(organization_id)
+    return {
+        "organization_id": organization_id,
+        "invitations": [
+            describe_invitation(r, redact_token=True) for r in rows
+        ],
+    }
+
+
+@router.post("/clients/{client_id}/invitations", status_code=201)
+async def create_client_invitation(
+    client_id: str,
+    payload: ClientInvitationCreate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT04 (PD-1A / PD-2A) — the firm invites a CLIENT user on the client's behalf.
+
+    The consultant does NOT bypass the invitation step and does NOT become a
+    member of the client organisation: it creates a single-use invitation the
+    invitee must accept. Provenance is recorded via ``invited_by_firm_id`` (the
+    firm), and the invitation email is presented with the firm's own D21
+    branding and VERIFIED custom sender (D19 §13) when configured.
+    """
+    from datetime import datetime, timedelta, timezone
+    import secrets as _secrets
+
+    ensure_consultant_permission(context, "manage_clients")
+    organization_id = await _authorized_client_org(
+        client_id, current_user, context, repos
+    )
+    role = _validate_client_role(payload.role)
+    role_row = await repos.roles.get_by_name(role)
+    token = _secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=INVITATION_EXPIRY_DAYS)
+    invitation = await repos.invitations.create(
+        org_id=organization_id,
+        email=normalise_email(payload.email),
+        token=token,
+        role_id=role_row["id"] if role_row is not None else None,
+        invited_by=current_user.user_id,
+        status="pending",
+        expires_at=expires_at,
+        role=role,
+        invited_by_firm_id=context.profile.id,
+    )
+    org = await repos.organizations.get(organization_id)
+    org_name = getattr(org, "name", None) or "your organisation"
+    delivered = False
+    reason = "email not attempted"
+    try:
+        delivered, reason = await send_invitation_email(
+            repos,
+            to_email=invitation["email"],
+            organization_name=org_name,
+            role=role,
+            token=token,
+            firm_id=context.profile.id,
+        )
+    except Exception:  # noqa: BLE001 — a mail failure never breaks the invitation
+        delivered = False
+        reason = "email delivery failed"
+    return {
+        **describe_invitation(invitation, redact_token=True),
+        "email_delivered": delivered,
+        "email_status": reason,
+    }
+
+
+@router.post(
+    "/clients/{client_id}/invitations/{invitation_id}/revoke", status_code=204
+)
+async def revoke_client_invitation(
+    client_id: str,
+    invitation_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT04 (PD-1A) — the firm revokes a still-pending client invitation."""
+    ensure_consultant_permission(context, "manage_clients")
+    organization_id = await _authorized_client_org(
+        client_id, current_user, context, repos
+    )
+    invitation = await repos.invitations.get(invitation_id)
+    if invitation is None or str(invitation["organization_id"]) != str(
+        organization_id
+    ):
+        raise HTTPException(status_code=404, detail="invitation not found")
+    await repos.invitations.revoke(invitation_id, revoked_by=current_user.user_id)
+
+
+@router.patch("/clients/{client_id}/users/{member_id}")
+async def update_client_user(
+    client_id: str,
+    member_id: str,
+    payload: ClientUserRoleUpdate,
+    current_user: AuthUser = Depends(get_current_user),
+    context: ConsultantContext = Depends(require_consultant),
+    repos: RepositoryBundle = Depends(get_repositories),
+):
+    """CT04 (PD-2A) — the firm assigns a CLIENT user's role within the boundary.
+
+    The firm may manage the client's users WITHIN the permitted client-role
+    boundary; this does NOT extend the firm's own access to client DATA. The
+    target member is resolved through the REAL organisation membership store and
+    verified to belong to the authorised client organisation.
+    """
+    ensure_consultant_permission(context, "manage_clients")
+    organization_id = await _authorized_client_org(
+        client_id, current_user, context, repos
+    )
+    member = await repos.organizations.get_member(member_id)
+    if member is None or str(member["organization_id"]) != str(organization_id):
+        raise HTTPException(status_code=404, detail="member not found")
+    role = _validate_client_role(payload.role)
+    updated = await repos.tenant.update_member(member_id, role, payload.is_active)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="member not found")
+    return updated
 
 
 @router.get("/clients/{client_id}/context")

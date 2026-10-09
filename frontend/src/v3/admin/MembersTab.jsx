@@ -105,6 +105,16 @@ export default function MembersTab({ organization, roles }) {
     }
   };
 
+  const onCopyInviteLink = async (url) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      flash('Invitation link copied.');
+    } catch (e) {
+      // Clipboard may be unavailable (insecure context) — reveal the link instead.
+      setNotice(url);
+    }
+  };
+
   const roleOptions = roles.length ? roles : ROLE_IDS.map((id) => ({ id, name: id, description: id }));
 
   return (
@@ -224,20 +234,31 @@ export default function MembersTab({ organization, roles }) {
               </tr>
             </thead>
             <tbody>
-              {invitations.map((invitation) => (
-                <tr key={invitation.id}>
-                  <td>{invitation.email}</td>
-                  <td><span className={`v3-badge ${invitation.status}`}>{invitation.status}</span></td>
-                  <td className="v3-muted">{invitation.expires_at || '—'}</td>
-                  <td>
-                    {invitation.status === 'pending' && (
-                      <button className="v3-btn v3-btn-sm" onClick={() => onRevokeInvitation(invitation.id)}>
-                        Revoke
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {invitations.map((invitation) => {
+                const state = invitation.state || invitation.status;
+                return (
+                  <tr key={invitation.id}>
+                    <td>{invitation.email}</td>
+                    <td><span className={`v3-badge ${state}`}>{state}</span></td>
+                    <td className="v3-muted">{invitation.expires_at || '—'}</td>
+                    <td>
+                      {state === 'pending' && invitation.accept_url && (
+                        <button
+                          className="v3-btn v3-btn-sm"
+                          onClick={() => onCopyInviteLink(invitation.accept_url)}
+                        >
+                          Copy link
+                        </button>
+                      )}
+                      {state === 'pending' && (
+                        <button className="v3-btn v3-btn-sm" onClick={() => onRevokeInvitation(invitation.id)}>
+                          Revoke
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

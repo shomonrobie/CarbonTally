@@ -1,20 +1,16 @@
 // frontend/src/v3/consultant/ConsultantPage.jsx
 // CarbonTally V3 — Consultant / Multi-client hub.
 //
-// Critical UX: the active client context is explicit everywhere. The switcher
-// sets the active client; every workspace request carries the client id and the
-// backend re-authorizes it server-side (client A/B allowed, C denied). The UI
-// never relies on hiding links — a denied client request surfaces as an error.
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-01/AC-01) — the Consultant
+// Plane represents the consultant FIRM. It has NO global "Active client"
+// selector: a client is chosen from the Clients tab ("Open workspace"), which
+// enters the Client Operating Plane (/consultant/clients/:clientId/*). Every
+// client request carries the client id and the backend re-authorizes it
+// server-side (client A/B allowed, C denied). The UI never relies on hiding
+// links — a denied client request surfaces as an error.
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  getClientDashboard,
-  getClientDocuments,
-  getClientEvidence,
-  getClientIssues,
-  getClientProcessingItems,
-  getClientProcessingStatus,
-  getClientReports,
   getConsultantBranding,
   getConsultantBrandingContext,
   getConsultantClientDetail,
@@ -24,66 +20,23 @@ import {
   listConsultantClients,
   updateConsultantBranding,
   updateConsultantClientStatus,
-  uploadConsultantDocument,
   endConsultantClient,
   reactivateConsultantClient,
   suspendConsultantClient,
 } from '../api';
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-02/UX-08/UX-09) — relationship
+// and client-portal labels derived from the real consultant_clients fields, so
+// the UI never calls a managed client "Client" as if that were the actor.
+import { clientPortalLabel, clientPortalNote, relationshipLabel } from './ConsultantClientContext';
 import WhiteLabelTab from './WhiteLabelTab';
 import ClientMessagingTab from './ClientMessagingTab';
 import ConsultantTeamTab from './ConsultantTeamTab';
 import NewCustomerView from './NewCustomerView';
+// CT-MP-SUB-004 — the consultant's OWN firm Manual Processing coverage (purchased
+// coverage + selected-client allocations). Firm identity is server-resolved.
+import ManualProcessingCoverageTab from './ManualProcessingCoverageTab';
 import { ErrorState } from '../components/StateViews';
 import './consultant.css';
-
-const YEAR = new Date().getFullYear();
-
-// Storage Management Step 2A — the consultant sees the same precise upload
-// outcomes the backend reports (never a generic "upload failed" that hides a
-// security rejection).
-function consultantUploadError(e) {
-  switch (e?.code) {
-    case 'UPLOAD_SECURITY_REJECTED':
-      return (
-        e.message ||
-        'The document was rejected by the security check, so it was not added to the client.'
-      );
-    case 'UPLOAD_TOO_LARGE':
-      return (
-        e.message ||
-        'That file is larger than the platform per-file limit. The original is never compressed server-side — please split the document.'
-      );
-    case 'UPLOAD_UNSUPPORTED_TYPE':
-      return e.message || 'That file type is not supported for client documents.';
-    case 'UPLOAD_AUTHORIZATION_EXPIRED':
-      return (
-        'The upload was not accepted — the upload authorisation expired or the client authorisation is no longer active. Nothing was added.'
-      );
-    case 'UPLOAD_STORAGE':
-      return 'Storage did not accept the file. Nothing was added to the client.';
-    default:
-      return e.message || 'Upload failed';
-  }
-}
-
-// CON-7 — business-first CO₂e formatting: "10.7 t CO₂e" / "8,850 kg CO₂e".
-function formatCo2(kg) {
-  const value = Number(kg);
-  if (!Number.isFinite(value) || value === 0) return '0 kg CO₂e';
-  if (Math.abs(value) >= 1000) {
-    return `${(value / 1000).toLocaleString('en-GB', { maximumFractionDigits: 2 })} t CO₂e`;
-  }
-  return `${value.toLocaleString('en-GB', { maximumFractionDigits: 0 })} kg CO₂e`;
-}
-
-const STAGE_FILTERS = [
-  { id: '', label: 'All items' },
-  { id: 'extraction', label: 'Extraction' },
-  { id: 'mapping', label: 'Mapping' },
-  { id: 'validation', label: 'Validation' },
-  { id: 'calculation', label: 'Calculation' },
-  { id: 'customer_review', label: 'Customer review' },
-];
 
 function LoadingBlock({ label }) {
   return <div className="v3-loading"><div className="spinner" />{label}</div>;
@@ -212,277 +165,6 @@ function DashboardView({ dashboard }) {
       ) : (
         <div className="v3-loading"><div className="spinner" />Loading portfolio…</div>
       )}
-    </div>
-  );
-}
-
-function ClientWorkspace({ client, clientId }) {
-  const navigate = useNavigate();
-  const [reports, setReports] = useState(null);
-  const [dashboard, setDashboard] = useState(null);
-  const [processing, setProcessing] = useState(null);
-  const [issues, setIssues] = useState(null);
-  const [documents, setDocuments] = useState([]);
-  const [items, setItems] = useState([]);
-  const [evidence, setEvidence] = useState(null);
-  const [stageFilter, setStageFilter] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [uploadNotice, setUploadNotice] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const load = useCallback(async (clientIdParam, { silent } = {}) => {
-    if (!silent) setLoading(true);
-    setError('');
-    try {
-      const [rep, dash, proc, iss, docs, itemList, ev] = await Promise.all([
-        getClientReports(clientIdParam),
-        getClientDashboard(clientIdParam, `${YEAR}-01-01`, `${YEAR}-12-31`),
-        getClientProcessingStatus(clientIdParam),
-        getClientIssues(clientIdParam),
-        getClientDocuments(clientIdParam),
-        getClientProcessingItems(clientIdParam, stageFilter || undefined),
-        getClientEvidence(clientIdParam),
-      ]);
-      setReports(rep);
-      setDashboard(dash);
-      setProcessing(proc);
-      setIssues(iss);
-      setDocuments(docs.documents || []);
-      setItems(itemList.items || []);
-      setEvidence(ev);
-    } catch (e) {
-      if (!silent) setError(e.message || 'Failed to load client workspace');
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [stageFilter]);
-
-  useEffect(() => {
-    load(clientId);
-  }, [clientId, load]);
-
-  // BL-6 — while any client item is still in flight, poll the REAL backend
-  // stage state (same pattern as the customer ProcessingPage) so the
-  // extraction → mapping → validation → calculation progression is visible
-  // without a manual refresh. No fake completion is ever shown: the items'
-  // status and the stage-count card both come from the API.
-  useEffect(() => {
-    const inFlight = items.some(
-      (i) => !['approved', 'rejected', 'qc_approved', 'qc_rejected', 'completed', 'failed'].includes(i.status)
-    );
-    if (!inFlight) return undefined;
-    const timer = setInterval(() => {
-      Promise.all([
-        getClientProcessingItems(clientId, stageFilter || undefined),
-        getClientProcessingStatus(clientId),
-      ])
-        .then(([itemList, proc]) => {
-          setItems(itemList.items || []);
-          setProcessing(proc);
-        })
-        .catch(() => { /* next poll or manual refresh recovers */ });
-    }, 10000);
-    return () => clearInterval(timer);
-  }, [clientId, stageFilter, items]);
-
-  const onUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadError('');
-    setUploadNotice('');
-    try {
-      const result = await uploadConsultantDocument(clientId, file, 'utility');
-      const documentId = result?.document?.id;
-      // Step 2A — report the backend's REAL verdict. The document is only in the
-      // client's pipeline if the security gate accepted it.
-      setUploadNotice(
-        `“${file.name}” uploaded — status ${result?.status || 'clean'}. It has entered the client's processing pipeline. Track its progress in the pipeline below.`
-      );
-      const [docs, itemList] = await Promise.all([
-        getClientDocuments(clientId),
-        getClientProcessingItems(clientId, stageFilter || undefined),
-      ]);
-      setDocuments(docs.documents || []);
-      setItems(itemList.items || []);
-      // BL-6 — surface the document's REAL initial stage from the refreshed
-      // items (file_id → item), never a fake completion.
-      const uploadedItem = (itemList.items || []).find((it) => it.file_id === documentId);
-      if (uploadedItem) {
-        setUploadNotice(
-          `“${file.name}” uploaded — current stage: ${uploadedItem.status}. `
-          + `The client's pipeline continues automatically through mapping, validation and calculation.`
-        );
-      }
-    } catch (e) {
-      setUploadError(consultantUploadError(e));
-    } finally {
-      setUploading(false);
-      event.target.value = '';
-    }
-  };
-
-  const onOpenItem = (itemId) => {
-    navigate(`/consultant/items/${encodeURIComponent(clientId)}/${encodeURIComponent(itemId)}`);
-  };
-
-  if (loading) return <LoadingBlock label="Loading client workspace…" />;
-  if (error) return <ErrorBlock message={error} />;
-
-  const processingStatus = processing?.status || {};
-  const stageCounts = Object.entries(processingStatus)
-    .filter(([, value]) => typeof value === 'number')
-    .map(([stage, count]) => ({ stage, count }));
-
-  return (
-    <div>
-      <div className="v3-workspace-banner">
-        ⚠ You are working on: <strong>{client?.client_name}</strong> — every action here applies to this client only.
-      </div>
-
-      <div className="v3-consultant-grid">
-        <div className="v3-summary-card"><div className="label">Total CO2e ({YEAR})</div><div className="value completed">{formatCo2(dashboard?.total_co2e_kg)}</div></div>
-        <div className="v3-summary-card"><div className="label">Rows</div><div className="value">{dashboard?.total_rows || 0}</div></div>
-        <div className="v3-summary-card"><div className="label">Open issues</div><div className="value failed">{issues?.issues?.filter((i) => i.status === 'open').length || 0}</div></div>
-        <div className="v3-summary-card"><div className="label">Documents</div><div className="value">{documents.length}</div></div>
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Upload document for this client</h2>
-        <p className="v3-muted">
-          The document is stored under the client organisation and enters the same durable
-          server-side pipeline as a customer upload (extraction item → automatic processing → review).
-        </p>
-        {uploadError && <div className="v3-ops-error">{uploadError}</div>}
-        {uploadNotice && <div className="v3-ops-notice">{uploadNotice}</div>}
-        <div className="workspace-actions">
-          <label className="v3-btn primary" style={{ cursor: 'pointer' }}>
-            {uploading ? 'Uploading…' : 'Choose file to upload'}
-            <input
-              type="file"
-              style={{ display: 'none' }}
-              disabled={uploading}
-              onChange={onUpload}
-              accept=".pdf,.csv,.xlsx,.xls,.jpg,.jpeg,.png"
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Processing pipeline ({items.length})</h2>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-          {STAGE_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              className={`v3-tab ${stageFilter === f.id ? 'active' : ''}`}
-              onClick={() => setStageFilter(f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        {items.length === 0 ? (
-          <div className="v3-empty" style={{ padding: 20 }}>No processing items in this stage.</div>
-        ) : (
-          <table className="v3-table">
-            <thead><tr><th>Item</th><th>Organisation</th><th>Status</th><th>Open</th></tr></thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.file_name}</td>
-                  <td>{item.organization?.name || '—'}</td>
-                  <td><span className={`v3-status ${item.status}`}><span className="dot" />{item.status}</span></td>
-                  <td>
-                    <button className="v3-btn v3-btn-sm" onClick={() => onOpenItem(item.id)}>Open workspace</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Documents</h2>
-        {documents.length === 0 ? (
-          <div className="v3-empty" style={{ padding: 20 }}>No documents uploaded yet.</div>
-        ) : (
-          <table className="v3-table">
-            <thead><tr><th>Document</th><th>Type</th><th>Size</th></tr></thead>
-            <tbody>
-              {documents.map((doc) => (
-                <tr key={doc.id}>
-                  <td>{doc.name}</td>
-                  <td>{doc.file_type || '—'}</td>
-                  <td>{doc.size_bytes ? `${Math.round(doc.size_bytes / 1024)} KB` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Processing status</h2>
-        {stageCounts.length === 0 ? (
-          <div className="v3-empty" style={{ padding: 20 }}>No processing stages active.</div>
-        ) : (
-          <table className="v3-table">
-            <thead><tr><th>Stage</th><th>Count</th></tr></thead>
-            <tbody>
-              {stageCounts.map((row) => (
-                <tr key={row.stage}><td>{row.stage}</td><td>{row.count}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Evidence — persisted calculations ({evidence?.total ?? 0})</h2>
-        {!evidence?.calculations || evidence.calculations.length === 0 ? (
-          <div className="v3-empty" style={{ padding: 20 }}>No calculated evidence for this client yet.</div>
-        ) : (
-          <table className="v3-table">
-            <thead><tr><th>Activity</th><th>Quantity</th><th>CO₂e</th><th>Scope</th><th>Factor source</th><th>Year</th></tr></thead>
-            <tbody>
-              {evidence.calculations.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.activity_type || c.activity || c.id}</td>
-                  <td>{c.quantity} {c.quantity_unit}</td>
-                  <td>{Number(c.co2e_kg).toLocaleString('en-GB', { maximumFractionDigits: 2 })} kg</td>
-                  <td>{c.scope || '—'}</td>
-                  <td>{c.factor_source || '—'}{c.factor_kind === 'customer_factor' ? ' (customer factor)' : ''}</td>
-                  <td>{c.reporting_year || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="v3-admin-card">
-        <h2>Reports</h2>
-        {reports?.reports?.length === 0 ? (
-          <div className="v3-empty" style={{ padding: 20 }}>No reports yet.</div>
-        ) : (
-          <table className="v3-table">
-            <thead><tr><th>Report</th><th>Period</th><th>Status</th></tr></thead>
-            <tbody>
-              {(reports?.reports || []).map((report) => (
-                <tr key={report.id}>
-                  <td>{report.report_name || `${report.report_type} ${report.reporting_year}`}</td>
-                  <td>{report.reporting_year}</td>
-                  <td><span className={`v3-status ${report.status}`}><span className="dot" />{report.status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
     </div>
   );
 }
@@ -774,19 +456,20 @@ function BrandingView() {
 // BL-7 — the firm's client directory + lifecycle management as a dedicated,
 // always-available tab. Previously the directory rendered below the workspace
 // content, burying lifecycle actions (Suspend/End/Reactivate/Deactivate) under
-// the active client's data. Selection stays on the top-level switcher; this is
-// the firm-level directory. Every action and the canManageClients gate are
-// preserved unchanged.
+// the active client's data. CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A
+// (UX-01/AC-03) — this IS the human entry point for choosing a client: every row
+// carries "Open workspace", which enters the Client Operating Plane. There is no
+// separate global client selector. Every action and the canManageClients gate
+// are preserved unchanged.
 export function ClientsDirectory({
   clients,
-  activeClientId,
   canManageClients,
   notice,
-  onSwitchClient,
   onLifecycleAction,
   onToggleClientStatus,
   onNewCustomer,
 }) {
+  const navigate = useNavigate();
   return (
     <div className="v3-admin-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -801,13 +484,30 @@ export function ClientsDirectory({
       {clients.map((client) => (
         <div
           key={client.id}
-          className={`v3-client-list-item ${client.id === activeClientId ? 'active' : ''}`}
-          onClick={() => onSwitchClient(client.id)}
+          className="v3-client-list-item"
         >
           <div>
             <div className="primary">{client.client_name}</div>
-            <div className="secondary" title={client.organization_id}>{client.client_industry || 'Client'} · {client.status || 'active'}</div>
+            <div className="secondary" title={client.organization_id}>
+              {relationshipLabel(client)} · {clientPortalLabel(client)}
+            </div>
+            {clientPortalNote(client) && (
+              <div className="secondary">{clientPortalNote(client)}</div>
+            )}
           </div>
+          {/* CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01 (PD-1/PD-9) —
+              opens the selected client as a NORMAL CarbonTally Organisation
+              (the same Organisation surface, reusing the existing customer
+              pages), rather than the reduced inline client mini-dashboard. */}
+          <button
+            className="v3-btn v3-btn-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/consultant/clients/${client.id}/home`);
+            }}
+          >
+            Open workspace
+          </button>
           <span className={`v3-badge ${client.status === 'active' ? 'active' : 'inactive'}`}>
             {(client.status || 'active').toUpperCase()}
           </span>
@@ -851,13 +551,47 @@ export function ClientsDirectory({
   );
 }
 
+// CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-10/AC-13) — Client messages is
+// inherently client-specific, so it selects its OWN client locally, from the
+// server-authorised firm client set. This is deliberately NOT a global
+// "Active client" mechanism: the selector exists only inside the messaging view,
+// where a specific client conversation is the subject.
+function MessagingView({ clients, firmName }) {
+  const [clientId, setClientId] = useState('');
+  useEffect(() => {
+    if (!clientId && clients.length) setClientId(clients[0].id);
+  }, [clients, clientId]);
+  const client = clients.find((c) => c.id === clientId) || null;
+
+  return (
+    <div>
+      <div className="v3-admin-card" style={{ marginBottom: 12 }}>
+        <label className="v3-muted" htmlFor="messaging-client-select">Client</label>
+        <select
+          id="messaging-client-select"
+          aria-label="Client"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          style={{ marginLeft: 8 }}
+        >
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>{c.client_name}</option>
+          ))}
+        </select>
+      </div>
+      {client ? (
+        <ClientMessagingTab client={client} firmName={firmName} />
+      ) : (
+        <div className="v3-empty">You have no clients to message yet.</div>
+      )}
+    </div>
+  );
+}
+
 export default function ConsultantPage() {
   const [profile, setProfile] = useState(null);
   const [clients, setClients] = useState([]);
   const [dashboard, setDashboard] = useState(null);
-  const [activeClientId, setActiveClientId] = useState(
-    () => localStorage.getItem('v3_consultant_active_client') || ''
-  );
   const [view, setView] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -868,18 +602,17 @@ export default function ConsultantPage() {
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [searchParams] = useSearchParams();
 
-  // CON-6 / Phase G — the routed item workspace links back with
-  // ?client=<id>&view=workspace; restore the active client + view so
-  // "Back to client workspace" returns to the same work area.
-  const requestedClient = searchParams.get('client');
+  // CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-01/AC-01) — there is no
+  // global active-client state any more. A client is chosen in the Clients tab
+  // ("Open workspace") which enters the Client Operating Plane. The legacy
+  // ?client=<id> deep link is ignored; the ?view= deep link is still honoured
+  // (e.g. the Manual Processing CTA links to /consultant?view=coverage).
   const requestedView = searchParams.get('view');
   useEffect(() => {
-    if (requestedClient) {
-      setActiveClientId(requestedClient);
-      localStorage.setItem('v3_consultant_active_client', requestedClient);
-    }
-    if (requestedView) setView(requestedView);
-  }, [requestedClient, requestedView]);
+    // "Client workspace" is no longer a consultant-plane destination (UX-03): a
+    // legacy ?view=workspace deep link resolves to the Clients portfolio.
+    if (requestedView) setView(requestedView === 'workspace' ? 'clients' : requestedView);
+  }, [requestedView]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -894,23 +627,12 @@ export default function ConsultantPage() {
       setCanManageClients(!!prof?.can_manage_clients);
       setClients(clientList.clients || []);
       setDashboard(dash);
-      const managed = clientList.clients || [];
-      // CON-6 — never land on a client the firm does not actually manage:
-      // if the remembered active client is absent from the managed list,
-      // auto-select the first managed client instead of dead-ending.
-      const remembered = activeClientId || localStorage.getItem('v3_consultant_active_client') || '';
-      const stillManaged = managed.some((c) => c.id === remembered);
-      if (!stillManaged && managed.length) {
-        const first = managed[0];
-        setActiveClientId(first.id);
-        localStorage.setItem('v3_consultant_active_client', first.id);
-      }
     } catch (e) {
       setError(e.message || 'Failed to load consultant workspace');
     } finally {
       setLoading(false);
     }
-  }, [activeClientId]);
+  }, []);
 
   useEffect(() => { load(); }, [load, retryCount]);
 
@@ -931,14 +653,6 @@ export default function ConsultantPage() {
     };
   }, []);
 
-  const activeClient = clients.find((c) => c.id === activeClientId) || null;
-
-  const onSwitchClient = (clientId) => {
-    setActiveClientId(clientId);
-    localStorage.setItem('v3_consultant_active_client', clientId);
-    setView('workspace');
-  };
-
   // D25 — client lifecycle (D15 intact): the backend PUT /clients/{id} enforces
   // can_manage_clients + status vocabulary; this UI only invokes it.
   const onToggleClientStatus = async (client, nextStatus) => {
@@ -953,10 +667,6 @@ export default function ConsultantPage() {
       setNotice(`Client “${client.client_name}” is now ${nextStatus}.`);
       const refreshed = await listConsultantClients();
       setClients(refreshed.clients || []);
-      if (activeClientId === client.id && nextStatus === 'inactive') {
-        setActiveClientId('');
-        localStorage.removeItem('v3_consultant_active_client');
-      }
     } catch (e) {
       setError(e.message || 'Failed to update client status');
     }
@@ -1037,24 +747,20 @@ export default function ConsultantPage() {
         )}
       </div>
 
+      {/* CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01A (UX-01/AC-01/AC-02) — the
+          Consultant Plane represents the consultant FIRM. The global "Active
+          client" selector (and its client dropdown) is REMOVED: a client is only
+          ever the SUBJECT the consultant selects via Clients → Open workspace,
+          which enters the Client Operating Plane. There is no firm-level active
+          client, so firm branding / white-label / team / manual-processing
+          coverage never imply one. */}
       <div className="v3-active-client">
         <div>
-          <div className="label">Current organization</div>
-          <div className="name">{activeClient ? activeClient.client_name : 'No client selected'}</div>
-          {activeClient && (
-            <div className="org-id" title={activeClient.organization_id}>{activeClient.client_industry || 'Client'}</div>
-          )}
-        </div>
-        <div className="v3-client-switcher">
-          <select
-            value={activeClientId}
-            onChange={(e) => onSwitchClient(e.target.value)}
-            aria-label="Switch active client"
-          >
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>{client.client_name}</option>
-            ))}
-          </select>
+          <div className="label">Consultant</div>
+          <div className="name">{profile?.company_name || 'Your firm'}</div>
+          <div className="note">
+            Signed in as a consultant firm — you operate your clients on their behalf.
+          </div>
         </div>
       </div>
 
@@ -1062,11 +768,13 @@ export default function ConsultantPage() {
         <button className={`v3-tab ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
           Consultant dashboard
         </button>
-        <button className={`v3-tab ${view === 'workspace' ? 'active' : ''}`} onClick={() => setView('workspace')} disabled={!activeClient}>
-          Client workspace
-        </button>
         <button className={`v3-tab ${view === 'clients' ? 'active' : ''}`} onClick={() => setView('clients')}>
           Clients
+        </button>
+        {/* CT-MP-SUB-004 — one added entry in the existing consultant tab set
+            (CT-UX-MP-SUB-003 §8: no new persona, no parallel application). */}
+        <button className={`v3-tab ${view === 'coverage' ? 'active' : ''}`} onClick={() => setView('coverage')}>
+          Manual Processing
         </button>
         <button className={`v3-tab ${view === 'branding' ? 'active' : ''}`} onClick={() => setView('branding')}>
           Firm branding
@@ -1077,7 +785,7 @@ export default function ConsultantPage() {
         <button className={`v3-tab ${view === 'team' ? 'active' : ''}`} onClick={() => setView('team')}>
           Team
         </button>
-        <button className={`v3-tab ${view === 'messaging' ? 'active' : ''}`} onClick={() => setView('messaging')} disabled={!activeClient}>
+        <button className={`v3-tab ${view === 'messaging' ? 'active' : ''}`} onClick={() => setView('messaging')}>
           Client messages
         </button>
       </div>
@@ -1095,26 +803,28 @@ export default function ConsultantPage() {
       ) : view === 'clients' ? (
         <ClientsDirectory
           clients={clients}
-          activeClientId={activeClientId}
           canManageClients={canManageClients}
           notice={notice}
-          onSwitchClient={onSwitchClient}
           onLifecycleAction={onLifecycleAction}
           onToggleClientStatus={onToggleClientStatus}
           onNewCustomer={() => setShowNewCustomer(true)}
         />
       ) : view === 'branding' ? (
         <BrandingView />
+      ) : view === 'coverage' ? (
+        <ManualProcessingCoverageTab canManageClients={canManageClients} />
       ) : view === 'whitelabel' ? (
         <WhiteLabelTab />
       ) : view === 'team' ? (
         <ConsultantTeamTab />
       ) : view === 'messaging' ? (
-        <ClientMessagingTab client={activeClient} />
-      ) : view === 'dashboard' || !activeClient ? (
-        <DashboardView dashboard={dashboard} />
+        <MessagingView clients={clients} firmName={profile?.company_name} />
       ) : (
-        <ClientWorkspace client={activeClient} clientId={activeClient.id} />
+        // CT-CONSULTANT-UX-NAVIGATION-REMEDIATION-01 (UX-03, AC-02) — the legacy
+        // inline ClientWorkspace mini-dashboard is gone: a client's workspace is
+        // the Client Org plane (/consultant/clients/:clientId/*) reached through
+        // "Open workspace". Any unknown/legacy view falls back to the dashboard.
+        <DashboardView dashboard={dashboard} />
       )}
     </div>
   );

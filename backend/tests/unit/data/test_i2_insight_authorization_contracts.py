@@ -70,14 +70,20 @@ def test_save_statement_casts_every_parameter_explicitly() -> None:
 # --------------------------------------------------------------------------
 def test_i2_migration_is_the_latest_and_scoped_to_one_policy() -> None:
     names = sorted(p.name for p in _MIGRATIONS.glob("*.sql"))
-    # The P3 Insight data-quality/reproducibility catalogue migration (PO P3
-    # authorization 2026-09-23) is the latest, at its corrected prefix: the
-    # MIG-1 remediation (2026-09-23) moved it from 20260923000000_... (which
-    # sorted before the I4 migration that creates its target table) to
-    # 20261007000000_..., after every migration it depends on. I2 remains the
-    # latest *authorization* migration, unchanged in scope.
-    assert names[-1] == "20261007000000_p8_insight_data_quality_reproducibility.sql", names[-3:]
+    # B-18: this used to pin names[-1] to the P3 Insight catalogue migration,
+    # which measured "no migration has been added since 2026-09-23" rather than
+    # the stated invariant. Later authorised series (CT-FINAL-01/03, CT-BACKUP,
+    # the consultant series) legitimately follow, so the invariant is asserted
+    # order-relatively and durably: I2 exists, and no migration after I2
+    # redefines I2's author-kind policy — I2 stays the last authorization word.
     assert _I2_MIGRATION.name in names
+    _successors = names[names.index(_I2_MIGRATION.name) + 1 :]
+    _redefiners = [
+        name
+        for name in _successors
+        if "ci_messages_conversation_creator_insert" in _read(_MIGRATIONS / name)
+    ]
+    assert _redefiners == [], _redefiners
 
     ddl = _ddl(_read(_I2_MIGRATION))
     assert ddl.count("CREATE POLICY") == 1

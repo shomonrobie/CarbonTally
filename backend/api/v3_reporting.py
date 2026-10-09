@@ -1,7 +1,12 @@
 """D30 — V3 reporting surface (read-only dashboard/report aggregates).
 
 Every endpoint is authorization-scoped with the EXISTING guards (D15/D20/D22):
-- Customer dashboard  -> org member, own organization only (`ensure_org_access`).
+- Customer dashboard / emissions trend / member activity -> the CUSTOMER
+  ORGANISATION plane: an org member reading its OWN organization, or the
+  authorised consultant managing that client organisation. Both are produced by
+  the shared guard family (`require_org_member()` + `ensure_org_access`) exactly
+  as on the emissions/reports surfaces — never a parallel consultant check
+  (CT-CONSULTANT-ORGANISATION-PARITY-IMPLEMENTATION-01, PD-3/PD-7).
 - Consultant portfolio -> active consultant firm member; ACTIVE client grants
   only (ended relationships are counted but never detailed).
 - Internal operations / review / QC reporting -> internal staff + permission.
@@ -25,6 +30,7 @@ from api.dependencies import (
     ensure_org_access,
     ensure_org_audit_access,
     get_repositories,
+    require_org_member,
 )
 from api.operations_auth import (
     ensure_staff_permission,
@@ -62,7 +68,7 @@ def _parse_dt(value: Optional[str]):
 
 
 # ---------------------------------------------------------------------------
-# Customer dashboard aggregate (org member, own org only)
+# Customer dashboard aggregate (organisation plane: member / authorised consultant)
 # ---------------------------------------------------------------------------
 
 
@@ -72,7 +78,11 @@ async def customer_dashboard_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     scope: Optional[str] = Query(None),
-    current_user: AuthUser = Depends(get_current_user),
+    # F-NAV-1 — the organisation plane guard, not a bare "any member" check: the
+    # caller must be authorised for THIS organisation, which admits the client's
+    # ACTIVE-grant consultant as well as a member of it (PD-3/PD-7). The exact
+    # tenant decision stays with ``ensure_org_access`` below.
+    current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
     """The customer "what is my emissions status and what needs my attention?"
@@ -161,10 +171,11 @@ async def consultant_portfolio_report(
 async def emissions_trend_report(
     organization_id: str = Query(..., min_length=1),
     months: int = Query(12, ge=1, le=36),
-    current_user: AuthUser = Depends(get_current_user),
+    # F-NAV-1 — same organisation plane guard as the customer dashboard.
+    current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Zero-filled monthly emissions trend (org member, own org only)."""
+    """Zero-filled monthly emissions trend (authorised organisation plane only)."""
     ensure_org_access(current_user, organization_id)
     return await repos.reporting.emissions_trend(organization_id, months)
 
@@ -172,10 +183,11 @@ async def emissions_trend_report(
 @router.get("/api/v3/reporting/member-activity")
 async def member_activity_report(
     organization_id: str = Query(..., min_length=1),
-    current_user: AuthUser = Depends(get_current_user),
+    # F-NAV-1 — same organisation plane guard as the customer dashboard.
+    current_user: AuthUser = Depends(require_org_member()),
     repos: RepositoryBundle = Depends(get_repositories),
 ):
-    """Activity by organisation member (org member, own org only).
+    """Activity by organisation member (authorised organisation plane only).
 
     Derived from authoritative author columns (see ``ReportingRepository``);
     the activity_logs-family tables are not populated by the current workflow.

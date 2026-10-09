@@ -1,0 +1,146 @@
+/* frontend/src/v3/portal/portal.css
+ * CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-7) — Plane C presentation.
+ * Presentation only. Colours fall back to the D21 semantic tokens when present.
+ */
+.portal-shell {
+  min-height: 100vh;
+  background: var(--surface-page, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  display: flex;
+  flex-direction: column;
+}
+
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--surface-card, #ffffff);
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+.portal-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal-brand-text {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.portal-logo {
+  max-height: 36px;
+}
+
+.portal-org {
+  color: var(--text-muted, #64748b);
+  font-size: 14px;
+}
+
+.portal-nav {
+  display: flex;
+  gap: 16px;
+}
+
+.portal-nav a {
+  color: var(--text-secondary, #334155);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.portal-nav a.active {
+  color: var(--brand-primary, #0f766e);
+  text-decoration: underline;
+}
+
+.portal-banner {
+  padding: 12px 24px;
+  font-size: 14px;
+}
+
+.portal-banner-retained {
+  background: #fef3c7;
+  color: #78350f;
+  border-bottom: 1px solid #fde68a;
+}
+
+.portal-main {
+  flex: 1;
+  padding: 24px;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.portal-card {
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.portal-card h2 {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+.portal-dl {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.portal-dl dt {
+  color: var(--text-muted, #64748b);
+  font-weight: 600;
+}
+
+.portal-dl dd {
+  margin: 0;
+}
+
+.portal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.portal-muted {
+  color: var(--text-muted, #64748b);
+  font-size: 14px;
+}
+
+.portal-loading,
+.portal-notice {
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.portal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle, #e2e8f0);
+  text-align: center;
+}
+
+.portal-shell textarea {
+  width: 100%;
+  border: 1px solid var(--border-strong, #cbd5e1);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  margin-top: 6px;
+}
+
+@media (max-width: 600px) {
+  .portal-dl {
+    grid-template-columns: 1fr;
+  }
+}

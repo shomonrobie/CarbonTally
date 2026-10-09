@@ -19,6 +19,7 @@ the pipeline enqueue are replaced with in-memory doubles.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -620,7 +621,13 @@ def test_consultant_provenance_survives_client_conversion_without_moving_bytes(
     )
 
     # 2. the client later becomes a DIRECT CarbonTally customer (same
-    #    organisation, same data) and uploads its own document
+    #    organisation, same data) and uploads its own document. Under the
+    #    ratified consultant model an organisation is a consultant-managed CLIENT
+    #    only while a consultant relationship is LIVE, so "becomes a direct
+    #    customer" means the relationship has ENDED with nothing retained
+    #    (CT-CONSULTANT-CLIENT-PLANE-AUTH-REMEDIATION-05; PO-CONSOLIDATION-01
+    #    §16). Ending it restores the direct-customer organisation surface.
+    asyncio.run(world.consultants.transition_client_lifecycle("client-a", "ended"))
     user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
     own = _org_initiate(client, user_provider, filename="client-own.pdf")
     own_body = own.json()

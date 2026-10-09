@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.client_access_guard import enforce_client_operation
 from api.dependencies import (
     RepositoryBundle,
     ensure_org_access,
@@ -16,6 +17,8 @@ from api.dependencies import (
 )
 from auth import AuthUser, require_org_member, require_org_admin
 from api.manual_processing_auth import ensure_manual_processing_allowed
+from domain.relationship_access import OP_CORRECT_SUBMITTED_DATA
+from services.manual_processing_notifications import notify_manual_processing_entry
 
 router = APIRouter(prefix="/api/v3/manual-extraction", tags=["V3 — Manual Extraction"])
 
@@ -53,7 +56,7 @@ async def create_batch(
     ensure_org_access(current_user, organization_id)
     # FIN-06 — Manual Processing is OFF by default and CarbonTally-Admin controlled.
     await ensure_manual_processing_allowed(repos, current_user, organization_id)
-    return await repos.manual_extraction.create_batch(
+    batch = await repos.manual_extraction.create_batch(
         org_id=organization_id,
         batch_name=payload.batch_name,
         total_documents=payload.total_documents,
@@ -64,6 +67,15 @@ async def create_batch(
         price_per_page=payload.price_per_page,
         created_by=current_user.user_id,
     )
+    # N3 (PO-authorised, NOTIFICATION-IMPLEMENT-04) — the batch has now ENTERED
+    # Manual Processing, so the ONE responsible consultant for the affected
+    # client is notified. The recipient is resolved server-side from the
+    # authoritative consultant-client relationship model; the caller cannot
+    # nominate a recipient. Fail-safe + audited when not determinable.
+    await notify_manual_processing_entry(
+        repos, organization_id=organization_id, batch_id=batch.id
+    )
+    return batch
 
 
 @router.get("/batches")
@@ -143,6 +155,17 @@ async def update_item(
     # processing: it must carry the CarbonTally-Admin entitlement, not merely
     # organisation membership.
     await ensure_manual_processing_allowed(repos, current_user, batch.organization_id)
+    # CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the CLIENT-ACCESS CEILING for
+    # correcting the organisation's own submitted data (§8.2
+    # ``correct_submitted_data``: ✗ OFF / ✗ READ_ONLY / ✓ COLLABORATIVE / ✗ MANAGED
+    # / ✗ RETAINED). This route rewrites an item's ``extracted_data``/
+    # ``mapped_data`` — the organisation's own submitted data — so the same ceiling
+    # that bounds the item workbench applies here. Evaluated after identity,
+    # tenant, organisation-membership and Manual-Processing-entitlement
+    # authorization, and BEFORE the update/audit/notification writes.
+    await enforce_client_operation(
+        current_user, repos, batch.organization_id, OP_CORRECT_SUBMITTED_DATA
+    )
     updated = await repos.manual_extraction.update_item(
         item_id,
         payload.extracted_data,

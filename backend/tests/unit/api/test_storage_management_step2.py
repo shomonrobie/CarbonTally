@@ -1034,3 +1034,368 @@ def test_an_ended_consultant_grant_cannot_complete_a_direct_upload(
     row = world.files._by_id[body["document_id"]]
     assert row["organization_id"] == ORG_A
     assert row["status"] == STATUS_PENDING_UPLOAD
+
+
+# ---------------------------------------------------------------------------
+# CT-PO-UPLOAD-BATCH-REMEDIATION-001 (Part B) — an abandoned direct upload now
+# has a reachable, auditable terminal state instead of a ghost `pending_upload`
+# row. The endpoint reuses the SAME terminal state and audit action the 24-hour
+# reaper uses; nothing is hard-deleted and nothing is enqueued for processing.
+# ---------------------------------------------------------------------------
+
+
+def test_abandoning_a_pending_upload_makes_it_terminal_and_audited(
+    client, world, user_provider, storage, enqueued
+) -> None:
+    from api.upload_gate import ACTION_UPLOAD_EXPIRED
+
+    started = _org_initiate(client, user_provider)
+    assert started.status_code == 201, started.text
+    document_id = started.json()["document_id"]
+
+    resp = client.post(f"/api/v3/documents/{document_id}/upload-abandon")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["abandoned"] is True
+    assert body["idempotent"] is False
+    assert body["status"] == STATUS_UPLOAD_EXPIRED
+    assert body["organization_id"] == ORG_A
+
+    # The row is retained (evidence is not destroyed) and is terminal.
+    row = world.files._by_id[document_id]
+    assert row["status"] == STATUS_UPLOAD_EXPIRED
+    # An abandoned upload never enters the processing pipeline.
+    assert enqueued.calls == []
+    assert ACTION_UPLOAD_EXPIRED in _actions(world)
+
+
+def test_abandoning_an_upload_is_idempotent(
+    client, world, user_provider, storage, enqueued
+) -> None:
+    started = _org_initiate(client, user_provider)
+    document_id = started.json()["document_id"]
+
+    first = client.post(f"/api/v3/documents/{document_id}/upload-abandon")
+    assert first.status_code == 200, first.text
+    assert first.json()["idempotent"] is False
+
+    second = client.post(f"/api/v3/documents/{document_id}/upload-abandon")
+    assert second.status_code == 200, second.text
+    assert second.json()["idempotent"] is True
+    assert second.json()["status"] == STATUS_UPLOAD_EXPIRED
+    assert world.files._by_id[document_id]["status"] == STATUS_UPLOAD_EXPIRED
+    assert enqueued.calls == []
+
+
+def test_abandoning_an_upload_that_reached_storage_is_refused(
+    client, world, user_provider, storage
+) -> None:
+    """A real upload must never be mislabelled as abandoned."""
+    started = _org_initiate(client, user_provider)
+    body = started.json()
+    storage.objects[body["storage_path"]] = PDF_BYTES  # the PUT actually landed
+
+    resp = client.post(f"/api/v3/documents/{body['document_id']}/upload-abandon")
+    assert resp.status_code == 409, resp.text
+    assert world.files._by_id[body["document_id"]]["status"] == STATUS_PENDING_UPLOAD
+
+
+def test_abandoning_an_already_accepted_upload_is_refused(
+    client, world, user_provider, storage, enqueued
+) -> None:
+    started = _org_initiate(client, user_provider)
+    body = started.json()
+    storage.objects[body["storage_path"]] = PDF_BYTES
+    assert _complete(client, body["document_id"]).status_code == 200
+
+    resp = client.post(f"/api/v3/documents/{body['document_id']}/upload-abandon")
+    assert resp.status_code == 409, resp.text
+    assert world.files._by_id[body["document_id"]]["status"] == STATUS_CLEAN
+
+
+def test_abandoning_another_organisations_upload_is_denied(
+    client, world, user_provider, storage
+) -> None:
+    started = _org_initiate(client, user_provider)  # ORG_A
+    document_id = started.json()["document_id"]
+
+    user_provider.set_user(member_user(ORG_B, "u-b", "ub@example.test"))
+    resp = client.post(f"/api/v3/documents/{document_id}/upload-abandon")
+    assert resp.status_code in (403, 404), resp.text
+    assert world.files._by_id[document_id]["status"] == STATUS_PENDING_UPLOAD
+
+
+def test_an_abandoned_upload_can_never_be_completed_later(
+    client, world, user_provider, storage, enqueued
+) -> None:
+    """Even if the bytes arrive late, the terminal state refuses completion."""
+    started = _org_initiate(client, user_provider)
+    document_id = started.json()["document_id"]
+    assert client.post(f"/api/v3/documents/{document_id}/upload-abandon").status_code == 200
+
+    storage.objects[started.json()["storage_path"]] = PDF_BYTES
+    refused = _complete(client, document_id)
+    assert refused.status_code == 409
+    assert enqueued.calls == []
+
+
+def test_a_consultant_can_abandon_a_client_upload_without_changing_ownership(
+    client, world, user_provider, storage, enqueued
+) -> None:
+    started = _consultant_initiate(client, world, user_provider)
+    assert started.status_code == 201, started.text
+    body = started.json()
+
+    resp = client.post(
+        f"/api/v3/consultants/clients/client-a/documents/{body['document_id']}/upload-abandon"
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["organization_id"] == ORG_A  # the CLIENT still owns it
+    assert resp.json()["client_id"] == "client-a"
+
+    row = world.files._by_id[body["document_id"]]
+    assert row["organization_id"] == ORG_A
+    assert row["status"] == STATUS_UPLOAD_EXPIRED
+    assert enqueued.calls == []
+
+
+
+# ---------------------------------------------------------------------------
+# CT-PO-UPLOAD-BATCH-REMEDIATION-001 (Part C) — batch upload is a wired V3
+# capability again. The grouping record's lifecycle (create → real per-file
+# progress → complete) is exposed over the EXISTING upload_batches repository
+# and is organisation-scoped; no state is invented client-side.
+# ---------------------------------------------------------------------------
+
+
+class _FakeUploadBatches:
+    """In-memory ``upload_batches`` lifecycle for the restored batch surface."""
+
+    def __init__(self) -> None:
+        self._by_id: dict = {}
+        self._seq = 0
+
+    async def create(self, org_id, batch_name, created_by_user_id, metadata=None):
+        from domain.operations import UploadBatch
+
+        self._seq += 1
+        batch = UploadBatch(
+            id=f"batch-{self._seq}",
+            organization_id=org_id,
+            batch_name=batch_name,
+            total_files=0,
+            processed_files=0,
+            status="pending",
+            created_by_user_id=created_by_user_id,
+            metadata=dict(metadata or {}),
+        )
+        self._by_id[batch.id] = batch
+        return batch
+
+    async def get(self, batch_id):
+        return self._by_id.get(batch_id)
+
+    async def update_progress(self, batch_id, processed_files, status):
+        from dataclasses import replace
+
+        batch = self._by_id.get(batch_id)
+        if batch is None:
+            return None
+        updated = replace(batch, processed_files=processed_files, status=status)
+        self._by_id[batch_id] = updated
+        return updated
+
+    async def complete(self, batch_id):
+        from dataclasses import replace
+
+        batch = self._by_id.get(batch_id)
+        if batch is None:
+            return None
+        updated = replace(
+            batch, status="completed", completed_at=datetime.now(timezone.utc)
+        )
+        self._by_id[batch_id] = updated
+        return updated
+
+
+def _use_fake_batches(app, world) -> _FakeUploadBatches:
+    """Swap the (otherwise unused) stub batches repo for a real lifecycle."""
+    from dataclasses import replace
+
+    from api.dependencies import get_repositories
+
+    fake = _FakeUploadBatches()
+    app.dependency_overrides[get_repositories] = lambda: replace(
+        world.bundle(), batches=fake
+    )
+    return fake
+
+
+def _create_batch(client, org_id=ORG_A) -> str:
+    resp = client.post(
+        f"/api/v3/batches?organization_id={org_id}",
+        json={
+            "batch_name": "September invoices",
+            "metadata": {"surface": "v3_documents_batch", "file_count": 3},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_a_batch_is_created_pending_and_reports_its_real_progress(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    created = client.get(f"/api/v3/batches/{batch_id}")
+    assert created.status_code == 200, created.text
+    assert created.json()["status"] == "pending"
+    assert created.json()["processed_files"] == 0
+
+    mid = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": 1, "status": "processing"},
+    )
+    assert mid.status_code == 200, mid.text
+    assert mid.json()["processed_files"] == 1
+    assert mid.json()["status"] == "processing"
+
+    done = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": 3, "status": "completed"},
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "completed"
+    assert done.json()["completed_at"] is not None
+
+
+def test_a_partial_batch_is_recorded_as_partial_not_completed(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    resp = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": 3, "status": "partial"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "partial"
+    assert resp.json()["completed_at"] is None
+
+
+
+def test_batch_progress_cannot_report_another_organisations_batch(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    user_provider.set_user(member_user(ORG_B, "u-b", "ub@example.test"))
+    denied = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": 1, "status": "processing"},
+    )
+    assert denied.status_code == 403, denied.text
+
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    unchanged = client.get(f"/api/v3/batches/{batch_id}")
+    assert unchanged.json()["processed_files"] == 0
+    assert unchanged.json()["status"] == "pending"
+
+
+def test_batch_progress_rejects_an_unknown_batch(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+
+    resp = client.patch(
+        "/api/v3/batches/does-not-exist",
+        json={"processed_files": 1, "status": "processing"},
+    )
+    assert resp.status_code == 404
+
+
+def test_batch_progress_cannot_invent_a_lifecycle_state(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    resp = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": 1, "status": "definitely-not-a-status"},
+    )
+    assert resp.status_code == 422
+
+
+def test_batch_progress_refuses_a_negative_processed_count(
+    client, app, world, user_provider
+) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    resp = client.patch(
+        f"/api/v3/batches/{batch_id}",
+        json={"processed_files": -1, "status": "processing"},
+    )
+    assert resp.status_code == 422
+
+
+def test_the_batch_progress_write_is_audited(client, app, world, user_provider) -> None:
+    user_provider.set_user(member_user(ORG_A, "u-1", "u1@example.test"))
+    _use_fake_batches(app, world)
+    batch_id = _create_batch(client)
+
+    assert (
+        client.patch(
+            f"/api/v3/batches/{batch_id}",
+            json={"processed_files": 2, "status": "processing"},
+        ).status_code
+        == 200
+    )
+    assert "batch.progress" in _actions(world)
+
+
+def test_the_unified_upload_surface_reuses_the_approved_protocol_in_source() -> None:
+    """The multi-file upload panel must drive the SAME signed-direct flow — not a
+    legacy fork (CT-PO-UPLOAD-UNIFY-001 unifies the single-file form and the
+    separate batch panel into this one surface)."""
+    panel = (
+        REPO_ROOT
+        / "frontend"
+        / "src"
+        / "v3"
+        / "customer"
+        / "UploadDocumentsPanel.jsx"
+    ).read_text(encoding="utf-8")
+    assert "v3UploadDocumentDirect" in panel
+    assert "v3CreateUploadBatch" in panel
+    assert "v3UpdateUploadBatchProgress" in panel
+    # No legacy bulk-upload machinery is revived.
+    assert "BulkUpload" not in panel
+    assert "UploadManager" not in panel
+    assert "PDFIngestionPortal" not in panel
+    assert "XMLHttpRequest" not in panel  # transport stays inside the shared client
+
+
+def test_the_upload_panel_is_wired_into_the_documents_surface_in_source() -> None:
+    page = (
+        REPO_ROOT / "frontend" / "src" / "v3" / "customer" / "DocumentsPage.jsx"
+    ).read_text(encoding="utf-8")
+    assert "UploadDocumentsPanel" in page
+    assert "<UploadDocumentsPanel" in page
+    # CT-PO-UPLOAD-UNIFY-001 — exactly ONE upload surface: the old single-file
+    # form and the separate batch panel are gone, and the mandatory pre-upload
+    # "Data type" selector is gone with them.
+    assert "BatchUploadPanel" not in page
+    assert "Data type" not in page
+

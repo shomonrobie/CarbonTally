@@ -507,6 +507,24 @@ class OrganizationsRepository(AbstractRepository[Organization]):
         )
         return _row_to_org(row) if row is not None else None
 
+    async def get_many(self, ids: list[str]) -> dict[str, Organization]:
+        """Batch-fetch organisations by id (NV-9 — avoids N+1 name lookups).
+
+        Returns a mapping ``{id: Organization}`` for the ids that exist. The
+        caller must treat a missing id as "unknown organisation" (never assume a
+        name). Empty input performs no query.
+        """
+        if not ids:
+            return {}
+        unique = list(dict.fromkeys(str(i) for i in ids if i))
+        if not unique:
+            return {}
+        rows = await self._fetch_all(
+            f"SELECT {_ORG_COLUMNS} FROM public.organizations WHERE id = ANY($1::uuid[])",
+            unique,
+        )
+        return {str(r["id"]): _row_to_org(r) for r in rows}
+
     async def list_all(self) -> list[Organization]:
         """Return every organisation, by name (operations surface)."""
         rows = await self._fetch_all(
@@ -669,6 +687,103 @@ class OrganizationsRepository(AbstractRepository[Organization]):
             user_id,
         )
         return [_row_to_member(r) for r in rows]
+
+    async def get_member_by_user(
+        self, org_id: str, user_id: str
+    ) -> Optional[dict]:
+        """Return the (org, user) membership joined with ``users`` email, or None.
+
+        Unlike :meth:`get_member` (keyed by membership id) this is the natural
+        key used by the invitation-acceptance flow: "does this accepting user
+        already belong to the organisation?".
+        """
+        row = await self._fetch_one(
+            f"""
+            SELECT {_MEMBER_EMAIL_COLUMNS}
+            FROM public.organization_members m
+            LEFT JOIN public.users u ON u.id = m.user_id
+            WHERE m.organization_id = $1 AND m.user_id = $2
+            """,
+            org_id,
+            user_id,
+        )
+        return _row_to_member_with_email(row) if row is not None else None
+
+    async def accept_invited_membership(
+        self,
+        *,
+        org_id: str,
+        user_id: str,
+        email: str,
+        role: str,
+    ) -> OrganizationMember:
+        """Create (or re-activate) the membership for an accepting invitee.
+
+        PD-1A: this is the SERVER-SIDE join step performed only after a
+        single-use invitation has been atomically consumed. A single
+        transaction guarantees the ``users`` mirror row and the membership are
+        created together, so an invitee is never left joined to nothing.
+
+        The accepting user's own auth id (``user_id``) is used as the
+        ``public.users.id`` — exactly as :meth:`create_with_owner` does for the
+        D35 self-service creator — so the membership FK resolves against the
+        real identity anchor.
+
+        ``role`` is the role recorded on the invitation at creation time (the
+        role the inviter was AUTHORISED to assign — PD-2A). An already-ACTIVE
+        membership is returned unchanged: acceptance must never silently
+        escalate an existing member's role past what PD-2A permits. An INACTIVE
+        membership is re-activated and given the invited role.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                # FK anchor for organization_members.user_id. Idempotent.
+                await conn.execute(
+                    """
+                    INSERT INTO public.users (id, email, is_active, email_verified, created_at, updated_at)
+                    VALUES ($1, $2, TRUE, TRUE, NOW(), NOW())
+                    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, updated_at = NOW()
+                    """,
+                    user_id,
+                    email,
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_MEMBER_COLUMNS} FROM public.organization_members
+                    WHERE organization_id = $1 AND user_id = $2
+                    """,
+                    org_id,
+                    user_id,
+                )
+                if existing is not None:
+                    if existing["is_active"]:
+                        member_row = existing
+                    else:
+                        member_row = await conn.fetchrow(
+                            f"""
+                            UPDATE public.organization_members
+                            SET is_active = TRUE, role = $2, updated_at = NOW()
+                            WHERE id = $1
+                            RETURNING {_MEMBER_COLUMNS}
+                            """,
+                            existing["id"],
+                            role,
+                        )
+                else:
+                    member_row = await conn.fetchrow(
+                        f"""
+                        INSERT INTO public.organization_members (
+                            organization_id, user_id, role, is_active, created_at
+                        ) VALUES ($1, $2, $3, TRUE, NOW())
+                        RETURNING {_MEMBER_COLUMNS}
+                        """,
+                        org_id,
+                        user_id,
+                        role,
+                    )
+        if member_row is None:
+            raise RuntimeError("accept_invited_membership returned no membership row")
+        return _row_to_member(member_row)
 
     async def get_billing_mode(self, org_id: str) -> Optional[str]:
         """The per-customer commercial mode (CREDIT | STANDARD), D37-0."""

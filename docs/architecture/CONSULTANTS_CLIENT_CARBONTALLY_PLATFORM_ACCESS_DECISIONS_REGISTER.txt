@@ -1,0 +1,298 @@
+Final decision set
+A. Client invitation / identity lifecycle — DECISION: A
+CarbonTally-controlled secure invitation
+1. Consultant selects client email + permitted client role.
+2. CarbonTally creates a single-use, expiring invitation.
+3. CarbonTally sends the email.
+4. Existing CarbonTally user authenticates and accepts.
+5. New user completes account creation.
+6. User becomes a member of that client Organisation only.
+7. Invitation is consumed and cannot be reused.
+8. Consultant cannot see or handle client passwords/tokens.
+9. Client users cannot invite other users.
+This preserves the already-binding PO-2 consultant-only invitation authority.    CT-CONSULTANT-PO-CONSOLIDATION-…
+White-Label: yes — the invitation should use the consultant's verified White-Label sender/brand where the entitlement and sender verification permit it. The existing design explicitly specifies firm-verified sender for White-Label client mail.    CT-CONSULTANT-MODEL-UIUX-DESIGN…
+B. Client access model — DECISION: keep the four-state model
+This is the model I recommend we implement fully:
+Profile	Purpose	Client can edit?	Client can delete?
+OFF	Consultant-only	No	No
+READ_ONLY	Client reviews results	No	No
+COLLABORATIVE	Client helps supply/correct source information	Limited	No
+MANAGED	Consultant operates lifecycle	No	No
+RETAINED	After relationship ends	No	No
+
+
+This is already the architecture's defined model.    CT-CONSULTANT-PO-CONSOLIDATION-…
+READ_ONLY should be our recommended/default client level
+The client can:
+- View their own organisation data
+- View emissions
+- View reports
+- View evidence/provenance
+- Review submitted information
+- See issues/queries relevant to them
+- Respond to consultant questions
+- Send data-quality questions
+- Request corrections
+- Discuss reporting questions
+- Message their consultant
+They cannot:
+- ❌ Edit data
+- ❌ Delete data
+- ❌ Upload documents
+- ❌ Modify master data
+- ❌ Change emission factors
+- ❌ Edit mappings
+- ❌ Trigger recalculation
+- ❌ Manage users
+- ❌ Change consultant
+- ❌ Change branding
+- ❌ Access billing
+The existing policy already explicitly prohibits client factor mapping, mapping changes and recalculation in all profiles.    CT-CONSULTANT-PO-CONSOLIDATION-…
+This is also consistent with the broader industry direction: platforms such as Sweep emphasize role-based access while allowing stakeholders to contribute data, and Normative separates supplier data collection from controlled calculation/reporting. Sweep
+C. Collaborative access — DECISION: limited contribution, never destructive
+For clients who need to participate:
+COLLABORATIVE permits:
+- Uploading permitted source documents
+- Correcting permitted source data
+- Annotating their own submissions
+- Providing missing information
+- Responding to data-quality issues
+- Participating in designated workflow steps
+But still:
+NO
+- factor mapping
+- mapping modification
+- recalculation
+- unrestricted deletion
+- user administration
+- consultant administration
+- billing
+- branding administration
+The existing matrix already defines this limited contribution model.    CT-CONSULTANT-PO-CONSOLIDATION-…
+Why I strongly recommend no client deletion
+CarbonTally is ultimately an evidence and calculation chain, not merely a document repository.
+We want:
+Source → extraction → validation → mapping → calculation → review → approval → report → audit history
+
+A client should be able to say:
+“This electricity figure is wrong.”
+
+They should not be able to silently erase the underlying evidence.
+Instead:
+Client reports/corrects → consultant reviews → authorised operator changes data → audit trail records the change.
+
+That's much safer for auditability and assurance.
+D. Client messaging — DECISION: YES
+I agree with your original idea.
+Client messaging becomes a first-class controlled workflow:
+Client can message consultant about:
+- Data quality
+- Missing data
+- Incorrect values
+- Missing documents
+- Evidence questions
+- Emission results
+- Calculation/reporting questions
+- Report clarification
+- Requests for correction
+And the consultant can respond.
+The conversation is strictly:
+Client A ↔ Consultant A
+Never:
+Client A ↔ Client B
+and never unrestricted:
+Client ↔ CarbonTally internal staff
+The existing design explicitly defines this relationship-scoped messaging model.    CT-CONSULTANT-MODEL-UIUX-DESIGN…
+This is also a strong industry pattern: client-portal systems commonly combine controlled document sharing with structured communication and activity history. Karbon
+E. Client user role authority — DECISION: C, with a security refinement
+Earlier we had:
+C — dual authority
+
+I would retain that, but define it precisely.
+Consultant
+Authorized consultant capability can:
+- Invite client users
+- Assign permitted client roles
+- Change permitted client roles
+- Suspend/remove client access
+- Revoke invitations
+Client Organisation
+An authorised client Organisation owner/admin can:
+- Manage their own users
+- Change permitted client-user roles
+- Remove their own users
+But neither side can:
+- Grant themselves consultant privileges
+- Grant access to another Organisation
+- change consultant relationship ownership
+- change commercial subscription
+- change White-Label entitlement
+- grant CarbonTally internal privileges
+And client roles never grant consultant capabilities.
+This follows the principle already established in the architecture that role, capability, relationship and entitlement are separate security dimensions.    CT-CONSULTANT-PO-CONSOLIDATION-…
+F. Relationship termination — DECISION: C + 3 business days
+Either party can initiate.
+Examples:
+Client → “End consultant relationship”
+
+or
+Consultant → “End relationship”
+
+Then:
+1. Request recorded.
+2. Other party notified.
+3. Confirmation required.
+4. Authorised decision recorded.
+5. Audit event created.
+6. Relationship becomes ended.
+7. Client access transitions to retained-read-only where applicable.
+8. Data is not deleted.
+9. Organisation ID remains unchanged.
+SLA
+3 business days for normal review.
+CarbonTally can intervene/arbitrate when disputed.
+This is consistent with the already-ratified PO-7 principle that either party may initiate and that termination must be authorised, confirmed and audited without deleting/migrating the Organisation.    CT-CONSULTANT-PO-CONSOLIDATION-…
+G. Post-relationship retention — DECISION: 7 years
+The current architecture has already selected:
+7 years
+with:
+- read-only retained access
+- legal-hold override
+- no automatic deletion until the retention policy is explicitly executed
+- same Organisation ID
+- same evidence/history/provenance
+This is the safest model for a carbon-accounting/audit-oriented system, while remaining configurable by CarbonTally Admin rather than hard-coding an immutable legal requirement.
+H. Consultant product-mode changes — DECISION: C
+I would finalize this as:
+Consultant requests
+Standard → Co-Branded
+Co-Branded → White-Label
+White-Label → Co-Branded
+
+The request is recorded.
+Normal transition
+Next billing/renewal boundary, assuming the firm's entitlement supports the requested mode.
+CarbonTally Admin can:
+- Approve
+- Reject
+- Change entitlement
+- Approve an earlier transition
+- Prevent a transition that would violate commercial entitlement
+Consultant cannot simply flip:
+commercial_mode = white_label
+This preserves PO-1 and PO-5: commercial authority remains CarbonTally-controlled. 
+I. White-Label branding — DECISION: firm-level only
+No per-client branding.
+One consultant firm has one White-Label identity.
+That identity applies to:
+- Client portal
+- Login
+- Client emails
+- Reports/client-facing presentation
+- Appropriate exports
+- Verified sender identity
+- White-Label domain where entitled
+No client gets to select another brand.
+This is already binding PO-3A/PO-3B.    CT-CONSULTANT-PO-CONSOLIDATION-…
+J. Client billing — DECISION: absolutely no
+Client portal:
+No Billing
+No CarbonTally subscription
+No plan selection
+No payment
+No consultant plan information
+CarbonTally bills the consultant firm.
+The commercial assessment explicitly confirms this boundary.    CT-COMMERCIAL-SUBSCRIPTION-INDE…
+K. Client access to CarbonTally's internal machinery — DECISION: no
+This is particularly important.
+The client should not see:
+- Factor library management
+- Mapping engine
+- Recalculation controls
+- Internal processing controls
+- Consultant firm settings
+- Consultant team
+- Commercial entitlement
+- CarbonTally Admin
+- Internal support/operations
+- Other organisations
+- Other consultant clients
+They see the result and the relevant evidence, not the entire machinery used to produce it.
+That is consistent with Watershed's emphasis on permissions and controlled access to sustainability data, and with the broader carbon-platform pattern of human review and transparent calculations rather than unrestricted operational access. Watershed
+L. Your header issue — I agree, fix it
+What you currently have is too noisy:
+CarbonTallyV3
+Home Documents Processing...
+Working on: CT03-QA Managed ClientConsultant
+Sign out
+Consultant Demo Lab Carbon Consultants
+Working on CT03-QA Managed Client
+Consultant-managed · Active
+Client portal: Managed
+
+There are three separate problems:
+1. Duplicate Working On
+We should have ONE client context.
+2. V3 must disappear
+Absolutely.
+V3 is an implementation/version concept. It is not a product name and should never be exposed to users.
+So:
+❌ CarbonTallyV3
+
+becomes:
+CarbonTally
+
+3. Consultant + client context should be hierarchical
+I'd make the operating header:
+CarbonTally
+Consultant · Demo Lab Carbon Consultants
+Working on: CT03-QA Managed Client
+Consultant-managed · Active · Managed
+
+And then:
+← Back to Consultant
+once, in the context bar.
+Not:
+Working on: ...Consultant
+
+followed by another:
+Working on ...
+
+The client identity should appear once and the actor identity should appear once.
+Final implementation decision register
+So this is the set I recommend we now treat as the implementation baseline:
+ID	Decision	Final
+PD-1A	Client invitation	CarbonTally-controlled single-use invitation
+PD-2A	Client user management	Dual authority: consultant + client owner/admin within permitted boundary
+PD-3A	Task client validation	Server-side active-relationship validation
+PD-5	Relationship requests	Either party initiates; authorised workflow + CarbonTally arbitration; 3 business days
+PO-1	Mode changes	Request → next billing/renewal; CarbonTally Admin controls approval/early transition
+PO-3A	Branding	Firm-level only
+PO-3B	White-Label	White-Label mode only
+PO-4	Managed access	Co-Branded + White-Label
+PO-6	Final approval	Authorised consultant role may approve
+PO-7	Termination	Either party; authorised + confirmed + audited
+PO-9	Mapping/recalculation	Never client-controlled
+PO-10	Post relationship	Controlled read-only retention
+CLIENT-01	Default client profile	READ_ONLY
+CLIENT-02	Collaborative profile	Limited contribution; no destructive operations
+CLIENT-03	Client deletion	Never direct client deletion
+CLIENT-04	Client messaging	Yes, client ↔ own consultant
+CLIENT-05	Client billing	None
+CLIENT-06	Client factor/mapping access	None
+CLIENT-07	Client user invitation	No client-side invitation
+CLIENT-08	Retention	7 years, Admin-configurable/legal hold
+UX-01	Product name	CarbonTally — never CarbonTallyV3
+UX-02	Working-on header	Exactly one client context
+UX-03	Consultant identity	Shown once
+UX-04	Back navigation	Exactly one “Back to Consultant”
+UX-05	Client context	Working on: [Client] · [relationship] · [profile]
+
+
+The important architectural principle behind all of this is:
+Client access = Relationship × Client Profile × Client Role/Capability × Commercial Entitlement
+
+—not simply “the client has an account.”
+That is substantially safer than giving external client users ordinary Organisation-admin power, while still making CarbonTally genuinely collaborative. It also matches the direction visible in current carbon platforms: controlled stakeholder/supplier participation, role-based access, data-quality workflows and traceability rather than unrestricted editing. Normative
+I would use this as the baseline for the full implementation task. One caveat: the closure report currently calls PD-1A, PD-2A and PD-5 “open”; PO-1 through PO-10 themselves are already ratified and must not be silently rewritten.

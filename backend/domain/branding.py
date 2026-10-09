@@ -70,6 +70,12 @@ class ConsultantBranding:
     client_portal_url: Optional[str] = None
     white_label_enabled: bool = False
     co_branding_enabled: bool = False
+    #: CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-5) — the firm's authoritative
+    #: PRODUCT MODE (``consultant_profiles.commercial_mode``). ``None`` means the
+    #: column is not stored; the ratified D21 boolean derivation is then used for
+    #: backward compatibility (IMPL-3). When it IS present it wins over the
+    #: legacy flags, which are capped rather than destroyed (BR-5 / FM-2).
+    commercial_mode: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -127,10 +133,28 @@ def resolve_brand_context(
 
     display_name = (branding.brand_name or "").strip() or (fallback_name or "").strip() or "Consultant"
 
-    if branding.white_label_enabled:
+    # CT-CONSULTANT-MODEL-IMPLEMENTATION-03 (F-5 / BR-5 / FM-2): the MODE caps the
+    # presentation. A stored white-label flag on a STANDARD (or CO-BRANDED) firm
+    # is not trusted and not destroyed — it is simply capped here. When no mode is
+    # stored we fall back to the ratified D21 flag derivation (unchanged).
+    from domain.consultant_entitlement import (
+        MODE_CO_BRANDED,
+        MODE_WHITE_LABEL,
+        resolve_entitlements,
+        resolve_mode,
+    )
+
+    mode = resolve_mode(
+        branding.commercial_mode,
+        branding.white_label_enabled,
+        branding.co_branding_enabled,
+    )
+    entitlements = resolve_entitlements(mode)
+
+    if mode == MODE_WHITE_LABEL and entitlements.white_label_presentation:
         kind = "consultant"
         co_branded = False
-    elif branding.co_branding_enabled:
+    elif mode == MODE_CO_BRANDED and entitlements.co_branded_presentation:
         kind = "co_branded"
         co_branded = True
     else:

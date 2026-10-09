@@ -56,6 +56,7 @@ def _seed_consultant(
     # controlled, so the consultant manual work these tests exercise needs an
     # explicit enable for the client organisation.
     world.manual_processing.seed_grant("organization", org_id)
+    world.manual_processing.seed_entitlement(org_id)
     world.consultants.seed_profile(firm_id, user_id, "C1 Advisory", is_active=is_active)
     world.consultants.seed_firm_member(
         firm_id,

@@ -22,6 +22,7 @@ import uuid
 
 from datetime import datetime, timezone
 
+from api.client_access_guard import CLIENT_OPERATION_DENIED_DETAIL
 from domain.billing import BillingPlan, Subscription
 from domain.partners import ITEM_STATUS_FLOW, can_transition_item_status
 from domain.staff import StaffProfile, StaffRole
@@ -79,7 +80,7 @@ def _seed_commercial(world, org="org-a", *, key="sub-p62b3") -> None:
                 included_credits=500,
                 version=1,
                 is_active=True,
-                features={},
+                features={"manual_processing": {"enabled": True}},
                 effective_from=datetime.now(timezone.utc),
             ),
             created_by="admin-1",
@@ -111,8 +112,18 @@ def _seed_commercial(world, org="org-a", *, key="sub-p62b3") -> None:
         )
     )
 
-def _seed_consultant_submission(client, world, user_provider):
-    """Consultant submits a `consultant_reviewed` item -> `reviewed` (P6-2B-2)."""
+def _seed_consultant_submission(client, world, user_provider, *, profile="collaborative"):
+    """Consultant submits a `consultant_reviewed` item -> `reviewed` (P6-2B-2).
+
+    CT-CONSULTANT-CLIENT-PLANE-AUTH-CLOSURE-05A — the relationship is seeded
+    with an EXPLICIT client access profile. Before 05A the ``consultant_clients``
+    profile row was inert on this surface, so the deny-by-default seed (``off``
+    in ``fakes.seed_client``) was invisible here; the ceiling now binds
+    ``approve_final`` on ``/items/{id}/customer-review``, so the fixture must
+    express the access level the scenario depends on. ``collaborative`` is the
+    only profile the ratified §8.2 matrix admits for ``approve_final``, and it is
+    the profile that models "the client operates its own approval step".
+    """
     # FIN-06 precondition: manual processing must be enabled for the client org.
     world.manual_processing.seed_grant("organization", "org-a")
     world.consultants.seed_profile("firm-c1", "u-c1", "C1 Advisory", is_active=True)
@@ -121,7 +132,8 @@ def _seed_consultant_submission(client, world, user_provider):
         can_manage_clients=True, can_submit=True,
     )
     world.consultants.seed_client(
-        "cc-1", "firm-c1", "org-a", "Client Org", status="active"
+        "cc-1", "firm-c1", "org-a", "Client Org", status="active",
+        client_access_profile=profile,
     )
     item = world.manual_extraction.seed_item(
         f"item-{uuid.uuid4().hex[:8]}", "org-a", "invoice.pdf",
@@ -450,6 +462,33 @@ def test_org_owner_approves_ct_qc_approved_item_charge_at_approval(
     assert world.manual_extraction._items[item.id].status == "approved"
     # The ONLY charge is at Customer Approval (1 credit consumed).
     assert _ledger(world) == 499
+
+
+def test_managed_client_owner_cannot_approve_consultant_submitted_work(
+    client, world, user_provider
+) -> None:
+    """CT-05A §8.2 — the client-access CEILING binds consultant-submitted work.
+
+    CT-05 §23.1 G-1 recorded that ``approve_final`` was classified by the
+    ratified §8.2 matrix but not yet ceiling-bound on the Organisation plane, so
+    a MANAGED client could reach the customer-approval surface. The consultant
+    operates the approval step for a MANAGED client, so the same consultant
+    submission that the COLLABORATIVE owner approves above must be DENIED to that
+    client's owner — before any workflow or billing side effect (no charge).
+    """
+    item = _seed_consultant_submission(client, world, user_provider, profile="managed")
+    _qc_decision(client, world, user_provider, item.id, approved=True)
+    assert _ledger(world) == 500
+    user_provider.set_user(org_owner_user("org-a", "owner-1", "owner-1@test"))
+    resp = client.post(
+        f"{PROC}/items/{item.id}/customer-review",
+        json={"approved": True, "customer_notes": "managed client tries to approve"},
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error"]["message"] == CLIENT_OPERATION_DENIED_DETAIL
+    # No mutation, no charge: the ceiling denies before the workflow runs.
+    assert world.manual_extraction._items[item.id].status == "ct_qc_approved"
+    assert _ledger(world) == 500
 
 # ---------------------------------------------------------------------------
 # Rework — ct_qc_rejected routes through the existing rework states only

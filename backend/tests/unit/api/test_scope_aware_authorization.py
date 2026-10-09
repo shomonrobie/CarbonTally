@@ -24,6 +24,7 @@ No database access — all in-memory fakes.
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 from fastapi import HTTPException
@@ -33,7 +34,7 @@ from api.dependencies import ensure_org_access
 from auth import AuthUser, require_admin, require_org_admin, require_role
 from domain.staff import StaffProfile, StaffRole
 
-from tests.unit.api.fakes import consultant_user, staff_user
+from tests.unit.api.fakes import consultant_user, member_user, staff_user
 
 CALCULATE_PAYLOAD = {
     "organization_id": "org-a",
@@ -379,18 +380,46 @@ def _route_dependencies(router, path_fragment: str) -> list:
     return found
 
 
-def test_d5_customer_review_requires_org_admin() -> None:
-    """The customer-review approve/reject endpoint must use the org-admin gate
-    (D5). A plain org member or entity staff must never approve. Review reads
-    stay open to members — only the decision is approver-gated."""
-    from api.v3_processing_workflow import router as wf_router
+def test_d5_customer_review_requires_org_admin(client, world, user_provider) -> None:
+    """D5 (preserved) — a plain org member can never approve customer review.
+
+    CT-CONSULTANT-MODEL-IMPLEMENTATION-02 (F-2): the approver gate is no longer a
+    route-level ``require_org_admin`` dependency. FINAL approval authority must be
+    resolved against the item's SERVER-DERIVED organisation (which only exists
+    once the resource and its batch are loaded) so the gate now runs inside the
+    handler through ``ensure_customer_approval_authority`` — which performs
+    exactly the same owner/admin decision for an organisation caller
+    (``_org_admin_authority``, D5 unchanged) and additionally admits the PO-6
+    consultant capacity. Review reads stay open to members; only the decision is
+    approver-gated.
+    """
+    from api.v3_processing_workflow import customer_review_item, router as wf_router
 
     deps = _route_dependencies(wf_router, "/api/v3/processing/items/{item_id}/customer-review")
     assert deps, "customer-review route not found"
-    # require_org_admin() returns a checker named org_admin_checker; the old
-    # member gate was org_member_checker. Assert the approver gate is wired.
     names = {getattr(d, "__name__", "") for d in deps}
-    assert "org_admin_checker" in names, f"customer-review gate must be require_org_admin, got {names}"
+    # The caller is still authenticated at the route boundary...
+    assert "get_current_user" in names, f"got {names}"
+    # ...and the approver gate has moved into the handler (F-2), where the
+    # server-derived organisation is available.
+    assert "org_admin_checker" not in names, f"got {names}"
+    source = inspect.getsource(customer_review_item)
+    assert "ensure_customer_approval_authority" in source
+    assert "batch.organization_id" in source
+
+    # Behavioural guard (D5): a plain member of the OWNING organisation is denied
+    # by the approval authority and learns the same detail as before F-2.
+    from tests.unit.api.test_v3_operations import _seed_batch_with_item, _seed_ops_world
+
+    _seed_ops_world(world)
+    _batch, item = _seed_batch_with_item(world)
+    user_provider.set_user(member_user("org-a", "u-member", "member@a.test"))
+    denied = client.post(
+        f"/api/v3/processing/items/{item.id}/customer-review",
+        json={"approved": True},
+    )
+    assert denied.status_code == 403, denied.text
+    assert "Organization admin privileges required" in denied.text, denied.text
 
 
 def test_dp203_qc_cannot_approve_customer_review(client, world, user_provider) -> None:
