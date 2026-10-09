@@ -1389,8 +1389,44 @@ Branch `p8-release-reconciled`; HEAD at task start = GitHub tip =
 `git ls-remote github p8-release-reconciled`).
 
 ```text
-<PUBLICATION_BLOCK_PLACEHOLDER>
+$ git add docs/architecture/CT-CARBONTALLY-ARCHITECTURE-DECISIONS-04.md   # explicit path only
+$ git diff --cached --stat
+ .../CT-CARBONTALLY-ARCHITECTURE-DECISIONS-04.md    | 1404 ++++++++++++++++++++
+ 1 file changed, 1404 insertions(+)
+
+$ git diff --cached | grep -nEi 'eyJ[A-Za-z0-9_-]{10}|service_role|SERVICE_KEY=|SUPABASE_ACCESS_TOKEN|BEGIN PRIVATE KEY|password=[A-Za-z0-9]'
+(no matches — staged diff clean)
+
+$ git commit -F /tmp/a4_msg.txt                       # normal commit, no force, no rebase
+[p8-release-reconciled 7544d0d] docs(architecture-04): database topology investigation, architecture reconciliation, PO decision register
+ 1 file changed, 1404 insertions(+)
+ create mode 100644 docs/architecture/CT-CARBONTALLY-ARCHITECTURE-DECISIONS-04.md
+COMMIT_RC=0
+
+$ git push github p8-release-reconciled               # fast-forward, non-forced
+To https://github.com/shomonrobie/CarbonTally.git
+   4e8a7fe..7544d0d  p8-release-reconciled -> p8-release-reconciled
+PUSH_RC=0
+
+$ git ls-remote github p8-release-reconciled
+7544d0d19228b419c7783f8a074bc6fecfc22890	refs/heads/p8-release-reconciled
+
+$ git rev-list --left-right --count github/p8-release-reconciled...HEAD
+0	0
+
+$ git rev-parse HEAD
+7544d0d19228b419c7783f8a074bc6fecfc22890
 ```
+
+**Post-publication state.** Remote tip = local HEAD = **`7544d0d19228b419c7783f8a074bc6fecfc22890`**
+(0 ahead / 0 behind). The push was fast-forward and non-forced. Exactly **one** file was staged (this
+report); `.gitignore` and `frontend/App_.js` remain modified-but-unstaged, and the **32** remaining untracked
+entries (the pre-existing root debris and the older untracked reports; this report was the 33rd and is now
+tracked) are untouched.
+
+**SHA record.** The publication block above was committed by a follow-up documentation commit (see the
+repository log: the commit immediately after `7544d0d` on `p8-release-reconciled`), because a commit cannot
+contain its own SHA.
 
 ### 19.5 Recommended next steps (short)
 
