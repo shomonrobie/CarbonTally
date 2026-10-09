@@ -365,6 +365,22 @@ which `.env` are authoritative for local QA — now with hard evidence in §1.3/
 | Intended commit set published to GitHub by fast-forward | **VERIFIED** (§6.4) |
 | Product acceptance of any workflow end-to-end | **NOT CLAIMED** (AGENTS §73/§74) |
 
+### 8.1 Publication of this closure commit
+
+```
+$ git commit  → 8675fcb  fix(foundation-02): reconcile foundation findings — invoice parser parity,
+                          supplier client ceiling, customer upload gate
+                 9 files changed, 1058 insertions(+), 26 deletions(-)
+$ git push github p8-release-reconciled
+   8ac778e..8675fcb  p8-release-reconciled -> p8-release-reconciled      PUSH_EXIT=0
+$ git ls-remote github p8-release-reconciled
+   8675fcb8891d1578a0704aab78ebacc9b806f241	refs/heads/p8-release-reconciled
+```
+
+Remote tip = local HEAD = `8675fcb`. Both pushes were fast-forward and non-forcing. Staged paths
+were explicit (9 files); `.gitignore` and `frontend/App_.js` remained uncommitted and untouched, and
+no root debris was swept in.
+
 **Read-only / safety attestation.** No production system was mutated. No live database row,
 policy, ACL, migration or storage object was modified. No local database was migrated, re-seeded or
 restored. The investor-demo dataset was inspected only, and the local runtime DB was left exactly
