@@ -275,10 +275,31 @@ def test_unknown_unit_is_rejected():
 @pytest.mark.parametrize(
     "token,expected",
     [("t", "tonnes"), ("tonnes", "tonnes"), ("tonne", "tonnes"),
-     ("kg", "kg"), ("kWh", "kwh")],
+     ("kg", "kg"), ("kWh", "kwh"), ("mi", "miles"), ("mile", "miles")],
 )
 def test_unit_canonicalisation(token, expected):
     assert ix.canonical_unit(token) == expected
+
+
+def test_mileage_abbreviation_rows_are_extracted() -> None:
+    """B-03a (REMEDIATION-03): a printed ``mi`` unit keeps its travel row.
+
+    Measured on the local corpus (2026-10-09): 36 printed rows across the
+    travel documents were dropped because ``mi`` was not in the vocabulary,
+    even though ``miles`` already was.  The row survives now and is emitted
+    with the canonical unit, so the mileage activity reaches mapping instead of
+    disappearing from the document.
+    """
+    text = (
+        "Item Quantity Unit Price Amount\n"
+        "Mileage claims - Client Meeting 700 mi GBP0.38 GBP266.70\n"
+        "Travel expenses - Training 800 mi GBP0.35 GBP279.20\n"
+    )
+    rows = ix.extract_invoice_lines(text)
+    assert [r["unit"] for r in rows] == ["miles", "miles"]
+    assert [r["unit_raw"] for r in rows] == ["mi", "mi"]
+    assert [r["quantity"] for r in rows] == [700.0, 800.0]
+    assert rows[0]["description"] == "Mileage claims - Client Meeting"
 
 
 def test_rounded_document_values_are_kept_and_flagged_not_rewritten():

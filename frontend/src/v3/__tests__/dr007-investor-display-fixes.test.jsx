@@ -102,7 +102,12 @@ describe('DR-007 investor-facing display fixes', () => {
     api.getProcessingItemWorkspace.mockResolvedValue(RA_WORKSPACE);
     render(<ReviewDetailPage />);
     await waitFor(() => expect(screen.getByText('Mapped activity')).toBeInTheDocument());
-    const row = screen.getByText('Mapped activity').closest('div');
+    // The label and its value are sibling cells inside one `.v3-meta-item` row
+    // (`ReviewDetailPage` renders `<div class="k">{label}</div><div class="v">{value}</div>`),
+    // so `closest('div')` returned the label cell itself and the assertion could
+    // never see the value.  Scope the assertion to the meta row instead — the
+    // substantive checks (value present, not an em dash) are unchanged.
+    const row = screen.getByText('Mapped activity').closest('.v3-meta-item');
     expect(row).not.toBeNull();
     expect(row.textContent).toContain('Natural gas');
     expect(row.textContent).not.toContain('—');

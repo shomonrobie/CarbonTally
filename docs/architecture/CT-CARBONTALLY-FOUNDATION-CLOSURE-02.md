@@ -103,7 +103,9 @@ migration was applied to any local database to make the environments agree.** Re
 
 
 **B-07 closed by measurement:** the "232 ahead" figure quoted in an earlier scoped note was measured
-against the *local-path* remote, not GitHub. Against GitHub the branch is **one** commit ahead, and
+against the *local-path* remote, not GitHub. Against GitHub the branch was **one** commit ahead at the
+start of this pass — and that commit is the intended F-1 closure. (Current figure, re-measured
+2026-10-09 by `CT-CARBONTALLY-FOUNDATION-REMEDIATION-03` §1: 0 ahead / 0 behind.)
 
 ### 1.5 Test state (exact)
 
@@ -144,10 +146,11 @@ Non-attribution evidence:
 * neither component imports `ProcessingPage` (`grep` → no match), and the test file plus both
   components are **unmodified at HEAD** (`git status --porcelain` empty for all three).
 
-⇒ the module graphs are disjoint; this is a genuine pre-existing `ReviewDetailPage` display defect
-(mapped-activity fallback), **out of scope** for this closure, recorded as **B-22** (P3).
+⇒ the module graphs are disjoint; this is a genuine pre-existing `ReviewDetailPage` test-scope defect
+(the assertion selected the label cell rather than the meta row), **out of scope** for that closure,
+recorded as **B-22** (P3) and **resolved in `CT-CARBONTALLY-FOUNDATION-REMEDIATION-03` §3.2**.
 
-that commit is the intended F-1 closure.
+That commit is the intended F-1 closure.
 
 ---
 

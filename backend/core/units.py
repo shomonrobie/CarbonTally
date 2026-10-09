@@ -65,6 +65,7 @@ UNIT_ALIASES: dict[str, str] = {
     "kilometres": "km",
     "kilometer": "km",
     "kilometers": "km",
+    "mi": "miles",
     "mile": "miles",
     "miles": "miles",
     "t.km": "tonne.km",

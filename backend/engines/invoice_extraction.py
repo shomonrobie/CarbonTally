@@ -249,11 +249,18 @@ _TABLE_STOP_RE = re.compile(
 )
 #: A currency token is never a physical activity unit.
 _CURRENCY_TOKENS = {"gbp", "eur", "usd", "pounds", "pound", "sterling", "£", "€", "$"}
-#: Unit alias → canonical token (mass aliases only; the repository's unit
-#: vocabulary otherwise governs).
+#: Unit alias → canonical token (mass + distance aliases only; the repository's
+#: unit vocabulary otherwise governs).
 _UNIT_ALIASES = {
     "t": "tonnes", "ton": "tonnes", "tons": "tonnes",
     "tonne": "tonnes", "tonnes": "tonnes",
+    # B-03a (REMEDIATION-03): ``mi`` is the standard mileage abbreviation printed
+    # in the item table's unit column ("700 mi").  ``miles`` is already an
+    # accepted physical unit in this vocabulary and in ``core.units``, so the
+    # alias is a missing spelling — not new vocabulary.  Measured on the local
+    # corpus before the fix: 36 printed rows across the travel documents were
+    # dropped entirely (ground truth expected 3 lines each).
+    "mi": "miles", "mile": "miles", "miles": "miles",
 }
 _KNOWN_UNITS_PARSER = {
     "kwh", "mwh", "m3", "m³", "litres", "liters", "litre", "liter", "l",

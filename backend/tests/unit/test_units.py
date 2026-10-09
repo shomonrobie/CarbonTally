@@ -55,6 +55,19 @@ def test_normalize_unknown_passthrough() -> None:
     assert normalize_unit(None) is None
 
 
+def test_normalize_distance_miles_abbreviation() -> None:
+    """B-03a (REMEDIATION-03): ``mi`` is the printed mileage abbreviation.
+
+    ``miles`` is already an accepted physical unit, so the missing spelling is
+    an alias gap, not new vocabulary — the invoice-table parser dropped the
+    whole travel row (``700 mi``) without it.
+    """
+    assert normalize_unit("mi") == "miles"
+    assert normalize_unit("Mi") == "miles"
+    assert units_equivalent("mi", "miles")
+    assert units_equivalent("mi", "Mi")
+
+
 def test_units_equivalent_aliases() -> None:
     assert units_equivalent("L", "litres")
     assert units_equivalent("t", "tonnes")

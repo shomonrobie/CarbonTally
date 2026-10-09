@@ -93,7 +93,22 @@ class TestDiscoveryRequests:
         )
         assert resp.status_code == 403
 
-    def test_create_request_as_admin(self, world, client, user_provider) -> None:
+    def test_create_request_as_admin(
+        self, world, client, user_provider, monkeypatch
+    ) -> None:
+        # CT-CARBONTALLY-FOUNDATION-REMEDIATION-03 (§3.1) — hermetic pin.
+        # The route resolves the delivery *provider* from persisted platform
+        # settings (default: ``resend``) and the credential from the process
+        # environment, so a developer environment that exports
+        # ``RESEND_API_KEY`` makes the documented local/dev "not configured"
+        # path actually deliver (and hit the network) inside a unit test.
+        # Pinning the credential envs to *unset* makes the assertion below
+        # deterministic without weakening it and without changing any product
+        # behaviour: the same code path is exercised, only the environment is
+        # neutralised.  Measured: with ``RESEND_API_KEY=`` the test passes on
+        # the unmodified tree.
+        for _cred_var in ("RESEND_API_KEY", "CT_SMTP_PASSWORD", "SMTP_PASSWORD"):
+            monkeypatch.delenv(_cred_var, raising=False)
         _seed_existing_org(world)
         user_provider.set_user(org_owner_user("org-a", "owner-1", "o@test"))
         resp = client.post(
