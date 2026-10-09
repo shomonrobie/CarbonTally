@@ -1428,6 +1428,17 @@ tracked) are untouched.
 repository log: the commit immediately after `7544d0d` on `p8-release-reconciled`), because a commit cannot
 contain its own SHA.
 
+**Exact publication SHAs.**
+
+| Commit | Subject | Contains |
+|---|---|---|
+| `7544d0d` | `docs(architecture-04): database topology investigation, architecture reconciliation, PO decision register` | this report (1,404 insertions, one new file) |
+| `9c02fa9` | `docs(architecture-04): record architecture-decisions-04 publication SHA (7544d0d)` | the verbatim publication block above |
+| *(branch tip at the time of writing)* | the commit that adds this table | the exact SHA record; `git log -1` on the branch reports it |
+
+Both pushes were fast-forward (`4e8a7fe..7544d0d`, `7544d0d..9c02fa9`); no force, no rebase, no history
+rewrite.
+
 ### 19.5 Recommended next steps (short)
 
 1. The owner answers §11 (minimum: **PD-D**, **PD-4.1**, **PD-4.4**, **PD-4.5**, **PD-4.6**).
