@@ -70,6 +70,11 @@ from engines.processing_workflow import (
     has_blocking_findings,
     validate_processing_item,
 )
+from engines.supplier_resolution import (
+    Candidate,
+    classify,
+    signals_from_extracted,
+)
 from services.storage import signed_item
 
 router = APIRouter(prefix="/api/v3/processing", tags=["V3 — Processing Workflow"])
@@ -1215,6 +1220,33 @@ async def item_workspace(
     }
 
 
+def _supplier_candidate(supplier: object) -> Candidate:
+    """Map one stored supplier onto a supplier-resolution candidate.
+
+    CARBONTALLY-FIX-2026-001 (GAP-3). ``repos.suppliers.search_for_org`` returns
+    the ``domain.partners.Supplier`` record (a frozen dataclass), **not** a dict,
+    so the candidate is built from its real attributes: ``id``,
+    ``organization_id``, ``name``, ``vat_number`` and the optional ``metadata``
+    JSONB. The address/identifier signals the engine can score (postcode, company
+    number, address line, city) are read from that JSONB **when present** and stay
+    empty when absent — no schema column is invented and a missing signal simply
+    cannot contribute to a score, so nothing is fabricated (P12-IMPL-02).
+    """
+    meta = getattr(supplier, "metadata", None) or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    return Candidate(
+        supplier_id=str(getattr(supplier, "id", "") or ""),
+        organization_id=str(getattr(supplier, "organization_id", "") or ""),
+        name=str(getattr(supplier, "name", "") or ""),
+        postcode=str(meta.get("postcode") or ""),
+        vat_number=str(getattr(supplier, "vat_number", "") or ""),
+        company_number=str(meta.get("company_number") or ""),
+        address_line1=str(meta.get("address_line1") or ""),
+        city=str(meta.get("city") or ""),
+    )
+
+
 @router.get("/items/{item_id}/mapping-options")
 async def mapping_options(
     item_id: str,
@@ -1248,6 +1280,71 @@ async def mapping_options(
     # a Diesel factor) must not mask a spend-activity dead-end (CL-47).
     relevant = relevant_customer_factors(customer_factors, activity, unit)
     has_factors = bool(factors) or bool(relevant)
+    # CARBONTALLY-FIX-2026-001 (GAP-3): the supplier-resolution engine
+    # (P12-IMPL-02) existed but was never called, so an extracted supplier never
+    # reached a verdict and ``mapped_supplier_id`` stayed NULL. The engine is pure
+    # and deterministic, and it is org-scoped by contract: the candidates come
+    # from the **owning organisation's** own suppliers only, so org A can never be
+    # resolved to org B's supplier. This endpoint is a read — nothing is
+    # persisted; only an ``exact`` verdict is flagged ``auto_persist`` for the
+    # caller that later performs the authorised write.
+    reporting_year = None
+    if extracted.get("date"):
+        try:
+            reporting_year = int(str(extracted["date"])[:4])
+        except (TypeError, ValueError):
+            pass
+
+    signals = signals_from_extracted(extracted)
+    org_suppliers = await repos.suppliers.search_for_org(batch.organization_id)
+    candidates = [_supplier_candidate(supplier) for supplier in org_suppliers]
+    resolution_outcome = classify(signals, candidates, batch.organization_id)
+
+    # CARBONTALLY-FIX-2026-001 (GAP-2 / B4a): each extracted line carries its own
+    # activity and unit, so the picker needs per-line candidates rather than one
+    # document-level list. The approved customer factors are resolved once (the
+    # candidate set is document-independent; only the relevance test is
+    # per-line), which keeps this to one read per line instead of two.
+    line_mapping_options: list[dict] = []
+    line_items = extracted.get("line_items", [])
+    if isinstance(line_items, list) and line_items:
+        for index, raw_line in enumerate(line_items):
+            line_item = raw_line if isinstance(raw_line, dict) else {}
+            line_activity = str(
+                line_item.get("activity") or line_item.get("description") or ""
+            ).strip()
+            line_unit = str(line_item.get("unit") or "").strip() or None
+            line_factors = (
+                await repos.factors.find_by_activity(
+                    line_activity,
+                    unit=line_unit,
+                    year=reporting_year,
+                    limit=20,
+                    unit_qualifier_tolerant=True,
+                )
+                if line_activity
+                else []
+            )
+            line_customer_factors = relevant_customer_factors(
+                customer_factors, line_activity, line_unit
+            )
+            line_has_factors = bool(line_factors) or bool(line_customer_factors)
+            line_mapping_options.append(
+                {
+                    "line_number": index + 1,
+                    "activity": line_activity,
+                    "unit": line_unit,
+                    "factors": line_factors,
+                    "customer_factors": line_customer_factors,
+                    "no_factors_reason": mapping_no_factors_reason(
+                        line_activity, line_unit, line_has_factors
+                    ),
+                    "spend_suggestion": spend_mapping_suggestion(
+                        line_activity, line_unit, line_has_factors
+                    ),
+                }
+            )
+
     return {
         "facilities": await repos.organizations.get_facilities(batch.organization_id),
         "assets": await repos.organizations.get_assets(batch.organization_id),
@@ -1263,6 +1360,13 @@ async def mapping_options(
         # CL-47 — machine-readable guidance so the UI can offer the supported
         # spend workflow (create an approved customer factor, then map).
         "spend_suggestion": spend_mapping_suggestion(activity, unit, has_factors),
+        # CARBONTALLY-FIX-2026-001 (GAP-3): whole-document supplier verdict.
+        "supplier_resolution": resolution_outcome.as_dict(),
+        # CARBONTALLY-FIX-2026-001 (GAP-2 / B4a): per-line mapping candidates.
+        "line_mapping_options": line_mapping_options,
+        # The year used for the per-line factor lookup, echoed so the UI can
+        # explain the candidate set it is showing.
+        "reporting_year": reporting_year,
     }
 
 

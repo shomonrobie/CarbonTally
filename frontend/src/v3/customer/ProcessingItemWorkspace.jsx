@@ -138,6 +138,10 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
   const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [mapping, setMapping] = useState({ factor_id: '', line_factors: [] });
   const [mappingOptions, setMappingOptions] = useState({ factors: [], no_factors_reason: '' });
+  // CARBONTALLY-FIX-2026-001 (GAP-2 / B4a): "not loaded yet" and "loaded but
+  // nothing applies" are different business states and must never be shown at
+  // the same time.
+  const [mappingOptionsLoaded, setMappingOptionsLoaded] = useState(false);
 
   const [evidence, setEvidence] = useState(null);
   const [evidenceError, setEvidenceError] = useState('');
@@ -294,13 +298,20 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
   };
 
   const loadMappingOptions = async () => {
+    setBusy(true);
     setError('');
     try {
       const options = await getProcessingMappingOptions(itemId);
       setMappingOptions(options);
+      // CARBONTALLY-FIX-2026-001 (GAP-2 / B4a): record that the options were
+      // actually fetched, so the pane can stop showing "No factor options loaded
+      // yet" while it simultaneously shows a real no_factors_reason.
+      setMappingOptionsLoaded(true);
       setNotice('Mapping options loaded - select an emission factor below.');
     } catch (e) {
       setError(e.message || 'Failed to load mapping options');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -587,6 +598,16 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
       )}
     </div>
   );
+  // CARBONTALLY-FIX-2026-001 (GAP-2 / B4a) — the pane distinguishes the three
+  // real states of the picker instead of mixing them:
+  //   1. options not fetched yet          -> prompt to load, and nothing else;
+  //   2. fetched, per-line options exist  -> one factor picker PER extracted line
+  //      (each line has its own activity/unit, so it needs its own candidates);
+  //   3. fetched, nothing applicable      -> the reason (plus the spend guidance)
+  //      or the document-level picker.
+  const lineMappingOptions = Array.isArray(mappingOptions.line_mapping_options)
+    ? mappingOptions.line_mapping_options
+    : [];
   const mappingPane = (
     <div className="v3-inline-card" style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -595,67 +616,112 @@ export default function ProcessingItemWorkspace({ itemId, onBack }) {
           Load factor options
         </Button>
       </div>
-      {mappingOptions.no_factors_reason ? (
-        <p className="v3-muted" style={{ margin: '6px 0 0' }}>{mappingOptions.no_factors_reason}</p>
-      ) : null}
-      {allFactorOptions.length === 0 ? (
-        <div style={{ margin: '6px 0 0' }}>
-          <p className="v3-muted">
-            No factor options loaded yet. "Load factor options" suggests factors from the extracted activity and unit.
-          </p>
-          {spendSuggestion && (
-            <div className="v3-inline-card" style={{ marginTop: 8, borderLeft: '3px solid var(--v3-warn, #b45309)' }}>
-              <p className="v3-muted" style={{ margin: 0 }}>
-                {spendSuggestion.message || `This is a spend-based activity (${spendSuggestion.unit || 'GBP'}). The current factor set is physical-unit based, so a customer factor is required.`}
-              </p>
-              <div style={{ marginTop: 8 }}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate('/organization?tab=factors')}
-                >
-                  Create a spend-based customer factor
-                </Button>
+      {!mappingOptionsLoaded ? (
+        <p className="v3-muted" style={{ margin: '6px 0 0' }}>
+          No factor options loaded yet. "Load factor options" suggests factors from the extracted activity and unit.
+        </p>
+      ) : lineMappingOptions.length > 0 && hasLines ? (
+        lines.map((line, i) => {
+          const lineOpts = lineMappingOptions[i] || {};
+          const lineFactors = [
+            ...(lineOpts.customer_factors || []),
+            ...(lineOpts.factors || []),
+          ];
+          return (
+            <div key={i} style={{ marginTop: 8, padding: 8, border: '1px solid var(--v3-border, #e5e7eb)', borderRadius: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                Line {i + 1}: {line.activity || line.description || 'Unknown activity'} ({line.quantity} {line.unit})
               </div>
+              <SelectInput
+                label="Emission factor"
+                value={mapping.line_factors[i] || ''}
+                disabled={!editableMapping}
+                onChange={(e) =>
+                  setMapping((prev) => {
+                    const next = [...(prev.line_factors || [])];
+                    next[i] = e.target.value;
+                    return { ...prev, line_factors: next };
+                  })
+                }
+              >
+                <option value="">Select an emission factor...</option>
+                {lineFactors.map((f) => (
+                  <option key={f.id} value={f.id}>{factorLabel(f)}</option>
+                ))}
+              </SelectInput>
+              {lineOpts.no_factors_reason && (
+                <p className="v3-muted" style={{ fontSize: 12, marginTop: 4, color: '#b45309' }}>
+                  {lineOpts.no_factors_reason}
+                </p>
+              )}
+            </div>
+          );
+        })
+      ) : (
+        <>
+          {mappingOptions.no_factors_reason ? (
+            <p className="v3-muted" style={{ margin: '6px 0 0' }}>{mappingOptions.no_factors_reason}</p>
+          ) : null}
+          {allFactorOptions.length === 0 ? (
+            <div style={{ margin: '6px 0 0' }}>
+              <p className="v3-muted">
+                No emission factor matches this activity and unit yet.
+              </p>
+              {spendSuggestion && (
+                <div className="v3-inline-card" style={{ marginTop: 8, borderLeft: '3px solid var(--v3-warn, #b45309)' }}>
+                  <p className="v3-muted" style={{ margin: 0 }}>
+                    {spendSuggestion.message || `This is a spend-based activity (${spendSuggestion.unit || 'GBP'}). The current factor set is physical-unit based, so a customer factor is required.`}
+                  </p>
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => navigate('/organization?tab=factors')}
+                    >
+                      Create a spend-based customer factor
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : hasLines ? (
+            lines.map((line, i) => (
+              <div key={i} style={{ marginTop: 8 }}>
+                <SelectInput
+                  label={`Factor - ${line.activity || `line ${i + 1}`}`}
+                  value={mapping.line_factors[i] || ''}
+                  disabled={!editableMapping}
+                  onChange={(e) =>
+                    setMapping((prev) => {
+                      const next = [...(prev.line_factors || [])];
+                      next[i] = e.target.value;
+                      return { ...prev, line_factors: next };
+                    })
+                  }
+                >
+                  <option value="">Select an emission factor...</option>
+                  {allFactorOptions.map((f) => (
+                    <option key={f.id} value={f.id}>{factorLabel(f)}</option>
+                  ))}
+                </SelectInput>
+              </div>
+            ))
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              <SelectInput
+                label="Emission factor"
+                value={mapping.factor_id || ''}
+                disabled={!editableMapping}
+                onChange={(e) => setMapping((prev) => ({ ...prev, factor_id: e.target.value }))}
+              >
+                <option value="">Select an emission factor...</option>
+                {allFactorOptions.map((f) => (
+                  <option key={f.id} value={f.id}>{factorLabel(f)}</option>
+                ))}
+              </SelectInput>
             </div>
           )}
-        </div>
-      ) : hasLines ? (
-        lines.map((line, i) => (
-          <div key={i} style={{ marginTop: 8 }}>
-            <SelectInput
-              label={`Factor - ${line.activity || `line ${i + 1}`}`}
-              value={mapping.line_factors[i] || ''}
-              disabled={!editableMapping}
-              onChange={(e) =>
-                setMapping((prev) => {
-                  const next = [...(prev.line_factors || [])];
-                  next[i] = e.target.value;
-                  return { ...prev, line_factors: next };
-                })
-              }
-            >
-              <option value="">Select an emission factor...</option>
-              {allFactorOptions.map((f) => (
-                <option key={f.id} value={f.id}>{factorLabel(f)}</option>
-              ))}
-            </SelectInput>
-          </div>
-        ))
-      ) : (
-        <div style={{ marginTop: 8 }}>
-          <SelectInput
-            label="Emission factor"
-            value={mapping.factor_id || ''}
-            disabled={!editableMapping}
-            onChange={(e) => setMapping((prev) => ({ ...prev, factor_id: e.target.value }))}
-          >
-            <option value="">Select an emission factor...</option>
-            {allFactorOptions.map((f) => (
-              <option key={f.id} value={f.id}>{factorLabel(f)}</option>
-            ))}
-          </SelectInput>
-        </div>
+        </>
       )}
       {editableMapping && (
         <div style={{ marginTop: 10 }}>
