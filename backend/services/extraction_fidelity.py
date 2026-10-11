@@ -70,7 +70,16 @@ _FURNITURE = (
     "invoice date", "customer", "supplier", "address", "phone", "payable",
 )
 
-_NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)")
+#: CARBONTALLY-FIX-2026-001 (GAP-4 / E3b): the number token is bounded on BOTH
+#: sides. Without the trailing guard a reference code such as ``REF-65245``
+#: matched its leading ``652`` and that fragment became the line's quantity;
+#: without ``-``/``/`` in the leading guard the remaining digits of the code
+#: stayed matchable. The named group makes the token available to callers that
+#: need it (:func:`_quantity_column`); the ``findall``/``sub`` callers are
+#: unchanged (a single group still yields the group text, not a tuple).
+_NUMBER = re.compile(
+    r"(?<![\w.\-/])(?P<num>\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(?![\w\d])"
+)
 _MARKER_PAGE = re.compile(r"\[\s*page\s+(\d+)\s*\]", re.IGNORECASE)
 
 
@@ -243,12 +252,21 @@ def _quantity_column(line: str, unit_hint: Optional[str]) -> Optional[float]:
     preferring that token keeps reference codes out of the quantity (``REF-89015`` must
     not become ``890``) — the `P1-B` structured-table requirement. Returns ``None`` when
     no unit column could be located, leaving the caller's first-number scan in charge.
+
+    CARBONTALLY-FIX-2026-001 (GAP-4 / E3b): the unit column is matched on a
+    **plural-insensitive** comparison. The line prints ``tonnes`` while the unit
+    vocabulary yields the singular token ``tonne``, so the column match used to
+    fail, the helper returned ``None``, and the caller's fallback scan picked the
+    first number in the line (the ``652`` of ``REF-65245``). Normalising both
+    sides — the hint and the printed token — keeps the real quantity column.
     """
     if not unit_hint:
         return None
+    normalized_hint = unit_hint.rstrip("s").lower()
     words = line.split()
     for index, word in enumerate(words):
-        if _fold_units(word.strip(",.;:()[]").lower()) != unit_hint:
+        clean_word = _fold_units(word.strip(",.;:()[]").lower()).rstrip("s")
+        if clean_word != normalized_hint:
             continue
         if index == 0:
             return None
@@ -256,7 +274,7 @@ def _quantity_column(line: str, unit_hint: Optional[str]) -> Optional[float]:
         if not match:
             return None
         try:
-            value = float(match.group(1).replace(",", "").replace(" ", ""))
+            value = float(match.group("num").replace(",", "").replace(" ", ""))
         except ValueError:
             return None
         return value or None
