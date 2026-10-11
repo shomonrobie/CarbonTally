@@ -496,6 +496,125 @@ async def extract_item(
     )
 
 
+# ---------------------------------------------------------------------------
+# Mapping selection contract (CT-...-DISCOVERY-13 / P0)
+#
+# The D23 multi-line surface is per-line: the picker offers one factor per
+# extracted line and the client submits `mapped_data.line_items[].factor_id`.
+# The document-level guard predated that surface, so a complete per-line
+# selection satisfied nothing and every multi-line save was rejected 422
+# before persistence. A mapping decision is now satisfied EITHER by a
+# document-level factor OR by a complete, validated per-line factor set.
+# ---------------------------------------------------------------------------
+
+
+def _document_level_factor_selected(payload: MapPayload) -> bool:
+    """True when the request carries a non-blank document-level factor."""
+    if str(payload.emission_factor_used or "").strip():
+        return True
+    return bool(str((payload.mapped_data or {}).get("factor_id") or "").strip())
+
+
+def _complete_line_factor_set(mapped_data: dict) -> Optional[list[dict]]:
+    """Return the per-line entries when ``mapped_data`` carries a COMPLETE set.
+
+    A set is complete only when ``line_items`` is a non-empty list and **every**
+    entry carries a non-blank ``factor_id``. A partial selection is not a
+    mapping decision, so it returns ``None`` and the caller fails closed.
+    """
+    lines = (mapped_data or {}).get("line_items")
+    if not isinstance(lines, list) or not lines:
+        return None
+    if not all(
+        isinstance(entry, dict) and str(entry.get("factor_id") or "").strip()
+        for entry in lines
+    ):
+        return None
+    return lines
+
+
+async def _validate_line_factor_selection(
+    repos: RepositoryBundle,
+    batch,
+    item,
+    lines: list[dict],
+) -> None:
+    """Validate every submitted per-line factor id; fail closed with 422.
+
+    Widening the accepted input shape must widen the validation with it: each
+    submitted id must be one of the candidates the picker was built from — the
+    same ``find_by_activity`` lookup and the same approved, org-scoped customer
+    factors that ``mapping_options`` uses. ``mapped_data`` is persisted,
+    customer-visible provenance, so an arbitrary string is never accepted.
+    The authoritative line ``activity``/``unit`` and the ``reporting_year`` are
+    read from the **persisted** ``extracted_data``, never from the request: a
+    client must not be able to make an inapplicable factor look applicable by
+    echoing a different unit.
+
+    The candidate set is deliberately identical to the picker's — including the
+    fact that ``find_by_activity`` does not filter the owning import batch's
+    ``is_active`` flag. A write path stricter than the read path would refuse a
+    factor the picker had just offered; whether an inactive factor should be
+    selectable at all is a separate factor-catalogue question.
+    """
+    extracted = item.extracted_data or {}
+    persisted = extracted.get("line_items")
+    persisted = persisted if isinstance(persisted, list) else []
+    if len(lines) != len(persisted):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"mapped_data.line_items has {len(lines)} entries but the "
+                f"extracted document has {len(persisted)} line(s); a per-line "
+                "mapping must cover every extracted line"
+            ),
+        )
+
+    reporting_year: Optional[int] = None
+    if extracted.get("date"):
+        try:
+            reporting_year = int(str(extracted["date"])[:4])
+        except (TypeError, ValueError):
+            reporting_year = None
+
+    customer_factors = await customer_factor_mapping_options(
+        repos, batch.organization_id
+    )
+
+    for index, entry in enumerate(lines):
+        raw_line = persisted[index] if isinstance(persisted[index], dict) else {}
+        activity = str(
+            raw_line.get("activity") or raw_line.get("description") or ""
+        ).strip()
+        unit = str(raw_line.get("unit") or "").strip() or None
+        candidates = (
+            await repos.factors.find_by_activity(
+                activity,
+                unit=unit,
+                year=reporting_year,
+                limit=20,
+                unit_qualifier_tolerant=True,
+            )
+            if activity
+            else []
+        )
+        allowed = {str(factor.id) for factor in candidates}
+        allowed |= {
+            str(factor.id)
+            for factor in relevant_customer_factors(customer_factors, activity, unit)
+        }
+        factor_id = str(entry.get("factor_id") or "").strip()
+        if factor_id not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"line {index + 1}: emission factor {factor_id!r} is not an "
+                    f"applicable candidate for activity {activity!r} "
+                    f"(unit {unit!r}); select a factor offered for this line"
+                ),
+            )
+
+
 @router.post("/items/{item_id}/map")
 async def map_item(
     item_id: str,
@@ -509,14 +628,18 @@ async def map_item(
         enforce_manual_processing=True,
     )
     _require_transition(item, "mapped")
-    if payload.emission_factor_used is None and not (payload.mapped_data or {}).get(
-        "factor_id"
-    ):
+    # P0 — accept EITHER a document-level factor OR a complete per-line set;
+    # a request carrying neither is not a mapping decision and fails closed.
+    line_factors = _complete_line_factor_set(payload.mapped_data)
+    if not _document_level_factor_selected(payload) and line_factors is None:
         raise HTTPException(
             status_code=422,
-            detail="an emission factor must be selected (emission_factor_used "
-            "or mapped_data.factor_id)",
+            detail="an emission factor must be selected: either a document-level "
+            "factor (emission_factor_used or mapped_data.factor_id) or a complete "
+            "per-line set (mapped_data.line_items, every entry carrying a factor_id)",
         )
+    if line_factors is not None:
+        await _validate_line_factor_selection(repos, batch, item, line_factors)
     await _record_consultant_provenance(repos, item=item, current_user=current_user)
     return await repos.manual_extraction.save_mapped_data(
         item_id,
